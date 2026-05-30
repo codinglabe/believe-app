@@ -268,6 +268,7 @@ jobs:
             php artisan migrate:status 2>&1 | tail -20
             exit 1
           }
+          php artisan seo:optimize-share-images || echo "::warning::seo:optimize-share-images failed (non-fatal)"
           php artisan storage:link --force
           php artisan config:cache
           php artisan event:cache
