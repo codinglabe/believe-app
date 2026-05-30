@@ -2,18 +2,20 @@
 
 namespace App\Jobs;
 
+use App\Mail\PasswordResetMail;
 use App\Models\User;
-use App\Notifications\ResetPasswordNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 /**
- * Sends the branded password-reset email on the dedicated mail queue so it is not
- * delayed behind IRS import and other long-running default-queue jobs.
+ * Sends password-reset email on the default queue (same worker as org invites, etc.).
+ * Previously used a dedicated "mail" queue that production workers did not process.
  */
 class SendPasswordResetEmailJob implements ShouldQueue
 {
@@ -30,9 +32,7 @@ class SendPasswordResetEmailJob implements ShouldQueue
         public int $userId,
         #[\SensitiveParameter] public string $token,
         public ?string $domain = null,
-    ) {
-        $this->onQueue('mail');
-    }
+    ) {}
 
     public function handle(): void
     {
@@ -44,6 +44,27 @@ class SendPasswordResetEmailJob implements ShouldQueue
             return;
         }
 
-        $user->notify(new ResetPasswordNotification($this->token, $this->domain));
+        if (! $user->email) {
+            Log::warning('SendPasswordResetEmailJob: user has no email', ['user_id' => $this->userId]);
+
+            return;
+        }
+
+        Mail::to($user->email)->send(
+            new PasswordResetMail($user, $this->token, $this->domain),
+        );
+
+        Log::info('Password reset email sent', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+        ]);
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::error('SendPasswordResetEmailJob failed after retries', [
+            'user_id' => $this->userId,
+            'error' => $exception->getMessage(),
+        ]);
     }
 }

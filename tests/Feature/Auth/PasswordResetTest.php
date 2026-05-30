@@ -1,8 +1,10 @@
 <?php
 
+use App\Jobs\SendPasswordResetEmailJob;
+use App\Mail\PasswordResetMail;
 use App\Models\User;
-use App\Notifications\ResetPasswordNotification;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 
 uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
 
@@ -13,50 +15,56 @@ test('reset password link screen can be rendered', function () {
 });
 
 test('reset password link can be requested', function () {
-    Notification::fake();
+    Queue::fake();
 
     $user = User::factory()->create();
 
     $this->post('/forgot-password', ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPasswordNotification::class);
+    Queue::assertPushed(SendPasswordResetEmailJob::class, function (SendPasswordResetEmailJob $job) use ($user) {
+        return $job->userId === $user->id && $job->token !== '';
+    });
+});
+
+test('reset password email job sends mail', function () {
+    Mail::fake();
+
+    $user = User::factory()->create();
+    $token = 'test-reset-token';
+
+    (new SendPasswordResetEmailJob($user->id, $token, 'https://believeinunity.test'))->handle();
+
+    Mail::assertSent(PasswordResetMail::class, function (PasswordResetMail $mail) use ($user) {
+        return $mail->hasTo($user->email);
+    });
 });
 
 test('reset password screen can be rendered', function () {
-    Notification::fake();
+    Mail::fake();
 
     $user = User::factory()->create();
+    $token = 'test-reset-token';
 
-    $this->post('/forgot-password', ['email' => $user->email]);
+    (new SendPasswordResetEmailJob($user->id, $token, 'https://believeinunity.test'))->handle();
 
-    Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) {
-        $response = $this->get('/reset-password/'.$notification->token);
+    $response = $this->get('/reset-password/'.$token.'?email='.urlencode($user->email));
 
-        $response->assertStatus(200);
-
-        return true;
-    });
+    $response->assertStatus(200);
 });
 
 test('password can be reset with valid token', function () {
-    Notification::fake();
-
     $user = User::factory()->create();
 
-    $this->post('/forgot-password', ['email' => $user->email]);
+    $token = \Illuminate\Support\Facades\Password::createToken($user);
 
-    Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) use ($user) {
-        $response = $this->post('/reset-password', [
-            'token' => $notification->token,
-            'email' => $user->email,
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ]);
+    $response = $this->post('/reset-password', [
+        'token' => $token,
+        'email' => $user->email,
+        'password' => 'password',
+        'password_confirmation' => 'password',
+    ]);
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect(route('login'));
-
-        return true;
-    });
+    $response
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('login'));
 });
