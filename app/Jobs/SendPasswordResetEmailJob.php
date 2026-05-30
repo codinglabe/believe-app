@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
- * Sends password-reset email on the default queue (same worker as org invites, etc.).
- * Previously used a dedicated "mail" queue that production workers did not process.
+ * Password reset email — sent immediately after the forgot-password response via
+ * dispatchAfterResponse(). On SMTP failure, the job is re-queued on the mail queue for retry.
  */
 class SendPasswordResetEmailJob implements ShouldQueue
 {
@@ -32,7 +32,9 @@ class SendPasswordResetEmailJob implements ShouldQueue
         public int $userId,
         #[\SensitiveParameter] public string $token,
         public ?string $domain = null,
-    ) {}
+    ) {
+        $this->onQueue('mail');
+    }
 
     public function handle(): void
     {
@@ -50,9 +52,22 @@ class SendPasswordResetEmailJob implements ShouldQueue
             return;
         }
 
-        Mail::to($user->email)->send(
-            new PasswordResetMail($user, $this->token, $this->domain),
-        );
+        try {
+            Mail::to($user->email)->send(
+                new PasswordResetMail($user, $this->token, $this->domain),
+            );
+        } catch (Throwable $e) {
+            if ($this->job === null) {
+                Log::warning('Password reset email failed inline, queueing retry', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage(),
+                ]);
+                self::dispatch($this->userId, $this->token, $this->domain);
+            }
+
+            throw $e;
+        }
 
         Log::info('Password reset email sent', [
             'user_id' => $user->id,
