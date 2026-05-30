@@ -14,9 +14,11 @@ interface ImageUploadProps {
   processing?: boolean
   /** Laravel-style limit in kilobytes (e.g. 5120 for 5MB). If set, rejects larger files before POST so nginx cannot return 413. */
   maxFileSizeKb?: number
+  /** Unique id for the file input when multiple uploads are on one form. */
+  inputId?: string
 }
 
-export function ImageUpload({ label, value, onChange, disabled, processing, maxFileSizeKb }: ImageUploadProps) {
+export function ImageUpload({ label, value, onChange, disabled, processing, maxFileSizeKb, inputId = "image-upload-input" }: ImageUploadProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(value)
   const [sizeError, setSizeError] = useState<string | null>(null)
 
@@ -59,15 +61,15 @@ export function ImageUpload({ label, value, onChange, disabled, processing, maxF
     onChange(null) // Clear the file in the parent form
     setPreviewUrl(null) // Clear the preview
     // Reset the input element value to allow re-uploading the same file
-    const fileInput = document.getElementById("image-upload-input") as HTMLInputElement
+    const fileInput = document.getElementById(inputId) as HTMLInputElement
     if (fileInput) {
       fileInput.value = ""
     }
-  }, [onChange])
+  }, [onChange, inputId])
 
   return (
     <div className="space-y-2">
-      <Label htmlFor="image-upload-input" className="text-sm font-medium">
+      <Label htmlFor={inputId} className="text-sm font-medium">
         {label}
       </Label>
       <div className="flex flex-col items-center justify-center w-full border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-6 relative">
@@ -102,7 +104,7 @@ export function ImageUpload({ label, value, onChange, disabled, processing, maxF
               Select Image
             </Button>
             <Input
-              id="image-upload-input"
+              id={inputId}
               type="file"
               accept="image/*"
               onChange={handleFileChange}
