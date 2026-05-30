@@ -1118,7 +1118,7 @@ class User extends Authenticatable implements MustVerifyEmail
      * @return void
      */
     /**
-     * Queue the branded password-reset email on the mail queue (fast worker, not default).
+     * Queue password-reset email on the default queue (processed by the main worker).
      */
     public function sendPasswordResetNotification($token): void
     {
