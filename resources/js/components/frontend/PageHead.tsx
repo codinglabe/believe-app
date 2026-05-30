@@ -15,36 +15,65 @@ const DEFAULT_APP_NAME = import.meta.env.VITE_APP_NAME || "501c3ers"
 
 /**
  * Renders Inertia Head with title, meta description, and Open Graph / Twitter tags.
- * Use on every page and pass SEO props from the Laravel controller.
- * With SSR enabled, these tags are in the initial HTML for crawlers.
- * Site name comes from admin SEO settings (seoSiteName) when set, else VITE_APP_NAME.
+ * Server-rendered tags live in resources/views/partials/social-meta.blade.php for crawlers.
  */
-type SharedSeoProps = { seoSiteName?: string; seoCanonical?: string; seoDefaultImage?: string }
+type SharedSeoProps = {
+  seoSiteName?: string
+  seoCanonical?: string
+  seoDefaultImage?: string
+  seo?: { share_image?: string; description?: string }
+}
+
+function guessImageMimeType(url: string): string {
+  const path = url.split("?")[0]?.toLowerCase() ?? ""
+  if (path.endsWith(".png")) return "image/png"
+  if (path.endsWith(".webp")) return "image/webp"
+  if (path.endsWith(".gif")) return "image/gif"
+  if (path.endsWith(".svg")) return "image/svg+xml"
+  return "image/jpeg"
+}
 
 export function PageHead({ title, description, image, canonical }: PageHeadProps) {
   const props = usePage().props as SharedSeoProps
   const appName = props.seoSiteName ?? DEFAULT_APP_NAME
   const fullTitle = title.includes(appName) ? title : `${title} | ${appName}`
   const url = canonical ?? props.seoCanonical ?? (typeof window !== "undefined" ? window.location.href : "")
-  const shareImage = image ?? props.seoDefaultImage ?? ""
+  const metaDescription = description ?? props.seo?.description
+  const shareImage = image ?? props.seo?.share_image ?? props.seoDefaultImage ?? ""
+  const imageType = shareImage ? guessImageMimeType(shareImage) : ""
 
   return (
     <Head>
       <title>{title}</title>
-      {description && <meta name="description" content={description} />}
+      {metaDescription && <meta name="description" content={metaDescription} />}
+      {url && <link rel="canonical" href={url} />}
       {/* Open Graph */}
       <meta property="og:type" content="website" />
       <meta property="og:title" content={fullTitle} />
-      {description && <meta property="og:description" content={description} />}
+      {metaDescription && <meta property="og:description" content={metaDescription} />}
       {url && <meta property="og:url" content={url} />}
-      {shareImage && <meta property="og:image" content={shareImage} />}
       <meta property="og:site_name" content={appName} />
-      {/* Twitter */}
+      <meta property="og:locale" content="en_US" />
+      {shareImage && (
+        <>
+          <meta property="og:image" content={shareImage} />
+          <meta property="og:image:secure_url" content={shareImage} />
+          <meta property="og:image:type" content={imageType} />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:image:alt" content={fullTitle} />
+        </>
+      )}
+      {/* Twitter / X */}
       <meta name="twitter:card" content={shareImage ? "summary_large_image" : "summary"} />
       <meta name="twitter:title" content={fullTitle} />
-      {description && <meta name="twitter:description" content={description} />}
-      {shareImage && <meta name="twitter:image" content={shareImage} />}
-      {(canonical ?? props.seoCanonical) && <link rel="canonical" href={canonical ?? props.seoCanonical} />}
+      {metaDescription && <meta name="twitter:description" content={metaDescription} />}
+      {shareImage && (
+        <>
+          <meta name="twitter:image" content={shareImage} />
+          <meta name="twitter:image:alt" content={fullTitle} />
+        </>
+      )}
     </Head>
   )
 }

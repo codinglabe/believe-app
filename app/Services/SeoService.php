@@ -11,6 +11,39 @@ class SeoService
     private const SHARE_IMAGE_DISK = 'public';
 
     private const SHARE_IMAGE_DIR = 'seo/share';
+
+    /** Public fallback when no admin share image is configured (must be crawlable). */
+    private const FALLBACK_SHARE_IMAGE_PATH = '/web-app-manifest-192x192.png';
+
+    /** @var array<string, string> Laravel route name => SeoService page key */
+    private const ROUTE_PAGE_KEYS = [
+        'home' => 'home',
+        'about' => 'about',
+        'contact' => 'contact',
+        'donate' => 'donate',
+        'organizations' => 'organizations',
+        'marketplace.index' => 'marketplace',
+        'privacy.policy' => 'privacy_policy',
+        'terms.service' => 'terms_of_service',
+        'register' => 'register',
+        'register.user' => 'register_user',
+        'register.organization' => 'register_organization',
+        'register.care-alliance' => 'register_care_alliance',
+        'login' => 'login',
+        'password.request' => 'forgot_password',
+        'password.reset' => 'reset_password',
+        'social-feed.index' => 'social_feed',
+        'nonprofit.news' => 'nonprofit_news',
+        'jobs.index' => 'jobs',
+        'volunteer-opportunities.index' => 'volunteer_opportunities',
+        'fundraise' => 'fundraise',
+        'find-supporters.index' => 'find_supporters',
+        'find-care-alliances.index' => 'find_care_alliances',
+        'social-feed.search' => 'search',
+        'unity-loaves.index' => 'unity_loaves',
+        'course.index' => 'courses',
+        'alleventsPage' => 'all_events',
+    ];
     public const PAGE_KEYS = [
         'home' => 'Home',
         'donate' => 'Donate',
@@ -112,8 +145,137 @@ class SeoService
     public static function getDefaultShareImage(): string
     {
         $settings = self::getSettings();
+        $configured = self::resolveImageUrl((string) ($settings['default_share_image'] ?? ''));
 
-        return self::resolveImageUrl((string) ($settings['default_share_image'] ?? ''));
+        return self::getEffectiveShareImage($configured !== '' ? $configured : null);
+    }
+
+    /**
+     * Resolve share image: explicit page image, admin default, then site fallback asset.
+     */
+    public static function getEffectiveShareImage(?string $pageSharePathOrUrl = null): string
+    {
+        $pageShare = trim((string) $pageSharePathOrUrl);
+        if ($pageShare !== '') {
+            return self::ensureAbsoluteUrl(self::resolveImageUrl($pageShare));
+        }
+
+        $settings = self::getSettings();
+        $default = self::resolveImageUrl((string) ($settings['default_share_image'] ?? ''));
+        if ($default !== '') {
+            return self::ensureAbsoluteUrl($default);
+        }
+
+        return self::ensureAbsoluteUrl(self::FALLBACK_SHARE_IMAGE_PATH);
+    }
+
+    /**
+     * Force a fully-qualified URL (HTTPS in production) for social crawlers.
+     */
+    public static function ensureAbsoluteUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        }
+
+        if (! str_starts_with($url, 'http://') && ! str_starts_with($url, 'https://')) {
+            $url = url($url);
+        }
+
+        if (app()->environment('production') && str_starts_with($url, 'http://')) {
+            $url = 'https://'.substr($url, 7);
+        }
+
+        return $url;
+    }
+
+    /**
+     * Open Graph payload for the root Blade template (social crawlers do not run JS).
+     *
+     * @param  array<string, mixed>  $inertiaPage
+     * @return array{title: string, og_title: string, description: string, url: string, share_image: string, site_name: string, image_type: string}
+     */
+    public static function openGraphForView(array $inertiaPage, \Illuminate\Http\Request $request): array
+    {
+        $props = $inertiaPage['props'] ?? [];
+        $inertiaSeo = is_array($props['seo'] ?? null) ? $props['seo'] : null;
+
+        if (is_array($inertiaSeo) && trim((string) ($inertiaSeo['title'] ?? '')) !== '') {
+            return self::buildOpenGraphPayload($inertiaSeo, $request);
+        }
+
+        $routeKey = self::routeToPageKey($request->route()?->getName());
+        if ($routeKey !== null) {
+            return self::buildOpenGraphPayload(self::forPage($routeKey), $request);
+        }
+
+        $settings = self::getSettings();
+
+        return self::buildOpenGraphPayload([
+            'title' => self::getSiteName(),
+            'description' => (string) ($settings['default_description'] ?? ''),
+            'share_image' => self::getDefaultShareImage(),
+        ], $request);
+    }
+
+    /**
+     * @param  array<string, mixed>  $seo
+     * @return array{title: string, og_title: string, description: string, url: string, share_image: string, site_name: string, image_type: string}
+     */
+    public static function buildOpenGraphPayload(array $seo, \Illuminate\Http\Request $request): array
+    {
+        $siteName = self::getSiteName();
+        $title = trim((string) ($seo['title'] ?? ''));
+        $description = trim((string) ($seo['description'] ?? ''));
+        $settings = self::getSettings();
+
+        if ($description === '') {
+            $description = trim((string) ($settings['default_description'] ?? ''));
+        }
+
+        $shareImage = self::getEffectiveShareImage(trim((string) ($seo['share_image'] ?? '')));
+
+        $ogTitle = $title !== '' ? $title : $siteName;
+        if ($title !== '' && $siteName !== '' && ! str_contains($title, $siteName)) {
+            $ogTitle = "{$title} | {$siteName}";
+        }
+
+        return [
+            'title' => $title !== '' ? $title : $siteName,
+            'og_title' => $ogTitle,
+            'description' => $description,
+            'url' => self::ensureAbsoluteUrl($request->url()),
+            'share_image' => $shareImage,
+            'site_name' => $siteName,
+            'image_type' => self::guessImageMimeType($shareImage),
+        ];
+    }
+
+    public static function routeToPageKey(?string $routeName): ?string
+    {
+        if ($routeName === null || $routeName === '') {
+            return null;
+        }
+
+        return self::ROUTE_PAGE_KEYS[$routeName] ?? null;
+    }
+
+    private static function guessImageMimeType(string $url): string
+    {
+        $path = strtolower(parse_url($url, PHP_URL_PATH) ?: '');
+
+        return match (true) {
+            str_ends_with($path, '.png') => 'image/png',
+            str_ends_with($path, '.webp') => 'image/webp',
+            str_ends_with($path, '.gif') => 'image/gif',
+            str_ends_with($path, '.svg') => 'image/svg+xml',
+            default => 'image/jpeg',
+        };
     }
 
     /**
@@ -127,14 +289,14 @@ class SeoService
         }
 
         if (str_starts_with($pathOrUrl, 'http://') || str_starts_with($pathOrUrl, 'https://')) {
-            return $pathOrUrl;
+            return self::ensureAbsoluteUrl($pathOrUrl);
         }
 
         if (str_starts_with($pathOrUrl, '/')) {
-            return url($pathOrUrl);
+            return self::ensureAbsoluteUrl(url($pathOrUrl));
         }
 
-        return Storage::disk(self::SHARE_IMAGE_DISK)->url($pathOrUrl);
+        return self::ensureAbsoluteUrl(Storage::disk(self::SHARE_IMAGE_DISK)->url($pathOrUrl));
     }
 
     /**
@@ -170,14 +332,11 @@ class SeoService
         }
 
         $shareImage = trim((string) ($page['share_image'] ?? ''));
-        $resolvedShareImage = $shareImage !== ''
-            ? self::resolveImageUrl($shareImage)
-            : self::getDefaultShareImage();
 
         return [
             'title' => (string) ($page['title'] ?? ''),
             'description' => isset($page['description']) ? (string) $page['description'] : '',
-            'share_image' => $resolvedShareImage,
+            'share_image' => self::getEffectiveShareImage($shareImage !== '' ? self::resolveImageUrl($shareImage) : null),
         ];
     }
 
