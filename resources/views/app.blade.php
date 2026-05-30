@@ -15,10 +15,7 @@
         <meta name="firebase-vapid-key" content="{{ config('services.firebase.vapid_key', '') }}">
         @endunless
         @unless($isLivestock || $isMerchant)
-        <meta name="description" content="{{ config('app.name') }} - Connect with nonprofits and supporters. Donate, volunteer, and make an impact.">
-        <meta property="og:type" content="website">
-        <meta property="og:site_name" content="{{ config('app.name') }}">
-        <meta name="twitter:card" content="summary_large_image">
+        @include('partials.social-meta')
         @endunless
 
         <!-- PWA Meta Tags -->
