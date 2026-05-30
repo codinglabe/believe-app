@@ -75,6 +75,7 @@ function volunteerOpportunitiesQuery(base: PickerBaseParams): Record<string, str
 }
 
 interface VolunteerOpportunitiesProps {
+  seo?: { title?: string; description?: string; share_image?: string };
   jobs: {
     data: JobPost[];
     current_page: number;
@@ -649,6 +650,7 @@ function TagifyPositionPicker({
 }
 
 export default function VolunteerOpportunities({
+  seo,
   jobs,
   organizations,
   positionCategories,
@@ -814,7 +816,7 @@ export default function VolunteerOpportunities({
             setLabelExtras({});
             setOrgLabelExtras({});
             setState("");
-            setCurrentPage(1);
+    setCurrentPage(1);
             router.get(route("volunteer-opportunities.index"), {}, { preserveState: false });
           },
         },
@@ -851,7 +853,7 @@ export default function VolunteerOpportunities({
 
   return (
     <FrontendLayout>
-      <PageHead title="Volunteer Opportunities" description="Find volunteer opportunities at nonprofits. Give your time and skills to causes you care about." />
+      <PageHead title={seo?.title ?? "Volunteer Opportunities"} description={seo?.description} image={seo?.share_image} />
 
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         {/* Hero */}
@@ -1083,7 +1085,7 @@ export default function VolunteerOpportunities({
                       placeholder="Add positions..."
                       className="bg-white dark:bg-gray-900"
                     />
-                    <Button
+                        <Button
                       type="button"
                       className="mt-3 w-full bg-violet-600 hover:bg-violet-700 text-white"
                       disabled={savingPreferredPositions}
@@ -1092,12 +1094,12 @@ export default function VolunteerOpportunities({
                       {savingPreferredPositions ? (
                         <>
                           <Loader2 className="inline-block w-4 h-4 mr-2 animate-spin" />
-                          Saving…
-                        </>
-                      ) : (
+                              Saving…
+                            </>
+                          ) : (
                         "Save positions"
-                      )}
-                    </Button>
+                          )}
+                        </Button>
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Saved positions load automatically next time you visit. Use Clear all to remove them.
                     </p>

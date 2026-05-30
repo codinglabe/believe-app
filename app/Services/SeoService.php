@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AdminSetting;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\ImageManager;
 
@@ -53,6 +54,9 @@ class SeoService
         'unity-loaves.index' => 'unity_loaves',
         'course.index' => 'courses',
         'alleventsPage' => 'all_events',
+        'pricing' => 'pricing',
+        'explore-by-cause.index' => 'explore_by_cause',
+        'organizations.show' => 'organizations',
     ];
     public const PAGE_KEYS = [
         'home' => 'Home',
@@ -82,6 +86,8 @@ class SeoService
         'social_feed' => 'Social Feed',
         'fundraise' => 'Raise Capital',
         'unity_loaves' => 'Unity Loaves Directory',
+        'pricing' => 'Pricing',
+        'explore_by_cause' => 'Explore by Cause',
     ];
 
     /**
@@ -126,8 +132,188 @@ class SeoService
                 'social_feed' => ['title' => 'Social Feed', 'description' => 'Stay connected with nonprofits and supporters. See updates, share posts, and engage with your community.'],
                 'fundraise' => ['title' => 'Raise Capital | Community-Powered Crowdfunding', 'description' => 'Raise capital through community-powered crowdfunding. Start your application and connect with investors on Wefunder.'],
                 'unity_loaves' => ['title' => 'Unity Loaves Directory', 'description' => 'Find feeding locations, donate money, and drop off non-perishable food. Search meal programs, food pantries, and community kitchens near you.'],
+                'pricing' => ['title' => 'Pricing', 'description' => 'Affordable plans for nonprofits and supporters. Compare features for donations, CRM, volunteers, events, email, video meetings, marketplace, and fundraising.'],
+                'explore_by_cause' => ['title' => 'Explore by Cause', 'description' => 'Discover nonprofits by cause — food, education, housing, mental health, youth, and more. Find organizations to support and donate to.'],
             ],
         ];
+    }
+
+    /**
+     * SEO for a public organization profile (dynamic title, description, share image, JSON-LD).
+     *
+     * @param  array<string, mixed>  $organization  Transformed org payload from OrganizationController
+     */
+    public static function forOrganization(array $organization, ?string $tabLabel = null): array
+    {
+        $name = trim((string) ($organization['name'] ?? ''));
+        if ($name === '') {
+            $name = 'Organization';
+        }
+
+        $title = $tabLabel !== null && $tabLabel !== ''
+            ? "{$tabLabel} | {$name}"
+            : $name;
+
+        $description = self::buildOrganizationDescription($organization);
+        $shareImagePath = self::resolveOrganizationImagePath($organization);
+
+        $payload = [
+            'title' => $title,
+            'description' => $description,
+            'share_image' => self::getEffectiveShareImage(
+                $shareImagePath !== '' ? self::resolveImageUrl($shareImagePath) : null
+            ),
+        ];
+
+        $payload['json_ld'] = self::organizationJsonLd($organization, $payload['share_image']);
+
+        return $payload;
+    }
+
+    /**
+     * Default WebSite + Organization JSON-LD for the homepage.
+     *
+     * @return array<string, mixed>
+     */
+    public static function homePageJsonLd(): array
+    {
+        $siteName = self::getSiteName();
+        $url = self::ensureAbsoluteUrl('/');
+        $settings = self::getSettings();
+        $description = trim((string) ($settings['default_description'] ?? ''));
+
+        return [
+            '@context' => 'https://schema.org',
+            '@graph' => [
+                [
+                    '@type' => 'Organization',
+                    '@id' => $url.'#organization',
+                    'name' => $siteName,
+                    'url' => $url,
+                    'logo' => self::getDefaultShareImage(),
+                    'description' => $description,
+                ],
+                [
+                    '@type' => 'WebSite',
+                    '@id' => $url.'#website',
+                    'url' => $url,
+                    'name' => $siteName,
+                    'description' => $description,
+                    'publisher' => ['@id' => $url.'#organization'],
+                    'potentialAction' => [
+                        '@type' => 'SearchAction',
+                        'target' => [
+                            '@type' => 'EntryPoint',
+                            'urlTemplate' => self::ensureAbsoluteUrl('/organizations?search={search_term_string}'),
+                        ],
+                        'query-input' => 'required name=search_term_string',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $organization
+     * @return array<string, mixed>
+     */
+    public static function organizationJsonLd(array $organization, string $logoUrl): array
+    {
+        $name = trim((string) ($organization['name'] ?? ''));
+        $slug = (string) ($organization['registered_organization']['user']['slug'] ?? $organization['id'] ?? '');
+        $profileUrl = self::ensureAbsoluteUrl('/organizations/'.$slug);
+
+        $schema = [
+            '@context' => 'https://schema.org',
+            '@type' => 'NGO',
+            'name' => $name !== '' ? $name : 'Organization',
+            'url' => $profileUrl,
+            'description' => self::buildOrganizationDescription($organization),
+        ];
+
+        if ($logoUrl !== '') {
+            $schema['logo'] = $logoUrl;
+            $schema['image'] = $logoUrl;
+        }
+
+        $city = trim((string) ($organization['city'] ?? ''));
+        $state = trim((string) ($organization['state'] ?? ''));
+        $street = trim((string) ($organization['street'] ?? ''));
+        $zip = trim((string) ($organization['zip'] ?? ''));
+
+        if ($street !== '' || $city !== '' || $state !== '') {
+            $schema['address'] = array_filter([
+                '@type' => 'PostalAddress',
+                'streetAddress' => $street !== '' ? $street : null,
+                'addressLocality' => $city !== '' ? $city : null,
+                'addressRegion' => $state !== '' ? $state : null,
+                'postalCode' => $zip !== '' ? $zip : null,
+                'addressCountry' => 'US',
+            ]);
+        }
+
+        $website = trim((string) ($organization['website'] ?? ''));
+        if ($website !== '' && filter_var($website, FILTER_VALIDATE_URL)) {
+            $schema['sameAs'] = [$website];
+        }
+
+        return $schema;
+    }
+
+    /**
+     * @param  array<string, mixed>  $organization
+     */
+    private static function buildOrganizationDescription(array $organization): string
+    {
+        $mission = trim((string) ($organization['mission'] ?? ''));
+        $description = trim((string) ($organization['description'] ?? ''));
+
+        $skipMission = $mission === '' || str_contains(strtolower($mission), 'not available for unregistered');
+        $skipDescription = $description === '' || str_contains(strtolower($description), 'not yet registered');
+
+        if (! $skipMission) {
+            return Str::limit(strip_tags($mission), 160, '…');
+        }
+
+        if (! $skipDescription) {
+            return Str::limit(strip_tags($description), 160, '…');
+        }
+
+        $name = trim((string) ($organization['name'] ?? 'This nonprofit'));
+        $city = trim((string) ($organization['city'] ?? ''));
+        $state = trim((string) ($organization['state'] ?? ''));
+        $location = trim("{$city}, {$state}", ', ');
+
+        $classification = trim((string) ($organization['classification'] ?? ''));
+
+        $parts = ["Learn about {$name}"];
+        if ($location !== '') {
+            $parts[] = "based in {$location}";
+        }
+        if ($classification !== '') {
+            $parts[] = "({$classification})";
+        }
+        $parts[] = 'on Believe In Unity. Donate, follow, and support verified nonprofits.';
+
+        return Str::limit(implode(' ', $parts), 160, '…');
+    }
+
+    /**
+     * @param  array<string, mixed>  $organization
+     */
+    private static function resolveOrganizationImagePath(array $organization): string
+    {
+        $user = $organization['registered_organization']['user'] ?? null;
+        if (! is_array($user)) {
+            return '';
+        }
+
+        $cover = trim((string) ($user['cover_img'] ?? ''));
+        if ($cover !== '') {
+            return $cover;
+        }
+
+        return trim((string) ($user['image'] ?? ''));
     }
 
     /**
@@ -241,7 +427,12 @@ class SeoService
 
         $routeKey = self::routeToPageKey($request->route()?->getName());
         if ($routeKey !== null) {
-            return self::buildOpenGraphPayload(self::forPage($routeKey), $request);
+            $pageSeo = self::forPage($routeKey);
+            if ($routeKey === 'home') {
+                $pageSeo['json_ld'] = self::homePageJsonLd();
+            }
+
+            return self::buildOpenGraphPayload($pageSeo, $request);
         }
 
         $settings = self::getSettings();
@@ -286,6 +477,7 @@ class SeoService
             'image_type' => self::guessImageMimeType($shareImage),
             'image_width' => $imageDimensions['width'],
             'image_height' => $imageDimensions['height'],
+            'json_ld' => is_array($seo['json_ld'] ?? null) ? $seo['json_ld'] : null,
         ];
     }
 
@@ -485,16 +677,28 @@ class SeoService
         }
 
         $relativePath = self::toPublicDiskPath($shareImageUrl);
-        if ($relativePath === null || ! Storage::disk(self::SHARE_IMAGE_DISK)->exists($relativePath)) {
-            return $fallback;
+        if ($relativePath !== null && Storage::disk(self::SHARE_IMAGE_DISK)->exists($relativePath)) {
+            $size = @getimagesize(Storage::disk(self::SHARE_IMAGE_DISK)->path($relativePath));
+            if ($size !== false) {
+                return ['width' => (int) $size[0], 'height' => (int) $size[1]];
+            }
         }
 
-        $size = @getimagesize(Storage::disk(self::SHARE_IMAGE_DISK)->path($relativePath));
-        if ($size === false) {
-            return $fallback;
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($appUrl !== '' && str_starts_with($shareImageUrl, $appUrl)) {
+            $publicPath = parse_url($shareImageUrl, PHP_URL_PATH);
+            if (is_string($publicPath) && $publicPath !== '') {
+                $fullPath = public_path(ltrim($publicPath, '/'));
+                if (is_file($fullPath)) {
+                    $size = @getimagesize($fullPath);
+                    if ($size !== false) {
+                        return ['width' => (int) $size[0], 'height' => (int) $size[1]];
+                    }
+                }
+            }
         }
 
-        return ['width' => (int) $size[0], 'height' => (int) $size[1]];
+        return $fallback;
     }
 
     private static function writeOptimizedSocialJpeg(string $sourcePath, string $targetRelativePath): void

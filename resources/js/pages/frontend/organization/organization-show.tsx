@@ -787,6 +787,7 @@ export default function OrganizationPage({
       <PageHead
         title={seoProp?.title ?? orgName}
         description={seoProp?.description ?? (metaDescription ? String(metaDescription).slice(0, 160) : undefined)}
+        image={seoProp?.share_image}
       />
         <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
 

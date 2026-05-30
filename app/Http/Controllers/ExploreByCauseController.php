@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\PrimaryActionCategory;
 use App\Models\User;
 use App\Services\CauseGroupChatService;
+use App\Services\SeoService;
 use App\Models\UserFavoriteOrganization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -173,6 +174,7 @@ class ExploreByCauseController extends Controller
         }
 
         return Inertia::render('explore-by-cause/index', [
+            'seo' => SeoService::forPage('explore_by_cause'),
             'categories' => $allCategories->map(fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
