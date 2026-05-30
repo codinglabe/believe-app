@@ -69,3 +69,10 @@ if (! function_exists('streaming_status_callback_url')) {
         return route('api.streaming.status');
     }
 }
+
+if (! function_exists('app_version')) {
+    function app_version(): string
+    {
+        return \App\Support\AppVersion::current();
+    }
+}
