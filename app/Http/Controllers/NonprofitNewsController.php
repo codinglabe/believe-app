@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\NonprofitNewsArticle;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -55,6 +56,7 @@ class NonprofitNewsController extends Controller
         }
 
         return Inertia::render('frontend/news/index', [
+            'seo' => SeoService::forPage('nonprofit_news'),
             'featured' => $featured ? $this->transformArticle($featured) : null,
             'trending' => $trending->map(fn ($a) => $this->transformArticle($a))->all(),
             'articles' => $paginator,

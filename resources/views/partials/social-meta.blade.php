@@ -25,3 +25,6 @@
 <meta name="twitter:image" content="{{ $og['share_image'] }}">
 <meta name="twitter:image:alt" content="{{ $og['og_title'] }}">
 @endif
+@if(!empty($og['json_ld']))
+<script type="application/ld+json">{!! json_encode($og['json_ld'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!}</script>
+@endif

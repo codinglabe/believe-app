@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Head, router, Link, usePage } from '@inertiajs/react';
+import { router, Link, usePage } from '@inertiajs/react';
+import { PageHead } from '@/components/frontend/PageHead';
 import toast from 'react-hot-toast';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { Button } from '@/components/ui/button';
@@ -68,6 +69,7 @@ interface ImpactCounts {
 }
 
 interface Props {
+    seo?: { title?: string; description?: string; share_image?: string };
     categories: InterestCategory[];
     selectedCategory: InterestCategory | null;
     organizations: OrgItem[];
@@ -291,6 +293,7 @@ function VolunteerCard({ volunteer }: { volunteer: VolunteerItem }) {
 type TabType = 'all' | 'organizations' | 'events' | 'courses' | 'volunteers';
 
 export default function ExploreByCause({
+    seo,
     categories,
     selectedCategory,
     organizations,
@@ -367,7 +370,11 @@ export default function ExploreByCause({
 
     return (
         <FrontendLayout>
-            <Head title={`Explore by Cause${selectedCategory ? ` – ${selectedCategory.name}` : ''}`} />
+            <PageHead
+                title={selectedCategory ? `${selectedCategory.name} | Explore by Cause` : (seo?.title ?? 'Explore by Cause')}
+                description={seo?.description}
+                image={seo?.share_image}
+            />
 
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
 

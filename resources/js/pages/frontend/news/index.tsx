@@ -1,5 +1,6 @@
-import { Head, Link, router, useForm, usePage } from "@inertiajs/react"
+import { Link, router, useForm, usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import { PageHead } from "@/components/frontend/PageHead"
 import { useState, useEffect } from "react"
 import { route } from "ziggy-js"
 import { Button } from "@/components/frontend/ui/button"
@@ -44,6 +45,7 @@ interface PaginatedArticles {
 }
 
 interface Props {
+  seo?: { title?: string; description?: string; share_image?: string }
   featured: ArticleItem | null
   trending: ArticleItem[]
   articles: PaginatedArticles
@@ -118,6 +120,7 @@ function fallbackCopy(text: string, onSuccess: () => void) {
 }
 
 export default function NonprofitNews({
+  seo,
   featured,
   trending,
   articles,
@@ -207,7 +210,7 @@ export default function NonprofitNews({
 
   return (
     <FrontendLayout>
-      <Head title="Nonprofit News – Daily signals for nonprofit leaders" />
+      <PageHead title={seo?.title ?? "Nonprofit News"} description={seo?.description} image={seo?.share_image} />
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           {/* Header */}

@@ -214,7 +214,22 @@ Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap')
 Route::get('/robots.txt', function () {
     $url = rtrim(config('app.url'), '/');
 
-    return response("User-agent: *\nDisallow:\n\nSitemap: {$url}/sitemap.xml\n", 200, [
+    $lines = [
+        'User-agent: *',
+        'Disallow: /admin',
+        'Disallow: /dashboard',
+        'Disallow: /chat',
+        'Disallow: /settings',
+        'Disallow: /user-profile',
+        'Disallow: /livestreams',
+        'Disallow: /checkout',
+        'Disallow: /oauth',
+        'Disallow: /stripe',
+        '',
+        "Sitemap: {$url}/sitemap.xml",
+    ];
+
+    return response(implode("\n", $lines)."\n", 200, [
         'Content-Type' => 'text/plain',
     ]);
 })->name('robots');
