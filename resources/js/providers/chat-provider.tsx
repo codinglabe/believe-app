@@ -6,9 +6,10 @@ import { usePage } from "@inertiajs/react"
 import { useDebounce } from "@/hooks/useDebounce"
 import toast from "react-hot-toast"
 import echo from "@/lib/echo"
+import { attachCsrfToAxios } from "@/lib/csrf"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 
-// Configure Axios instance (include X-Timezone so server-side date helpers stay aligned with the viewer)
+// Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
 const api = axios.create({
   baseURL: "/",
   headers: {
@@ -17,6 +18,8 @@ const api = axios.create({
     "X-Timezone": getBrowserTimezone(),
   },
 })
+
+attachCsrfToAxios(api)
 
 api.interceptors.request.use((config) => {
   config.headers.set("X-Timezone", getBrowserTimezone())
@@ -28,8 +31,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
+      const status = error.response.status
       const message = error.response.data?.message || "An error occurred"
-      toast.error(message)
+      if (status !== 419 && status !== 401) {
+        toast.error(message)
+      }
     } else {
       toast.error("Network error - please check your connection")
     }

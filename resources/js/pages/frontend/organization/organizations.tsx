@@ -342,8 +342,8 @@ export default function OrganizationsPage() {
                       <p className="text-sm font-semibold text-slate-900 dark:text-white">Earn Believe Points for Helping Organizations Join</p>
                       <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
                         When you invite a nonprofit to Believe In Unity and they join, you earn{" "}
-                        <span className="font-medium text-slate-800 dark:text-slate-200">Believe Points</span> on this
-                        schedule—not Merchant Hub reward points.
+                        <span className="font-medium text-slate-800 dark:text-slate-200">Believe Points</span> on the
+                        schedule below.
                       </p>
                     </div>
                   </div>
@@ -416,7 +416,7 @@ export default function OrganizationsPage() {
                         <div>
                           <p className="text-sm font-semibold text-slate-900 dark:text-white">Earn Believe Points</p>
                           <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                            Same Believe Points schedule as above—not Merchant Hub reward points.
+                            Same Believe Points schedule as in the sidebar card above.
                           </p>
                         </div>
                       </div>
