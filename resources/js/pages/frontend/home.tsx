@@ -348,7 +348,7 @@ export default function HomePage() {
         />
 
         <div className="relative z-[2] mx-auto max-w-7xl px-4 py-8 sm:py-10 md:py-12 lg:py-16">
-          <div className="max-w-full sm:max-w-xl md:max-w-2xl">
+          <div className="max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
               <motion.div
                 initial={{ opacity: 0, x: -24 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -359,29 +359,20 @@ export default function HomePage() {
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.55, delay: 0.08 }}
-                  className="text-2xl font-bold text-white sm:text-3xl md:text-4xl lg:text-5xl"
+                  className="text-2xl font-bold leading-tight text-white sm:text-3xl md:text-4xl lg:text-5xl"
                 >
-                  Support What Matters.
+                  The Affordable All-in-One Operating System for Nonprofits
                 </motion.h1>
-
-                <motion.h2
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.55, delay: 0.14 }}
-                  className="mt-1 text-xl font-bold sm:mt-2 sm:text-2xl md:text-3xl lg:text-4xl"
-                >
-                  <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-                    Give. Win. Shop. Make Impact.
-                  </span>
-                </motion.h2>
 
                 <motion.p
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.55, delay: 0.2 }}
-                  className="mt-3 text-sm text-gray-300 sm:mt-4 sm:text-base md:text-lg"
+                  transition={{ duration: 0.55, delay: 0.14 }}
+                  className="mt-3 text-sm font-medium leading-relaxed sm:mt-4 sm:text-base md:text-lg"
                 >
-                  Support verified organizations and amazing merchants. Your support makes a real difference.
+                  <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                    Donations • CRM • Volunteers • Events • Email • Video Meetings • Marketplace • Fundraising
+                  </span>
                 </motion.p>
               </motion.div>
 

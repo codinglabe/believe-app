@@ -43,10 +43,10 @@ class SeoService
     {
         return [
             'site_name' => config('app.name'),
-            'default_description' => 'Connect with nonprofits and supporters. Donate, volunteer, and make an impact.',
+            'default_description' => 'The affordable all-in-one operating system for nonprofits — donations, CRM, volunteers, events, email, video meetings, marketplace, and fundraising.',
             'default_share_image' => '', // Absolute URL for og:image when sharing (e.g. logo or hero)
             'pages' => [
-                'home' => ['title' => 'Home', 'description' => 'Connect with verified nonprofits, donate securely, and make an impact. Find organizations by cause, location, and support the causes you care about.'],
+                'home' => ['title' => 'The Affordable All-in-One Operating System for Nonprofits', 'description' => 'Donations, CRM, volunteers, events, email, video meetings, marketplace, and fundraising — one affordable platform built for nonprofits.'],
                 'donate' => ['title' => 'Donate', 'description' => 'Donate to verified 501(c)(3) nonprofits. 100% of your donation goes to your chosen organization. Search by name, cause, or location.'],
                 'about' => ['title' => 'About Us', 'description' => 'Learn about our mission to connect supporters with verified nonprofits. We help donors give with confidence and organizations grow their impact.'],
                 'contact' => ['title' => 'Contact Us', 'description' => 'Get in touch with Believe. Have questions about donations, nonprofits, or our platform? We\'re here to help.'],
