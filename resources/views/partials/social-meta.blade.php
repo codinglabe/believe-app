@@ -14,8 +14,8 @@
 <meta property="og:image" content="{{ $og['share_image'] }}">
 <meta property="og:image:secure_url" content="{{ $og['share_image'] }}">
 <meta property="og:image:type" content="{{ $og['image_type'] }}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image:width" content="{{ $og['image_width'] }}">
+<meta property="og:image:height" content="{{ $og['image_height'] }}">
 <meta property="og:image:alt" content="{{ $og['og_title'] }}">
 @endif
 <meta name="twitter:card" content="{{ !empty($og['share_image']) ? 'summary_large_image' : 'summary' }}">

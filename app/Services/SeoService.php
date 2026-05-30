@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\AdminSetting;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\ImageManager;
 
 class SeoService
 {
@@ -14,6 +16,14 @@ class SeoService
 
     /** Public fallback when no admin share image is configured (must be crawlable). */
     private const FALLBACK_SHARE_IMAGE_PATH = '/web-app-manifest-192x192.png';
+
+    /** Open Graph target size (1.91:1 — Facebook / WhatsApp / LinkedIn). */
+    private const SOCIAL_IMAGE_WIDTH = 1200;
+
+    private const SOCIAL_IMAGE_HEIGHT = 630;
+
+    /** WhatsApp link previews often fail above ~300 KB. */
+    private const SOCIAL_IMAGE_MAX_BYTES = 300000;
 
     /** @var array<string, string> Laravel route name => SeoService page key */
     private const ROUTE_PAGE_KEYS = [
@@ -157,16 +167,36 @@ class SeoService
     {
         $pageShare = trim((string) $pageSharePathOrUrl);
         if ($pageShare !== '') {
-            return self::ensureAbsoluteUrl(self::resolveImageUrl($pageShare));
+            return self::socialShareImageUrl(self::resolveImageUrl($pageShare));
         }
 
         $settings = self::getSettings();
         $default = self::resolveImageUrl((string) ($settings['default_share_image'] ?? ''));
         if ($default !== '') {
-            return self::ensureAbsoluteUrl($default);
+            return self::socialShareImageUrl($default);
         }
 
         return self::ensureAbsoluteUrl(self::FALLBACK_SHARE_IMAGE_PATH);
+    }
+
+    /**
+     * WhatsApp-friendly URL: optimized JPEG at 1200×630, ≤300 KB when source is on our disk.
+     */
+    public static function socialShareImageUrl(string $absoluteOrRelativeUrl): string
+    {
+        $absoluteOrRelativeUrl = trim($absoluteOrRelativeUrl);
+        if ($absoluteOrRelativeUrl === '') {
+            return '';
+        }
+
+        $relativePath = self::toPublicDiskPath($absoluteOrRelativeUrl);
+        if ($relativePath !== null && Storage::disk(self::SHARE_IMAGE_DISK)->exists($relativePath)) {
+            $socialPath = self::ensureSocialShareVariant($relativePath);
+
+            return self::ensureAbsoluteUrl(Storage::disk(self::SHARE_IMAGE_DISK)->url($socialPath));
+        }
+
+        return self::ensureAbsoluteUrl(self::resolveImageUrl($absoluteOrRelativeUrl));
     }
 
     /**
@@ -239,6 +269,7 @@ class SeoService
         }
 
         $shareImage = self::getEffectiveShareImage(trim((string) ($seo['share_image'] ?? '')));
+        $imageDimensions = self::readImageDimensions($shareImage);
 
         $ogTitle = $title !== '' ? $title : $siteName;
         if ($title !== '' && $siteName !== '' && ! str_contains($title, $siteName)) {
@@ -253,6 +284,8 @@ class SeoService
             'share_image' => $shareImage,
             'site_name' => $siteName,
             'image_type' => self::guessImageMimeType($shareImage),
+            'image_width' => $imageDimensions['width'],
+            'image_height' => $imageDimensions['height'],
         ];
     }
 
@@ -341,18 +374,21 @@ class SeoService
     }
 
     /**
-     * Store an uploaded OG/share image and return the storage path.
+     * Store an uploaded OG/share image (optimized 1200×630 JPEG, ≤300 KB for WhatsApp).
      */
     public static function storeShareImage(UploadedFile $file, string $basename): string
     {
-        $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
-        $filename = preg_replace('/[^a-z0-9_-]+/i', '-', $basename).'-'.time().'.'.$extension;
+        $filename = preg_replace('/[^a-z0-9_-]+/i', '-', $basename).'-'.time().'.jpg';
+        $relativePath = self::SHARE_IMAGE_DIR.'/'.$filename;
 
-        return $file->storeAs(self::SHARE_IMAGE_DIR, $filename, self::SHARE_IMAGE_DISK);
+        Storage::disk(self::SHARE_IMAGE_DISK)->makeDirectory(self::SHARE_IMAGE_DIR);
+        self::writeOptimizedSocialJpeg($file->getRealPath(), $relativePath);
+
+        return $relativePath;
     }
 
     /**
-     * Delete a previously stored share image (ignores external URLs).
+     * Delete a previously stored share image and its WhatsApp social variant.
      */
     public static function deleteShareImage(?string $path): void
     {
@@ -361,7 +397,185 @@ class SeoService
             return;
         }
 
-        Storage::disk(self::SHARE_IMAGE_DISK)->delete($path);
+        $disk = Storage::disk(self::SHARE_IMAGE_DISK);
+        $disk->delete($path);
+
+        $socialVariant = self::socialVariantPathFor($path);
+        if ($socialVariant !== null && $disk->exists($socialVariant)) {
+            $disk->delete($socialVariant);
+        }
+    }
+
+    /**
+     * Rebuild WhatsApp-friendly variants for all stored SEO share images.
+     *
+     * @return list<string> Paths written or refreshed
+     */
+    public static function optimizeAllStoredShareImages(): array
+    {
+        $disk = Storage::disk(self::SHARE_IMAGE_DISK);
+        if (! $disk->exists(self::SHARE_IMAGE_DIR)) {
+            return [];
+        }
+
+        $written = [];
+        foreach ($disk->files(self::SHARE_IMAGE_DIR) as $relativePath) {
+            if (str_contains($relativePath, '-social.')) {
+                continue;
+            }
+
+            $ext = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
+            if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+                continue;
+            }
+
+            self::ensureSocialShareVariant($relativePath);
+            $written[] = self::socialVariantPathFor($relativePath) ?? $relativePath;
+        }
+
+        return array_values(array_unique($written));
+    }
+
+    /**
+     * Create or refresh a ≤300 KB JPEG variant for WhatsApp / mobile previews.
+     */
+    public static function ensureSocialShareVariant(string $relativePath): string
+    {
+        if (str_contains($relativePath, '-social.')) {
+            return $relativePath;
+        }
+
+        $socialPath = self::socialVariantPathFor($relativePath);
+        if ($socialPath === null) {
+            return $relativePath;
+        }
+
+        $disk = Storage::disk(self::SHARE_IMAGE_DISK);
+        if (! $disk->exists($relativePath)) {
+            return $relativePath;
+        }
+
+        if (self::isSocialReadyAtPath($relativePath)) {
+            return $relativePath;
+        }
+
+        $needsRebuild = ! $disk->exists($socialPath);
+        if (! $needsRebuild) {
+            $sourceMtime = $disk->lastModified($relativePath);
+            $socialMtime = $disk->lastModified($socialPath);
+            $needsRebuild = $socialMtime < $sourceMtime
+                || $disk->size($socialPath) > self::SOCIAL_IMAGE_MAX_BYTES;
+        }
+
+        if ($needsRebuild) {
+            self::writeOptimizedSocialJpeg($disk->path($relativePath), $socialPath);
+        }
+
+        return $socialPath;
+    }
+
+    /**
+     * @return array{width: int, height: int}
+     */
+    public static function readImageDimensions(string $shareImageUrl): array
+    {
+        $fallback = ['width' => self::SOCIAL_IMAGE_WIDTH, 'height' => self::SOCIAL_IMAGE_HEIGHT];
+        if ($shareImageUrl === '') {
+            return $fallback;
+        }
+
+        $relativePath = self::toPublicDiskPath($shareImageUrl);
+        if ($relativePath === null || ! Storage::disk(self::SHARE_IMAGE_DISK)->exists($relativePath)) {
+            return $fallback;
+        }
+
+        $size = @getimagesize(Storage::disk(self::SHARE_IMAGE_DISK)->path($relativePath));
+        if ($size === false) {
+            return $fallback;
+        }
+
+        return ['width' => (int) $size[0], 'height' => (int) $size[1]];
+    }
+
+    private static function writeOptimizedSocialJpeg(string $sourcePath, string $targetRelativePath): void
+    {
+        $manager = new ImageManager(new Driver);
+        $image = $manager->read($sourcePath);
+        $image->cover(self::SOCIAL_IMAGE_WIDTH, self::SOCIAL_IMAGE_HEIGHT);
+
+        $quality = 85;
+        $encoded = (string) $image->toJpeg(quality: $quality);
+        while (strlen($encoded) > self::SOCIAL_IMAGE_MAX_BYTES && $quality > 45) {
+            $quality -= 5;
+            $encoded = (string) $image->toJpeg(quality: $quality);
+        }
+
+        Storage::disk(self::SHARE_IMAGE_DISK)->put($targetRelativePath, $encoded);
+    }
+
+    private static function isSocialReadyAtPath(string $relativePath): bool
+    {
+        $disk = Storage::disk(self::SHARE_IMAGE_DISK);
+        if (! $disk->exists($relativePath)) {
+            return false;
+        }
+
+        if ($disk->size($relativePath) > self::SOCIAL_IMAGE_MAX_BYTES) {
+            return false;
+        }
+
+        $ext = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
+        if (! in_array($ext, ['jpg', 'jpeg'], true)) {
+            return false;
+        }
+
+        $size = @getimagesize($disk->path($relativePath));
+        if ($size === false) {
+            return false;
+        }
+
+        return (int) $size[0] === self::SOCIAL_IMAGE_WIDTH
+            && (int) $size[1] === self::SOCIAL_IMAGE_HEIGHT;
+    }
+
+    private static function socialVariantPathFor(string $relativePath): ?string
+    {
+        if (str_contains($relativePath, '-social.')) {
+            return null;
+        }
+
+        $info = pathinfo($relativePath);
+        $dir = ($info['dirname'] ?? '') !== '.' ? $info['dirname'].'/' : '';
+
+        return $dir.($info['filename'] ?? 'share').'-social.jpg';
+    }
+
+    private static function toPublicDiskPath(string $absoluteOrRelativeUrl): ?string
+    {
+        $absoluteOrRelativeUrl = trim($absoluteOrRelativeUrl);
+        if ($absoluteOrRelativeUrl === '') {
+            return null;
+        }
+
+        if (! str_starts_with($absoluteOrRelativeUrl, 'http://') && ! str_starts_with($absoluteOrRelativeUrl, 'https://')) {
+            $path = ltrim($absoluteOrRelativeUrl, '/');
+            if (str_starts_with($path, 'storage/')) {
+                $path = substr($path, strlen('storage/'));
+            }
+
+            return $path !== '' ? $path : null;
+        }
+
+        $path = parse_url($absoluteOrRelativeUrl, PHP_URL_PATH);
+        if (! is_string($path) || $path === '') {
+            return null;
+        }
+
+        if (str_starts_with($path, '/storage/')) {
+            return ltrim(substr($path, strlen('/storage/')), '/');
+        }
+
+        return null;
     }
 
     /**
