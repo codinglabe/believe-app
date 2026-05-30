@@ -1,5 +1,6 @@
 // resources/js/pages/chat/index.tsx
 import { ChatLayout } from "@/components/chat/chat-layout"
+import { CsrfTokenSync } from "@/components/CsrfTokenSync"
 import { syncPushTokenWithServer } from "@/lib/push-token-sync";
 import { registerServiceWorker } from "@/pwa/register-service-worker";
 import { ChatProvider } from "@/providers/chat-provider"
@@ -38,6 +39,7 @@ export default function ChatPage() {
 
     return (
       <ChatProvider>
+          <CsrfTokenSync />
           <Toaster
                 position="top-right"
                 reverseOrder={false}
