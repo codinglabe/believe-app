@@ -34,7 +34,8 @@ const features = [
 ]
 
 interface PageProps {
-    seo?: { title: string; description?: string }
+    seo?: { title: string; description?: string; share_image?: string }
+    homeHero?: { headline: string; subtitle: string }
     filters: {
       search?: string
       category?: string
@@ -50,7 +51,7 @@ interface PageProps {
   }
 
 export default function HomePage() {
-    const { seo } = usePage<PageProps>().props
+    const { seo, homeHero } = usePage<PageProps>().props
     const [isLoading, setIsLoading] = useState(false)
     const [hasStartedDemo, setHasStartedDemo] = useState(false)
     const [walletPopupOpen, setWalletPopupOpen] = useState(false)
@@ -329,7 +330,7 @@ export default function HomePage() {
 
     return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Home"} description={seo?.description} />
+      <PageHead title={seo?.title ?? "Home"} description={seo?.description} image={seo?.share_image} />
     <div className="min-h-screen">
       {/* Homepage hero — Believ.Cash style (background: public/images/top-hero.png) */}
       <section className="relative overflow-hidden min-h-[280px] pb-8 sm:min-h-[320px] sm:pb-10 md:min-h-[360px] md:pb-12 lg:min-h-[400px] lg:pb-14">
@@ -361,7 +362,7 @@ export default function HomePage() {
                   transition={{ duration: 0.55, delay: 0.08 }}
                   className="text-2xl font-bold leading-tight text-white sm:text-3xl md:text-4xl lg:text-5xl"
                 >
-                  The Affordable All-in-One Operating System for Nonprofits
+                  {homeHero?.headline ?? "The Affordable All-in-One Operating System for Nonprofits"}
                 </motion.h1>
 
                 <motion.p
@@ -371,7 +372,7 @@ export default function HomePage() {
                   className="mt-3 text-sm font-medium leading-relaxed sm:mt-4 sm:text-base md:text-lg"
                 >
                   <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                    Donations • CRM • Volunteers • Events • Email • Video Meetings • Marketplace • Fundraising
+                    {homeHero?.subtitle ?? "Donations • CRM • Volunteers • Events • Email • Video Meetings • Marketplace • Fundraising"}
                   </span>
                 </motion.p>
               </motion.div>
