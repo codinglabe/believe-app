@@ -21,6 +21,7 @@
         <!-- PWA Meta Tags -->
         <link rel="manifest" href="/manifest.json">
         <meta name="theme-color" content="#000000">
+        <meta name="app-version" content="{{ app_version() }}">
 
         <!-- Icons -->
         <link rel="icon" href="/web-app-manifest-192x192.png">

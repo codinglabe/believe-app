@@ -1,10 +1,10 @@
 // Single service worker: firebase-messaging-sw.js at site root.
 // Register only once to avoid "Service Worker already registered" and controllerchange loops.
-const FIREBASE_MESSAGING_SW_URL = "/firebase-messaging-sw.js";
 const SW_SCOPE = "/";
 
 import { isLivestockDomain } from "../lib/livestock-domain";
-import { isPushCapableBrowser } from "../lib/push-environment";
+import { isServiceWorkerCapable } from "../lib/push-environment";
+import { getClientAppVersion, serviceWorkerScriptUrl } from "../lib/pwa-update";
 
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
@@ -19,14 +19,16 @@ export function registerServiceWorker(): Promise<ServiceWorkerRegistration | nul
         return Promise.resolve(null);
     }
 
-    if (!isPushCapableBrowser()) {
-        console.warn("[PWA] Push skipped: use https://, localhost, 127.0.0.1, or a .test domain");
+    if (!isServiceWorkerCapable()) {
+        console.warn("[PWA] Service worker skipped: requires HTTPS, localhost, or a .test domain");
         return Promise.resolve(null);
     }
 
     if (registrationPromise) {
         return registrationPromise;
     }
+
+    const swUrl = serviceWorkerScriptUrl(getClientAppVersion());
 
     const doRegister = async (): Promise<ServiceWorkerRegistration | null> => {
         try {
@@ -39,10 +41,11 @@ export function registerServiceWorker(): Promise<ServiceWorkerRegistration | nul
                 await existing.unregister();
                 registrationPromise = null;
             } else if (existing?.active?.scriptURL?.includes("firebase-messaging-sw")) {
+                await existing.update().catch(console.error);
                 return navigator.serviceWorker.ready;
             }
 
-            await navigator.serviceWorker.register(FIREBASE_MESSAGING_SW_URL, {
+            await navigator.serviceWorker.register(swUrl, {
                 scope: SW_SCOPE,
             });
 

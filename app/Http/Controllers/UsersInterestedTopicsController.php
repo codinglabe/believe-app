@@ -41,8 +41,17 @@ class UsersInterestedTopicsController extends Controller
 
         auth()->user()->interestedTopics()->sync($request->topics);
 
+        $intended = $request->session()->pull('url.intended');
+        if (is_string($intended) && $intended !== '') {
+            $host = parse_url($intended, PHP_URL_HOST);
+            if ($host === null || $host === $request->getHost()) {
+                return redirect()->to($intended)
+                    ->with('success', 'Your interests have been updated successfully!');
+            }
+        }
+
         return redirect()
-            ->route("chat.index")
+            ->to(\App\Http\Helpers\AuthRedirectHelper::defaultRedirectForUser(auth()->user()))
             ->with('success', 'Your interests have been updated successfully!');
     }
 }

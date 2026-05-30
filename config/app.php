@@ -57,6 +57,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | Used for PWA update detection. Falls back to the Vite build hash when unset.
+    |
+    */
+
+    'version' => env('APP_VERSION'),
+
+    /*
+    | When false, users are not redirected to topic selection (useful for staging).
+    */
+    'require_topics_selection' => (bool) env('REQUIRE_TOPICS_SELECTION', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

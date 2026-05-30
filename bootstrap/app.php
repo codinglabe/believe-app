@@ -6,7 +6,8 @@ if (! defined('STDIN')) {
     define('STDIN', fopen('php://memory', 'r'));
 }
 
-use App\Http\Middleware\BarterNetworkAccess;
+use App\Http\Helpers\AuthRedirectHelper;
+use App\Http\Middleware\AllowDonateWidgetEmbed;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckRoleSimple;
@@ -54,9 +55,13 @@ return Application::configure(basePath: dirname(__DIR__))
             ? route('merchant.login')
             : route('login'));
 
-        $middleware->redirectUsersTo(fn () => request_is_merchant_portal()
-            ? route('merchant.dashboard')
-            : (Route::has('dashboard') ? route('dashboard') : '/'));
+        $middleware->redirectUsersTo(function () {
+            if (request_is_merchant_portal()) {
+                return route('merchant.dashboard');
+            }
+
+            return AuthRedirectHelper::defaultRedirectForUser(auth()->user());
+        });
 
         // Webhooks are called by external services and cannot include Laravel CSRF tokens.
         // Security is handled in the webhook controller via signature verification.
@@ -108,6 +113,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'can.read.topics' => EnsureCanReadTopics::class,
             'can.create.events' => EnsureCanCreateEvents::class,
             'ensure.service.hub.seller' => EnsureServiceHubSeller::class,
+            'allow.donate.widget.embed' => AllowDonateWidgetEmbed::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
