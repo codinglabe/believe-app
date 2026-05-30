@@ -4,7 +4,7 @@ import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { type SharedData, type User } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
 import { HeartHandshake, LinkIcon, LogOut, Settings, CreditCard, Crown, Globe, Users } from 'lucide-react';
-import { organizationPricingHref, supporterPricingHref, type SupporterSubscriptionState } from '@/lib/supporter-pricing-display';
+import { type SupporterSubscriptionState } from '@/lib/supporter-pricing-display';
 
 interface UserMenuContentProps {
     user: User;
@@ -35,11 +35,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
         ? 'month'
         : ((planDetails?.frequency || 'month') === 'one-time' ? 'One-time' : (planDetails?.frequency || 'month'));
     const hasActivePlan = Boolean(isSupporter ? activeSupporterPlan || planDetails?.name : planDetails?.name);
-    const planManageHref = isSupporter
-        ? supporterPricingHref()
-        : isOrganization
-            ? organizationPricingHref()
-            : '/plans';
+    const planManageHref = route('plans.index');
     const showViewPlans = !isAdmin && !hasActivePlan && (isSupporter || !(user as any).current_plan_id);
 
     const handleLogout = () => {
