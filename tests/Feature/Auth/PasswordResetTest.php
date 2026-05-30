@@ -26,6 +26,18 @@ test('reset password link can be requested', function () {
     });
 });
 
+test('reset password link cannot be requested again during cooldown', function () {
+    Bus::fake();
+
+    $user = User::factory()->create();
+
+    $this->post('/forgot-password', ['email' => $user->email])
+        ->assertSessionHas('passwordResetCooldownUntil');
+
+    $this->post('/forgot-password', ['email' => $user->email])
+        ->assertSessionHasErrors('email');
+});
+
 test('reset password email job sends mail', function () {
     Mail::fake();
 

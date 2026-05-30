@@ -1,7 +1,7 @@
 "use client"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { FormEventHandler } from "react"
+import { FormEventHandler, useEffect } from "react"
 import { motion } from "framer-motion"
 import { ArrowLeft, LoaderCircle, Mail } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -11,19 +11,43 @@ import { Label } from "@/components/frontend/ui/label"
 import { Link, useForm } from "@inertiajs/react"
 import InputError from "@/components/input-error"
 import { PageHead } from "@/components/frontend/PageHead"
+import { usePasswordResetCooldown } from "@/hooks/use-password-reset-cooldown"
 
 interface ForgotPasswordProps {
   seo?: { title: string; description?: string }
   status?: string
+  passwordResetCooldownUntil?: number | null
+  passwordResetThrottleSeconds?: number
 }
 
-export default function ForgotPasswordPage({ seo, status }: ForgotPasswordProps) {
+export default function ForgotPasswordPage({
+  seo,
+  status,
+  passwordResetCooldownUntil,
+  passwordResetThrottleSeconds = 60,
+}: ForgotPasswordProps) {
   const { data, setData, post, processing, errors } = useForm<Required<{ email: string }>>({
     email: "",
   })
 
+  const { isCoolingDown, countdownLabel, cooldownEmail } = usePasswordResetCooldown(
+    data.email,
+    passwordResetCooldownUntil,
+    passwordResetThrottleSeconds,
+  )
+
+  useEffect(() => {
+    if (! data.email && cooldownEmail) {
+      setData("email", cooldownEmail)
+    }
+  }, [cooldownEmail, data.email, setData])
+
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
+    if (isCoolingDown) {
+      return
+    }
+
     post(route("password.email"))
   }
 
@@ -75,34 +99,39 @@ export default function ForgotPasswordPage({ seo, status }: ForgotPasswordProps)
                     <Label htmlFor="email" className="text-gray-900 dark:text-white font-medium">
                       Email Address
                     </Label>
-                    <div className="relative mt-2">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                      <Input
-                        id="email"
-                        type="email"
-                        name="email"
-                        autoComplete="email"
-                        autoFocus
-                        placeholder="Enter your email"
-                        value={data.email}
-                        onChange={(e) => setData("email", e.target.value)}
-                        className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                        required
-                      />
-                      <InputError message={errors.email} className="mt-2" />
+                    <div className="mt-2 space-y-2">
+                      <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                        <Input
+                          id="email"
+                          type="email"
+                          name="email"
+                          autoComplete="email"
+                          autoFocus
+                          placeholder="Enter your email"
+                          value={data.email}
+                          onChange={(e) => setData("email", e.target.value)}
+                          className="h-12 bg-white pl-10 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                          required
+                          disabled={isCoolingDown || processing}
+                        />
+                      </div>
+                      {! isCoolingDown && <InputError message={errors.email} />}
                     </div>
                   </div>
 
                   <Button
                     type="submit"
-                    className="w-full h-12 sm:h-14 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300"
-                    disabled={processing}
+                    className="w-full h-12 sm:h-14 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-60 disabled:hover:scale-100"
+                    disabled={processing || isCoolingDown}
                   >
                     {processing ? (
                       <>
                         <LoaderCircle className="h-5 w-5 animate-spin mr-2" />
                         Sending...
                       </>
+                    ) : isCoolingDown ? (
+                      `Wait ${countdownLabel}`
                     ) : (
                       "Email password reset link"
                     )}
