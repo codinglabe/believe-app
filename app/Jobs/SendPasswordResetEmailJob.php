@@ -2,18 +2,20 @@
 
 namespace App\Jobs;
 
+use App\Mail\PasswordResetMail;
 use App\Models\User;
-use App\Notifications\ResetPasswordNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 /**
- * Sends the branded password-reset email on the dedicated mail queue so it is not
- * delayed behind IRS import and other long-running default-queue jobs.
+ * Password reset email — sent immediately after the forgot-password response via
+ * dispatchAfterResponse(). On SMTP failure, the job is re-queued on the mail queue for retry.
  */
 class SendPasswordResetEmailJob implements ShouldQueue
 {
@@ -44,6 +46,40 @@ class SendPasswordResetEmailJob implements ShouldQueue
             return;
         }
 
-        $user->notify(new ResetPasswordNotification($this->token, $this->domain));
+        if (! $user->email) {
+            Log::warning('SendPasswordResetEmailJob: user has no email', ['user_id' => $this->userId]);
+
+            return;
+        }
+
+        try {
+            Mail::to($user->email)->send(
+                new PasswordResetMail($user, $this->token, $this->domain),
+            );
+        } catch (Throwable $e) {
+            if ($this->job === null) {
+                Log::warning('Password reset email failed inline, queueing retry', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage(),
+                ]);
+                self::dispatch($this->userId, $this->token, $this->domain);
+            }
+
+            throw $e;
+        }
+
+        Log::info('Password reset email sent', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+        ]);
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::error('SendPasswordResetEmailJob failed after retries', [
+            'user_id' => $this->userId,
+            'error' => $exception->getMessage(),
+        ]);
     }
 }

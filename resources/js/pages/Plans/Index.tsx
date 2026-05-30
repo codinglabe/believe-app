@@ -31,7 +31,10 @@ import {
   planGridClassName,
   planHighlightLines,
   resolveIntroPrice,
+  resolveIntroPeriodMonths,
   resolveStandardPrice,
+  formatAfterIntroductoryPeriodCopy,
+  formatIntroductoryPeriodHeadline,
   usageAddOnsFromPlan,
   UNITY_MEMBERSHIP_DEFAULTS,
 } from "@/lib/plan-pricing-display"
@@ -223,8 +226,13 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
                         </span>
                         {standardPrice != null && standardPrice > Number(plan.price) && (
                           <span className="text-sm text-muted-foreground text-center">
-                            Then ${formatPlanPrice(standardPrice)}/{planFrequencyLabel(plan.frequency)} after
-                            introductory period
+                            {formatIntroductoryPeriodHeadline(resolveIntroPeriodMonths(plan))}
+                            {" · "}
+                            {formatAfterIntroductoryPeriodCopy(
+                              standardPrice,
+                              planFrequencyLabel(plan.frequency),
+                              resolveIntroPeriodMonths(plan),
+                            )}
                           </span>
                         )}
                         {annualField && (

@@ -222,6 +222,8 @@ return [
     'plan_subscription' => [
         'first_month_ai_tokens' => max(0, (int) env('PLAN_FIRST_MONTH_AI_TOKENS', 25_000)),
         'first_month_emails' => max(0, (int) env('PLAN_FIRST_MONTH_EMAILS', 1_000)),
+        /** Unity Membership intro rate duration before standard monthly price (Stripe schedule). */
+        'intro_period_months' => max(1, (int) env('PLAN_INTRO_PERIOD_MONTHS', 12)),
     ],
 
     /*
@@ -370,6 +372,10 @@ return [
     */
     'marketplace' => [
         'pool_listing_organization_id' => env('MARKETPLACE_POOL_LISTING_ORGANIZATION_ID'),
+    ],
+
+    'digital_products' => [
+        'max_upload_kb' => (int) env('DIGITAL_PRODUCT_MAX_UPLOAD_KB', 51200),
     ],
 
     'shippo' => [

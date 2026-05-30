@@ -1118,7 +1118,8 @@ class User extends Authenticatable implements MustVerifyEmail
      * @return void
      */
     /**
-     * Queue the branded password-reset email on the mail queue (fast worker, not default).
+     * Send password-reset email immediately after the HTTP response (via job).
+     * SMTP failures are re-queued on the mail queue for retry.
      */
     public function sendPasswordResetNotification($token): void
     {
@@ -1130,7 +1131,8 @@ class User extends Authenticatable implements MustVerifyEmail
             $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
         }
 
-        SendPasswordResetEmailJob::dispatch($this->id, $token, $domain);
+        // Send right after the HTTP response (no queue worker wait). Job re-queues on SMTP failure.
+        SendPasswordResetEmailJob::dispatchAfterResponse($this->id, $token, $domain);
     }
 
     public function sendEmailVerificationNotification(?string $domain = null)

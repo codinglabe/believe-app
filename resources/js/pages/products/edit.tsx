@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Save, Package, Tag, BarChart3, MapPin, Settings2 } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
+import DigitalCatalogFiles from '@/components/digital/DigitalCatalogFiles';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 
@@ -79,6 +80,7 @@ interface Product {
     parcel_width_in?: number | string | null;
     parcel_height_in?: number | string | null;
     parcel_weight_oz?: number | string | null;
+    digital_files?: { id: number; original_filename: string; file_size?: number }[];
 }
 
 interface PrintifyProvider {
@@ -463,6 +465,23 @@ export default function Edit({
                                             </div>
                                         )}
                                         {/* Markup removed: at-cost pricing */}
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {!isPrintify && product.type === 'digital' && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Digital files</CardTitle>
+                                        <CardDescription>
+                                            Upload books or documents buyers receive after purchase. No shipping or Shippo is used.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <DigitalCatalogFiles
+                                            files={product.digital_files ?? []}
+                                            uploadUrl={`/products/${product.id}/digital-files`}
+                                        />
                                     </CardContent>
                                 </Card>
                             )}

@@ -12,6 +12,11 @@ import { Badge } from "@/components/frontend/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
+  formatAfterIntroductoryPeriodCopy,
+  formatIntroductoryPeriodHeadline,
+  resolveIntroPeriodMonths,
+} from "@/lib/plan-pricing-display";
+import {
   Check,
   ArrowRight,
   Mail,
@@ -523,6 +528,8 @@ export default function PricingPage({
   const pricingMarketing = pricingPageMarketingFromPlan(featuredPlan);
   const displayAddOns = usageAddOnsFromPlan(featuredPlan, addOns);
   const competitorRows = competitorRowsFromPlan(featuredPlan);
+  const introPeriodMonths = resolveIntroPeriodMonths(featuredPlan);
+  const showIntroductoryStandard = standardPrice > introPrice;
 
   return (
     <FrontendLayout>
@@ -780,10 +787,20 @@ export default function PricingPage({
                             / {UNITY_MEMBERSHIP.frequency}
                           </span>
                         </p>
-                        <p className="text-sm font-medium text-slate-600 dark:text-white/75">
-                          Then ${formatMembershipPrice(standardPrice)}/{UNITY_MEMBERSHIP.frequency} after introductory
-                          period
-                        </p>
+                        {showIntroductoryStandard && (
+                          <>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-purple-300">
+                              {formatIntroductoryPeriodHeadline(introPeriodMonths)}
+                            </p>
+                            <p className="text-sm font-medium text-slate-600 dark:text-white/75">
+                              {formatAfterIntroductoryPeriodCopy(
+                                standardPrice,
+                                UNITY_MEMBERSHIP.frequency,
+                                introPeriodMonths,
+                              )}
+                            </p>
+                          </>
+                        )}
                         <p className="text-xs text-slate-500 dark:text-white/60">{pricingMarketing.cancellationPolicy}</p>
                         {verificationCurrencyFields.length > 0 ? (
                           verificationCurrencyFields.map((f, i) => {

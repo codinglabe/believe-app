@@ -35,7 +35,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         if (userId == null) return;
 
         // Listen for daily prayer notifications
-        echo.private(`users.${userId}`)
+        echo().private(`user.${userId}`)
             .listen('.daily.prayer.received', (e: any) => {
                 const notification: NotificationData = {
                     id: e.id,
@@ -52,7 +52,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
         // Cleanup on unmount
         return () => {
-            echo.private(`users.${userId}`).stopListening('.daily.prayer.received');
+            echo().private(`user.${userId}`).stopListening('.daily.prayer.received');
         };
     }, [userId]);
 

@@ -7,6 +7,7 @@ import type { GlobalEvent } from '@inertiajs/core';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { configureEcho } from '@laravel/echo-react';
+import { buildReverbEchoConfig, syncEchoCsrfToken } from './lib/reverb-config';
 import { createRoot } from 'react-dom/client';
 import { NotificationProvider } from './components/frontend/notification-provider';
 import { PwaInstallPrompt } from './components/pwa/pwa-install-prompt';
@@ -23,39 +24,7 @@ import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
 
-
-const isLoopbackHost = (host?: string) =>
-    Boolean(host && ['127.0.0.1', '0.0.0.0', 'localhost'].includes(host));
-
-const reverbHost = (() => {
-    const configured = import.meta.env.VITE_REVERB_HOST;
-    const runtime =
-        typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-
-    if (isLoopbackHost(configured) && !isLoopbackHost(runtime)) {
-        return runtime;
-    }
-
-    return configured || runtime;
-})();
-
-configureEcho({
-    broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: reverbHost,
-    wsPort: Number(import.meta.env.VITE_REVERB_PORT) || 80,
-    wssPort: Number(import.meta.env.VITE_REVERB_PORT) || 443,
-    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
-    enabledTransports: ['ws', 'wss'],
-    authEndpoint: '/broadcasting/auth',
-    auth: {
-        headers: {
-            'X-CSRF-TOKEN':
-                document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-    },
-});
+configureEcho(buildReverbEchoConfig());
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -89,6 +58,7 @@ createInertiaApp({
                 newMeta.content = initialToken;
                 document.head.appendChild(newMeta);
             }
+            syncEchoCsrfToken(initialToken);
         }
 
         type InitialProps = {
@@ -116,6 +86,7 @@ createInertiaApp({
                     newMeta.content = token;
                     document.head.appendChild(newMeta);
                 }
+                syncEchoCsrfToken(token);
             }
 
             const pageProps = event.detail.page?.props as {

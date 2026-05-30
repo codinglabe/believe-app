@@ -1704,6 +1704,23 @@ Route::post('/orders/{order}/shippo/purchase-label', [OrderController::class, 'p
     ->name('orders.shippo.purchase-label')
     ->middleware('permission:ecommerce.update');
 
+Route::post('/orders/{order}/items/{orderItem}/digital-deliveries', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadOrderItemFiles'])
+    ->name('orders.digital-deliveries.upload')
+    ->middleware('permission:ecommerce.update');
+Route::delete('/orders/{order}/items/{orderItem}/digital-deliveries/{delivery}', [App\Http\Controllers\DigitalDeliveryController::class, 'deleteOrderItemDelivery'])
+    ->name('orders.digital-deliveries.delete')
+    ->middleware('permission:ecommerce.update');
+Route::post('/products/{product}/digital-files', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadCatalogForProduct'])
+    ->name('products.digital-files.upload')
+    ->middleware('permission:ecommerce.update');
+Route::delete('/digital-product-files/{digitalProductFile}', [App\Http\Controllers\DigitalDeliveryController::class, 'deleteCatalogFile'])
+    ->name('digital-product-files.delete')
+    ->middleware('permission:ecommerce.update');
+
+Route::get('/digital-deliveries/{delivery}/download', [App\Http\Controllers\DigitalDeliveryController::class, 'download'])
+    ->name('digital-deliveries.download')
+    ->middleware('auth');
+
 /* Order Items Routes */
 // Route::resource('order-items', OrderItemController::class)->middleware([
 //     'index' => 'permission:ecommerce.read',

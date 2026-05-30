@@ -176,7 +176,7 @@ class BelievePointPurchaseSettlementService
     }
 
     /**
-     * Reverse Believe Points + Merchant Hub reward points for a completed purchase (e.g. payment later voided).
+     * Reverse Believe Points + Believe Reward Points (BRP) for a completed purchase (e.g. payment later voided).
      */
     public static function reverseCompletedPurchaseCredits(BelievePointPurchase $purchase): bool
     {

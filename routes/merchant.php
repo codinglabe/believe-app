@@ -7,6 +7,7 @@ use App\Http\Controllers\Merchant\MerchantFeedbackRewardsController;
 use App\Http\Controllers\Merchant\MerchantMarketplacePoolApprovalController;
 use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
 use App\Http\Controllers\SupporterFeedbackController;
+use App\Support\PasswordResetCooldown;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -32,6 +33,8 @@ Route::middleware('guest:merchant')->group(function () {
     Route::get('forgot-password', function (Request $request) {
         return Inertia::render('merchant/Auth/ForgotPassword', [
             'status' => $request->session()->get('status'),
+            'passwordResetCooldownUntil' => $request->session()->get('passwordResetCooldownUntil'),
+            'passwordResetThrottleSeconds' => PasswordResetCooldown::seconds('merchants'),
         ]);
     })->name('merchant.password.request');
 
@@ -112,6 +115,9 @@ Route::middleware(['auth:merchant'])->group(function () {
         Route::get('/marketplace-orders', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'index'])->name('merchant.marketplace-orders.index');
         Route::get('/marketplace-orders/{order}/shippo/rates', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'getShippoRates'])->name('merchant.marketplace-orders.shippo.rates');
         Route::post('/marketplace-orders/{order}/shippo/purchase-label', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'purchaseShippoLabel'])->name('merchant.marketplace-orders.shippo.purchase-label');
+        Route::post('/marketplace-orders/{order}/items/{orderItem}/digital-deliveries', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadOrderItemFiles'])->name('merchant.marketplace-orders.digital-deliveries.upload');
+        Route::delete('/marketplace-orders/{order}/items/{orderItem}/digital-deliveries/{delivery}', [App\Http\Controllers\DigitalDeliveryController::class, 'deleteOrderItemDelivery'])->name('merchant.marketplace-orders.digital-deliveries.delete');
+        Route::post('/marketplace-products/{marketplaceProduct}/digital-files', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadCatalogForMarketplaceProduct'])->name('merchant.marketplace-products.digital-files.upload');
 
         // Feedback & Rewards
         Route::prefix('feedback-rewards')->name('feedback-rewards.')->group(function () {

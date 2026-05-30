@@ -1,6 +1,6 @@
 // resources/js/pages/chat/index.tsx
 import { ChatLayout } from "@/components/chat/chat-layout"
-import AppLayout from "@/layouts/app-layout";
+import { CsrfTokenSync } from "@/components/CsrfTokenSync"
 import { syncPushTokenWithServer } from "@/lib/push-token-sync";
 import { registerServiceWorker } from "@/pwa/register-service-worker";
 import { ChatProvider } from "@/providers/chat-provider"
@@ -11,6 +11,7 @@ import toast, { Toaster } from 'react-hot-toast';
 export default function ChatPage() {
     const { auth } = usePage().props;
 
+    // Chat does not use AppLayout — register push here so FCM works on /chat
     useEffect(() => {
         void registerServiceWorker();
     }, [])
@@ -28,7 +29,6 @@ export default function ChatPage() {
         saveFCMTokenAfterLogin()
     }, [auth?.user?.id]);
 
-
     const props = usePage();
     useEffect(() => {
         const success = props.props?.success;
@@ -39,15 +39,14 @@ export default function ChatPage() {
 
     return (
       <ChatProvider>
-          {/* Toast Container */}
-            <Toaster
+          <CsrfTokenSync />
+          <Toaster
                 position="top-right"
                 reverseOrder={false}
                 gutter={8}
                 containerClassName=""
                 containerStyle={{}}
                 toastOptions={{
-                    // Define default options
                     className: "",
                     duration: 4000,
                     style: {
@@ -55,7 +54,6 @@ export default function ChatPage() {
                         color: "hsl(var(--foreground))",
                         border: "1px solid hsl(var(--border))",
                     },
-                    // Default options for specific types
                     success: {
                         duration: 4000,
                         iconTheme: {

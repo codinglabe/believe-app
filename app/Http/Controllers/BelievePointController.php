@@ -374,7 +374,7 @@ class BelievePointController extends Controller
 
                 return redirect()->route('believe-points.index')
                     ->with('info', $isBankCheckout
-                        ? 'Your bank payment is processing. Believe Points and Merchant Hub reward points (for bank checkout) are added automatically as soon as Stripe marks the payment successful—often 1–3 business days for ACH.'
+                        ? 'Your bank payment is processing. Believe Points and Believe Reward Points (BRP) for this ACH checkout are added automatically as soon as Stripe marks the payment successful—often 1–3 business days for ACH.'
                         : 'Your payment is still confirming. Believe Points will be added automatically in a moment.');
             }
 
