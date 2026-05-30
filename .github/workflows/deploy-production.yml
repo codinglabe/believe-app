@@ -118,21 +118,48 @@ jobs:
             > "${SSH_DIR}/config"
           chmod 600 "${SSH_DIR}/config"
           echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
-          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
-          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
-          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=20 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
-          for attempt in 1 2 3 4 5 6; do
+          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=45" >> "${GITHUB_ENV}"
+          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=45" >> "${GITHUB_ENV}"
+
+          write_ssh_host() {
+            local host="$1"
+            printf '%s\n' \
+              'Host cpanel-deploy' \
+              "  HostName ${host}" \
+              "  User ${DEPLOY_USER}" \
+              "  Port ${SSH_PORT}" \
+              "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
+              '  IdentitiesOnly yes' \
+              '  StrictHostKeyChecking accept-new' \
+              '  ServerAliveInterval 60' \
+              '  ServerAliveCountMax 3' \
+              > "${SSH_DIR}/config"
+            chmod 600 "${SSH_DIR}/config"
+          }
+
+          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=45 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
+          SSH_HOSTS=("${SSH_CONNECT_HOST}")
+          if [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
+            SSH_HOSTS+=("${DEPLOY_HOST}")
+          fi
+
+          connected=0
+          for attempt in $(seq 1 12); do
+            host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
+            write_ssh_host "${host}"
             if eval "${SSH_TEST}"; then
-              echo "SSH connected on attempt ${attempt} (${SSH_CONNECT_HOST})"
+              echo "SSH connected on attempt ${attempt} (${host})"
+              connected=1
               break
             fi
-            if [ "${attempt}" -eq 6 ]; then
-              echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after 6 attempts. Set PRODUCTION_SSH_HOST=72.60.226.88 in repo variables."
-              exit 1
-            fi
-            echo "::warning::SSH attempt ${attempt} failed; retrying in 8s..."
-            sleep 8
+            echo "::warning::SSH attempt ${attempt} failed for ${host}; retrying in 15s..."
+            sleep 15
           done
+
+          if [ "${connected}" -ne 1 ]; then
+            echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after 12 attempts (also tried ${DEPLOY_HOST}). Server may be blocking GitHub runner IPs — retry deploy or check host firewall."
+            exit 1
+          fi
 
       - name: Cache Composer
         uses: actions/cache@v4
