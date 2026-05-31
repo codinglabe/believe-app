@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
 use App\Support\UnityLiveBroadcast;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -28,6 +27,7 @@ class UnityLiveController extends Controller
             'slug' => $ls->room_name,
             'title' => $ls->title ?: 'Live Stream',
             'organizationName' => $ls->organization?->name ?? 'Organization',
+            'hostType' => 'organization',
             'viewUrl' => $viewUrl,
             'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
             'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
@@ -51,6 +51,7 @@ class UnityLiveController extends Controller
             'slug' => $ls->room_name,
             'title' => $ls->title ?: 'Live Stream',
             'organizationName' => $ls->user?->name ?? 'Host',
+            'hostType' => 'supporter',
             'viewUrl' => $viewUrl,
             'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
             'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
@@ -131,17 +132,11 @@ class UnityLiveController extends Controller
     }
 
     /**
-     * Public Unity Live index: list org + supporter livestreams that are currently live (and public).
-     * Clicking a card goes to the show page (slug-wise) for the big screen.
-     * Logged-in users are sent to Unity Meet instead (same live directory there).
+     * Public Unity Live index: live streams anyone can watch (frontend site).
+     * Dashboard users can still open Unity Live → Live from the dashboard sidebar separately.
      */
-    public function index(Request $request): Response|RedirectResponse
+    public function index(Request $request): Response
     {
-        $user = $request->user();
-        if ($user && $user->hasAnyRole(['user', 'organization', 'organization_pending', 'care_alliance'])) {
-            return redirect()->route('livestreams.supporter.index');
-        }
-
         $orgStreams = OrganizationLivestream::query()
             ->where('status', 'live')
             ->where('is_public', true)
@@ -169,14 +164,68 @@ class UnityLiveController extends Controller
             ->values()
             ->all();
 
+        $upcomingMeetings = $this->buildUpcomingPublicMeetings();
+
         return Inertia::render('frontend/unity-live/Index', [
             'seo' => [
-                'title' => 'Unity Live & Meet',
-                'description' => 'Watch live streams and host meetings with your organization on Believe.',
+                'title' => 'Unity Live',
+                'description' => 'Watch live streams from organizations and hosts on Believe In Unity.',
             ],
             'livestreams' => $livestreams,
-            'upcomingMeetings' => [],
+            'upcomingMeetings' => $upcomingMeetings,
         ]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildUpcomingPublicMeetings(): array
+    {
+        $org = OrganizationLivestream::query()
+            ->where('status', 'scheduled')
+            ->where('is_public', true)
+            ->whereNotNull('scheduled_at')
+            ->where('scheduled_at', '>=', now())
+            ->with('organization:id,name')
+            ->orderBy('scheduled_at')
+            ->limit(8)
+            ->get()
+            ->map(fn (OrganizationLivestream $ls) => [
+                'id' => 'org_' . $ls->id,
+                'slug' => $ls->room_name,
+                'title' => $ls->title ?: 'Scheduled meeting',
+                'hostName' => $ls->organization?->name ?? 'Organization',
+                'hostType' => 'organization',
+                'scheduledAt' => $ls->scheduled_at?->toIso8601String(),
+                'viewUrl' => url('/unity-live/' . $ls->room_name),
+            ])
+            ->all();
+
+        $user = UserLivestream::query()
+            ->where('status', 'scheduled')
+            ->where('is_public', true)
+            ->whereNotNull('scheduled_at')
+            ->where('scheduled_at', '>=', now())
+            ->with('user:id,name')
+            ->orderBy('scheduled_at')
+            ->limit(8)
+            ->get()
+            ->map(fn (UserLivestream $ls) => [
+                'id' => 'user_' . $ls->id,
+                'slug' => $ls->room_name,
+                'title' => $ls->title ?: 'Scheduled meeting',
+                'hostName' => $ls->user?->name ?? 'Host',
+                'hostType' => 'supporter',
+                'scheduledAt' => $ls->scheduled_at?->toIso8601String(),
+                'viewUrl' => url('/unity-live/' . $ls->room_name),
+            ])
+            ->all();
+
+        return collect(array_merge($org, $user))
+            ->sortBy(fn ($m) => $m['scheduledAt'] ?? '')
+            ->take(8)
+            ->values()
+            ->all();
     }
 
     /**

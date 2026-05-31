@@ -308,9 +308,13 @@ class UserLivestream extends Model
         return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&showlabels=zoom&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
     }
 
+    /**
+     * Public view URL with no audio (for Unity Live index card previews).
+     * Uses room gallery (showall) so cards show the live meeting feed, not solo host-only.
+     */
     public function getPublicViewUrlMuted(): string
     {
-        return $this->getSoloViewUrl() . '&noaudio';
+        return $this->getRoomViewUrl() . '&noaudio';
     }
 
     public function getPublicViewUrlFallback(): string

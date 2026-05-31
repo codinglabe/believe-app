@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
+import { useAutoStopLivestreamOnLeave } from "@/hooks/useAutoStopLivestreamOnLeave"
 
 interface Livestream {
   id: number
@@ -94,6 +95,12 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
+
+  useAutoStopLivestreamOnLeave({
+    livestreamId: livestream.id,
+    status: livestream.status,
+    stopUrl: route("livestreams.abandon-host-session", livestream.id),
+  })
 
   const streamRelayInProgress = useMemo(
     () =>
