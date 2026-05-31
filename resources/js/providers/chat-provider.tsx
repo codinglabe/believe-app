@@ -6,6 +6,7 @@ import { usePage } from "@inertiajs/react"
 import { useDebounce } from "@/hooks/useDebounce"
 import toast from "react-hot-toast"
 import echo from "@/lib/echo"
+import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 
 // Configure Axios instance (include X-Timezone so server-side date helpers stay aligned with the viewer)
@@ -115,7 +116,7 @@ export interface ChatRoom {
 }
 
 const sortMessagesByTime = (messages: ChatMessage[]): ChatMessage[] =>
-  [...messages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  [...messages].sort((a, b) => chatTimestampMs(a.created_at) - chatTimestampMs(b.created_at))
 
 interface ChatContextType {
   chatRooms: ChatRoom[]
@@ -378,7 +379,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return [...updatedRooms].sort((a, b) => {
             const timeA = a.last_message?.created_at || a.created_at
             const timeB = b.last_message?.created_at || b.created_at
-            return new Date(timeB).getTime() - new Date(timeA).getTime()
+            return chatTimestampMs(timeB) - chatTimestampMs(timeA)
           })
         })
       }
@@ -685,7 +686,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return [...updated].sort((a, b) => {
         const timeA = a.last_message?.created_at || a.created_at
         const timeB = b.last_message?.created_at || b.created_at
-        return new Date(timeB).getTime() - new Date(timeA).getTime()
+        return chatTimestampMs(timeB) - chatTimestampMs(timeA)
       })
     })
 
