@@ -357,12 +357,12 @@ class OrganizationLivestream extends Model
     }
 
     /**
-     * Public view URL with no audio (for Unity Live index previews).
-     * Use on listing page so multiple stream previews don't all play sound; sound only on watch page.
+     * Public view URL with no audio (for Unity Live index card previews).
+     * Uses room gallery (showall) so cards show the live meeting feed, not solo host-only.
      */
     public function getPublicViewUrlMuted(): string
     {
-        return $this->getSoloViewUrl() . '&noaudio';
+        return $this->getRoomViewUrl() . '&noaudio';
     }
 
     /**

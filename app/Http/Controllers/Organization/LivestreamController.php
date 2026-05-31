@@ -13,6 +13,7 @@ use App\Services\Streaming\StreamingPreflight;
 use App\Services\Streaming\StreamingQueueService;
 use App\Support\MeetingRecordingPreference;
 use App\Support\StreamingWorkerSourceUrl;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\LivestreamHostAbandonService;
 use App\Services\StreamBridgeService;
 use App\Services\YouTubeService;
 
@@ -646,7 +648,7 @@ class LivestreamController extends Controller
 
         $livestream->update([
             'status' => 'live',
-            'started_at' => $livestream->started_at ?? now(),
+            'started_at' => now(),
         ]);
 
         $livestream->refresh();
@@ -934,6 +936,31 @@ class LivestreamController extends Controller
         \App\Support\UnityLiveBroadcast::notifyStreamEnded($livestream);
 
         return redirect()->back()->with('success', 'Stream stopped. You can go live again from the same link when ready.');
+    }
+
+    /**
+     * Host closed the meeting tab or navigated away — stop stream without a full form POST.
+     */
+    public function abandonHostSession(
+        Request $request,
+        $id,
+        YouTubeService $youtubeService,
+        LivestreamHostAbandonService $abandonService,
+    ): JsonResponse {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return response()->json(['ok' => false], 403);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        $accessToken = $youtubeService->getValidAccessToken($organization);
+        $abandonService->abandonOrganizationStream($livestream, $accessToken, $youtubeService);
+
+        return response()->json(['ok' => true]);
     }
 
     /**

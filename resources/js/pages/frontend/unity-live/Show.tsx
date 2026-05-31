@@ -3,30 +3,36 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { PageHead } from "@/components/frontend/PageHead"
-import { Link } from "@inertiajs/react"
 import { Button } from "@/components/frontend/ui/button"
 import { Slider } from "@/components/frontend/ui/slider"
-import { ArrowLeft, Loader2, Radio, Volume2, VolumeX, Maximize2, Minimize2, Play } from "lucide-react"
+import {
+  Building2,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Share2,
+  UserRound,
+  Volume2,
+  VolumeX,
+} from "lucide-react"
+import toast from "react-hot-toast"
 import { useUnityLiveViewerStatus } from "@/hooks/useUnityLiveViewerStatus"
 import StreamEndedOverlay from "@/components/unity-live/StreamEndedOverlay"
 import GoingLiveOverlay from "@/components/unity-live/GoingLiveOverlay"
 import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
-
-interface LivestreamItem {
-  id: number
-  slug: string
-  title: string
-  organizationName: string
-  viewUrl: string
-  viewUrlMuted?: string
-  viewUrlFallback: string
-  startedAt: string | null
-}
+import { UnityLiveBadge } from "@/components/unity-live/UnityLiveBadge"
+import { UnityLiveOtherStreamsSidebar } from "@/components/unity-live/UnityLiveOtherStreamsSidebar"
+import { UnityLiveWatchHeader } from "@/components/unity-live/UnityLiveWatchHeader"
+import {
+  hostTypeLabel,
+  type UnityLiveStreamItem,
+} from "@/lib/unity-live-display"
+import { useLiveSince } from "@/hooks/useLiveSince"
 
 interface Props {
   seo?: { title?: string; description?: string }
-  livestream: LivestreamItem
-  otherLivestreams: LivestreamItem[]
+  livestream: UnityLiveStreamItem
+  otherLivestreams: UnityLiveStreamItem[]
   broadcastChannel: string
 }
 
@@ -44,6 +50,8 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
   const playerContainerRef = useRef<HTMLDivElement>(null)
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadingMinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const liveSince = useLiveSince(livestream.startedAt)
 
   const iframeSrc = useMemo(() => {
     const base = livestream.viewUrl
@@ -91,6 +99,20 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
     }
   }, [])
 
+  const handleShare = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : ""
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: livestream.title, url })
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      toast.success("Link copied to clipboard")
+    } catch {
+      toast.error("Could not share link")
+    }
+  }
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement)
@@ -126,7 +148,6 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
     }, 2800)
   }, [])
 
-  // When switching stream (e.g. Inertia nav), show loading again until new iframe is ready
   useEffect(() => {
     setIsLoading(true)
   }, [livestream.slug])
@@ -140,53 +161,40 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
   return (
     <FrontendLayout>
       <PageHead
-        title={seo?.title ?? livestream.title + " | Unity Live"}
+        title={seo?.title ?? `${livestream.title} | Unity Live`}
         description={seo?.description}
       />
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
-        {/* Compact header */}
-        <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/90 dark:border-white/10 dark:bg-neutral-950/80 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-14 sm:h-16">
-              <Link
-                href="/unity-live"
-                className="inline-flex items-center gap-2 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-sm font-medium"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                All live
-              </Link>
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="hidden sm:inline text-sm text-neutral-500 dark:text-neutral-400 truncate max-w-[180px] lg:max-w-[240px]">
-                  {livestream.organizationName}
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-600 border border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 dark:bg-red-400 animate-pulse" />
-                  LIVE
-                </span>
-              </div>
-            </div>
-          </div>
-        </header>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
-            {/* Main — player + controls */}
-            <div className="flex-1 min-w-0">
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+        <UnityLiveWatchHeader
+          showLiveBadge={!streamEnded && !isGoingLive}
+          trailing={
+            <span className="hidden max-w-[200px] truncate text-sm text-neutral-500 dark:text-neutral-400 sm:inline lg:max-w-[280px]">
+              {livestream.organizationName}
+            </span>
+          }
+        />
+
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+            <div className="min-w-0 flex-1">
               <div
                 ref={playerContainerRef}
-                className={`relative overflow-hidden bg-black shadow-2xl ring-1 ring-neutral-200 dark:ring-white/10 transition-[border-radius] ${
-                  isFullscreen ? "rounded-none" : "rounded-xl"
+                className={`relative overflow-hidden bg-black shadow-2xl transition-[border-radius] ${
+                  isFullscreen
+                    ? "rounded-none ring-0"
+                    : "rounded-2xl ring-2 ring-purple-500/25 dark:ring-purple-400/20"
                 }`}
               >
-                <div className="aspect-video w-full relative">
+                <div className="relative aspect-video w-full">
                   <iframe
                     ref={iframeRef}
                     key={`${livestream.slug}-${playerRevision}`}
                     src={iframeSrc}
                     title={livestream.title}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                    className={`absolute inset-0 w-full h-full border-0 transition-opacity duration-300 ${
-                      isLoading || streamEnded ? "opacity-0 pointer-events-none" : "opacity-100"
+                    className={`absolute inset-0 h-full w-full border-0 transition-opacity duration-300 ${
+                      isLoading || streamEnded ? "pointer-events-none opacity-0" : "opacity-100"
                     }`}
                     onLoad={handleIframeLoad}
                   />
@@ -199,17 +207,14 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                     />
                   ) : null}
                   {isLoading && !streamEnded && !isGoingLive && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-neutral-100 dark:bg-neutral-950 text-neutral-600 dark:text-white">
-                      <Loader2 className="h-10 w-10 text-neutral-400 dark:text-neutral-500 animate-spin" aria-hidden />
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-950 dark:to-neutral-900">
+                      <Loader2 className="h-10 w-10 animate-spin text-purple-600 dark:text-purple-400" aria-hidden />
                       <span className="text-sm text-neutral-500 dark:text-neutral-400">Loading stream…</span>
                     </div>
                   )}
                   {!streamEnded && !isGoingLive ? (
-                    <div className="absolute top-4 left-4 z-10">
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-black/60 backdrop-blur px-2.5 py-1 text-xs font-semibold text-white">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                        LIVE
-                      </span>
+                    <div className="absolute left-4 top-4 z-10">
+                      <UnityLiveBadge size="md" />
                     </div>
                   ) : null}
                   {!isLoading && !streamEnded && !isGoingLive ? (
@@ -217,19 +222,19 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                   ) : null}
                   {isFullscreen && (
                     <div
-                      className={`absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none transition-opacity duration-200 ${
+                      className={`pointer-events-none absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-200 ${
                         controlsVisible ? "opacity-100" : "opacity-0"
                       }`}
                     >
-                      <div className="p-4 pointer-events-auto flex items-center justify-between gap-4">
-                        <span className="text-sm font-medium text-white truncate">
+                      <div className="pointer-events-auto flex items-center justify-between gap-4 p-4">
+                        <span className="truncate text-sm font-medium text-white">
                           {livestream.title} · {livestream.organizationName}
                         </span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="shrink-0 h-9 w-9 text-white hover:bg-white/20"
+                          className="h-9 w-9 shrink-0 text-white hover:bg-white/20"
                           onClick={toggleFullscreen}
                           aria-label="Exit fullscreen"
                         >
@@ -241,23 +246,23 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                 </div>
 
                 <div
-                  className={`flex flex-wrap items-center gap-4 px-4 py-3 bg-neutral-100 dark:bg-neutral-900/95 border-t border-neutral-200 dark:border-white/10 ${
+                  className={`flex flex-wrap items-center gap-4 border-t border-neutral-200 bg-neutral-100/95 px-4 py-3 dark:border-white/10 dark:bg-neutral-900/95 ${
                     isFullscreen && !controlsVisible ? "invisible" : ""
                   } ${isFullscreen ? "absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-200 " + (controlsVisible ? "opacity-100" : "opacity-0") : ""}`}
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="gap-2 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-white/10 h-9"
+                      className="h-9 gap-2 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
                       onClick={handleMuteToggle}
                       aria-label={muted ? "Unmute" : "Mute"}
                     >
                       {muted ? <VolumeX className="h-4 w-4 shrink-0" /> : <Volume2 className="h-4 w-4 shrink-0" />}
-                      <span className="hidden sm:inline text-sm">{muted ? "Unmute" : "Mute"}</span>
+                      <span className="hidden text-sm sm:inline">{muted ? "Unmute" : "Mute"}</span>
                     </Button>
-                    <div className="flex items-center gap-2 min-w-[120px] max-w-[180px]">
+                    <div className="flex min-w-[120px] max-w-[180px] items-center gap-2">
                       <Slider
                         value={[muted ? 0 : volume]}
                         onValueChange={handleVolumeChange}
@@ -267,86 +272,68 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                         className="w-full"
                         aria-label="Volume"
                       />
-                      <span className="text-xs text-neutral-500 tabular-nums w-8 shrink-0">{muted ? "0" : volume}%</span>
+                      <span className="w-8 shrink-0 tabular-nums text-xs text-neutral-500">
+                        {muted ? "0" : volume}%
+                      </span>
                     </div>
                   </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="gap-2 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-white/10 h-9 shrink-0"
+                    className="h-9 shrink-0 gap-2 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
                     onClick={toggleFullscreen}
                     aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
                   >
                     {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                    <span className="hidden sm:inline text-sm">{isFullscreen ? "Exit" : "Fullscreen"}</span>
+                    <span className="hidden text-sm sm:inline">{isFullscreen ? "Exit" : "Fullscreen"}</span>
                   </Button>
                 </div>
               </div>
 
-              <div className="mt-4 px-1">
-                <h1 className="text-lg font-semibold text-neutral-900 dark:text-white truncate">{livestream.title}</h1>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{livestream.organizationName} · Unity Live</p>
+              <div className="mt-5 space-y-3 px-0.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-bold leading-tight text-neutral-900 dark:text-white sm:text-2xl">
+                      {livestream.title}
+                    </h1>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500 dark:text-neutral-400">
+                      <span className="inline-flex items-center gap-1.5">
+                        {livestream.hostType === "organization" ? (
+                          <Building2 className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                        ) : (
+                          <UserRound className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                        )}
+                        {livestream.organizationName}
+                      </span>
+                      <span className="text-neutral-300 dark:text-neutral-600">·</span>
+                      <span>{hostTypeLabel(livestream.hostType)}</span>
+                      {liveSince ? (
+                        <>
+                          <span className="text-neutral-300 dark:text-neutral-600">·</span>
+                          <span>{liveSince}</span>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-2 border-purple-500/30 text-purple-700 hover:bg-purple-500/5 dark:border-purple-400/30 dark:text-purple-300 dark:hover:bg-purple-500/10"
+                    onClick={handleShare}
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share
+                  </Button>
+                </div>
               </div>
             </div>
 
-            {/* Sidebar — Other live streams */}
-            <aside className="w-full lg:w-72 xl:w-80 shrink-0">
-              <div className="rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-neutral-900/50 overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-neutral-200 dark:border-white/10 flex items-center gap-2">
-                  <Radio className="h-4 w-4 text-neutral-500 dark:text-neutral-400 shrink-0" />
-                  <span className="text-sm font-medium text-neutral-900 dark:text-white">Other live streams</span>
-                </div>
-                <div className="p-3">
-                  <Link
-                    href="/unity-live"
-                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
-                  >
-                    <Radio className="h-4 w-4 shrink-0" />
-                    All live
-                  </Link>
-                  {otherLivestreams.length === 0 ? (
-                    <p className="text-xs text-neutral-500 px-3 py-4">No other streams live right now</p>
-                  ) : (
-                    <div className="flex flex-col gap-2 mt-3">
-                      {otherLivestreams.map((stream) => (
-                        <Link
-                          key={stream.slug}
-                          href={`/unity-live/${stream.slug}`}
-                          className="flex gap-2.5 p-2 rounded-lg border border-neutral-200 bg-neutral-50 dark:border-white/10 dark:bg-black/30 hover:bg-neutral-100 dark:hover:bg-white/10 hover:border-neutral-300 dark:hover:border-white/20 transition-colors text-left"
-                        >
-                          <div className="relative w-24 sm:w-28 aspect-video rounded-md bg-black shrink-0 overflow-hidden">
-                            <iframe
-                              src={stream.viewUrlMuted ?? stream.viewUrl}
-                              title={stream.title}
-                              allow="autoplay"
-                              className="absolute inset-0 w-full h-full border-0 pointer-events-none z-0 scale-[1.02]"
-                            />
-                            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                              <Play className="h-5 w-5 text-white/60" />
-                            </div>
-                            <div className="absolute bottom-0.5 left-0.5 z-10">
-                              <span className="inline-flex items-center gap-1 rounded bg-red-500/80 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                                <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
-                                LIVE
-                              </span>
-                            </div>
-                          </div>
-                          <div className="min-w-0 flex-1 py-0.5">
-                            <p className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white line-clamp-2 leading-tight">
-                              {stream.title}
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-neutral-500 line-clamp-1 mt-0.5">
-                              {stream.organizationName}
-                            </p>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </aside>
+            <UnityLiveOtherStreamsSidebar
+              streams={otherLivestreams}
+              currentSlug={livestream.slug}
+            />
           </div>
         </div>
       </div>
