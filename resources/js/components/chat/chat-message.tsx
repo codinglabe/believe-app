@@ -3,7 +3,7 @@
 import React, { useState } from "react"
 import { ChatMessage as ChatMessageType } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
-import { format } from "date-fns"
+import { formatChatTime } from "@/lib/chat-timestamps"
 import { cn } from "@/lib/utils"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/chat/ui/dropdown-menu"
 import { MoreHorizontalIcon, ReplyIcon, Trash2Icon, DownloadIcon } from 'lucide-react'
@@ -136,7 +136,7 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
                 isOwnMessage ? "text-white/75" : "text-muted-foreground/70",
               )}
             >
-              {format(new Date(message.created_at), "HH:mm")}
+              {formatChatTime(message.created_at)}
             </span>
           </div>
         </div>

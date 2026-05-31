@@ -29,6 +29,23 @@ class UtcDatetime implements CastsAttributes
             return [$key => null];
         }
 
-        return [$key => Carbon::parse($value)->utc()->format('Y-m-d H:i:s')];
+        if ($value instanceof Carbon) {
+            return [$key => $value->copy()->utc()->format('Y-m-d H:i:s')];
+        }
+
+        $str = trim((string) $value);
+        if ($str === '') {
+            return [$key => null];
+        }
+
+        // ISO strings with Z / offset: normalize to UTC wall clock for MySQL.
+        if (preg_match('/[Zz]|[+-]\d{2}:?\d{2}$/', $str)) {
+            return [$key => Carbon::parse($str)->utc()->format('Y-m-d H:i:s')];
+        }
+
+        // Naive Y-m-d H:i:s values in chat_messages are UTC wall clock (see freshTimestamp).
+        $normalized = str_contains($str, 'T') ? $str : str_replace(' ', 'T', $str);
+
+        return [$key => Carbon::parse($normalized, 'UTC')->format('Y-m-d H:i:s')];
     }
 }
