@@ -4,12 +4,13 @@ import React from "react"
 import { ChatRoom } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { cn } from "@/lib/utils"
+import { chatTimestampMs, parseChatTimestamp } from "@/lib/chat-timestamps"
 import { formatDistanceToNowStrict } from "date-fns"
 import { Badge } from "@/components/chat/ui/badge"
 import { chatGradientBg, chatGradientText } from "./chat-brand"
 
 function compactRelativeTime(iso: string): string {
-  const then = new Date(iso).getTime()
+  const then = chatTimestampMs(iso)
   const sec = Math.max(0, Math.floor((Date.now() - then) / 1000))
   if (sec < 45) return "now"
   const min = Math.floor(sec / 60)
@@ -20,7 +21,7 @@ function compactRelativeTime(iso: string): string {
   if (d < 7) return `${d}d`
   const w = Math.floor(d / 7)
   if (w < 52) return `${w}w`
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return parseChatTimestamp(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
 interface ConversationItemProps {
@@ -40,7 +41,7 @@ export function ConversationItem({ room, isActive, onClick,  currentUser}: Conve
     ? (otherMember?.name || 'Direct Chat')
     : room.name
   const lastMessageTime = room.last_message?.created_at
-    ? formatDistanceToNowStrict(new Date(room.last_message.created_at), { addSuffix: true })
+    ? formatDistanceToNowStrict(parseChatTimestamp(room.last_message.created_at), { addSuffix: true })
     : null;
 
   // Helper function to truncate message text

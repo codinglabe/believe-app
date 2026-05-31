@@ -80,7 +80,7 @@ class ChatController extends Controller
                 'type' => $room->type,
                 'image' => $room->image_url,
                 'description' => $room->description,
-                'created_at' => $room->created_at->toISOString(),
+                'created_at' => $room->created_at->utc()->toIso8601String(),
                 'last_message' => $latestMessage ? [
                     'message' => $latestMessage->message ?? '',
                     'created_at' => $latestMessage->created_at->utc()->toIso8601String() ?? "",
@@ -425,7 +425,7 @@ class ChatController extends Controller
             'type' => $room->type,
             'image' => $room->image_url,
             'description' => $room->description,
-            'created_at' => $room->created_at->toISOString(),
+            'created_at' => $room->created_at->utc()->toIso8601String(),
             'last_message' => $latestMessage ? [
                 'message' => $latestMessage->message ?? '',
                 'created_at' => $latestMessage->created_at->utc()->toIso8601String() ?? '',

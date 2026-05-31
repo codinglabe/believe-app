@@ -10,6 +10,7 @@ import { Send, Smile, MessageCircle, Users, ArrowDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import EmojiPicker from "./EmojiPicker"
 import type { ChatMessage } from "@/types"
+import { parseChatTimestamp } from "@/lib/chat-timestamps"
 import { echo } from "@/lib/echo"
 import { usePage } from "@inertiajs/react"
 import ScrollArea from "./ScrollArea"
@@ -152,7 +153,7 @@ export default function ChatCard({
   }, [checkScrollPosition])
 
   const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp)
+    const date = parseChatTimestamp(timestamp)
     const now = new Date()
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60)
 

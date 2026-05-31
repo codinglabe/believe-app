@@ -1,5 +1,6 @@
 "use client"
 
+import { formatChatTime } from "@/lib/chat-timestamps"
 import { useState, useEffect, useCallback } from "react"
 import { getCsrfToken } from "@/lib/csrf"
 
@@ -153,7 +154,7 @@ export function useChat(meetingId: number, userId: number): UseChatReturn {
         content: e.message.message,
         user: e.message.user,
         type: e.message.message_type || "text",
-        timestamp: new Date(e.message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: formatChatTime(e.message.created_at),
         created_at: e.message.created_at,
         is_private: e.message.is_private,
         metadata: e.message.metadata,
