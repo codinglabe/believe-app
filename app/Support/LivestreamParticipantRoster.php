@@ -157,4 +157,46 @@ final class LivestreamParticipantRoster
 
         return ucwords(str_replace(['.', '_', '-'], ' ', $local));
     }
+
+    /**
+     * Host + participants currently in the room (excludes invited-but-not-joined).
+     *
+     * @param  list<array{
+     *     id: int|null,
+     *     email: string,
+     *     name: string,
+     *     image: string|null,
+     *     slug: string|null,
+     *     role: string,
+     *     isHost: bool,
+     *     canReceiveGift: bool
+     * }>  $roster
+     * @return list<array{
+     *     id: int|null,
+     *     email: string,
+     *     name: string,
+     *     image: string|null,
+     *     slug: string|null,
+     *     role: string,
+     *     isHost: bool,
+     *     canReceiveGift: bool
+     * }>
+     */
+    public static function filterInMeetingOnly(array $roster): array
+    {
+        return array_values(array_filter(
+            $roster,
+            static fn (array $entry): bool => $entry['isHost'] || $entry['role'] === 'In meeting',
+        ));
+    }
+
+    public static function inMeetingRosterForUserLivestream(UserLivestream $livestream): array
+    {
+        return self::filterInMeetingOnly(self::forUserLivestream($livestream));
+    }
+
+    public static function inMeetingRosterForOrganizationLivestream(OrganizationLivestream $livestream): array
+    {
+        return self::filterInMeetingOnly(self::forOrganizationLivestream($livestream));
+    }
 }

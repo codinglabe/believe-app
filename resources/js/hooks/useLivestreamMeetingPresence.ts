@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from "react"
+import {
+  beaconMeetingPresenceLeave,
+  postMeetingPresenceJson,
+} from "@/lib/livestreamMeetingPresence"
 
-const HEARTBEAT_MS = 45_000
-
-function getCsrfToken(): string {
-  return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
-}
+const HEARTBEAT_MS = 20_000
 
 function storageKey(roomName: string): string {
   return `unity-meet-presence:${roomName}`
@@ -25,49 +25,12 @@ function getOrCreateSessionId(roomName: string): string {
   }
 }
 
-async function postPresenceJson(url: string, body: Record<string, unknown>): Promise<boolean> {
-  const token = getCsrfToken()
+function clearSessionId(roomName: string): void {
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": token,
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      credentials: "same-origin",
-      body: JSON.stringify(body),
-    })
-    return res.ok
+    sessionStorage.removeItem(storageKey(roomName))
   } catch {
-    return false
+    // ignore
   }
-}
-
-function postPresenceBeacon(roomName: string, sessionId: string): void {
-  const token = getCsrfToken()
-  const body = new FormData()
-  body.append("_token", token)
-  body.append("sessionId", sessionId)
-
-  const url = route("livestreams.presence.leave", roomName)
-  if (typeof navigator.sendBeacon === "function") {
-    navigator.sendBeacon(url, body)
-    return
-  }
-
-  void fetch(url, {
-    method: "POST",
-    headers: {
-      "X-CSRF-TOKEN": token,
-      "X-Requested-With": "XMLHttpRequest",
-      Accept: "application/json",
-    },
-    credentials: "same-origin",
-    keepalive: true,
-    body,
-  })
 }
 
 type Options = {
@@ -79,14 +42,13 @@ type Options = {
 
 /**
  * Register guest presence when they enter the VDO room so the host roster updates in real time.
- * Uses fetch (not Inertia) — presence endpoints return JSON.
  */
 export function useLivestreamMeetingPresence({
   roomName,
   displayName,
   email,
   active,
-}: Options): void {
+}: Options): { leaveMeeting: () => Promise<void> } {
   const sessionIdRef = useRef<string | null>(null)
   const joinedRef = useRef(false)
   const displayNameRef = useRef(displayName)
@@ -94,6 +56,18 @@ export function useLivestreamMeetingPresence({
 
   displayNameRef.current = displayName
   emailRef.current = email
+
+  const leaveMeeting = useCallback(async () => {
+    const sessionId = sessionIdRef.current
+    if (!sessionId || !joinedRef.current || !roomName.trim()) {
+      return
+    }
+
+    joinedRef.current = false
+    beaconMeetingPresenceLeave(roomName, sessionId)
+    clearSessionId(roomName)
+    sessionIdRef.current = null
+  }, [roomName])
 
   const registerJoin = useCallback(async () => {
     if (!roomName.trim() || joinedRef.current) {
@@ -103,7 +77,7 @@ export function useLivestreamMeetingPresence({
     const sessionId = getOrCreateSessionId(roomName)
     sessionIdRef.current = sessionId
 
-    const ok = await postPresenceJson(route("livestreams.presence.join", roomName), {
+    const ok = await postMeetingPresenceJson(route("livestreams.presence.join", roomName), {
       sessionId,
       displayName: displayNameRef.current.trim() || "Guest",
       email: emailRef.current?.trim() || null,
@@ -134,25 +108,24 @@ export function useLivestreamMeetingPresence({
       if (!joinedRef.current || !sessionIdRef.current) {
         return
       }
-      void postPresenceJson(route("livestreams.presence.heartbeat", roomName), {
+      void postMeetingPresenceJson(route("livestreams.presence.heartbeat", roomName), {
         sessionId: sessionIdRef.current,
       })
     }, HEARTBEAT_MS)
 
-    const onPageHide = () => {
-      const sid = sessionIdRef.current
-      if (!joinedRef.current || !sid) {
-        return
-      }
-      joinedRef.current = false
-      postPresenceBeacon(roomName, sid)
+    const onLeave = () => {
+      void leaveMeeting()
     }
 
-    window.addEventListener("pagehide", onPageHide)
+    window.addEventListener("pagehide", onLeave)
+    window.addEventListener("beforeunload", onLeave)
 
     return () => {
       window.clearInterval(heartbeatId)
-      window.removeEventListener("pagehide", onPageHide)
+      window.removeEventListener("pagehide", onLeave)
+      window.removeEventListener("beforeunload", onLeave)
     }
-  }, [active, roomName])
+  }, [active, roomName, leaveMeeting])
+
+  return { leaveMeeting }
 }

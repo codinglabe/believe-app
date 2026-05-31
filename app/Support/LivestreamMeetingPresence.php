@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
  */
 final class LivestreamMeetingPresence
 {
-    private const TTL_SECONDS = 90;
+    private const TTL_SECONDS = 45;
 
     private static function cacheKey(string $kind, int $livestreamId): string
     {
@@ -143,6 +143,33 @@ final class LivestreamMeetingPresence
     }
 
     /**
+     * Drop active sessions for an email (e.g. host removed them from the invite list).
+     */
+    public static function leaveByEmail(string $kind, int $livestreamId, string $email): void
+    {
+        $normalized = strtolower(trim($email));
+        if ($normalized === '') {
+            return;
+        }
+
+        $key = self::cacheKey($kind, $livestreamId);
+        /** @var array<string, array<string, mixed>> $sessions */
+        $sessions = Cache::get($key, []);
+        if ($sessions === []) {
+            return;
+        }
+
+        foreach ($sessions as $sessionId => $row) {
+            $rowEmail = isset($row['email']) ? strtolower((string) $row['email']) : '';
+            if ($rowEmail === $normalized) {
+                unset($sessions[$sessionId]);
+            }
+        }
+
+        self::store($key, $sessions);
+    }
+
+    /**
      * @param  list<array{
      *     id: int|null,
      *     email: string,
@@ -234,6 +261,7 @@ final class LivestreamMeetingPresence
                 'role' => 'In meeting',
                 'isHost' => false,
                 'canReceiveGift' => false,
+                'sessionId' => $row['sessionId'],
             ];
         }
 

@@ -47,11 +47,11 @@ type Options<TLivestream extends LivestreamRealtimeSlice> = {
   rosterPollUrl?: string | null
 }
 
-const ROSTER_POLL_MS = 3_000
+const ROSTER_POLL_MS = 2_000
 
 function rosterSignature(roster: UnityMeetParticipant[]): string {
   return roster
-    .map((p) => `${p.email}:${p.role}:${p.id ?? ""}`)
+    .map((p) => `${p.sessionId ?? ""}:${p.email}:${p.role}:${p.id ?? ""}`)
     .sort()
     .join("|")
 }

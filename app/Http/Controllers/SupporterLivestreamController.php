@@ -686,7 +686,7 @@ class SupporterLivestreamController extends Controller
             'recordingConsentDeclines' => $recordingConsentDeclines,
             'emailCredits' => UserEmailCredits::stats($request->user()),
             'authUserId' => $authUser->id,
-            'participantRoster' => LivestreamParticipantRoster::forUserLivestream($livestream),
+            'participantRoster' => LivestreamParticipantRoster::inMeetingRosterForUserLivestream($livestream),
             'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($livestream),
             'giftOccasions' => GiftOccasion::query()
                 ->orderBy('category')
@@ -822,7 +822,7 @@ class SupporterLivestreamController extends Controller
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
         return response()->json([
-            'participantRoster' => LivestreamParticipantRoster::forUserLivestream($livestream),
+            'participantRoster' => LivestreamParticipantRoster::inMeetingRosterForUserLivestream($livestream),
         ]);
     }
 
@@ -980,6 +980,9 @@ class SupporterLivestreamController extends Controller
         $livestream->update([
             'settings' => $settings !== [] ? $settings : null,
         ]);
+
+        \App\Support\LivestreamMeetingPresence::leaveByEmail('user', $livestream->id, $email);
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream->fresh(), 'participant_removed');
 
         return redirect()->back()->with('success', 'Participant removed.');
     }

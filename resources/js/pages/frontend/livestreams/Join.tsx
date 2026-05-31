@@ -23,7 +23,8 @@ import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConse
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
-import { useUnityMeetGiftNotifications } from "@/hooks/useUnityMeetGiftNotifications"
+import UnityMeetGiftCelebrationLayer from "@/components/meeting/UnityMeetGiftCelebrationLayer"
+import { LogOut } from "lucide-react"
 
 const BRAND = {
   from: "#9333ea",
@@ -115,14 +116,17 @@ export default function SupporterMeetJoin({
 
   const canJoin = livestream && ["draft", "meeting_live", "live"].includes(livestream.status)
 
-  useLivestreamMeetingPresence({
+  const { leaveMeeting } = useLivestreamMeetingPresence({
     roomName: livestream?.roomName ?? "",
     displayName: displayLabel,
     email: guestEmail,
     active: Boolean(livestream && joined),
   })
 
-  useUnityMeetGiftNotifications(livestream?.broadcastChannel, authUserId)
+  const handleLeaveMeeting = async () => {
+    await leaveMeeting()
+    setJoined(false)
+  }
 
   const iframeUrl = useMemo(() => {
     if (!livestream?.participantUrl || !joined) return null
@@ -142,6 +146,7 @@ export default function SupporterMeetJoin({
     return (
       <UnityMeetLayout>
         <Head title={`In meeting: ${livestream.title || "Meeting"}`} />
+        <UnityMeetGiftCelebrationLayer broadcastChannel={livestream.broadcastChannel} authUserId={authUserId} />
         <div className="flex flex-col min-h-screen bg-background">
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card shrink-0">
             <div className="flex items-center gap-3 min-w-0">
@@ -164,7 +169,16 @@ export default function SupporterMeetJoin({
                 </span>
               </div>
             </div>
-            <span className="shrink-0 text-xs font-medium text-muted-foreground">{displayLabel}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 border-red-500/30 text-red-600 hover:bg-red-500/10"
+              onClick={() => void handleLeaveMeeting()}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Leave
+            </Button>
           </div>
           <div className="flex-1 min-h-0 relative bg-black">
             <VdoMeetingIframe src={iframeUrl} title="Meeting" />

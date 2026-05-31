@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { Link } from "@inertiajs/react"
 import { Gift, MoreVertical, Search, UserPlus, X } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -22,6 +23,7 @@ export type UnityMeetParticipant = {
   role: string
   isHost: boolean
   canReceiveGift: boolean
+  sessionId?: string | null
 }
 
 type UnityMeetParticipantPanelProps = {
@@ -33,6 +35,10 @@ type UnityMeetParticipantPanelProps = {
   viewerLinkHint?: string
   className?: string
   onClose?: () => void
+}
+
+function participantKey(participant: UnityMeetParticipant): string {
+  return participant.sessionId ?? `${participant.email}-${participant.id ?? "guest"}`
 }
 
 function initials(name: string): string {
@@ -71,7 +77,7 @@ export default function UnityMeetParticipantPanel({
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5">
         <h2 className="text-sm font-semibold text-foreground">
-          Participants ({participants.length})
+          In meeting ({participants.length})
         </h2>
         {onClose ? (
           <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label="Close participants">
@@ -94,78 +100,87 @@ export default function UnityMeetParticipantPanel({
       </div>
 
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 [scrollbar-width:thin]">
-        {filtered.map((participant) => {
-          const canGift =
-            participant.canReceiveGift &&
-            participant.id !== null &&
-            participant.id !== authUserId
+        <AnimatePresence initial={false} mode="popLayout">
+          {filtered.map((participant) => {
+            const canGift =
+              participant.canReceiveGift &&
+              participant.id !== null &&
+              participant.id !== authUserId
 
-          return (
-            <li
-              key={`${participant.email}-${participant.id ?? "guest"}`}
-              className="flex items-center gap-2 rounded-lg px-1.5 py-2 hover:bg-muted/50"
-            >
-              <Avatar className="h-9 w-9 shrink-0 border border-border">
-                {participant.image ? (
-                  <AvatarImage src={participant.image} alt={participant.name} />
-                ) : null}
-                <AvatarFallback className="bg-gradient-to-br from-purple-500/20 to-blue-500/20 text-xs font-medium">
-                  {initials(participant.name)}
-                </AvatarFallback>
-              </Avatar>
+            return (
+              <motion.li
+                key={participantKey(participant)}
+                layout
+                initial={{ opacity: 0, x: 12, height: 0 }}
+                animate={{ opacity: 1, x: 0, height: "auto" }}
+                exit={{ opacity: 0, x: -12, height: 0 }}
+                transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                className="flex items-center gap-2 overflow-hidden rounded-lg px-1.5 py-2 hover:bg-muted/50"
+              >
+                <Avatar className="h-9 w-9 shrink-0 border border-border">
+                  {participant.image ? (
+                    <AvatarImage src={participant.image} alt={participant.name} />
+                  ) : null}
+                  <AvatarFallback className="bg-gradient-to-br from-purple-500/20 to-blue-500/20 text-xs font-medium">
+                    {initials(participant.name)}
+                  </AvatarFallback>
+                </Avatar>
 
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{participant.name}</p>
-                <p
-                  className={`truncate text-[11px] ${
-                    participant.isHost
-                      ? "font-medium text-emerald-600 dark:text-emerald-400"
-                      : participant.role === "In meeting"
-                        ? "font-medium text-blue-600 dark:text-blue-400"
-                        : "text-muted-foreground"
-                  }`}
-                >
-                  {participant.role}
-                </p>
-              </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{participant.name}</p>
+                  <p
+                    className={`truncate text-[11px] ${
+                      participant.isHost
+                        ? "font-medium text-emerald-600 dark:text-emerald-400"
+                        : participant.role === "In meeting"
+                          ? "font-medium text-blue-600 dark:text-blue-400"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {participant.isHost ? "Host" : "In meeting"}
+                  </p>
+                </div>
 
-              {canGift ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-purple-600 hover:bg-purple-500/10 hover:text-purple-700 dark:text-purple-400"
-                  title="Give Gift"
-                  onClick={() => onGiveGift?.(participant)}
-                >
-                  <Gift className="h-4 w-4" />
-                  <span className="sr-only">Give gift to {participant.name}</span>
-                </Button>
-              ) : null}
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`Actions for ${participant.name}`}>
-                    <MoreVertical className="h-4 w-4" />
+                {canGift ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-purple-600 hover:bg-purple-500/10 hover:text-purple-700 dark:text-purple-400"
+                    title="Give Gift"
+                    onClick={() => onGiveGift?.(participant)}
+                  >
+                    <Gift className="h-4 w-4" />
+                    <span className="sr-only">Give gift to {participant.name}</span>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  {participant.slug ? (
-                    <DropdownMenuItem asChild>
-                      <Link href={route("users.show", participant.slug)}>View profile</Link>
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem disabled>View profile</DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem disabled>Message</DropdownMenuItem>
-                  <DropdownMenuItem disabled>Donate</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </li>
-          )
-        })}
+                ) : null}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`Actions for ${participant.name}`}>
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {participant.slug ? (
+                      <DropdownMenuItem asChild>
+                        <Link href={route("users.show", participant.slug)}>View profile</Link>
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem disabled>View profile</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem disabled>Message</DropdownMenuItem>
+                    <DropdownMenuItem disabled>Donate</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </motion.li>
+            )
+          })}
+        </AnimatePresence>
         {filtered.length === 0 ? (
-          <li className="px-2 py-6 text-center text-xs text-muted-foreground">No participants match your search.</li>
+          <li className="px-2 py-6 text-center text-xs text-muted-foreground">
+            No one else is in the meeting yet.
+          </li>
         ) : null}
       </ul>
 

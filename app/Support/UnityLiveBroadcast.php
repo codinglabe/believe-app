@@ -105,8 +105,8 @@ final class UnityLiveBroadcast
             ->all();
 
         $participantRoster = $kind === 'user'
-            ? LivestreamParticipantRoster::forUserLivestream($livestream)
-            : LivestreamParticipantRoster::forOrganizationLivestream($livestream);
+            ? LivestreamParticipantRoster::inMeetingRosterForUserLivestream($livestream)
+            : LivestreamParticipantRoster::inMeetingRosterForOrganizationLivestream($livestream);
 
         return [
             'reason' => $reason,

@@ -9,8 +9,8 @@ import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
-import { useUnityMeetGiftNotifications } from "@/hooks/useUnityMeetGiftNotifications"
-import { Video } from "lucide-react"
+import UnityMeetGiftCelebrationLayer from "@/components/meeting/UnityMeetGiftCelebrationLayer"
+import { LogOut, Video } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface GuestMeetJoinLivestream {
@@ -74,14 +74,17 @@ export function GuestMeetJoinExperience({
   const displayLabel = (displayName || "Guest").trim()
   const initial = displayLabel.charAt(0).toUpperCase() || "G"
 
-  useLivestreamMeetingPresence({
+  const { leaveMeeting } = useLivestreamMeetingPresence({
     roomName: livestream.roomName,
     displayName: displayLabel,
     email: guestEmail,
     active: joined,
   })
 
-  useUnityMeetGiftNotifications(livestream.broadcastChannel, authUserId)
+  const handleLeaveMeeting = async () => {
+    await leaveMeeting()
+    setJoined(false)
+  }
 
   const iframeUrl = useMemo(() => {
     if (!joined) return null
@@ -107,6 +110,8 @@ export function GuestMeetJoinExperience({
   return (
     <div className={cn("flex min-h-screen flex-col bg-background", pageClassName)}>
       <Head title={`Join: ${livestream.title || "Meeting"}`} />
+
+      <UnityMeetGiftCelebrationLayer broadcastChannel={livestream.broadcastChannel} authUserId={authUserId} />
 
       {needBarrier && livestream.declineContext && (
         <RecordingConsentBarrier
@@ -148,6 +153,7 @@ export function GuestMeetJoinExperience({
           displayLabel={displayLabel}
           title={livestream.title}
           organizationName={organization.name}
+          onLeave={handleLeaveMeeting}
         />
       )}
     </div>
@@ -233,12 +239,14 @@ function MeetingView({
   displayLabel,
   title,
   organizationName,
+  onLeave,
 }: {
   iframeUrl: string
   initial: string
   displayLabel: string
   title: string | null
   organizationName: string
+  onLeave: () => void | Promise<void>
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -250,7 +258,17 @@ function MeetingView({
           </span>
           <span className="block truncate text-xs text-muted-foreground">{organizationName}</span>
         </div>
-        <span className="shrink-0 text-xs font-medium text-muted-foreground">{displayLabel}</span>
+        <span className="hidden shrink-0 text-xs font-medium text-muted-foreground sm:inline">{displayLabel}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 gap-1.5 border-red-500/30 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400"
+          onClick={() => void onLeave()}
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          Leave
+        </Button>
       </div>
       <div className="relative min-h-0 flex-1 bg-black">
         <VdoMeetingIframe src={iframeUrl} title="Meeting" />

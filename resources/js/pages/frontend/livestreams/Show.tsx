@@ -73,7 +73,7 @@ import UnityMeetParticipantPanel, {
 import UnityMeetGiftDialog, {
   type GiftOccasionOption,
 } from "@/components/meeting/UnityMeetGiftDialog"
-import { useUnityMeetGiftNotifications } from "@/hooks/useUnityMeetGiftNotifications"
+import UnityMeetGiftCelebrationLayer from "@/components/meeting/UnityMeetGiftCelebrationLayer"
 import { applyVdoMinimalHostUi, applyVdoMeetingSession } from "@/lib/vdoMeeting"
 import {
   canEndYoutubeLive,
@@ -202,8 +202,6 @@ export default function SupporterShowLivestream({
     participantRoster: initialParticipantRoster,
     rosterPollUrl: route("livestreams.supporter.participant-roster", initialLivestream.id),
   })
-
-  useUnityMeetGiftNotifications(broadcastChannel, authUserId)
 
   const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]>; success?: string }>()
   const prepareYoutubeError = inertiaProps.errors?.youtube
@@ -1734,6 +1732,8 @@ export default function SupporterShowLivestream({
           router.reload({ only: ["senderGiftBalances"], preserveScroll: true })
         }}
       />
+
+      <UnityMeetGiftCelebrationLayer broadcastChannel={broadcastChannel} authUserId={authUserId} />
     </UnityMeetLayout>
   )
 }
