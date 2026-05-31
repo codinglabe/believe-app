@@ -20,6 +20,7 @@ interface Livestream {
   scheduledAt?: string | null
   participantEmails?: string[] | null
   recordingEnabled?: boolean
+  broadcastChannel?: string
   declineContext?: { kind: "user" | "organization"; id: number }
 }
 
@@ -50,9 +51,10 @@ function formatScheduledAt(iso: string | null | undefined): string | null {
 
 export default function GuestJoin({ livestream, organization, recordingDeclineReturnTo }: Props) {
   const page = usePage()
-  const authUser = (page.props as { auth?: { user?: { email?: string; name?: string } } }).auth?.user
+  const authUser = (page.props as { auth?: { user?: { id?: number; email?: string; name?: string } } }).auth?.user
   const authEmail = authUser?.email?.trim()
   const authName = authUser?.name?.trim()
+  const authUserId = authUser?.id ?? 0
 
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteChecked, setInviteChecked] = useState(false)
@@ -221,6 +223,8 @@ export default function GuestJoin({ livestream, organization, recordingDeclineRe
         recordingDeclineReturnTo={recordingDeclineReturnTo}
         canEnterMeeting={canEnterMeeting}
         defaultDisplayName={authName ?? ""}
+        guestEmail={authEmail ?? (inviteEmailNormalized || null)}
+        authUserId={authUserId}
         consentAppearance="light"
         lobbyBeforeJoin={
           <>

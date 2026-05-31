@@ -32,6 +32,7 @@ import {
 import { Link } from "@inertiajs/react"
 import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
 import { useAutoStopLivestreamOnLeave } from "@/hooks/useAutoStopLivestreamOnLeave"
+import { useUnityMeetHostRealtime } from "@/hooks/useUnityMeetHostRealtime"
 
 interface Livestream {
   id: number
@@ -81,6 +82,7 @@ interface Props {
   livestream: Livestream
   organization: Organization
   recordingConsentDeclines: RecordingConsentDecline[]
+  broadcastChannel?: string
 }
 
 function formatDeclineTime(iso: string | null): string {
@@ -89,7 +91,18 @@ function formatDeclineTime(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
-export default function ShowLivestream({ livestream, organization, recordingConsentDeclines }: Props) {
+export default function ShowLivestream({
+  livestream: initialLivestream,
+  organization,
+  recordingConsentDeclines: initialRecordingConsentDeclines,
+  broadcastChannel,
+}: Props) {
+  const { livestream, recordingConsentDeclines } = useUnityMeetHostRealtime({
+    broadcastChannel,
+    livestream: initialLivestream,
+    recordingConsentDeclines: initialRecordingConsentDeclines,
+  })
+
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [isGoLivePending, setIsGoLivePending] = useState(false)
@@ -120,20 +133,6 @@ export default function ShowLivestream({ livestream, organization, recordingCons
     !["live", "meeting_live", "starting"].includes(livestream.status) &&
     !streamRelayInProgress &&
     !isGoLivePending
-
-  const pollMs =
-    (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      router.reload({
-        only: ["livestream", "recordingConsentDeclines"],
-        preserveScroll: true,
-        preserveState: true,
-      })
-    }, pollMs)
-    return () => window.clearInterval(id)
-  }, [pollMs])
 
   useEffect(() => {
     if (isEndingStreamPending && livestream.status !== "live") {
@@ -209,17 +208,6 @@ export default function ShowLivestream({ livestream, organization, recordingCons
       }
     )
   }
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      router.reload({
-        only: ["recordingConsentDeclines"],
-        preserveScroll: true,
-        preserveState: true,
-      })
-    }, 12000)
-    return () => window.clearInterval(id)
-  }, [])
 
   const getStatusBadge = () => {
     const statusConfig = {

@@ -380,11 +380,12 @@ class UserLivestream extends Model
 
         $dropboxCtx = $recordToDropbox ? $this->resolveDropboxUploadContext() : null;
 
-        // Dropbox: cloud upload via &autorecord. Local-only: &autorecordlocal (browser download).
+        // Host-only auto-record on first load. Do NOT use &autorecord — it also records remote
+        // guests and starts a new file each time someone joins the room.
         if ($dropboxCtx !== null) {
-            $recordParam = '&record&autorecord=6000';
+            $recordParam = '&autorecordlocal=6000';
         } elseif ($recordEnabled) {
-            $recordParam = '&record&autorecordlocal=6000';
+            $recordParam = '&autorecordlocal=6000';
         } else {
             $recordParam = '';
         }

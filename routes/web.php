@@ -472,6 +472,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::put('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
     Route::delete('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/start-meeting', [SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/end-meeting', [SupporterLivestreamController::class, 'endMeeting'])->name('livestreams.supporter.end-meeting')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}/participant-roster', [SupporterLivestreamController::class, 'participantRosterJson'])->name('livestreams.supporter.participant-roster')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/set-live', [SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-unity-live', [SupporterLivestreamController::class, 'endUnityLive'])->name('livestreams.supporter.end-unity-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
@@ -850,6 +852,21 @@ Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'con
 Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
     ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
+
+Route::post('/livestreams/join/{roomName}/presence/join', [\App\Http\Controllers\LivestreamMeetingPresenceController::class, 'join'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->middleware('throttle:120,1')
+    ->name('livestreams.presence.join');
+
+Route::post('/livestreams/join/{roomName}/presence/heartbeat', [\App\Http\Controllers\LivestreamMeetingPresenceController::class, 'heartbeat'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->middleware('throttle:240,1')
+    ->name('livestreams.presence.heartbeat');
+
+Route::post('/livestreams/join/{roomName}/presence/leave', [\App\Http\Controllers\LivestreamMeetingPresenceController::class, 'leave'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->middleware('throttle:120,1')
+    ->name('livestreams.presence.leave');
 
 // Hidden participant canvas mixer (MVP). Public, room-name addressed like guest join.
 // Opened in a browser; WHEP-subscribes the 6 seat paths, composites a 3x2 grid,
