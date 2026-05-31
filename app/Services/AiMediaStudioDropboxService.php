@@ -83,9 +83,9 @@ class AiMediaStudioDropboxService
 
         $api = new DropboxOrgApi($ctx['token']);
         $base = rtrim($ctx['base_folder'], '/');
-        $sub = trim((string) config('services.ai_media_studio.dropbox_subfolder', 'AI Media Studio'), '/');
+        $sub = trim((string) config('services.ai_media_studio.dropbox_subfolder', 'AI Video Studio'), '/');
         if ($sub === '') {
-            $sub = 'AI Media Studio';
+            $sub = 'AI Video Studio';
         }
 
         $subPath = $base.'/'.$sub;

@@ -179,12 +179,12 @@ export default function AiMediaStudioIndex({
   return (
     <AccountContextLayout
       context={context}
-      title="AI Media Studio"
+      title="AI Video Studio"
       description="Short-form videos via OpenAI and fal.ai — queued in the background."
     >
       <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-white">AI Media Studio</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">AI Video Studio</h1>
           <p className="text-sm text-slate-400">
             Short-form videos via OpenAI and fal.ai — queued in the background.
           </p>
@@ -195,7 +195,7 @@ export default function AiMediaStudioIndex({
             <Video className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-white">AI Media Studio</p>
+            <p className="font-semibold text-white">AI Video Studio</p>
             <p className="text-sm text-slate-400">
               Short-form videos via OpenAI prompts and fal.ai generation — runs on a background worker (
               {context === "organization" ? "organization library" : "your videos"}).

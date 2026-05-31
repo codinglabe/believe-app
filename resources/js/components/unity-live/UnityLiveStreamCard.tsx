@@ -1,6 +1,7 @@
 import { Link } from "@inertiajs/react"
 import { Building2, Play, UserRound } from "lucide-react"
 import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import UnityLiveOverlayLayer from "@/components/unity-live/UnityLiveOverlayLayer"
 import { UnityLiveBadge } from "@/components/unity-live/UnityLiveBadge"
 import { UnityLivePreviewIframe } from "@/components/unity-live/UnityLivePreviewIframe"
 import {
@@ -57,9 +58,13 @@ export function UnityLiveStreamCard({
           <div className="absolute left-3 top-3 z-20">
             <UnityLiveBadge size={isFeatured ? "md" : "sm"} />
           </div>
-          <UnityMeetVideoLogoOverlay
-            className={cn("z-20 origin-top-right", isFeatured ? "scale-100" : "scale-[0.85]")}
-          />
+          {stream.overlay ? (
+            <UnityLiveOverlayLayer overlay={stream.overlay} className="z-20" hideLiveBadge />
+          ) : (
+            <UnityMeetVideoLogoOverlay
+              className={cn("z-20 origin-top-right", isFeatured ? "scale-100" : "scale-[0.85]")}
+            />
+          )}
 
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 p-4 sm:p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">

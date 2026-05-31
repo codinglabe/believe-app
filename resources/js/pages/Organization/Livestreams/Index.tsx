@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import AppLayout from "@/layouts/app-layout"
-import { Video, Plus, Calendar, Play, Square, Eye, Trash2 } from "lucide-react"
+import { Video, Plus, Calendar, Play, Square, Eye, Trash2, Layers } from "lucide-react"
 import { router } from "@inertiajs/react"
 import {
   AlertDialog,
@@ -76,12 +76,20 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
             <h1 className="text-3xl font-bold mb-2">My Livestreams</h1>
             <p className="text-gray-400">{organization.name}</p>
           </div>
-          <Link href="/livestreams/create">
-            <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90">
-              <Plus className="w-4 h-4 mr-2" />
-              Create New Livestream
-            </Button>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/livestreams/overlay-studio">
+              <Button variant="outline" className="gap-2">
+                <Layers className="h-4 w-4" />
+                Overlay Studio
+              </Button>
+            </Link>
+            <Link href="/livestreams/create">
+              <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90">
+                <Plus className="w-4 h-4 mr-2" />
+                Create New Livestream
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {livestreams.data.length === 0 ? (

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SendUnityMeetBiuNotification;
 use App\Jobs\SendUnityMeetInvitationEmail;
+use App\Models\GiftOccasion;
 use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
@@ -14,6 +15,7 @@ use App\Services\Streaming\StreamingPreflight;
 use App\Services\Streaming\StreamingQueueService;
 use App\Support\EmailPackageCatalog;
 use App\Support\LivestreamParticipantEmails;
+use App\Support\LivestreamParticipantRoster;
 use App\Support\MeetingRecordingPreference;
 use App\Support\UnityMeetInviteNotifyVia;
 use App\Support\UserEmailCredits;
@@ -24,16 +26,20 @@ use App\Services\DropboxOrgApi;
 use App\Services\LivestreamHostAbandonService;
 use App\Services\RecordingYoutubePublishService;
 use App\Services\YouTubeService;
+use App\Services\LivestreamVideoOverlayService;
+use App\Support\LivestreamOverlayConfig;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Supporter livestream — same flow as organization livestreams (VDO.Ninja): index, create, edit, delete, room page.
@@ -521,6 +527,7 @@ class SupporterLivestreamController extends Controller
                         'kind' => 'organization',
                         'id' => $orgStream->id,
                     ],
+                    'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($orgStream),
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -573,6 +580,7 @@ class SupporterLivestreamController extends Controller
                         'kind' => 'user',
                         'id' => $userStream->id,
                     ],
+                    'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($userStream),
                 ],
                 'organization' => [
                     'id' => 0,
@@ -644,7 +652,7 @@ class SupporterLivestreamController extends Controller
 
         $vdoRoom = $livestream->getVdoRoomName();
         $passwordParam = $password !== '' ? '&password=' . rawurlencode($password) : '';
-        $settings = $livestream->settings ?? [];
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
         $displayName = $settings['display_name'] ?? $request->user()->name ?? 'Host';
         $participantEmails = LivestreamParticipantEmails::fromSettings(is_array($settings) ? $settings : null);
         $directorLabel = '&label=' . rawurlencode($displayName);
@@ -681,6 +689,16 @@ class SupporterLivestreamController extends Controller
         return Inertia::render('frontend/livestreams/Show', [
             'recordingConsentDeclines' => $recordingConsentDeclines,
             'emailCredits' => UserEmailCredits::stats($request->user()),
+            'authUserId' => $authUser->id,
+            'participantRoster' => LivestreamParticipantRoster::inMeetingRosterForUserLivestream($livestream),
+            'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($livestream),
+            'giftOccasions' => GiftOccasion::query()
+                ->orderBy('category')
+                ->orderBy('occasion')
+                ->get(['id', 'occasion', 'icon', 'category']),
+            'senderGiftBalances' => [
+                'purchased_believe_points' => round((float) ($authUser->believe_points ?? 0), 2),
+            ],
             ...$this->emailPurchaseProps(),
             'livestream' => [
                 'id' => $livestream->id,
@@ -706,6 +724,7 @@ class SupporterLivestreamController extends Controller
                 'status' => $livestream->status,
                 'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
                 'participantEmails' => $participantEmails,
+                'meetingSessionKey' => (int) ($settings['meeting_session'] ?? 0),
                 'startedAt' => $livestream->started_at?->toIso8601String(),
                 'endedAt' => $livestream->ended_at?->toIso8601String(),
                 'canStartMeeting' => $livestream->canStartMeeting(),
@@ -745,12 +764,70 @@ class SupporterLivestreamController extends Controller
             return redirect()->back()->withErrors(['error' => 'Meeting cannot be started in current state.']);
         }
 
-        $livestream->update(['status' => 'meeting_live']);
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $settings['meeting_session'] = (int) ($settings['meeting_session'] ?? 0) + 1;
+
+        $livestream->update([
+            'status' => 'meeting_live',
+            'settings' => $settings !== [] ? $settings : null,
+        ]);
+
+        \App\Support\LivestreamMeetingPresence::clear('user', $livestream->id);
 
         $livestream->refresh();
         \App\Support\UnityLiveBroadcast::notifyMeetingStarted($livestream);
 
-        return redirect()->back()->with('success', 'Meeting started. Share the invite link, then click Go Live when ready.');
+        return redirect()->route('livestreams.supporter.show', $id)->with('success', 'Meeting started. Share the invite link, then click Go Live when ready.');
+    }
+
+    /**
+     * Fully end the meeting — tear down VDO session, stop relays, return to draft.
+     */
+    public function endMeeting(
+        Request $request,
+        int $id,
+        YouTubeService $youtubeService,
+        LivestreamHostAbandonService $abandonService,
+    ): RedirectResponse {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        if (in_array($livestream->status, ['live', 'meeting_live', 'starting'], true)) {
+            $accessToken = $this->resolveYouTubeAccessToken($request, $youtubeService);
+            $abandonService->abandonUserStream($livestream, $accessToken, $youtubeService);
+            $livestream->refresh();
+        }
+
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $settings['meeting_session'] = (int) ($settings['meeting_session'] ?? 0) + 1;
+        unset($settings['stream_stop_requested'], $settings['host_abandoned_at']);
+
+        $livestream->update([
+            'status' => 'draft',
+            'settings' => $settings !== [] ? $settings : null,
+            'ended_at' => $livestream->ended_at ?? now(),
+        ]);
+
+        \App\Support\LivestreamMeetingPresence::clear('user', $livestream->id);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'meeting_ended');
+
+        return redirect()->back()->with(
+            'success',
+            'Meeting ended. Click Start meeting when you want to open the room again.'
+        );
+    }
+
+    /**
+     * JSON roster for host UI polling (guest presence merged).
+     */
+    public function participantRosterJson(Request $request, int $id): JsonResponse
+    {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        return response()->json([
+            'participantRoster' => LivestreamParticipantRoster::inMeetingRosterForUserLivestream($livestream),
+        ]);
     }
 
     public function setLive(Request $request, int $id): RedirectResponse
@@ -908,6 +985,9 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings !== [] ? $settings : null,
         ]);
 
+        \App\Support\LivestreamMeetingPresence::leaveByEmail('user', $livestream->id, $email);
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream->fresh(), 'participant_removed');
+
         return redirect()->back()->with('success', 'Participant removed.');
     }
 
@@ -967,6 +1047,9 @@ class SupporterLivestreamController extends Controller
         $livestream->update([
             'settings' => $settings !== [] ? $settings : null,
         ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'participant_invited');
 
         $this->dispatchParticipantInvitation($livestream, $email, $notifyVia);
 
@@ -1545,6 +1628,94 @@ class SupporterLivestreamController extends Controller
         }
 
         return redirect()->away($link);
+    }
+
+    public function recordingBrandedDownload(Request $request): RedirectResponse|StreamedResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+        $path = $request->query('path');
+        if (! is_string($path) || $path === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file.');
+        }
+        $path = trim($path);
+        if (str_contains($path, '..')) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+        }
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+        }
+        $folderPath = (string) $ctx['folderPath'];
+        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only download files from your recording folder.');
+        }
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+        }
+
+        $overlayService = app(LivestreamVideoOverlayService::class);
+        if (! $overlayService->canApply()) {
+            return redirect()->route('livestreams.supporter.recordings')->with(
+                'error',
+                'FFmpeg is not available on the server. Use the regular download or install FFmpeg.',
+            );
+        }
+
+        $org = Organization::forAuthUser($user);
+        $overlayConfig = $org !== null
+            ? LivestreamOverlayConfig::forOrganization($org)
+            : LivestreamOverlayConfig::forUser($user);
+
+        if (LivestreamOverlayConfig::toVideoPayload($overlayConfig) === null) {
+            return redirect()->route('livestreams.supporter.recordings')->with(
+                'error',
+                'Configure a logo or bottom banner in Overlay Studio first.',
+            );
+        }
+
+        $api = new DropboxOrgApi((string) $ctx['token']);
+        $link = $api->getTemporaryLink($path);
+        if (! $link) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not generate download link.');
+        }
+
+        $inputTmp = tempnam(sys_get_temp_dir(), 'unity_rec_');
+        if ($inputTmp === false) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not prepare download.');
+        }
+
+        try {
+            $download = Http::timeout(7200)->connectTimeout(60)->sink($inputTmp)->get($link);
+            if (! $download->successful() || ! is_file($inputTmp) || filesize($inputTmp) < 500) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not download recording from Dropbox.');
+            }
+
+            $brandedPath = $overlayService->brandLocalFile($inputTmp, $overlayConfig);
+            if ($brandedPath === null) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not apply overlay branding.');
+            }
+
+            $basename = basename($path);
+            $filename = pathinfo($basename, PATHINFO_FILENAME).'-branded.mp4';
+
+            return response()->streamDownload(function () use ($brandedPath): void {
+                $stream = fopen($brandedPath, 'rb');
+                if ($stream !== false) {
+                    fpassthru($stream);
+                    fclose($stream);
+                }
+                @unlink($brandedPath);
+            }, $filename, [
+                'Content-Type' => 'video/mp4',
+            ]);
+        } finally {
+            if (is_file($inputTmp)) {
+                @unlink($inputTmp);
+            }
+        }
     }
 
     public function recordingDelete(Request $request): RedirectResponse

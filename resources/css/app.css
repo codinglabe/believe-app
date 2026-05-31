@@ -944,3 +944,12 @@ body.main-domain #nprogress .spinner-icon {
   border-radius: 12px;
   overflow: hidden;
 }
+
+@keyframes unity-live-ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}

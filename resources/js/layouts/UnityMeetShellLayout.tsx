@@ -12,6 +12,7 @@ import {
   Video,
   Play,
   Settings,
+  Layers,
 } from "lucide-react"
 
 type PagePropsLike = {
@@ -96,6 +97,12 @@ export default function UnityMeetShellLayout({ children }: { children: ReactNode
               icon={<Radio className="h-4 w-4" />}
               label="Live"
               active={pathname === "/livestreams/supporter/live"}
+            />
+            <NavItem
+              href="/livestreams/supporter/overlay-studio"
+              icon={<Layers className="h-4 w-4" />}
+              label="Overlay Studio"
+              active={pathname === "/livestreams/supporter/overlay-studio"}
             />
             <NavItem
               href="/livestreams/supporter/settings"

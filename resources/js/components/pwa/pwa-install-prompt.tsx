@@ -255,9 +255,9 @@ export function PwaInstallPrompt() {
                 return;
             }
 
-            // Don't trigger on form inputs or other critical UI elements
-            const isFormElement = target.closest('form, input, textarea, select, [contenteditable="true"]');
-            if (isFormElement) {
+            // Don't trigger on form inputs, links, buttons, or other critical UI elements
+            const isInteractive = target.closest('form, input, textarea, select, button, a, [role="button"], [contenteditable="true"]');
+            if (isInteractive) {
                 return;
             }
 

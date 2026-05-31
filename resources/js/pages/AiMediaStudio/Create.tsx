@@ -227,11 +227,11 @@ export default function AiMediaStudioCreate({
 
           {!canSubmit ? (
             <div className="mb-8 rounded-2xl border border-amber-200/80 bg-amber-50/90 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-              <p className="font-semibold">Not enough AI Media Studio credits</p>
+              <p className="font-semibold">Not enough AI Video Studio credits</p>
               <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
                 {context === "supporter"
                   ? "Purchase a pack to generate videos. Organization accounts receive credits with their subscription plan."
-                  : "Your plan includes a pool of AI Media Studio credits; purchase add-ons if you need more."}
+                  : "Your plan includes a pool of AI Video Studio credits; purchase add-ons if you need more."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {Object.entries(media_studio_packs).map(([key, pack]) => (

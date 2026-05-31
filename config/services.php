@@ -179,7 +179,7 @@ return [
         'fal_poll_interval_seconds' => max(1, (int) env('AI_MEDIA_STUDIO_FAL_POLL_INTERVAL', 3)),
         'fal_max_wait_seconds' => max(30, (int) env('AI_MEDIA_STUDIO_FAL_MAX_WAIT', 900)),
         /** Subfolder under the account’s Dropbox recordings folder for AI Studio MP4s. */
-        'dropbox_subfolder' => env('AI_MEDIA_STUDIO_DROPBOX_SUBFOLDER', 'AI Media Studio'),
+        'dropbox_subfolder' => env('AI_MEDIA_STUDIO_DROPBOX_SUBFOLDER', 'AI Video Studio'),
         /** `memory_limit` while ProcessAiVideoGenerationJob runs (OpenAI + fal + Dropbox). */
         'queue_worker_memory_limit' => env('AI_MEDIA_STUDIO_QUEUE_MEMORY', '1024M'),
         /** Burn Believe In Unity logo (top-right) into finished MP4s via FFmpeg. */

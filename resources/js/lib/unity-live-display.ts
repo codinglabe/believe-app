@@ -1,5 +1,7 @@
 export type UnityLiveHostType = "organization" | "supporter"
 
+import type { UnityLiveOverlay } from "@/types/livestream-overlay"
+
 export interface UnityLiveStreamItem {
   id: string
   slug: string
@@ -10,6 +12,7 @@ export interface UnityLiveStreamItem {
   viewUrlMuted?: string
   viewUrlFallback?: string
   startedAt: string | null
+  overlay?: UnityLiveOverlay | null
 }
 
 export function formatLiveSince(startedAt: string | null, nowMs: number = Date.now()): string | null {

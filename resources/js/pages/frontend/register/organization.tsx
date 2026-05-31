@@ -1491,7 +1491,10 @@ export default function OrganizationRegisterPage({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="md:col-span-2">
-                        <Label htmlFor="image">Your Photo*</Label>
+                        <Label htmlFor="image">Organization logo *</Label>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-2">
+                          Your logo appears on Unity Live stream overlays, your public profile, and donation pages.
+                        </p>
                         <div className="mt-2 flex items-center justify-center w-full">
                           <label
                             htmlFor="image-upload"

@@ -789,6 +789,9 @@ export default function SupporterDropbox({
                                 const when = formatRecordingDateTime(file.client_modified)
                                 const size = formatFileSize(file.size)
                                 const downloadUrl = route("livestreams.supporter.recordings.download", { path: file.path_display })
+                                const brandedDownloadUrl = isVideoFile(file.name)
+                                  ? route("livestreams.supporter.recordings.branded-download", { path: file.path_display })
+                                  : null
                                 const playUrl = isVideoFile(file.name) ? downloadUrl : null
                                 const yt = youtubeUploadByPath.get(file.path_display)
                                 const canYoutube =
@@ -908,6 +911,12 @@ export default function SupporterDropbox({
                                               </DropdownMenuItem>
                                             ) : null}
                                             <DropdownMenuItem onClick={() => window.open(downloadUrl, "_blank")}>Open</DropdownMenuItem>
+                                            {brandedDownloadUrl ? (
+                                              <DropdownMenuItem onClick={() => window.open(brandedDownloadUrl, "_blank")}>
+                                                <Download className="h-4 w-4" />
+                                                Download with overlay
+                                              </DropdownMenuItem>
+                                            ) : null}
                                             <DropdownMenuItem
                                               onClick={() => {
                                                 setNewName(file.name)

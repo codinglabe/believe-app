@@ -533,9 +533,13 @@ class SeoService
         $defaults = self::defaults();
         $home = array_merge($defaults['pages']['home'] ?? [], $settings['pages']['home'] ?? []);
 
+        $defaultsHome = $defaults['pages']['home'] ?? [];
+        $headline = trim((string) ($home['title'] ?? ''));
+        $subtitle = trim((string) ($home['subtitle'] ?? ''));
+
         return [
-            'headline' => trim((string) ($home['title'] ?? '')),
-            'subtitle' => trim((string) ($home['subtitle'] ?? '')),
+            'headline' => $headline !== '' ? $headline : trim((string) ($defaultsHome['title'] ?? '')),
+            'subtitle' => $subtitle !== '' ? $subtitle : trim((string) ($defaultsHome['subtitle'] ?? '')),
         ];
     }
 

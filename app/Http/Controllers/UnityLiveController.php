@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use App\Support\LivestreamOverlayConfig;
 use App\Support\UnityLiveBroadcast;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -32,6 +33,9 @@ class UnityLiveController extends Controller
             'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
             'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
             'startedAt' => $ls->started_at?->toIso8601String(),
+            'overlay' => LivestreamOverlayConfig::toPublicPayload(
+                LivestreamOverlayConfig::forLivestream($ls),
+            ),
         ];
     }
 
@@ -56,6 +60,9 @@ class UnityLiveController extends Controller
             'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
             'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
             'startedAt' => $ls->started_at?->toIso8601String(),
+            'overlay' => LivestreamOverlayConfig::toPublicPayload(
+                LivestreamOverlayConfig::forLivestream($ls),
+            ),
         ];
     }
 

@@ -19,6 +19,7 @@ import toast from "react-hot-toast"
 import { useUnityLiveViewerStatus } from "@/hooks/useUnityLiveViewerStatus"
 import StreamEndedOverlay from "@/components/unity-live/StreamEndedOverlay"
 import GoingLiveOverlay from "@/components/unity-live/GoingLiveOverlay"
+import UnityLiveOverlayLayer from "@/components/unity-live/UnityLiveOverlayLayer"
 import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
 import { UnityLiveBadge } from "@/components/unity-live/UnityLiveBadge"
 import { UnityLiveOtherStreamsSidebar } from "@/components/unity-live/UnityLiveOtherStreamsSidebar"
@@ -217,8 +218,12 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                       <UnityLiveBadge size="md" />
                     </div>
                   ) : null}
-                  {!isLoading && !streamEnded && !isGoingLive ? (
-                    <UnityMeetVideoLogoOverlay className="z-20" />
+                  {!streamEnded && !isGoingLive ? (
+                    livestream.overlay ? (
+                      <UnityLiveOverlayLayer overlay={livestream.overlay} hideLiveBadge />
+                    ) : (
+                      <UnityMeetVideoLogoOverlay className="z-20" />
+                    )
                   ) : null}
                   {isFullscreen && (
                     <div
