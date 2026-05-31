@@ -421,7 +421,7 @@ export default function BelievePointsIndex({
                     <CardDescription className="max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
                       Pick <span className="font-medium text-gray-800 dark:text-gray-200">Bank</span> or{" "}
                       <span className="font-medium text-gray-800 dark:text-gray-200">Card</span> below. You receive 1
-                      Believe Point per $1 USD. Bank (ACH) checkout earns Merchant Hub reward points; card does not.
+                      Believe Point (BP) per $1 USD.
                     </CardDescription>
                   </div>
                 </div>
@@ -474,8 +474,7 @@ export default function BelievePointsIndex({
                       </p>
                       <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Payment method</p>
                       <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                        ACH is cheaper for us to process. Paying by bank also earns Merchant Hub reward points on your
-                        purchase.
+                        ACH is cheaper for us to process. Paying by bank also earns Believe Reward Points (BRP) on this BP purchase.
                       </p>
                     </div>
                     <Tabs
@@ -511,7 +510,7 @@ export default function BelievePointsIndex({
                             Recommended
                           </Badge>
                           <p className="text-gray-700 dark:text-gray-200">
-                            Lower processing fees · Earns Merchant Hub reward points ($1 = 0.10) on this purchase
+                            Lower processing fees • Earn Believe Reward Points (BRP) on this BP purchase.
                           </p>
                         </div>
                       </TabsContent>
@@ -520,7 +519,7 @@ export default function BelievePointsIndex({
                         className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus-visible:outline-none dark:border-gray-600 dark:bg-gray-800/60"
                       >
                         <p className="text-gray-700 dark:text-gray-200">
-                          Pay with debit or credit card. No Merchant Hub reward bonus on card checkout.
+                          Pay with debit or credit card. No Believe Reward Points (BRP) bonus on card checkout.
                         </p>
                       </TabsContent>
                     </Tabs>
@@ -647,18 +646,13 @@ export default function BelievePointsIndex({
                     <ul className="mt-3 grid gap-2 text-xs text-gray-600 sm:text-sm dark:text-gray-300">
                       <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
-                        <span>1 Believe Point = $1 USD for donations and eligible purchases on Believe.</span>
+                        <span>1 Believe Point (BP) = $1 USD for donations and eligible purchases on Believe.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
                         <span>
-                          Bank (ACH) usually has a lower add-on than card; bank checkout earns Merchant Hub reward points
-                          ($1 = 0.10) on the points amount.
+                          Bank (ACH) usually has a lower add-on than card; ACH checkout earns Believe Reward Points (BRP) on the BP purchase amount. Points usually credit when Stripe confirms payment; ACH debits can take a few business days.
                         </span>
-                      </li>
-                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
-                        <span>Points usually credit when Stripe confirms; bank debits can take a few business days.</span>
                       </li>
                     </ul>
                   </div>
@@ -693,7 +687,7 @@ export default function BelievePointsIndex({
                         </Label>
                         <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
                           <p className="font-semibold">Summary:</p>
-                          <p>Points are platform credits used only inside Believe. They are not money, cannot be cashed out, and never interact with wallets or bank accounts. Limited refunds available within 7 days for unused points only.</p>
+                          <p>Believe Points (BP) are platform credits used only inside Believe. BP are not money, cannot be cashed out by supporters, and do not interact directly with personal wallets or bank accounts. Limited refunds may be available within 7 days for unused BP only.</p>
                           <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
                             <DialogTrigger asChild>
                               <button
@@ -804,7 +798,7 @@ export default function BelievePointsIndex({
                                     <li>At Believe's discretion</li>
                                     <li>Returned to the original payment method</li>
                                   </ul>
-                                  <p className="text-muted-foreground mt-2">Refunds are treated as purchase reversals—not the same as spending Merchant Hub reward points.</p>
+                                  <p className="text-muted-foreground mt-2">Refunds are treated as purchase reversals for unused Believe Points (BP) only.</p>
                                 </div>
 
                                 <div>
@@ -844,7 +838,7 @@ export default function BelievePointsIndex({
                                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
                                   <h3 className="font-semibold text-base mb-2">Plain‑English Summary</h3>
                                   <p className="text-sm text-muted-foreground">
-                                    Points are platform credits used only inside Believe. They are not money, cannot be cashed out, and never interact with wallets or bank accounts.
+                                    Believe Points (BP) are platform credits used only inside Believe. BP are not money, cannot be cashed out by supporters, and do not interact directly with personal wallets or bank accounts. Limited refunds may be available within 7 days for unused BP only.
                                   </p>
                                 </div>
                               </div>

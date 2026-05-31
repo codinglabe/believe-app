@@ -1,4 +1,4 @@
-import React, { FormEventHandler } from 'react'
+import React, { FormEventHandler, useEffect } from 'react'
 import { Head, Link, useForm } from '@inertiajs/react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantInput } from '@/components/merchant-ui'
@@ -8,18 +8,41 @@ import InputError from '@/components/input-error'
 import { LoaderCircle, ArrowLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { MerchantHeader } from '@/components/merchant'
+import { usePasswordResetCooldown } from '@/hooks/use-password-reset-cooldown'
 
 interface ForgotPasswordProps {
   status?: string
+  passwordResetCooldownUntil?: number | null
+  passwordResetThrottleSeconds?: number
 }
 
-export default function MerchantForgotPassword({ status }: ForgotPasswordProps) {
+export default function MerchantForgotPassword({
+  status,
+  passwordResetCooldownUntil,
+  passwordResetThrottleSeconds = 60,
+}: ForgotPasswordProps) {
   const { data, setData, post, processing, errors } = useForm({
     email: '',
   })
 
+  const { isCoolingDown, countdownLabel, cooldownEmail } = usePasswordResetCooldown(
+    data.email,
+    passwordResetCooldownUntil,
+    passwordResetThrottleSeconds,
+  )
+
+  useEffect(() => {
+    if (! data.email && cooldownEmail) {
+      setData('email', cooldownEmail)
+    }
+  }, [cooldownEmail, data.email, setData])
+
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
+    if (isCoolingDown) {
+      return
+    }
+
     post(route('merchant.password.email'))
   }
 
@@ -79,20 +102,23 @@ export default function MerchantForgotPassword({ status }: ForgotPasswordProps) 
                     onChange={(e) => setData('email', e.target.value)}
                     placeholder="merchant@example.com"
                     className="mt-1"
+                    disabled={isCoolingDown || processing}
                   />
-                  <InputError message={errors.email} />
+                  {! isCoolingDown && <InputError message={errors.email} />}
                 </div>
 
                 <MerchantButton
                   type="submit"
                   className="w-full"
-                  disabled={processing}
+                  disabled={processing || isCoolingDown}
                 >
                   {processing ? (
                     <>
                       <LoaderCircle className="w-4 h-4 mr-2 animate-spin" />
                       Sending...
                     </>
+                  ) : isCoolingDown ? (
+                    `Wait ${countdownLabel}`
                   ) : (
                     'Send Reset Link'
                   )}

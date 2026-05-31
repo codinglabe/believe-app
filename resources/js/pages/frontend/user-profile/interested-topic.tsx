@@ -51,6 +51,9 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
   }
 
   const navigateToChat = (topicId: number) => {
+    if (selectedTopics.length === 0) {
+      return
+    }
     router.get(route("chat.index", { topic: topicId }))
   }
 
@@ -201,13 +204,14 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                               {/* Chat icon button */}
                               <button
                                 type="button"
+                                disabled={selectedTopics.length === 0}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   e.preventDefault()
                                   navigateToChat(topic.id)
                                 }}
-                                className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-800/50 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-300 transition-all duration-200 group/chat"
-                                title="Go to chat"
+                                className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-800/50 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-300 transition-all duration-200 group/chat disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={selectedTopics.length === 0 ? "Save your interests first" : "Go to chat"}
                               >
                                 <MessageCircle className="w-4 h-4 group-hover/chat:scale-110 transition-transform" />
                               </button>

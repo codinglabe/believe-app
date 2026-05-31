@@ -221,12 +221,41 @@ export function planGridClassName(planCount: number): string {
 }
 
 export const UNITY_MEMBERSHIP_DEFAULTS = {
+  introPeriodMonths: 12,
   standardPrice: 34,
   verificationFee: 10,
   verificationLabel: "Organization Verification",
   frequency: "month",
   cancellation: "Cancel anytime. No contracts. No hassle.",
 } as const
+
+export function resolveIntroPeriodMonths(plan: PlanPricingShape | undefined): number {
+  const raw = planCustomFieldByKey(plan, "pricing_intro_period_months")
+  if (raw) {
+    const months = parseInt(String(raw).replace(/\D/g, ""), 10)
+    if (!Number.isNaN(months) && months > 0) return months
+  }
+  return UNITY_MEMBERSHIP_DEFAULTS.introPeriodMonths
+}
+
+export function introPeriodLabel(months: number): string {
+  if (months === 1) return "1 month"
+  return `${months} months`
+}
+
+export function formatAfterIntroductoryPeriodCopy(
+  standardPrice: number,
+  frequency: string,
+  introPeriodMonths: number,
+): string {
+  return `Then $${formatPlanPrice(standardPrice)}/${frequency} after ${introPeriodLabel(introPeriodMonths)}`
+}
+
+export function formatIntroductoryPeriodHeadline(introPeriodMonths: number): string {
+  return introPeriodMonths === 1
+    ? "1-month introductory pricing"
+    : `${introPeriodMonths}-month introductory pricing`
+}
 
 export function resolveIntroPrice(plan: PlanPricingShape | undefined): number {
   if (plan?.price != null && Number(plan.price) > 0) {

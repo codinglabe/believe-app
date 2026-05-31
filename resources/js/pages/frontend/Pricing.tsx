@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Link, usePage } from "@inertiajs/react";
+import { PageHead } from "@/components/frontend/PageHead";
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import SupporterPricingTab, {
   type SupporterPlanOption,
@@ -11,6 +12,11 @@ import { Button } from "@/components/frontend/ui/button";
 import { Badge } from "@/components/frontend/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs";
 import { cn } from "@/lib/utils";
+import {
+  formatAfterIntroductoryPeriodCopy,
+  formatIntroductoryPeriodHeadline,
+  resolveIntroPeriodMonths,
+} from "@/lib/plan-pricing-display";
 import {
   Check,
   ArrowRight,
@@ -82,6 +88,7 @@ interface CurrentPlan {
 }
 
 interface Props {
+  seo?: { title?: string; description?: string; share_image?: string };
   plans: Plan[];
   addOns: AddOn[];
   currentPlan?: CurrentPlan | null;
@@ -496,6 +503,7 @@ function resolveInitialAudience(url: string, userRole?: string | null): PricingA
 }
 
 export default function PricingPage({
+  seo,
   plans,
   addOns,
   currentPlan,
@@ -523,10 +531,12 @@ export default function PricingPage({
   const pricingMarketing = pricingPageMarketingFromPlan(featuredPlan);
   const displayAddOns = usageAddOnsFromPlan(featuredPlan, addOns);
   const competitorRows = competitorRowsFromPlan(featuredPlan);
+  const introPeriodMonths = resolveIntroPeriodMonths(featuredPlan);
+  const showIntroductoryStandard = standardPrice > introPrice;
 
   return (
     <FrontendLayout>
-      <Head title="Pricing | Believe In Unity" />
+      <PageHead title={seo?.title ?? "Pricing"} description={seo?.description} image={seo?.share_image} />
       <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 antialiased dark:bg-[#0A0A1A] dark:text-white">
         <div className="container mx-auto px-4 py-8 sm:py-12 md:py-14">
           <header className="mx-auto mb-8 text-center sm:mb-10">
@@ -780,10 +790,20 @@ export default function PricingPage({
                             / {UNITY_MEMBERSHIP.frequency}
                           </span>
                         </p>
-                        <p className="text-sm font-medium text-slate-600 dark:text-white/75">
-                          Then ${formatMembershipPrice(standardPrice)}/{UNITY_MEMBERSHIP.frequency} after introductory
-                          period
-                        </p>
+                        {showIntroductoryStandard && (
+                          <>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-purple-300">
+                              {formatIntroductoryPeriodHeadline(introPeriodMonths)}
+                            </p>
+                            <p className="text-sm font-medium text-slate-600 dark:text-white/75">
+                              {formatAfterIntroductoryPeriodCopy(
+                                standardPrice,
+                                UNITY_MEMBERSHIP.frequency,
+                                introPeriodMonths,
+                              )}
+                            </p>
+                          </>
+                        )}
                         <p className="text-xs text-slate-500 dark:text-white/60">{pricingMarketing.cancellationPolicy}</p>
                         {verificationCurrencyFields.length > 0 ? (
                           verificationCurrencyFields.map((f, i) => {

@@ -1111,6 +1111,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $transformedOrganization,
+            'seo' => $this->seoForOrganizationShow($transformedOrganization),
             'posts' => $posts,
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
@@ -2163,6 +2164,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
+            'seo' => $this->seoForOrganizationShow($organizationData, 'products'),
             'products' => $products,
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
@@ -2253,6 +2255,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
+            'seo' => $this->seoForOrganizationShow($organizationData, 'jobs'),
             'jobs' => $jobs,
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
@@ -2306,6 +2309,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
+            'seo' => $this->seoForOrganizationShow($organizationData, 'events'),
             'events' => $eventsPaginator,
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
@@ -2390,6 +2394,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
+            'seo' => $this->seoForOrganizationShow($organizationData, 'about'),
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
             'jobsCount' => $jobsCount,
@@ -2473,6 +2478,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
+            'seo' => $this->seoForOrganizationShow($organizationData, 'contact'),
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
             'jobsCount' => $jobsCount,
@@ -2583,6 +2589,7 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
+            'seo' => $this->seoForOrganizationShow($organizationData, 'supporters'),
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
             'jobsCount' => $jobsCount,
@@ -2593,6 +2600,32 @@ class OrganizationController extends BaseController
             ...$believePoints,
             ...$sidebarData,
         ]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function organizationTabSeoLabels(): array
+    {
+        return [
+            'products' => 'Products',
+            'jobs' => 'Jobs',
+            'events' => 'Events',
+            'about' => 'About',
+            'contact' => 'Contact',
+            'supporters' => 'Supporters',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $organization
+     * @return array<string, mixed>
+     */
+    private function seoForOrganizationShow(array $organization, ?string $currentPage = null): array
+    {
+        $tabLabel = $this->organizationTabSeoLabels()[$currentPage ?? ''] ?? null;
+
+        return SeoService::forOrganization($organization, $tabLabel);
     }
 
     /**

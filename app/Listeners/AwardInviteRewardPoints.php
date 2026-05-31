@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * command `organizations:process-invite-believe-point-schedule` (10/month for installments 1–12,
  * then 5/month for 13–24).
  *
- * Legacy invites that already have `points_awarded_at` set (old one-time Merchant Hub reward_points)
+ * Legacy invites that already have `points_awarded_at` set (old one-time legacy reward_points)
  * are skipped.
  */
 class AwardInviteRewardPoints
@@ -46,7 +46,7 @@ class AwardInviteRewardPoints
                 return;
             }
 
-            // Legacy: one-time Merchant Hub reward_points + points_awarded_at — do not start BP schedule
+            // Legacy: one-time legacy reward_points + points_awarded_at — do not start BP schedule
             if ($invite->points_awarded_at !== null) {
                 return;
             }

@@ -77,6 +77,7 @@ use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\DonateWidgetEmbedController;
 use App\Http\Controllers\EmailCreditsController;
 use App\Http\Controllers\EmailInviteController;
 use App\Http\Controllers\EnrollmentController;
@@ -214,7 +215,22 @@ Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap')
 Route::get('/robots.txt', function () {
     $url = rtrim(config('app.url'), '/');
 
-    return response("User-agent: *\nDisallow:\n\nSitemap: {$url}/sitemap.xml\n", 200, [
+    $lines = [
+        'User-agent: *',
+        'Disallow: /admin',
+        'Disallow: /dashboard',
+        'Disallow: /chat',
+        'Disallow: /settings',
+        'Disallow: /user-profile',
+        'Disallow: /livestreams',
+        'Disallow: /checkout',
+        'Disallow: /oauth',
+        'Disallow: /stripe',
+        '',
+        "Sitemap: {$url}/sitemap.xml",
+    ];
+
+    return response(implode("\n", $lines)."\n", 200, [
         'Content-Type' => 'text/plain',
     ]);
 })->name('robots');
@@ -282,6 +298,7 @@ Route::get('pwa-setup', function () {
     return Inertia::render('pwa-setup/page');
 })->name('pwa.install');
 Route::get('/pwa/install-qr', [PwaInstallController::class, 'installQr'])->name('pwa.install-qr');
+Route::get('/pwa/version.json', [\App\Http\Controllers\PwaVersionController::class, 'show'])->name('pwa.version');
 
 Route::get('/about', AboutPageController::class)->name('about');
 
@@ -2457,3 +2474,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+
+Route::get('/embed/donate-widget/{path?}', function () {
+    abort(404);
+})->where('path', '.*');
+
+Route::get('/{orgSlug}', [DonateWidgetEmbedController::class, 'show'])
+    ->middleware('allow.donate.widget.embed')
+    ->name('donate-widget.embed');

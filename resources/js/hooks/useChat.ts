@@ -2,6 +2,7 @@
 
 import { formatChatTime } from "@/lib/chat-timestamps"
 import { useState, useEffect, useCallback } from "react"
+import { getCsrfToken } from "@/lib/csrf"
 
 interface ChatMessage {
   id: number
@@ -62,7 +63,7 @@ export function useChat(meetingId: number, userId: number): UseChatReturn {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+            "X-CSRF-TOKEN": getCsrfToken(),
           },
           body: JSON.stringify({
             message: content,
@@ -94,7 +95,7 @@ export function useChat(meetingId: number, userId: number): UseChatReturn {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+            "X-CSRF-TOKEN": getCsrfToken(),
           },
           body: JSON.stringify({
             emoji,
@@ -123,7 +124,7 @@ export function useChat(meetingId: number, userId: number): UseChatReturn {
         const response = await fetch(`/meetings/${meetingId}/chat/messages/${messageId}`, {
           method: "DELETE",
           headers: {
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+            "X-CSRF-TOKEN": getCsrfToken(),
           },
         })
 

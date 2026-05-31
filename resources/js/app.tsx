@@ -22,6 +22,7 @@ import { syncPushTokenWithServer } from './lib/push-token-sync';
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
+import { initStoredAppVersion } from './lib/pwa-update';
 import axios from 'axios';
 
 configureEcho(buildReverbEchoConfig());
@@ -91,7 +92,17 @@ createInertiaApp({
 
             const pageProps = event.detail.page?.props as {
                 auth?: { user?: { id?: number } };
+                pwaVersion?: string;
             };
+
+            const pwaVersion = pageProps?.pwaVersion;
+            if (typeof pwaVersion === 'string' && pwaVersion && typeof document !== 'undefined') {
+                const versionMeta = document.querySelector('meta[name="app-version"]');
+                if (versionMeta) {
+                    versionMeta.setAttribute('content', pwaVersion);
+                }
+            }
+
             const userId = pageProps?.auth?.user?.id;
             if (userId && !isLivestockDomain()) {
                 void registerServiceWorker()?.then(async () => {
@@ -111,10 +122,13 @@ createInertiaApp({
         );
 
         const initialUserId = initial.initialPage?.props?.auth?.user?.id;
-        if (initialUserId && !isLivestockDomain()) {
+        if (!isLivestockDomain()) {
+            initStoredAppVersion();
             void registerServiceWorker()?.then(async () => {
-                await logPushDiagnostics();
-                await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
+                if (initialUserId) {
+                    await logPushDiagnostics();
+                    await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
+                }
             });
         }
     },

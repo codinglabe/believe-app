@@ -60,6 +60,7 @@ class HomeController extends Controller
 
         return Inertia::render('frontend/home', [
             'seo' => SeoService::forPage('home'),
+            'homeHero' => SeoService::getHomeHero(),
             'filters' => [
                 'search' => $request->get('search', ''),
                 'category' => $request->get('category', 'All Categories'),

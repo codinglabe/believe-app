@@ -41,6 +41,7 @@ interface JobPost {
 }
 
 interface JobsIndexProps {
+  seo?: { title?: string; description?: string; share_image?: string };
   jobs: {
     data: JobPost[];
     current_page: number;
@@ -78,7 +79,7 @@ interface JobsIndexProps {
   };
 }
 
-export default function JobsIndex({ jobs, organizations, positionCategories,positions: initialPositions, filters, auth }: JobsIndexProps) {
+export default function JobsIndex({ seo, jobs, organizations, positionCategories,positions: initialPositions, filters, auth }: JobsIndexProps) {
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
     const [jobType, setJobType] = useState(filters.type || '');
@@ -197,7 +198,7 @@ const [positions, setPositions] = useState<Record<string, string>>({});
 
   return (
     <FrontendLayout>
-      <PageHead title="Job Opportunities" description="Find job opportunities at nonprofits. Browse positions by location, type, and organization. Make an impact with your career." />
+      <PageHead title={seo?.title ?? "Job Opportunities"} description={seo?.description} image={seo?.share_image} />
 
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}

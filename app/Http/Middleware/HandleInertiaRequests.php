@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\OrganizationProduct;
 use App\Services\SeoService;
 use App\Services\StripeProcessingFeeEstimator;
+use App\Support\AppVersion;
 use App\Support\SupporterSubscriptionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
@@ -36,7 +37,11 @@ class HandleInertiaRequests extends Middleware
      */
     public function version(Request $request): ?string
     {
-        return parent::version($request);
+        $assetVersion = parent::version($request);
+
+        return $assetVersion !== null
+            ? AppVersion::current().'-'.$assetVersion
+            : AppVersion::current();
     }
 
     /**
@@ -318,6 +323,7 @@ class HandleInertiaRequests extends Middleware
                 'location' => $request->url(),
             ],
             'csrf_token' => csrf_token(),
+            'pwaVersion' => fn (): string => AppVersion::current(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'flash' => fn () => array_merge(
                 is_array($request->session()->get('flash')) ? $request->session()->get('flash') : [],
