@@ -804,6 +804,18 @@ class SupporterLivestreamController extends Controller
         );
     }
 
+    /**
+     * JSON roster for host UI polling (guest presence merged).
+     */
+    public function participantRosterJson(Request $request, int $id): JsonResponse
+    {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        return response()->json([
+            'participantRoster' => LivestreamParticipantRoster::forUserLivestream($livestream),
+        ]);
+    }
+
     public function setLive(Request $request, int $id): RedirectResponse
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);

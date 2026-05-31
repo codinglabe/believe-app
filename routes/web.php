@@ -466,6 +466,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::delete('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/start-meeting', [SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-meeting', [SupporterLivestreamController::class, 'endMeeting'])->name('livestreams.supporter.end-meeting')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}/participant-roster', [SupporterLivestreamController::class, 'participantRosterJson'])->name('livestreams.supporter.participant-roster')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/set-live', [SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-unity-live', [SupporterLivestreamController::class, 'endUnityLive'])->name('livestreams.supporter.end-unity-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');

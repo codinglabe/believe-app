@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 
 class LivestreamMeetingPresenceController extends Controller
 {
-    private const JOINABLE_STATUSES = ['meeting_live', 'live', 'starting'];
+    private const JOINABLE_STATUSES = ['draft', 'meeting_live', 'live', 'starting'];
 
     public function join(Request $request, string $roomName): JsonResponse
     {

@@ -1,4 +1,3 @@
-import { router } from "@inertiajs/react"
 import { useCallback, useEffect, useRef } from "react"
 
 const HEARTBEAT_MS = 45_000
@@ -23,6 +22,26 @@ function getOrCreateSessionId(roomName: string): string {
     return id
   } catch {
     return crypto.randomUUID()
+  }
+}
+
+async function postPresenceJson(url: string, body: Record<string, unknown>): Promise<boolean> {
+  const token = getCsrfToken()
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": token,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    })
+    return res.ok
+  } catch {
+    return false
   }
 }
 
@@ -60,6 +79,7 @@ type Options = {
 
 /**
  * Register guest presence when they enter the VDO room so the host roster updates in real time.
+ * Uses fetch (not Inertia) — presence endpoints return JSON.
  */
 export function useLivestreamMeetingPresence({
   roomName,
@@ -69,14 +89,29 @@ export function useLivestreamMeetingPresence({
 }: Options): void {
   const sessionIdRef = useRef<string | null>(null)
   const joinedRef = useRef(false)
+  const displayNameRef = useRef(displayName)
+  const emailRef = useRef(email)
 
-  const leave = useCallback(() => {
-    const sessionId = sessionIdRef.current
-    if (!sessionId || !joinedRef.current) {
+  displayNameRef.current = displayName
+  emailRef.current = email
+
+  const registerJoin = useCallback(async () => {
+    if (!roomName.trim() || joinedRef.current) {
       return
     }
-    joinedRef.current = false
-    postPresenceBeacon(roomName, sessionId)
+
+    const sessionId = getOrCreateSessionId(roomName)
+    sessionIdRef.current = sessionId
+
+    const ok = await postPresenceJson(route("livestreams.presence.join", roomName), {
+      sessionId,
+      displayName: displayNameRef.current.trim() || "Guest",
+      email: emailRef.current?.trim() || null,
+    })
+
+    if (ok) {
+      joinedRef.current = true
+    }
   }, [roomName])
 
   useEffect(() => {
@@ -84,45 +119,40 @@ export function useLivestreamMeetingPresence({
       return
     }
 
-    const sessionId = getOrCreateSessionId(roomName)
-    sessionIdRef.current = sessionId
-    const label = displayName.trim() || "Guest"
+    void registerJoin()
+  }, [active, roomName, registerJoin])
 
-    router.post(
-      route("livestreams.presence.join", roomName),
-      {
-        sessionId,
-        displayName: label,
-        email: email?.trim() || null,
-      },
-      {
-        preserveState: true,
-        preserveScroll: true,
-        only: [],
-        onSuccess: () => {
-          joinedRef.current = true
-        },
-      },
-    )
+  useEffect(() => {
+    if (!active || !roomName.trim()) {
+      return
+    }
+
+    const sessionId = sessionIdRef.current ?? getOrCreateSessionId(roomName)
+    sessionIdRef.current = sessionId
 
     const heartbeatId = window.setInterval(() => {
-      if (!joinedRef.current) {
+      if (!joinedRef.current || !sessionIdRef.current) {
         return
       }
-      router.post(
-        route("livestreams.presence.heartbeat", roomName),
-        { sessionId },
-        { preserveState: true, preserveScroll: true, only: [] },
-      )
+      void postPresenceJson(route("livestreams.presence.heartbeat", roomName), {
+        sessionId: sessionIdRef.current,
+      })
     }, HEARTBEAT_MS)
 
-    const onPageHide = () => leave()
+    const onPageHide = () => {
+      const sid = sessionIdRef.current
+      if (!joinedRef.current || !sid) {
+        return
+      }
+      joinedRef.current = false
+      postPresenceBeacon(roomName, sid)
+    }
+
     window.addEventListener("pagehide", onPageHide)
 
     return () => {
       window.clearInterval(heartbeatId)
       window.removeEventListener("pagehide", onPageHide)
-      leave()
     }
-  }, [active, roomName, displayName, email, leave])
+  }, [active, roomName])
 }

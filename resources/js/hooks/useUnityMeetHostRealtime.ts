@@ -1,5 +1,5 @@
 import { useEcho } from "@laravel/echo-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { UnityMeetParticipant } from "@/components/meeting/UnityMeetParticipantPanel"
 
 export type RecordingConsentDeclineRow = {
@@ -17,6 +17,7 @@ type StreamingQueueStatus = {
 }
 
 type LivestreamRealtimeSlice = {
+  id?: number
   status?: string
   isPublic?: boolean
   startedAt?: string | null
@@ -42,20 +43,54 @@ type Options<TLivestream extends LivestreamRealtimeSlice> = {
   livestream: TLivestream
   recordingConsentDeclines: RecordingConsentDeclineRow[]
   participantRoster?: UnityMeetParticipant[]
+  /** Poll roster JSON while meeting is active (Reverb backup). */
+  rosterPollUrl?: string | null
+}
+
+const ROSTER_POLL_MS = 3_000
+
+function rosterSignature(roster: UnityMeetParticipant[]): string {
+  return roster
+    .map((p) => `${p.email}:${p.role}:${p.id ?? ""}`)
+    .sort()
+    .join("|")
+}
+
+async function fetchParticipantRoster(url: string): Promise<UnityMeetParticipant[] | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+    if (!res.ok) {
+      return null
+    }
+    const data = (await res.json()) as { participantRoster?: UnityMeetParticipant[] }
+    return Array.isArray(data.participantRoster) ? data.participantRoster : null
+  } catch {
+    return null
+  }
 }
 
 /**
- * Push host dashboard updates over Reverb — no polling or router.reload().
+ * Push host dashboard updates over Reverb — no full-page reload.
+ * Roster also polls while the meeting is active so guests appear even if a Reverb event is missed.
  */
 export function useUnityMeetHostRealtime<TLivestream extends LivestreamRealtimeSlice>({
   broadcastChannel,
   livestream,
   recordingConsentDeclines,
   participantRoster = [],
+  rosterPollUrl = null,
 }: Options<TLivestream>) {
   const [liveLivestream, setLiveLivestream] = useState(livestream)
   const [liveDeclines, setLiveDeclines] = useState(recordingConsentDeclines)
   const [liveRoster, setLiveRoster] = useState(participantRoster)
+  const rosterSigRef = useRef(rosterSignature(participantRoster))
+  const livestreamIdRef = useRef(livestream.id)
 
   useEffect(() => {
     setLiveLivestream(livestream)
@@ -66,20 +101,36 @@ export function useUnityMeetHostRealtime<TLivestream extends LivestreamRealtimeS
   }, [recordingConsentDeclines])
 
   useEffect(() => {
-    setLiveRoster(participantRoster)
-  }, [participantRoster])
+    if (livestream.id !== livestreamIdRef.current) {
+      livestreamIdRef.current = livestream.id
+      rosterSigRef.current = rosterSignature(participantRoster)
+      setLiveRoster(participantRoster)
+    }
+  }, [livestream.id, participantRoster])
 
-  const applyDashboard = useCallback((payload: UnityMeetHostDashboardPayload) => {
-    if (payload.livestream) {
-      setLiveLivestream((prev) => ({ ...prev, ...payload.livestream }))
+  const applyRoster = useCallback((roster: UnityMeetParticipant[]) => {
+    const sig = rosterSignature(roster)
+    if (sig === rosterSigRef.current) {
+      return
     }
-    if (payload.recordingConsentDeclines) {
-      setLiveDeclines(payload.recordingConsentDeclines)
-    }
-    if (payload.participantRoster) {
-      setLiveRoster(payload.participantRoster)
-    }
+    rosterSigRef.current = sig
+    setLiveRoster(roster)
   }, [])
+
+  const applyDashboard = useCallback(
+    (payload: UnityMeetHostDashboardPayload) => {
+      if (payload.livestream) {
+        setLiveLivestream((prev) => ({ ...prev, ...payload.livestream }))
+      }
+      if (payload.recordingConsentDeclines) {
+        setLiveDeclines(payload.recordingConsentDeclines)
+      }
+      if (payload.participantRoster) {
+        applyRoster(payload.participantRoster)
+      }
+    },
+    [applyRoster],
+  )
 
   const applyViewerStatus = useCallback((payload: { status?: string; isPublic?: boolean }) => {
     setLiveLivestream((prev) => ({
@@ -106,6 +157,30 @@ export function useUnityMeetHostRealtime<TLivestream extends LivestreamRealtimeS
     [channel, applyViewerStatus],
     "public",
   )
+
+  useEffect(() => {
+    const meetingActive = ["meeting_live", "live", "starting"].includes(liveLivestream.status ?? "")
+    if (!meetingActive || !rosterPollUrl) {
+      return
+    }
+
+    let cancelled = false
+
+    const poll = async () => {
+      const roster = await fetchParticipantRoster(rosterPollUrl)
+      if (!cancelled && roster) {
+        applyRoster(roster)
+      }
+    }
+
+    void poll()
+    const intervalId = window.setInterval(() => void poll(), ROSTER_POLL_MS)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [liveLivestream.status, rosterPollUrl, applyRoster])
 
   return {
     livestream: liveLivestream,
