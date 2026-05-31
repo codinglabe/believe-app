@@ -8,7 +8,7 @@ import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 // import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
-import { syncPushTokenWithServer } from '@/lib/push-token-sync';
+import { syncPushTokenWithServer, startPushTokenRefreshListeners } from '@/lib/push-token-sync';
 import { registerServiceWorker } from '@/pwa/register-service-worker';
 import { PushNotificationManager } from '@/components/PushNotificationManager';
 import { shouldAutoPromptForPushPermission } from '@/lib/push-environment';
@@ -27,14 +27,11 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
       }, [])
 
     const authUserId = auth?.user?.id;
-    const fcmTokenSavedForUser = useRef<number | null>(null);
 
     useEffect(() => {
-        const saveFCMTokenAfterLogin = async () => {
-            if (!authUserId) return;
-            if (fcmTokenSavedForUser.current === authUserId) return;
-            fcmTokenSavedForUser.current = authUserId;
+        if (!authUserId) return;
 
+        const syncToken = async () => {
             try {
                 await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
             } catch (err) {
@@ -42,7 +39,12 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             }
         };
 
-        saveFCMTokenAfterLogin();
+        void syncToken();
+    }, [authUserId]);
+
+    useEffect(() => {
+        if (!authUserId) return;
+        return startPushTokenRefreshListeners(() => Boolean(authUserId));
     }, [authUserId]);
 
     // Single place for Laravel session flash toasts – use primitives + ref so deps don't churn every render
@@ -78,7 +80,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
                  {/* <PWAInstallPrompt /> */}
         {/* <PWAUpdatePrompt /> */}
-            {auth?.user?.id && !auth.user.push_token && (
+            {auth?.user?.id && !auth.user.has_push_device && Notification.permission !== "denied" && (
                 <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-amber-900 dark:text-amber-100">
                         Enable browser notifications to get alerts in real time.

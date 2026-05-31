@@ -54,8 +54,8 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
 
     public function toFirebase($notifiable)
     {
-        if (!$notifiable->pushTokens) {
-            Log::warning('User has no push token', ['user_id' => $notifiable->id]);
+        if (! $notifiable->hasActivePushDevice()) {
+            Log::warning('User has no active push device', ['user_id' => $notifiable->id]);
             return null;
         }
 

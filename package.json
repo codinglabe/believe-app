@@ -1,7 +1,12 @@
 {
     "private": true,
     "type": "module",
+    "engines": {
+        "node": ">=20.0.0"
+    },
     "scripts": {
+        "predev": "node scripts/check-node-version.mjs",
+        "prebuild": "node scripts/check-node-version.mjs",
         "build": "vite build && node scripts/stamp-pwa-version.mjs",
         "build:ssr": "vite build && vite build --ssr",
         "dev": "vite",

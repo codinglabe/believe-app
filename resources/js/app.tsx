@@ -18,11 +18,11 @@ import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
 import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
 import { showNativePushNotification } from './lib/firebase-push-toast';
-import { syncPushTokenWithServer } from './lib/push-token-sync';
+import { syncPushTokenWithServer, startPushTokenRefreshListeners } from './lib/push-token-sync';
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
-import { initStoredAppVersion } from './lib/pwa-update';
+import { initStoredAppVersion, markPwaUpdateComplete, fetchServerAppVersion } from './lib/pwa-update';
 import axios from 'axios';
 
 configureEcho(buildReverbEchoConfig());
@@ -124,12 +124,26 @@ createInertiaApp({
         const initialUserId = initial.initialPage?.props?.auth?.user?.id;
         if (!isLivestockDomain()) {
             initStoredAppVersion();
+            void fetchServerAppVersion().then((server) => {
+                if (server?.version) {
+                    const stored = localStorage.getItem('biu_pwa_version');
+                    if (!stored || stored === server.version) {
+                        markPwaUpdateComplete(server.version);
+                    }
+                }
+            });
             void registerServiceWorker()?.then(async () => {
                 if (initialUserId) {
                     await logPushDiagnostics();
                     await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
                 }
             });
+            if (initialUserId) {
+                startPushTokenRefreshListeners(() => {
+                    const metaUserId = document.querySelector('meta[name="user-id"]')?.getAttribute('content');
+                    return Boolean(metaUserId);
+                });
+            }
         }
     },
     progress: {
@@ -229,16 +243,13 @@ if (typeof window !== 'undefined' && !isLivestockDomain()) {
 
 // Re-register FCM after SW updates (new firebase-messaging-sw.js deploy)
 if (typeof window !== 'undefined' && !isLivestockDomain() && 'serviceWorker' in navigator) {
-    let controllerChangeHandled = false;
     navigator.serviceWorker.addEventListener('controllerchange', async () => {
-        if (controllerChangeHandled) return;
-        controllerChangeHandled = true;
         try {
             await new Promise((r) => setTimeout(r, 1000));
             resetMessagingRegistration();
             const userId = document.querySelector('meta[name="user-id"]')?.getAttribute('content');
             if (userId && Notification.permission === 'granted') {
-                await syncPushTokenWithServer();
+                await syncPushTokenWithServer({ force: true });
             }
         } catch (e) {
             console.error('[App] Push re-init after controller change:', e);

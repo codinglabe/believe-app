@@ -247,6 +247,7 @@ class HandleInertiaRequests extends Middleware
                         'ownership_verified_at' => $user->ownership_verified_at,
                         'referral_link' => $user->referral_code ? url('/register?ref='.$user->referral_code) : null,
                         'push_token' => $user->push_token ?? null,
+                        'has_push_device' => $user->hasActivePushDevice(),
                         'timezone' => $user->timezone ?? 'UTC',
                         'care_alliance_wallet_eligible' => $user->careAllianceWalletEligible(),
                         'wallet_header_visible' => $user->walletHeaderVisible(),

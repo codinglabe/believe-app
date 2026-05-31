@@ -4,7 +4,7 @@ import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { type SharedData, type User } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
 import { HeartHandshake, LinkIcon, LogOut, Settings, CreditCard, Crown, Globe, Users } from 'lucide-react';
-import { type SupporterSubscriptionState } from '@/lib/supporter-pricing-display';
+import { prepareLogout } from '@/lib/logout';
 
 interface UserMenuContentProps {
     user: User;
@@ -38,8 +38,11 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
     const planManageHref = route('plans.index');
     const showViewPlans = !isAdmin && !hasActivePlan && (isSupporter || !(user as any).current_plan_id);
 
-    const handleLogout = () => {
+    const handleLogout = async (e: React.MouseEvent) => {
+        e.preventDefault();
         cleanup();
+        await prepareLogout();
+        router.post('/logout');
         router.flushAll();
     };
 

@@ -8,6 +8,7 @@ if (! defined('STDIN')) {
 
 use App\Http\Helpers\AuthRedirectHelper;
 use App\Http\Middleware\AllowDonateWidgetEmbed;
+use App\Http\Middleware\BarterNetworkAccess;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckRoleSimple;

@@ -1593,7 +1593,7 @@ class SupporterLivestreamController extends Controller
         if (LivestreamOverlayConfig::toVideoPayload($overlayConfig) === null) {
             return redirect()->route('livestreams.supporter.recordings')->with(
                 'error',
-                'Configure a logo or bottom banner in Overlay Studio first.',
+                'Configure a logo, speaker name, sponsor, or bottom banner in Overlay Studio first.',
             );
         }
 
