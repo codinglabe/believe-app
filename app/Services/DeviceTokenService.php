@@ -8,10 +8,21 @@ class DeviceTokenService
 {
     public function storeToken($userId, $token, $deviceInfo = [])
     {
+        $deviceId = $deviceInfo['device_id'] ?? md5($token);
+
+        // Deactivate duplicate rows that share the same FCM token under a different device_id.
+        UserPushToken::where('user_id', $userId)
+            ->where('push_token', $token)
+            ->where('device_id', '!=', $deviceId)
+            ->update([
+                'is_active' => false,
+                'status' => UserPushToken::STATUS_INVALID,
+            ]);
+
         return UserPushToken::updateOrCreate(
             [
                 'user_id' => $userId,
-                'device_id' => $deviceInfo['device_id'] ?? md5($token),
+                'device_id' => $deviceId,
             ],
             [
                 'push_token' => $token,
@@ -27,6 +38,24 @@ class DeviceTokenService
                 'last_used_at' => now(),
             ]
         );
+    }
+
+    public function removeDevice($userId, $deviceId)
+    {
+        return UserPushToken::where('user_id', $userId)
+            ->where('device_id', $deviceId)
+            ->delete();
+    }
+
+    public function syncLegacyPushToken($userId): void
+    {
+        $latest = UserPushToken::where('user_id', $userId)
+            ->where('is_active', true)
+            ->where('status', UserPushToken::STATUS_ACTIVE)
+            ->orderByDesc('last_used_at')
+            ->value('push_token');
+
+        \App\Models\User::where('id', $userId)->update(['push_token' => $latest]);
     }
 
     public function removeToken($userId, $token)

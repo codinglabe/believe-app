@@ -302,6 +302,8 @@ class FirebaseService
                 $record->last_error_at = now();
                 if (in_array($out['error_code'] ?? '', ['UNREGISTERED', 'NOT_FOUND'], true)) {
                     $record->status = UserPushToken::STATUS_INVALID;
+                    $record->is_active = false;
+                    $record->needs_reregister = true;
                 }
                 $record->save();
             }
@@ -313,6 +315,10 @@ class FirebaseService
             'total_tokens' => $records->count(),
             'success_count' => $successCount,
         ]);
+
+        if ($successCount === 0) {
+            app(DeviceTokenService::class)->syncLegacyPushToken($userId);
+        }
 
         return $results;
     }

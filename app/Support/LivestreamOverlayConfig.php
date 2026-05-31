@@ -24,6 +24,7 @@ class LivestreamOverlayConfig
             'enabled' => true,
             'accent_color' => self::DEFAULT_ACCENT,
             'logo_path' => null,
+            'speaker_name' => '',
             'banner_message' => '',
             'banner_cta' => '',
             'donation_message' => '',
@@ -114,11 +115,12 @@ class LivestreamOverlayConfig
         }
 
         $hasContent = self::hasLogo($config)
+            || trim((string) ($config['speaker_name'] ?? '')) !== ''
             || trim((string) ($config['banner_message'] ?? '')) !== ''
             || trim((string) ($config['banner_cta'] ?? '')) !== ''
             || trim((string) ($config['donation_message'] ?? '')) !== ''
             || trim((string) ($config['donation_cta'] ?? '')) !== ''
-            || ! empty($config['sponsor_image_path'])
+            || self::hasSponsor($config)
             || trim((string) ($config['scrolling_message'] ?? '')) !== ''
             || ! empty($config['qr_code_path']);
 
@@ -129,6 +131,7 @@ class LivestreamOverlayConfig
         return [
             'accentColor' => (string) ($config['accent_color'] ?? self::DEFAULT_ACCENT),
             'logoUrl' => self::publicUrl($config['logo_path'] ?? null),
+            'speakerName' => trim((string) ($config['speaker_name'] ?? '')),
             'bannerMessage' => trim((string) ($config['banner_message'] ?? '')),
             'bannerCta' => trim((string) ($config['banner_cta'] ?? '')),
             'donationMessage' => trim((string) ($config['donation_message'] ?? '')),
@@ -143,7 +146,7 @@ class LivestreamOverlayConfig
     }
 
     /**
-     * Minimal payload for recorded video branding (logo + bottom banner only).
+     * Payload for recorded video branding (logo, speaker, sponsor, bottom CTA banner).
      *
      * @param  array<string, mixed>  $config
      * @return array<string, mixed>|null
@@ -157,15 +160,23 @@ class LivestreamOverlayConfig
         $hasBanner = trim((string) ($config['banner_message'] ?? '')) !== ''
             || trim((string) ($config['banner_cta'] ?? '')) !== '';
 
-        if (! self::hasLogo($config) && ! $hasBanner) {
+        if (
+            ! self::hasLogo($config)
+            && ! $hasBanner
+            && ! self::hasSponsor($config)
+            && trim((string) ($config['speaker_name'] ?? '')) === ''
+        ) {
             return null;
         }
 
         return [
             'accentColor' => (string) ($config['accent_color'] ?? self::DEFAULT_ACCENT),
             'logoUrl' => self::publicUrl($config['logo_path'] ?? null),
+            'speakerName' => trim((string) ($config['speaker_name'] ?? '')),
             'bannerMessage' => trim((string) ($config['banner_message'] ?? '')),
             'bannerCta' => trim((string) ($config['banner_cta'] ?? '')),
+            'sponsorImageUrl' => self::publicUrl($config['sponsor_image_path'] ?? null),
+            'sponsorLabel' => trim((string) ($config['sponsor_label'] ?? '')),
         ];
     }
 
@@ -175,6 +186,16 @@ class LivestreamOverlayConfig
     public static function hasLogo(array $config): bool
     {
         $path = $config['logo_path'] ?? null;
+
+        return is_string($path) && $path !== '' && Storage::disk('public')->exists($path);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    public static function hasSponsor(array $config): bool
+    {
+        $path = $config['sponsor_image_path'] ?? null;
 
         return is_string($path) && $path !== '' && Storage::disk('public')->exists($path);
     }
@@ -223,6 +244,7 @@ class LivestreamOverlayConfig
             'accentColor' => (string) ($config['accent_color'] ?? self::DEFAULT_ACCENT),
             'logoUrl' => self::publicUrl($config['logo_path'] ?? null),
             'logoFromProfile' => (bool) ($config['logo_from_profile'] ?? false),
+            'speakerName' => (string) ($config['speaker_name'] ?? ''),
             'bannerMessage' => (string) ($config['banner_message'] ?? ''),
             'bannerCta' => (string) ($config['banner_cta'] ?? ''),
             'donationMessage' => (string) ($config['donation_message'] ?? ''),

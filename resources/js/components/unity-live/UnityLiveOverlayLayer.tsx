@@ -16,6 +16,7 @@ export default function UnityLiveOverlayLayer({ overlay, className, hideLiveBadg
     overlay.donationMessage.trim() !== "" || overlay.donationCta.trim() !== ""
   const showBottomBanner =
     overlay.bannerMessage.trim() !== "" || overlay.bannerCta.trim() !== ""
+  const showSpeaker = overlay.speakerName.trim() !== ""
   const showSponsor = Boolean(overlay.sponsorImageUrl)
   const showTicker = overlay.scrollingMessage.trim() !== ""
   const showQr = Boolean(overlay.qrCodeUrl)
@@ -52,6 +53,14 @@ export default function UnityLiveOverlayLayer({ overlay, className, hideLiveBadg
               <span className="ml-2 font-semibold text-yellow-300">👉 {overlay.donationCta}</span>
             ) : null}
           </p>
+        </div>
+      ) : null}
+
+      {showSpeaker ? (
+        <div className="absolute bottom-24 left-3 sm:bottom-28 sm:left-4">
+          <span className="inline-flex max-w-[min(100%,16rem)] items-center rounded-lg bg-black/60 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-sm sm:max-w-xs sm:text-base">
+            {overlay.speakerName}
+          </span>
         </div>
       ) : null}
 

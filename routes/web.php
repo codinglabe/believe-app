@@ -1349,6 +1349,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::post('/overlay-studio/sponsor', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationUploadSponsor'])->name('overlay-studio.upload-sponsor');
         Route::post('/overlay-studio/qr', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationUploadQr'])->name('overlay-studio.upload-qr');
         Route::delete('/overlay-studio/asset', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationRemoveAsset'])->name('overlay-studio.remove-asset');
+        Route::get('/recordings/branded-download', [SupporterLivestreamController::class, 'recordingBrandedDownload'])->name('recordings.branded-download');
         Route::get('/create', [LivestreamController::class, 'create'])->name('create');
         Route::post('/', [LivestreamController::class, 'store'])->name('store');
         Route::get('/{id}/ready', [LivestreamController::class, 'ready'])->name('ready');

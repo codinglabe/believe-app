@@ -70,16 +70,9 @@ export async function fetchServerAppVersion(): Promise<PwaVersionPayload | null>
   }
 }
 
-export function isVersionMismatch(localVersion: string | null, serverVersion: string): boolean {
-  if (!localVersion) {
-    return false
-  }
-
-  return localVersion !== serverVersion
-}
-
-export function serviceWorkerScriptUrl(version: string): string {
-  return `/firebase-messaging-sw.js?v=${encodeURIComponent(version)}`
+/** Fixed SW URL — version bumps live inside the SW file (CACHE_NAME), not the register URL. */
+export function serviceWorkerScriptUrl(_version?: string): string {
+  return "/firebase-messaging-sw.js"
 }
 
 export async function checkServiceWorkerUpdate(): Promise<ServiceWorkerRegistration | null> {
@@ -88,7 +81,10 @@ export async function checkServiceWorkerUpdate(): Promise<ServiceWorkerRegistrat
   }
 
   try {
-    const registration = await navigator.serviceWorker.ready
+    const registration = await navigator.serviceWorker.getRegistration("/")
+    if (!registration) {
+      return null
+    }
     await registration.update()
     return registration
   } catch {
@@ -98,40 +94,6 @@ export async function checkServiceWorkerUpdate(): Promise<ServiceWorkerRegistrat
 
 export function registrationHasWaitingWorker(registration: ServiceWorkerRegistration | null): boolean {
   return Boolean(registration?.waiting)
-}
-
-export function watchServiceWorkerInstall(
-  registration: ServiceWorkerRegistration,
-  onWaiting: (registration: ServiceWorkerRegistration) => void,
-): () => void {
-  const handleStateChange = (worker: ServiceWorker) => {
-    if (worker.state === "installed" && navigator.serviceWorker.controller) {
-      onWaiting(registration)
-    }
-  }
-
-  if (registration.waiting) {
-    onWaiting(registration)
-    return () => undefined
-  }
-
-  const installing = registration.installing
-  if (installing) {
-    installing.addEventListener("statechange", () => handleStateChange(installing))
-  }
-
-  const onUpdateFound = () => {
-    const worker = registration.installing || registration.waiting
-    if (worker) {
-      worker.addEventListener("statechange", () => handleStateChange(worker))
-    }
-  }
-
-  registration.addEventListener("updatefound", onUpdateFound)
-
-  return () => {
-    registration.removeEventListener("updatefound", onUpdateFound)
-  }
 }
 
 export async function activateWaitingServiceWorker(
@@ -161,7 +123,7 @@ export async function activateWaitingServiceWorker(
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange)
     waiting.postMessage({ type: "SKIP_WAITING" })
 
-    window.setTimeout(finish, 1500)
+    window.setTimeout(finish, 8000)
   })
 }
 
@@ -172,7 +134,15 @@ export function reloadForPwaUpdate(): void {
 }
 
 export function initStoredAppVersion(): void {
-  storeAppVersion(getClientAppVersion())
+  const stored = getStoredAppVersion()
+  if (!stored) {
+    storeAppVersion(getClientAppVersion())
+  }
+}
+
+export function markPwaUpdateComplete(version?: string | null): void {
+  const resolved = version || getClientAppVersion()
+  storeAppVersion(resolved)
 }
 
 export type PwaUpdateCheckResult = {
@@ -181,32 +151,65 @@ export type PwaUpdateCheckResult = {
   registration: ServiceWorkerRegistration | null
 }
 
+/**
+ * A deploy is "pending" only when the user has not acknowledged the current server version.
+ * Waiting service workers alone do NOT count — that caused the reload popup loop.
+ */
+export function isDeployPending(stored: string | null, serverVersion: string | null): boolean {
+  if (!serverVersion) {
+    return false
+  }
+
+  if (!stored) {
+    return false
+  }
+
+  return stored !== serverVersion
+}
+
 export async function runPwaUpdateCheck(): Promise<PwaUpdateCheckResult> {
+  if (import.meta.env.DEV) {
+    return { serverVersion: null, updateAvailable: false, registration: null }
+  }
+
   const server = await fetchServerAppVersion()
   const stored = getStoredAppVersion()
-  const client = getClientAppVersion()
   const registration = await checkServiceWorkerUpdate()
 
   const serverVersion = server?.version ?? null
-  const versionChanged =
-    (serverVersion !== null && isVersionMismatch(stored, serverVersion)) ||
-    (serverVersion !== null && isVersionMismatch(client, serverVersion))
-
-  const swWaiting = registrationHasWaitingWorker(registration)
+  const updateAvailable = isDeployPending(stored, serverVersion)
 
   return {
     serverVersion,
-    updateAvailable: versionChanged || swWaiting,
+    updateAvailable,
     registration,
   }
 }
 
+/**
+ * User already acknowledged this deploy — activate any waiting worker silently (no popup).
+ */
+export async function silentlyActivateIfAcknowledged(): Promise<void> {
+  if (import.meta.env.DEV || typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return
+  }
+
+  const server = await fetchServerAppVersion()
+  const stored = getStoredAppVersion()
+  if (!server?.version || !stored || stored !== server.version) {
+    return
+  }
+
+  const registration = await navigator.serviceWorker.getRegistration("/")
+  if (!registration?.waiting) {
+    return
+  }
+
+  await activateWaitingServiceWorker(registration)
+}
+
 export function startPwaUpdateListeners(onUpdate: () => void): () => void {
   const run = () => {
-    if (!isStandalonePwa()) {
-      return
-    }
-
     void runPwaUpdateCheck().then((result) => {
       if (result.updateAvailable) {
         onUpdate()
@@ -222,20 +225,9 @@ export function startPwaUpdateListeners(onUpdate: () => void): () => void {
     }
   }
 
-  const onFocus = () => run()
-  const onPageShow = (event: PageTransitionEvent) => {
-    if (event.persisted) {
-      run()
-    }
-  }
-
   document.addEventListener("visibilitychange", onVisible)
-  window.addEventListener("focus", onFocus)
-  window.addEventListener("pageshow", onPageShow)
 
   return () => {
     document.removeEventListener("visibilitychange", onVisible)
-    window.removeEventListener("focus", onFocus)
-    window.removeEventListener("pageshow", onPageShow)
   }
 }

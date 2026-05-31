@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
 
 /**
- * Burn logo + bottom CTA banner into recorded Unity Live clips (FFmpeg).
+ * Burn Unity Live overlay branding into recorded clips (FFmpeg).
+ * Logo, speaker lower-third, sponsor, and bottom CTA banner.
  */
 class LivestreamVideoOverlayService
 {
@@ -17,7 +18,7 @@ class LivestreamVideoOverlayService
     }
 
     /**
-     * Apply logo (top-right) and bottom banner to a local video file.
+     * Apply overlay branding to a local video file.
      *
      * @param  array<string, mixed>  $overlayConfig  Raw overlay settings from LivestreamOverlayConfig
      * @return string|null Absolute path to branded output temp file (caller must unlink)
@@ -40,19 +41,28 @@ class LivestreamVideoOverlayService
         }
         $outputPath .= '.mp4';
 
-        $logoPath = $this->resolveLocalLogoPath($overlayConfig);
-        $filters = $this->buildFilterComplex($payload, $logoPath);
+        $logoPath = $this->resolveLocalAssetPath($overlayConfig['logo_path'] ?? null);
+        $sponsorPath = $this->resolveLocalAssetPath($overlayConfig['sponsor_image_path'] ?? null);
 
-        $args = [
-            $ffmpeg,
-            '-y',
-            '-i', $inputPath,
-        ];
+        $args = [$ffmpeg, '-y', '-i', $inputPath];
+        $logoInputIndex = null;
+        $sponsorInputIndex = null;
+        $nextInput = 1;
 
         if ($logoPath !== null) {
             $args[] = '-i';
             $args[] = $logoPath;
+            $logoInputIndex = $nextInput;
+            $nextInput++;
         }
+
+        if ($sponsorPath !== null) {
+            $args[] = '-i';
+            $args[] = $sponsorPath;
+            $sponsorInputIndex = $nextInput;
+        }
+
+        $filters = $this->buildFilterComplex($payload, $logoInputIndex, $sponsorInputIndex);
 
         $args = array_merge($args, [
             '-filter_complex', $filters,
@@ -93,19 +103,21 @@ class LivestreamVideoOverlayService
     /**
      * @param  array<string, mixed>  $payload
      */
-    protected function buildFilterComplex(array $payload, ?string $logoPath): string
+    protected function buildFilterComplex(array $payload, ?int $logoInputIndex, ?int $sponsorInputIndex): string
     {
         $bannerMessage = $this->escapeDrawtext((string) ($payload['bannerMessage'] ?? ''));
         $bannerCta = $this->escapeDrawtext((string) ($payload['bannerCta'] ?? ''));
+        $speakerName = $this->escapeDrawtext((string) ($payload['speakerName'] ?? ''));
         $accent = ltrim((string) ($payload['accentColor'] ?? LivestreamOverlayConfig::DEFAULT_ACCENT), '#');
 
         $parts = ['[0:v]format=rgba[base]'];
         $current = 'base';
 
-        if ($logoPath !== null) {
+        if ($logoInputIndex !== null) {
             $margin = 24;
             $parts[] = sprintf(
-                '[1:v][%s]scale2ref=w=rw*0.12:h=-1[logo][%s2];[%s2][logo]overlay=W-w-%d:%d:format=auto[%s3]',
+                '[%d:v][%s]scale2ref=w=rw*0.12:h=-1[logo][%s2];[%s2][logo]overlay=W-w-%d:%d:format=auto[%s3]',
+                $logoInputIndex,
                 $current,
                 $current,
                 $current,
@@ -116,10 +128,37 @@ class LivestreamVideoOverlayService
             $current .= '3';
         }
 
+        if ($sponsorInputIndex !== null) {
+            $parts[] = sprintf(
+                '[%d:v]scale=w=iw*0.35:-1[sponsor_scaled]',
+                $sponsorInputIndex,
+            );
+            $parts[] = sprintf(
+                '[%s][sponsor_scaled]overlay=(W-w)/2:H-h-160:format=auto[%s_sponsor]',
+                $current,
+                $current,
+            );
+            $current .= '_sponsor';
+        }
+
         $hasBanner = $bannerMessage !== '' || $bannerCta !== '';
+        $bannerHeight = 72;
+        $speakerOffset = $hasBanner ? $bannerHeight + 16 : 24;
+
+        if ($speakerName !== '') {
+            $parts[] = sprintf(
+                '[%s]drawtext=text=\'%s\':fontsize=22:fontcolor=white:x=24:y=h-%d:box=1:boxcolor=black@0.55:boxborderw=8[%s_sp]',
+                $current,
+                $speakerName,
+                $speakerOffset + 28,
+                $current,
+            );
+            $current .= '_sp';
+        }
+
         if ($hasBanner) {
             $boxColor = '0x'.$accent.'@0.92';
-            $parts[] = sprintf('[%s]drawbox=x=0:y=ih-72:w=iw:h=72:color=%s:t=fill[%s_b]', $current, $boxColor, $current);
+            $parts[] = sprintf('[%s]drawbox=x=0:y=ih-%d:w=iw:h=%d:color=%s:t=fill[%s_b]', $current, $bannerHeight, $bannerHeight, $boxColor, $current);
 
             $textParts = [];
             if ($bannerMessage !== '') {
@@ -145,12 +184,8 @@ class LivestreamVideoOverlayService
         return implode(';', $parts);
     }
 
-    /**
-     * @param  array<string, mixed>  $config
-     */
-    protected function resolveLocalLogoPath(array $config): ?string
+    protected function resolveLocalAssetPath(mixed $path): ?string
     {
-        $path = $config['logo_path'] ?? null;
         if (! is_string($path) || $path === '') {
             return null;
         }
@@ -162,9 +197,7 @@ class LivestreamVideoOverlayService
 
     protected function escapeDrawtext(string $text): string
     {
-        $text = str_replace(['\\', "'", ':', '%'], ['\\\\', "\\'", '\\:', '\\%'], $text);
-
-        return $text;
+        return str_replace(['\\', "'", ':', '%'], ['\\\\', "\\'", '\\:', '\\%'], $text);
     }
 
     protected function findFfmpeg(): ?string

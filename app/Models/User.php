@@ -634,9 +634,17 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     // Notification preferences
+    public function hasActivePushDevice(): bool
+    {
+        return $this->pushTokens()
+            ->where('is_active', true)
+            ->where('status', UserPushToken::STATUS_ACTIVE)
+            ->exists();
+    }
+
     public function shouldReceivePush()
     {
-        return ! empty($this->push_token) && $this->login_status;
+        return $this->login_status && $this->hasActivePushDevice();
     }
 
     public function shouldReceiveWhatsApp()

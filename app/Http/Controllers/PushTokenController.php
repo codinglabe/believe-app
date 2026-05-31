@@ -16,24 +16,20 @@ class PushTokenController extends Controller
     {
         $request->validate([
             'token' => 'required|string',
-            'device_info' => 'sometimes|array'
+            'device_info' => 'sometimes|array',
         ]);
 
         try {
             $user = Auth::user();
 
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            // Update user's push token
-            // $user->update([
-            //     'push_token' => $request->token,
-            // ]);
-
             $deviceInfo = $request->device_info ?? [];
+            $deviceTokenService = app(DeviceTokenService::class);
 
-            app(DeviceTokenService::class)->storeToken(
+            $deviceTokenService->storeToken(
                 $user->id,
                 $request->token,
                 $deviceInfo
@@ -44,15 +40,18 @@ class PushTokenController extends Controller
 
             Log::info('Push token updated', [
                 'user_id' => $user->id,
-                'token' => substr($request->token, 0, 20) . '...',
+                'device_id' => $deviceInfo['device_id'] ?? null,
+                'token' => substr($request->token, 0, 20).'...',
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Push token saved successfully',
+                'has_push_device' => true,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving push token: ' . $e->getMessage());
+            Log::error('Error saving push token: '.$e->getMessage());
+
             return response()->json([
                 'error' => 'Failed to save push token',
             ], 500);
@@ -60,34 +59,43 @@ class PushTokenController extends Controller
     }
 
     /**
-     * Delete push token (user opted out)
+     * Remove push token for the current device (user opted out or logging out)
      */
-    // public function destroy(Request $request)
-    // {
-    //     try {
-    //         $user = Auth::user();
+    public function destroy(Request $request)
+    {
+        try {
+            $user = Auth::user();
 
-    //         if (!$user) {
-    //             return response()->json(['error' => 'Unauthorized'], 401);
-    //         }
+            if (! $user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
 
-    //         $user->update([
-    //             'push_token' => null,
-    //         ]);
+            $deviceInfo = $request->device_info ?? [];
+            $deviceId = $request->input('device_id') ?? ($deviceInfo['device_id'] ?? null);
 
-    //         Log::info('Push token deleted', ['user_id' => $user->id]);
+            if (! $deviceId) {
+                return response()->json(['error' => 'device_id is required'], 422);
+            }
 
-    //         app(DeviceTokenService::class)->removeToken($user->id, $token);
+            $deviceTokenService = app(DeviceTokenService::class);
+            $deviceTokenService->removeDevice($user->id, $deviceId);
+            $deviceTokenService->syncLegacyPushToken($user->id);
 
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => 'Push token removed',
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         Log::error('Error deleting push token: ' . $e->getMessage());
-    //         return response()->json([
-    //             'error' => 'Failed to delete push token',
-    //         ], 500);
-    //     }
-    // }
+            Log::info('Push token removed for device', [
+                'user_id' => $user->id,
+                'device_id' => $deviceId,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Push token removed',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error deleting push token: '.$e->getMessage());
+
+            return response()->json([
+                'error' => 'Failed to delete push token',
+            ], 500);
+        }
+    }
 }
