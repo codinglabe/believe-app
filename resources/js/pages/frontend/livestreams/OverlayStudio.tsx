@@ -9,7 +9,7 @@ import UnityLiveVideoOverlayLayer from "@/components/unity-live/UnityLiveVideoOv
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { Switch } from "@/components/frontend/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   OVERLAY_CTA_PRESETS,
