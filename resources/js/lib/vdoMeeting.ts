@@ -34,3 +34,27 @@ export function applyVdoGroupRoomPresentation(url: URL): void {
     url.searchParams.set("showall", "")
   }
 }
+
+/**
+ * Strip VDO.Ninja chrome so BIU owns participant list and meeting actions.
+ * Video transport only — guest list, menu, and settings stay in our UI.
+ */
+export function applyVdoMinimalHostUi(url: URL): void {
+  applyVdoGroupRoomPresentation(url)
+  url.searchParams.set("showlist", "0")
+  url.searchParams.set("hidemenu", "")
+  url.searchParams.set("hideheader", "")
+  url.searchParams.set("nosettings", "")
+  url.searchParams.set("nohangupbutton", "")
+  if (!url.searchParams.has("noheader")) {
+    url.searchParams.set("noheader", "")
+  }
+}
+
+/** Bust VDO sticky session when starting a new meeting round. */
+export function applyVdoMeetingSession(url: URL, sessionKey: number): void {
+  if (sessionKey > 0) {
+    url.searchParams.set("sess", String(sessionKey))
+    url.searchParams.set("clearstorage", "")
+  }
+}

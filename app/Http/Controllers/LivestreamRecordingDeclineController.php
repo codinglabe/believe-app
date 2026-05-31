@@ -54,6 +54,8 @@ class LivestreamRecordingDeclineController extends Controller
             'guest_label' => $validated['guest_label'] ? trim((string) $validated['guest_label']) : null,
         ]);
 
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'recording_consent_declined');
+
         $msg = __('You chose not to join a recorded meeting. The host has been notified.');
         $returnTo = isset($validated['return_to']) && is_string($validated['return_to']) && $validated['return_to'] !== ''
             ? $validated['return_to']

@@ -284,6 +284,7 @@ class LivestreamController extends Controller
 
         return Inertia::render('Organization/Livestreams/Show', [
             'recordingConsentDeclines' => $recordingConsentDeclines,
+            'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($livestream),
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,

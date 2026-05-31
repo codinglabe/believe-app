@@ -74,6 +74,40 @@ async function requestCameraAndMicrophone(): Promise<boolean> {
   }
 }
 
+function isVdoDisconnectMessage(data: unknown): boolean {
+  if (!data || typeof data !== "object") {
+    return false
+  }
+
+  const payload = data as { action?: string; value?: unknown; close?: unknown; hangup?: unknown }
+
+  if (payload.close === true || payload.hangup === true) {
+    return true
+  }
+
+  if (payload.action === "push-connection" && payload.value === false) {
+    return true
+  }
+
+  if (payload.action === "hangup" || payload.action === "disconnected") {
+    return true
+  }
+
+  return false
+}
+
+function closeVdoSession(frameWindow: Window | null | undefined): void {
+  if (!frameWindow) {
+    return
+  }
+
+  try {
+    frameWindow.postMessage({ close: "estop" }, "*")
+  } catch {
+    // iframe may already be gone
+  }
+}
+
 function isVdoReadyMessage(data: unknown): boolean {
   if (!data || typeof data !== "object") {
     return false
@@ -105,6 +139,9 @@ type VdoMeetingIframeProps = {
   className?: string
   allow?: string
   showLogoOverlay?: boolean
+  /** When false, tear down the iframe immediately (avoids VDO reconnect / Refresh UI). */
+  active?: boolean
+  onDisconnected?: () => void
 }
 
 export default function VdoMeetingIframe({
@@ -113,9 +150,12 @@ export default function VdoMeetingIframe({
   className = "absolute inset-0 z-[1] h-full w-full border-0 bg-black",
   allow = VDO_IFRAME_ALLOW,
   showLogoOverlay = true,
+  active = true,
+  onDisconnected,
 }: VdoMeetingIframeProps) {
   const meetingSrc = useMemo(() => normalizeMeetingSrc(src), [src])
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const wasConnectedRef = useRef(false)
   const [mediaAccess, setMediaAccess] = useState<MediaAccessState>("checking")
   const [isRequestingAccess, setIsRequestingAccess] = useState(false)
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
@@ -178,19 +218,33 @@ export default function VdoMeetingIframe({
   }, [meetingSrc])
 
   useEffect(() => {
+    wasConnectedRef.current = false
+  }, [meetingSrc, active])
+
+  useEffect(() => {
+    if (active) {
+      return
+    }
+
+    closeVdoSession(iframeRef.current?.contentWindow ?? null)
+    setIframeSrc(null)
+    setVdoSessionReady(false)
+  }, [active])
+
+  useEffect(() => {
     setVdoSessionReady(false)
     setIframeSrc(null)
 
-    if (mediaAccess !== "granted") {
+    if (mediaAccess !== "granted" || !active) {
       return
     }
 
     const deferId = window.setTimeout(() => setIframeSrc(meetingSrc), 0)
     return () => window.clearTimeout(deferId)
-  }, [mediaAccess, meetingSrc])
+  }, [mediaAccess, meetingSrc, active])
 
   useEffect(() => {
-    if (!iframeSrc) {
+    if (!iframeSrc || !active) {
       return
     }
 
@@ -205,13 +259,22 @@ export default function VdoMeetingIframe({
       }
 
       if (isVdoReadyMessage(event.data)) {
+        wasConnectedRef.current = true
         setVdoSessionReady(true)
+        return
+      }
+
+      if (wasConnectedRef.current && isVdoDisconnectMessage(event.data)) {
+        closeVdoSession(frameWindow)
+        setIframeSrc(null)
+        setVdoSessionReady(false)
+        onDisconnected?.()
       }
     }
 
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
-  }, [iframeSrc])
+  }, [iframeSrc, active, onDisconnected])
 
   const handleAllowAccess = useCallback(async () => {
     setIsRequestingAccess(true)
@@ -232,7 +295,11 @@ export default function VdoMeetingIframe({
     void handleAllowAccess()
   }, [handleAllowAccess])
 
-  const showMeeting = mediaAccess === "granted" && vdoSessionReady
+  const showMeeting = active && mediaAccess === "granted" && vdoSessionReady
+
+  if (!active) {
+    return <div className="absolute inset-0 min-h-0 min-w-0 bg-black" aria-hidden />
+  }
 
   return (
     <div className="absolute inset-0 min-h-0 min-w-0">

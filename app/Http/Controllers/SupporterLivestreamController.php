@@ -14,6 +14,7 @@ use App\Services\Streaming\StreamingPreflight;
 use App\Services\Streaming\StreamingQueueService;
 use App\Support\EmailPackageCatalog;
 use App\Support\LivestreamParticipantEmails;
+use App\Support\LivestreamParticipantRoster;
 use App\Support\MeetingRecordingPreference;
 use App\Support\UnityMeetInviteNotifyVia;
 use App\Support\UserEmailCredits;
@@ -644,7 +645,7 @@ class SupporterLivestreamController extends Controller
 
         $vdoRoom = $livestream->getVdoRoomName();
         $passwordParam = $password !== '' ? '&password=' . rawurlencode($password) : '';
-        $settings = $livestream->settings ?? [];
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
         $displayName = $settings['display_name'] ?? $request->user()->name ?? 'Host';
         $participantEmails = LivestreamParticipantEmails::fromSettings(is_array($settings) ? $settings : null);
         $directorLabel = '&label=' . rawurlencode($displayName);
@@ -681,6 +682,9 @@ class SupporterLivestreamController extends Controller
         return Inertia::render('frontend/livestreams/Show', [
             'recordingConsentDeclines' => $recordingConsentDeclines,
             'emailCredits' => UserEmailCredits::stats($request->user()),
+            'authUserId' => $authUser->id,
+            'participantRoster' => LivestreamParticipantRoster::forUserLivestream($livestream),
+            'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($livestream),
             ...$this->emailPurchaseProps(),
             'livestream' => [
                 'id' => $livestream->id,
@@ -706,6 +710,7 @@ class SupporterLivestreamController extends Controller
                 'status' => $livestream->status,
                 'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
                 'participantEmails' => $participantEmails,
+                'meetingSessionKey' => (int) ($settings['meeting_session'] ?? 0),
                 'startedAt' => $livestream->started_at?->toIso8601String(),
                 'endedAt' => $livestream->ended_at?->toIso8601String(),
                 'canStartMeeting' => $livestream->canStartMeeting(),
@@ -745,12 +750,54 @@ class SupporterLivestreamController extends Controller
             return redirect()->back()->withErrors(['error' => 'Meeting cannot be started in current state.']);
         }
 
-        $livestream->update(['status' => 'meeting_live']);
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $settings['meeting_session'] = (int) ($settings['meeting_session'] ?? 0) + 1;
+
+        $livestream->update([
+            'status' => 'meeting_live',
+            'settings' => $settings !== [] ? $settings : null,
+        ]);
 
         $livestream->refresh();
         \App\Support\UnityLiveBroadcast::notifyMeetingStarted($livestream);
 
-        return redirect()->back()->with('success', 'Meeting started. Share the invite link, then click Go Live when ready.');
+        return redirect()->route('livestreams.supporter.show', $id)->with('success', 'Meeting started. Share the invite link, then click Go Live when ready.');
+    }
+
+    /**
+     * Fully end the meeting — tear down VDO session, stop relays, return to draft.
+     */
+    public function endMeeting(
+        Request $request,
+        int $id,
+        YouTubeService $youtubeService,
+        LivestreamHostAbandonService $abandonService,
+    ): RedirectResponse {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        if (in_array($livestream->status, ['live', 'meeting_live', 'starting'], true)) {
+            $accessToken = $this->resolveYouTubeAccessToken($request, $youtubeService);
+            $abandonService->abandonUserStream($livestream, $accessToken, $youtubeService);
+            $livestream->refresh();
+        }
+
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $settings['meeting_session'] = (int) ($settings['meeting_session'] ?? 0) + 1;
+        unset($settings['stream_stop_requested'], $settings['host_abandoned_at']);
+
+        $livestream->update([
+            'status' => 'draft',
+            'settings' => $settings !== [] ? $settings : null,
+            'ended_at' => $livestream->ended_at ?? now(),
+        ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'meeting_ended');
+
+        return redirect()->back()->with(
+            'success',
+            'Meeting ended. Click Start meeting when you want to open the room again.'
+        );
     }
 
     public function setLive(Request $request, int $id): RedirectResponse
@@ -967,6 +1014,9 @@ class SupporterLivestreamController extends Controller
         $livestream->update([
             'settings' => $settings !== [] ? $settings : null,
         ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'participant_invited');
 
         $this->dispatchParticipantInvitation($livestream, $email, $notifyVia);
 

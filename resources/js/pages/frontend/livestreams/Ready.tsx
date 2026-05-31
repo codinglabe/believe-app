@@ -62,6 +62,7 @@ export default function SupporterReady({
   const [invitingParticipant, setInvitingParticipant] = useState(false)
   const [resendingEmail, setResendingEmail] = useState<string | null>(null)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
+  const [startingMeeting, setStartingMeeting] = useState(false)
   const [inviteNotifyVia, setInviteNotifyVia] = useState<UnityMeetInviteChannel>("both")
   const isScheduled = livestream.status === "scheduled"
   const invitedCount = livestream.participantEmails?.length ?? 0
@@ -378,16 +379,22 @@ export default function SupporterReady({
           </Card>
 
           <div className="flex flex-col gap-3">
-            <Link href={`/livestreams/supporter/${livestream.id}`} className="block w-full">
-              <Button
-                size="lg"
-                className="h-12 w-full text-base font-semibold text-white"
-                style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
-              >
-                <Play className="mr-2 h-5 w-5" />
-                Start meeting
-              </Button>
-            </Link>
+            <Button
+              type="button"
+              size="lg"
+              className="h-12 w-full text-base font-semibold text-white"
+              style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+              disabled={startingMeeting}
+              onClick={() => {
+                setStartingMeeting(true)
+                router.post(route("livestreams.supporter.start-meeting", livestream.id), {}, {
+                  onFinish: () => setStartingMeeting(false),
+                })
+              }}
+            >
+              <Play className="mr-2 h-5 w-5" />
+              {startingMeeting ? "Starting…" : "Start meeting"}
+            </Button>
             <Button
               type="button"
               variant="outline"
