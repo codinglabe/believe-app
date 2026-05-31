@@ -31,6 +31,7 @@ import {
 import { Switch } from "@/components/admin/ui/switch"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
+import { useAutoStopLivestreamOnLeave } from "@/hooks/useAutoStopLivestreamOnLeave"
 import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
@@ -212,6 +213,12 @@ export default function SupporterShowLivestream({
   const [resendingEmail, setResendingEmail] = useState<string | null>(null)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const [inviteNotifyVia, setInviteNotifyVia] = useState<UnityMeetInviteChannel>("both")
+
+  useAutoStopLivestreamOnLeave({
+    livestreamId: livestream.id,
+    status: livestream.status,
+    stopUrl: route("livestreams.supporter.abandon-host-session", livestream.id),
+  })
 
   const canInviteParticipants = !["ended", "cancelled"].includes(livestream.status)
   const invitedCount = livestream.participantEmails?.length ?? 0

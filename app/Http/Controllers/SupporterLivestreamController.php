@@ -21,11 +21,13 @@ use App\Support\StreamingWorkerSourceUrl;
 use App\Services\DropboxOAuthService;
 use App\Services\UnityMeetBiuNotifier;
 use App\Services\DropboxOrgApi;
+use App\Services\LivestreamHostAbandonService;
 use App\Services\RecordingYoutubePublishService;
 use App\Services\YouTubeService;
 use App\Services\LivestreamVideoOverlayService;
 use App\Support\LivestreamOverlayConfig;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -773,7 +775,7 @@ class SupporterLivestreamController extends Controller
 
         $livestream->update([
             'status' => 'live',
-            'started_at' => $livestream->started_at ?? now(),
+            'started_at' => now(),
         ]);
 
         $livestream->refresh();
@@ -815,6 +817,22 @@ class SupporterLivestreamController extends Controller
             'success',
             'Removed from Unity Live. Your meeting is still open for guests.'
         );
+    }
+
+    /**
+     * Host closed the meeting tab or navigated away — stop stream without a full form POST.
+     */
+    public function abandonHostSession(
+        Request $request,
+        int $id,
+        YouTubeService $youtubeService,
+        LivestreamHostAbandonService $abandonService,
+    ): JsonResponse {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+        $accessToken = $this->resolveYouTubeAccessToken($request, $youtubeService);
+        $abandonService->abandonUserStream($livestream, $accessToken, $youtubeService);
+
+        return response()->json(['ok' => true]);
     }
 
     public function edit(Request $request, int $id): Response

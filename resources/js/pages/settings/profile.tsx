@@ -108,7 +108,13 @@ export default function ProfileEdit({
   const [isUploading, setIsUploading] = useState(false)
   const [photoError, setPhotoError] = useState<string>("")
   const [photoSuccess, setPhotoSuccess] = useState<string>("")
-  const [currentPhotoUrl, setCurrentPhotoUrl] = useState(auth.user.image)
+  const isOrganizationProfile = profileSettingsVariant === "organization"
+  const orgLogoUrl =
+    (auth.user as { organization?: { registered_user_image?: string | null } })?.organization
+      ?.registered_user_image ?? null
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState(
+    isOrganizationProfile && orgLogoUrl ? orgLogoUrl : auth.user.image,
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Cover photo upload states
@@ -667,20 +673,36 @@ const getCroppedImage = async (
             </CardContent>
           </Card>
         )}
-          {/* Profile Photo Section */}
+          {/* Profile / organization logo */}
           <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
                 <Camera className="h-5 w-5 text-purple-500" />
-                Profile Photo
+                {isOrganizationProfile ? "Organization logo" : "Profile Photo"}
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {isOrganizationProfile && !currentPhotoUrl ? (
+                <Alert className="mb-4 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800 dark:text-amber-200">
+                    Upload your organization logo so it appears on Unity Live overlays and your public profile.
+                    You can also customize CTAs in{" "}
+                    <a href="/livestreams/overlay-studio" className="font-medium underline">
+                      Overlay Studio
+                    </a>
+                    .
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <div className="flex flex-col sm:flex-row items-center gap-6">
                 {/* Current Avatar */}
                 <div className="relative">
                   <Avatar className="w-24 h-24 border-4 border-gray-200 dark:border-gray-600 shadow-lg">
-                    <AvatarImage src={currentPhotoUrl || "/placeholder.svg"} alt="Profile" />
+                    <AvatarImage
+                      src={currentPhotoUrl || "/placeholder.svg"}
+                      alt={isOrganizationProfile ? "Organization logo" : "Profile"}
+                    />
                     <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-2xl font-semibold">
                       {auth.user.name?.charAt(0) || "U"}
                     </AvatarFallback>
@@ -689,9 +711,13 @@ const getCroppedImage = async (
 
                 {/* Upload Controls */}
                 <div className="flex-1 text-center sm:text-left">
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Update your profile photo</h3>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {isOrganizationProfile ? "Update your organization logo" : "Update your profile photo"}
+                  </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Upload a new photo or remove your current one. Recommended size: 400x400px.
+                    {isOrganizationProfile
+                      ? "This logo is shown on Unity Live stream overlays, your nonprofit profile, and donation pages. Recommended: square PNG or JPG, at least 400×400px."
+                      : "Upload a new photo or remove your current one. Recommended size: 400x400px."}
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-3">
@@ -699,13 +725,15 @@ const getCroppedImage = async (
                       <DialogTrigger asChild>
                         <Button variant="outline" className="flex items-center gap-2 bg-transparent">
                           <Upload className="h-4 w-4" />
-                          Upload New Photo
+                          {isOrganizationProfile ? "Upload logo" : "Upload New Photo"}
                         </Button>
                       </DialogTrigger>
 
                       <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                          <DialogTitle>Update Profile Photo</DialogTitle>
+                          <DialogTitle>
+                            {isOrganizationProfile ? "Update organization logo" : "Update Profile Photo"}
+                          </DialogTitle>
                         </DialogHeader>
 
                         <div className="space-y-4">
