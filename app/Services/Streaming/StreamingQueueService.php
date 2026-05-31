@@ -234,6 +234,8 @@ class StreamingQueueService
                 'settings' => $settings ?: null,
             ]);
 
+            \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'streaming_starting');
+
             return;
         }
 
@@ -287,6 +289,7 @@ class StreamingQueueService
 
         if ($status === 'failed') {
             $livestream->update(['status' => 'meeting_live']);
+            \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'streaming_failed');
         }
     }
 

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from "react"
-import { router } from "@inertiajs/react"
 
 const ACTIVE_HOST_STATUSES = new Set(["live", "meeting_live", "starting"])
 
@@ -38,8 +37,11 @@ type Options = {
 }
 
 /**
- * When the host leaves the meeting page (Inertia navigation) or closes the tab,
- * automatically stop Unity Live / YouTube relay — same as End stream, fire-and-forget.
+ * When the host closes the tab or browser (pagehide), stop Unity Live / YouTube relay.
+ *
+ * Does NOT run on Inertia navigation (sidebar links, tab switches) or same-page
+ * router.reload() polling — those were incorrectly ending active meetings.
+ * Use the explicit End meeting button when finishing a session.
  */
 export function useAutoStopLivestreamOnLeave({
   livestreamId,
@@ -70,13 +72,8 @@ export function useAutoStopLivestreamOnLeave({
     const onPageHide = () => sendStop()
     window.addEventListener("pagehide", onPageHide)
 
-    const removeBefore = router.on("before", () => {
-      sendStop()
-    })
-
     return () => {
       window.removeEventListener("pagehide", onPageHide)
-      removeBefore()
     }
   }, [active, sendStop])
 }

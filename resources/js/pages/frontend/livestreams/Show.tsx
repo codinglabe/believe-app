@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,7 @@ import { Switch } from "@/components/admin/ui/switch"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { useAutoStopLivestreamOnLeave } from "@/hooks/useAutoStopLivestreamOnLeave"
+import { useUnityMeetHostRealtime } from "@/hooks/useUnityMeetHostRealtime"
 import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
@@ -44,7 +45,6 @@ import {
   CheckCircle2,
   ArrowLeft,
   MoreVertical,
-  Maximize2,
   Radio,
   Globe,
   Youtube,
@@ -57,6 +57,8 @@ import {
   Users,
   X,
   Send,
+  Play,
+  PhoneOff,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
@@ -65,7 +67,14 @@ import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeeting
 import UnityMeetInviteChannelPicker, {
   type UnityMeetInviteChannel,
 } from "@/components/meeting/UnityMeetInviteChannelPicker"
-import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
+import UnityMeetParticipantPanel, {
+  type UnityMeetParticipant,
+} from "@/components/meeting/UnityMeetParticipantPanel"
+import UnityMeetGiftDialog, {
+  type GiftOccasionOption,
+} from "@/components/meeting/UnityMeetGiftDialog"
+import UnityMeetGiftCelebrationLayer from "@/components/meeting/UnityMeetGiftCelebrationLayer"
+import { applyVdoMinimalHostUi, applyVdoMeetingSession } from "@/lib/vdoMeeting"
 import {
   canEndYoutubeLive,
   isStreamRelayInProgress,
@@ -101,6 +110,7 @@ interface Livestream {
   status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
   scheduledAt: string | null
   participantEmails?: string[]
+  meetingSessionKey?: number
   startedAt: string | null
   endedAt: string | null
   isPublic?: boolean
@@ -151,6 +161,11 @@ interface EmailCredits {
 interface Props {
   livestream: Livestream
   recordingConsentDeclines: RecordingConsentDecline[]
+  participantRoster?: UnityMeetParticipant[]
+  authUserId?: number
+  broadcastChannel?: string
+  giftOccasions?: GiftOccasionOption[]
+  senderGiftBalances?: { purchased_believe_points: number }
   emailCredits?: EmailCredits
   emailPackages?: EmailPackageOption[]
   stripeMinCheckoutUsd?: number
@@ -165,12 +180,28 @@ function formatDeclineTime(iso: string | null): string {
 }
 
 export default function SupporterShowLivestream({
-  livestream,
-  recordingConsentDeclines,
+  livestream: initialLivestream,
+  recordingConsentDeclines: initialRecordingConsentDeclines,
+  participantRoster: initialParticipantRoster = [],
+  authUserId = 0,
+  broadcastChannel,
+  giftOccasions = [],
+  senderGiftBalances = { purchased_believe_points: 0 },
   emailCredits,
   emailPackages = [],
   stripeMinCheckoutUsd = 0.5,
 }: Props) {
+  const {
+    livestream,
+    recordingConsentDeclines,
+    participantRoster,
+  } = useUnityMeetHostRealtime({
+    broadcastChannel,
+    livestream: initialLivestream,
+    recordingConsentDeclines: initialRecordingConsentDeclines,
+    participantRoster: initialParticipantRoster,
+  })
+
   const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]>; success?: string }>()
   const prepareYoutubeError = inertiaProps.errors?.youtube
   const prepareYoutubeErrorText = Array.isArray(prepareYoutubeError)
@@ -191,12 +222,33 @@ export default function SupporterShowLivestream({
   const [infoOpen, setInfoOpen] = useState(false)
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
+  const [isStartingMeeting, setIsStartingMeeting] = useState(false)
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false)
+  const [participantsPanelOpen, setParticipantsPanelOpen] = useState(true)
+  const [participantsMobileOpen, setParticipantsMobileOpen] = useState(false)
+  const [giftRecipient, setGiftRecipient] = useState<UnityMeetParticipant | null>(null)
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false)
+  const [vdoVideoActive, setVdoVideoActive] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("meeting-info")
+
+  const isMeetingActive = ["meeting_live", "live", "starting"].includes(livestream.status)
+  const canStartMeeting = Boolean(livestream.canStartMeeting) && !isMeetingActive
+
+  useEffect(() => {
+    if (isMeetingActive) {
+      setVdoVideoActive(true)
+    }
+  }, [isMeetingActive, livestream.meetingSessionKey])
 
   const openSharePanel = () => {
     setSidebarTab("share")
     setInfoOpen(true)
   }
+
+  const openGiftDialog = useCallback((participant: UnityMeetParticipant) => {
+    setGiftRecipient(participant)
+    setGiftDialogOpen(true)
+  }, [])
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLivePrecheckOpen, setGoLivePrecheckOpen] = useState(false)
   const [goLiveConfirmOpen, setGoLiveConfirmOpen] = useState(false)
@@ -251,13 +303,16 @@ export default function SupporterShowLivestream({
     try {
       const u = new URL(raw)
       if (u.searchParams.has("push") && u.searchParams.has("room")) {
-        applyVdoGroupRoomPresentation(u)
+        applyVdoMinimalHostUi(u)
       }
+      applyVdoMeetingSession(u, livestream.meetingSessionKey ?? 0)
       return u.toString()
     } catch {
       return raw
     }
-  }, [effectiveHostUrl])
+  }, [effectiveHostUrl, livestream.meetingSessionKey])
+
+  const showVdoVideo = isMeetingActive && vdoVideoActive && !isEndingMeeting && Boolean(vdoHostIframeSrc)
 
   const joinUrl = livestream.latestInviteUrl ?? livestream.joinUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : "")
   const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
@@ -290,21 +345,7 @@ export default function SupporterShowLivestream({
   const showUnityLiveButton =
     Boolean(livestream.wantsUnityLive) && Boolean(livestream.canSetUnityLive)
 
-  const liveActionDisabled = isUpdatingStatus || isEndingStreamPending
-
-  const pollMs =
-    (isEndingStreamPending && Boolean(livestream.wantsYoutubeLive)) || streamRelayInProgress ? 4000 : 12000
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      router.reload({
-        only: ["recordingConsentDeclines", "livestream"],
-        preserveScroll: true,
-        preserveState: true,
-      })
-    }, pollMs)
-    return () => window.clearInterval(id)
-  }, [pollMs])
+  const liveActionDisabled = isUpdatingStatus || isEndingStreamPending || isStartingMeeting || isEndingMeeting
 
   const endStreamError = inertiaProps.errors?.error
   const endStreamErrorText = Array.isArray(endStreamError) ? endStreamError[0] : endStreamError
@@ -417,6 +458,8 @@ export default function SupporterShowLivestream({
     ],
   )
 
+  const showEndMeetingButton = isMeetingActive && !isEndingStreamPending
+
   const showEndUnityLiveButton =
     isUnityLivePublished({
       wantsUnityLive: livestream.wantsUnityLive,
@@ -463,6 +506,34 @@ export default function SupporterShowLivestream({
       preserveScroll: true,
       onFinish: () => setIsUpdatingStatus(false),
     })
+  }
+
+  const handleStartMeeting = () => {
+    if (!canStartMeeting || isStartingMeeting) {
+      return
+    }
+    setIsStartingMeeting(true)
+    router.post(route("livestreams.supporter.start-meeting", livestream.id), {}, {
+      preserveScroll: true,
+      onFinish: () => setIsStartingMeeting(false),
+    })
+  }
+
+  const handleEndMeeting = () => {
+    if (!isMeetingActive || isEndingMeeting || liveActionDisabled) {
+      return
+    }
+    setVdoVideoActive(false)
+    setIsEndingMeeting(true)
+    router.post(route("livestreams.supporter.end-meeting", livestream.id), {}, {
+      preserveScroll: true,
+      onFinish: () => setIsEndingMeeting(false),
+    })
+  }
+
+  const openParticipantsInvite = () => {
+    setSidebarTab("participants")
+    setInfoOpen(true)
   }
 
   const streamDisplayStatus = useMemo(
@@ -1124,6 +1195,26 @@ export default function SupporterShowLivestream({
                     </Tabs>
                   </SheetContent>
                 </Sheet>
+                {isMeetingActive ? (
+                  <Sheet open={participantsMobileOpen} onOpenChange={setParticipantsMobileOpen}>
+                    <SheetTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 touch-manipulation lg:hidden" aria-label="Participants">
+                        <Users className="h-4 w-4" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="flex w-[90vw] max-w-sm flex-col overflow-hidden p-0">
+                      <UnityMeetParticipantPanel
+                        className="min-h-0 flex-1 border-0"
+                        participants={participantRoster}
+                        authUserId={authUserId}
+                        onGiveGift={openGiftDialog}
+                        onInvite={showScheduledEmailInvites ? openParticipantsInvite : undefined}
+                        onCopyViewerLink={() => copyToClipboard(liveViewerUrl, "viewer")}
+                        onClose={() => setParticipantsMobileOpen(false)}
+                      />
+                    </SheetContent>
+                  </Sheet>
+                ) : null}
                 {showUnityLiveButton && (
                   <Button
                     variant="default"
@@ -1177,6 +1268,12 @@ export default function SupporterShowLivestream({
                         Stream options
                       </DropdownMenuItem>
                     ) : null}
+                    {showEndMeetingButton && (
+                      <DropdownMenuItem variant="destructive" onClick={handleEndMeeting} disabled={liveActionDisabled}>
+                        <PhoneOff className="h-4 w-4 mr-2" />
+                        {isEndingMeeting ? "Ending…" : "End meeting"}
+                      </DropdownMenuItem>
+                    )}
                     {showEndYoutubeLiveButton && (
                       <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={liveActionDisabled}>
                         <Square className="h-4 w-4 mr-2" />
@@ -1189,10 +1286,6 @@ export default function SupporterShowLivestream({
                         {isUpdatingStatus ? "Ending…" : "End Unity Live"}
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => window.open(vdoHostIframeSrc, "_blank")}>
-                      <Maximize2 className="h-4 w-4 mr-2" />
-                      Open meeting in new tab
-                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -1224,6 +1317,23 @@ export default function SupporterShowLivestream({
                     Stream options
                   </Button>
                 ) : null}
+                {canStartMeeting && (
+                  <Button
+                    size="sm"
+                    className="h-8 min-w-[8.5rem] bg-gradient-to-r from-purple-600 to-blue-600 px-3 text-white hover:from-purple-700 hover:to-blue-700"
+                    onClick={handleStartMeeting}
+                    disabled={liveActionDisabled}
+                  >
+                    <Play className="h-4 w-4 mr-1.5" />
+                    {isStartingMeeting ? "Starting…" : "Start meeting"}
+                  </Button>
+                )}
+                {showEndMeetingButton && (
+                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndMeeting} disabled={liveActionDisabled}>
+                    <PhoneOff className="h-4 w-4 mr-1.5" />
+                    {isEndingMeeting ? "Ending…" : "End meeting"}
+                  </Button>
+                )}
                 {showEndYoutubeLiveButton && (
                   <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={liveActionDisabled}>
                     <Square className="h-4 w-4 mr-1.5" />
@@ -1237,16 +1347,6 @@ export default function SupporterShowLivestream({
                   </Button>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 sm:h-9 sm:w-9 touch-manipulation"
-                onClick={() => window.open(vdoHostIframeSrc, "_blank")}
-                aria-label="Open meeting in new tab"
-                title="Open meeting in new tab"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </Button>
             </div>
           </div>
 
@@ -1311,15 +1411,43 @@ export default function SupporterShowLivestream({
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
-                {vdoHostIframeSrc ? (
+                {showVdoVideo ? (
                   <VdoMeetingIframe
-                    key={recordingDestination}
-                    src={vdoHostIframeSrc}
+                    key={`host-${livestream.meetingSessionKey ?? 0}`}
+                    src={vdoHostIframeSrc!}
                     title="Host"
+                    active={showVdoVideo}
                   />
                 ) : (
-                  <div className="absolute inset-0 z-[1] flex items-center justify-center text-muted-foreground text-sm sm:text-base">
-                    Loading meeting…
+                  <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-zinc-950 to-black px-6 text-center">
+                    <div className="space-y-2 max-w-md">
+                      <p className="text-lg font-semibold text-white">
+                        {isEndingMeeting
+                          ? "Ending meeting…"
+                          : canStartMeeting
+                            ? "Ready to meet"
+                            : "Meeting closed"}
+                      </p>
+                      <p className="text-sm text-white/70">
+                        {isEndingMeeting
+                          ? "Closing the video room and saving your session."
+                          : canStartMeeting
+                            ? "Start the meeting to connect your camera and microphone. The video room stays closed until you begin."
+                            : "This session has ended. Start a new meeting when you are ready to go live again."}
+                      </p>
+                    </div>
+                    {canStartMeeting ? (
+                      <Button
+                        type="button"
+                        size="lg"
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                        onClick={handleStartMeeting}
+                        disabled={isStartingMeeting}
+                      >
+                        <Play className="mr-2 h-5 w-5" />
+                        {isStartingMeeting ? "Starting…" : "Start meeting"}
+                      </Button>
+                    ) : null}
                   </div>
                 )}
                 {livestream.status === "live" && (
@@ -1327,12 +1455,7 @@ export default function SupporterShowLivestream({
                     ● LIVE
                   </div>
                 )}
-                {/* Hidden participant-canvas mixer iframe. Auto-runs when canvas
-                    mode is on and the meeting is active — composites the 3x2 grid,
-                    mixes audio, WHIP-publishes the combined stream to the worker's
-                    pull path. Pre-warms on scheduled/starting so the composite is
-                    live before the worker fires. No manual tab needed. */}
-                {livestream.canvasMode && livestream.browserMediaMtxPush && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
+                {showVdoVideo && livestream.canvasMode && livestream.browserMediaMtxPush && livestream.canvasUrl && (
                   <iframe
                     src={livestream.canvasUrl}
                     title="canvas-mixer"
@@ -1343,19 +1466,35 @@ export default function SupporterShowLivestream({
                     allow="autoplay; clipboard-write"
                   />
                 )}
-                <div className="pointer-events-none absolute bottom-2 left-2 z-[2] md:hidden">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="pointer-events-auto h-8 gap-1.5 rounded-full bg-background/90 shadow-md touch-manipulation"
-                    onClick={() => window.open(vdoHostIframeSrc, "_blank")}
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                    <span className="text-xs">Full screen</span>
-                  </Button>
-                </div>
               </div>
             </div>
+
+            {isMeetingActive && participantsPanelOpen ? (
+              <UnityMeetParticipantPanel
+                className="hidden lg:flex w-72 xl:w-80 shrink-0 min-h-0 border-l"
+                participants={participantRoster}
+                authUserId={authUserId}
+                onGiveGift={openGiftDialog}
+                onInvite={showScheduledEmailInvites ? openParticipantsInvite : undefined}
+                onCopyViewerLink={() => copyToClipboard(liveViewerUrl, "viewer")}
+                onClose={() => setParticipantsPanelOpen(false)}
+              />
+            ) : null}
+            {isMeetingActive && !participantsPanelOpen ? (
+              <div className="hidden lg:flex w-10 shrink-0 items-start justify-center border-l border-border bg-muted/20 pt-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setParticipantsPanelOpen(true)}
+                  aria-label="Show participants"
+                  title="Show participants"
+                >
+                  <Users className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1578,6 +1717,22 @@ export default function SupporterShowLivestream({
         returnRoute="livestreams.supporter.show"
         returnId={livestream.id}
       />
+
+      <UnityMeetGiftDialog
+        open={giftDialogOpen}
+        onOpenChange={setGiftDialogOpen}
+        recipient={giftRecipient}
+        giftOccasions={giftOccasions}
+        senderBalances={senderGiftBalances}
+        livestreamKind="user"
+        livestreamId={livestream.id}
+        onSent={() => {
+          setGiftRecipient(null)
+          router.reload({ only: ["senderGiftBalances"], preserveScroll: true })
+        }}
+      />
+
+      <UnityMeetGiftCelebrationLayer broadcastChannel={broadcastChannel} authUserId={authUserId} />
     </UnityMeetLayout>
   )
 }

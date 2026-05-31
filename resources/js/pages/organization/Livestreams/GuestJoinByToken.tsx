@@ -1,5 +1,6 @@
 "use client"
 
+import { usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { GuestMeetJoinExperience } from "@/components/livestreams/GuestMeetJoinExperience"
 
@@ -11,6 +12,7 @@ interface Livestream {
   status: string
   hasPasscode: boolean
   recordingEnabled?: boolean
+  broadcastChannel?: string
   declineContext?: { kind: "user" | "organization"; id: number }
 }
 
@@ -26,12 +28,18 @@ interface Props {
 }
 
 export default function GuestJoinByToken({ livestream, organization, recordingDeclineReturnTo }: Props) {
+  const page = usePage()
+  const authUser = (page.props as { auth?: { user?: { email?: string; name?: string; id?: number } } }).auth?.user
+
   return (
     <FrontendLayout>
       <GuestMeetJoinExperience
         livestream={livestream}
         organization={organization}
         recordingDeclineReturnTo={recordingDeclineReturnTo}
+        defaultDisplayName={authUser?.name?.trim() ?? ""}
+        guestEmail={authUser?.email?.trim() ?? null}
+        authUserId={authUser?.id ?? 0}
         consentAppearance="light"
         pageClassName="min-h-screen"
       />
