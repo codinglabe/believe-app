@@ -26,7 +26,12 @@ final class LivestreamParticipantRoster
         $settings = is_array($livestream->settings) ? $livestream->settings : [];
         $emails = LivestreamParticipantEmails::fromSettings($settings);
 
-        return self::build($livestream->user, $emails);
+        $roster = self::build($livestream->user, $emails);
+
+        return LivestreamMeetingPresence::mergeIntoRoster(
+            $roster,
+            LivestreamMeetingPresence::present('user', $livestream->id),
+        );
     }
 
     /**
@@ -48,7 +53,12 @@ final class LivestreamParticipantRoster
         $emails = LivestreamParticipantEmails::fromSettings($settings);
         $hostUser = $livestream->organization?->user;
 
-        return self::build($hostUser, $emails);
+        $roster = self::build($hostUser, $emails);
+
+        return LivestreamMeetingPresence::mergeIntoRoster(
+            $roster,
+            LivestreamMeetingPresence::present('organization', $livestream->id),
+        );
     }
 
     /**
@@ -127,7 +137,7 @@ final class LivestreamParticipantRoster
      *     canReceiveGift: bool
      * }
      */
-    private static function entryFromUser(User $user, string $role, bool $isHost): array
+    public static function entryFromUser(User $user, string $role, bool $isHost): array
     {
         return [
             'id' => $user->id,

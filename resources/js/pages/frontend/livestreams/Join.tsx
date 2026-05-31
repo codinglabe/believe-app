@@ -22,6 +22,7 @@ import { Link } from "@inertiajs/react"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
+import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
 
 const BRAND = {
   from: "#9333ea",
@@ -66,9 +67,12 @@ export default function SupporterMeetJoin({
   organization,
   joinDisplayName: joinDisplayNameProp,
 }: Props) {
-  const pageProps = usePage().props as unknown as Props
+  const pageProps = usePage().props as unknown as Props & {
+    auth?: { user?: { email?: string } }
+  }
   const errors = propsErrors ?? pageProps.errors
   const joinDisplayName = joinDisplayNameProp ?? pageProps.joinDisplayName ?? ""
+  const guestEmail = pageProps.auth?.user?.email?.trim() ?? null
   const displayLabel = joinDisplayName.trim() || "Guest"
   const requiresPasscodeStep =
     requiresPasscodeStepProp ?? pageProps.requiresPasscodeStep ?? false
@@ -107,6 +111,13 @@ export default function SupporterMeetJoin({
   const passcodeError = errors?.passcode?.[0] ?? null
 
   const canJoin = livestream && ["draft", "meeting_live", "live"].includes(livestream.status)
+
+  useLivestreamMeetingPresence({
+    roomName: livestream?.roomName ?? "",
+    displayName: displayLabel,
+    email: guestEmail,
+    active: Boolean(livestream && joined),
+  })
 
   const iframeUrl = useMemo(() => {
     if (!livestream?.participantUrl || !joined) return null

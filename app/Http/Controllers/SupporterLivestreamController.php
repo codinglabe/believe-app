@@ -758,6 +758,8 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings !== [] ? $settings : null,
         ]);
 
+        \App\Support\LivestreamMeetingPresence::clear('user', $livestream->id);
+
         $livestream->refresh();
         \App\Support\UnityLiveBroadcast::notifyMeetingStarted($livestream);
 
@@ -790,6 +792,8 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings !== [] ? $settings : null,
             'ended_at' => $livestream->ended_at ?? now(),
         ]);
+
+        \App\Support\LivestreamMeetingPresence::clear('user', $livestream->id);
 
         $livestream->refresh();
         \App\Support\UnityLiveBroadcast::notifyHostDashboard($livestream, 'meeting_ended');

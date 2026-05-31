@@ -516,18 +516,6 @@ export default function SupporterShowLivestream({
     })
   }
 
-  const handleVdoDisconnected = useCallback(() => {
-    setVdoVideoActive(false)
-    if (isEndingMeeting) {
-      return
-    }
-    setIsEndingMeeting(true)
-    router.post(route("livestreams.supporter.end-meeting", livestream.id), {}, {
-      preserveScroll: true,
-      onFinish: () => setIsEndingMeeting(false),
-    })
-  }, [isEndingMeeting, livestream.id])
-
   const openParticipantsInvite = () => {
     setSidebarTab("participants")
     setInfoOpen(true)
@@ -1409,11 +1397,10 @@ export default function SupporterShowLivestream({
               <div className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
                 {showVdoVideo ? (
                   <VdoMeetingIframe
-                    key={`${recordingDestination}-${livestream.meetingSessionKey ?? 0}`}
+                    key={`host-${livestream.meetingSessionKey ?? 0}`}
                     src={vdoHostIframeSrc!}
                     title="Host"
                     active={showVdoVideo}
-                    onDisconnected={handleVdoDisconnected}
                   />
                 ) : (
                   <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-zinc-950 to-black px-6 text-center">

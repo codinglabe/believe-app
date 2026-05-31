@@ -845,6 +845,21 @@ Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJ
     ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
 
+Route::post('/livestreams/join/{roomName}/presence/join', [\App\Http\Controllers\LivestreamMeetingPresenceController::class, 'join'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->middleware('throttle:120,1')
+    ->name('livestreams.presence.join');
+
+Route::post('/livestreams/join/{roomName}/presence/heartbeat', [\App\Http\Controllers\LivestreamMeetingPresenceController::class, 'heartbeat'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->middleware('throttle:240,1')
+    ->name('livestreams.presence.heartbeat');
+
+Route::post('/livestreams/join/{roomName}/presence/leave', [\App\Http\Controllers\LivestreamMeetingPresenceController::class, 'leave'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->middleware('throttle:120,1')
+    ->name('livestreams.presence.leave');
+
 // Hidden participant canvas mixer (MVP). Public, room-name addressed like guest join.
 // Opened in a browser; WHEP-subscribes the 6 seat paths, composites a 3x2 grid,
 // and WHIP-publishes the combined stream to the path the worker already pulls.

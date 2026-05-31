@@ -8,12 +8,14 @@ import { BelieveInUnityBrandMark } from "@/components/site-title"
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
+import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
 import { Video } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface GuestMeetJoinLivestream {
   id: number
   title: string | null
+  roomName: string
   participantUrl: string
   recordingEnabled?: boolean
   declineContext?: { kind: "user" | "organization"; id: number }
@@ -31,6 +33,7 @@ type Props = {
   lobbyBeforeJoin?: ReactNode
   canEnterMeeting?: boolean
   defaultDisplayName?: string
+  guestEmail?: string | null
   consentAppearance?: "light" | "dark"
   pageClassName?: string
 }
@@ -55,6 +58,7 @@ export function GuestMeetJoinExperience({
   lobbyBeforeJoin = null,
   canEnterMeeting = true,
   defaultDisplayName = "",
+  guestEmail = null,
   consentAppearance = "light",
   pageClassName,
 }: Props) {
@@ -65,6 +69,13 @@ export function GuestMeetJoinExperience({
 
   const displayLabel = (displayName || "Guest").trim()
   const initial = displayLabel.charAt(0).toUpperCase() || "G"
+
+  useLivestreamMeetingPresence({
+    roomName: livestream.roomName,
+    displayName: displayLabel,
+    email: guestEmail,
+    active: joined,
+  })
 
   const iframeUrl = useMemo(() => {
     if (!joined) return null

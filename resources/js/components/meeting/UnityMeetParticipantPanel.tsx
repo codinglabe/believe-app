@@ -118,7 +118,9 @@ export default function UnityMeetParticipantPanel({
                   className={`truncate text-[11px] ${
                     participant.isHost
                       ? "font-medium text-emerald-600 dark:text-emerald-400"
-                      : "text-muted-foreground"
+                      : participant.role === "In meeting"
+                        ? "font-medium text-blue-600 dark:text-blue-400"
+                        : "text-muted-foreground"
                   }`}
                 >
                   {participant.role}

@@ -221,6 +221,7 @@ export default function GuestJoin({ livestream, organization, recordingDeclineRe
         recordingDeclineReturnTo={recordingDeclineReturnTo}
         canEnterMeeting={canEnterMeeting}
         defaultDisplayName={authName ?? ""}
+        guestEmail={authEmail ?? (inviteEmailNormalized || null)}
         consentAppearance="light"
         lobbyBeforeJoin={
           <>
