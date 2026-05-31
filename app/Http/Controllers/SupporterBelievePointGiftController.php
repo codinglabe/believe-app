@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\GiftOccasion;
+use App\Models\OrganizationLivestream;
+use App\Models\UserLivestream;
+use App\Support\UnityLiveBroadcast;
 use App\Models\SupporterBelievePointGift;
 use App\Models\User;
 use App\Notifications\SupporterBelievePointGiftReceivedNotification;
@@ -94,6 +97,8 @@ class SupporterBelievePointGiftController extends Controller
             'amount' => 'required|numeric|min:0.01|max:10000',
             'gift_occasion_id' => 'required|integer|exists:gift_occasions,id',
             'message' => 'nullable|string|max:500',
+            'livestream_kind' => 'nullable|in:user,organization',
+            'livestream_id' => 'nullable|integer|min:1',
         ]);
 
         $amount = round((float) $validated['amount'], 2);
@@ -163,6 +168,28 @@ class SupporterBelievePointGiftController extends Controller
                 'recipient_id' => $lockedRecipient->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        $livestreamKind = $validated['livestream_kind'] ?? null;
+        $livestreamId = isset($validated['livestream_id']) ? (int) $validated['livestream_id'] : null;
+        if ($livestreamKind && $livestreamId) {
+            $livestream = $livestreamKind === 'user'
+                ? UserLivestream::query()->find($livestreamId)
+                : OrganizationLivestream::query()->find($livestreamId);
+            if ($livestream instanceof UserLivestream || $livestream instanceof OrganizationLivestream) {
+                UnityLiveBroadcast::notifyGiftReceived(
+                    $livestream,
+                    $lockedSender,
+                    $lockedRecipient,
+                    $amount,
+                    $occasion->occasion,
+                    $message,
+                );
+            }
+        }
+
+        if ($request->header('X-Inertia')) {
+            return back()->with('success', 'Your Believe Points gift was sent successfully.');
         }
 
         return redirect()->route('find-supporters.index')->with('success', 'Your Believe Points gift was sent successfully.');

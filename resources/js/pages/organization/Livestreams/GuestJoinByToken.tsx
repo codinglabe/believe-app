@@ -12,6 +12,7 @@ interface Livestream {
   status: string
   hasPasscode: boolean
   recordingEnabled?: boolean
+  broadcastChannel?: string
   declineContext?: { kind: "user" | "organization"; id: number }
 }
 
@@ -28,7 +29,7 @@ interface Props {
 
 export default function GuestJoinByToken({ livestream, organization, recordingDeclineReturnTo }: Props) {
   const page = usePage()
-  const authUser = (page.props as { auth?: { user?: { email?: string; name?: string } } }).auth?.user
+  const authUser = (page.props as { auth?: { user?: { email?: string; name?: string; id?: number } } }).auth?.user
 
   return (
     <FrontendLayout>
@@ -38,6 +39,7 @@ export default function GuestJoinByToken({ livestream, organization, recordingDe
         recordingDeclineReturnTo={recordingDeclineReturnTo}
         defaultDisplayName={authUser?.name?.trim() ?? ""}
         guestEmail={authUser?.email?.trim() ?? null}
+        authUserId={authUser?.id ?? 0}
         consentAppearance="light"
         pageClassName="min-h-screen"
       />

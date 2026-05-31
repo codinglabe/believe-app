@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SendUnityMeetBiuNotification;
 use App\Jobs\SendUnityMeetInvitationEmail;
+use App\Models\GiftOccasion;
 use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
@@ -522,6 +523,7 @@ class SupporterLivestreamController extends Controller
                         'kind' => 'organization',
                         'id' => $orgStream->id,
                     ],
+                    'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($orgStream),
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -574,6 +576,7 @@ class SupporterLivestreamController extends Controller
                         'kind' => 'user',
                         'id' => $userStream->id,
                     ],
+                    'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($userStream),
                 ],
                 'organization' => [
                     'id' => 0,
@@ -685,6 +688,13 @@ class SupporterLivestreamController extends Controller
             'authUserId' => $authUser->id,
             'participantRoster' => LivestreamParticipantRoster::forUserLivestream($livestream),
             'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($livestream),
+            'giftOccasions' => GiftOccasion::query()
+                ->orderBy('category')
+                ->orderBy('occasion')
+                ->get(['id', 'occasion', 'icon', 'category']),
+            'senderGiftBalances' => [
+                'purchased_believe_points' => round((float) ($authUser->believe_points ?? 0), 2),
+            ],
             ...$this->emailPurchaseProps(),
             'livestream' => [
                 'id' => $livestream->id,

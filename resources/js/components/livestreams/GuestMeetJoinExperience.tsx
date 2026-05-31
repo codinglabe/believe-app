@@ -9,6 +9,7 @@ import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
+import { useUnityMeetGiftNotifications } from "@/hooks/useUnityMeetGiftNotifications"
 import { Video } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +19,7 @@ export interface GuestMeetJoinLivestream {
   roomName: string
   participantUrl: string
   recordingEnabled?: boolean
+  broadcastChannel?: string
   declineContext?: { kind: "user" | "organization"; id: number }
 }
 
@@ -34,6 +36,7 @@ type Props = {
   canEnterMeeting?: boolean
   defaultDisplayName?: string
   guestEmail?: string | null
+  authUserId?: number
   consentAppearance?: "light" | "dark"
   pageClassName?: string
 }
@@ -59,6 +62,7 @@ export function GuestMeetJoinExperience({
   canEnterMeeting = true,
   defaultDisplayName = "",
   guestEmail = null,
+  authUserId = 0,
   consentAppearance = "light",
   pageClassName,
 }: Props) {
@@ -76,6 +80,8 @@ export function GuestMeetJoinExperience({
     email: guestEmail,
     active: joined,
   })
+
+  useUnityMeetGiftNotifications(livestream.broadcastChannel, authUserId)
 
   const iframeUrl = useMemo(() => {
     if (!joined) return null

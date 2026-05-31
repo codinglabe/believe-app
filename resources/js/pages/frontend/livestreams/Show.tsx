@@ -70,6 +70,10 @@ import UnityMeetInviteChannelPicker, {
 import UnityMeetParticipantPanel, {
   type UnityMeetParticipant,
 } from "@/components/meeting/UnityMeetParticipantPanel"
+import UnityMeetGiftDialog, {
+  type GiftOccasionOption,
+} from "@/components/meeting/UnityMeetGiftDialog"
+import { useUnityMeetGiftNotifications } from "@/hooks/useUnityMeetGiftNotifications"
 import { applyVdoMinimalHostUi, applyVdoMeetingSession } from "@/lib/vdoMeeting"
 import {
   canEndYoutubeLive,
@@ -160,6 +164,8 @@ interface Props {
   participantRoster?: UnityMeetParticipant[]
   authUserId?: number
   broadcastChannel?: string
+  giftOccasions?: GiftOccasionOption[]
+  senderGiftBalances?: { purchased_believe_points: number }
   emailCredits?: EmailCredits
   emailPackages?: EmailPackageOption[]
   stripeMinCheckoutUsd?: number
@@ -179,6 +185,8 @@ export default function SupporterShowLivestream({
   participantRoster: initialParticipantRoster = [],
   authUserId = 0,
   broadcastChannel,
+  giftOccasions = [],
+  senderGiftBalances = { purchased_believe_points: 0 },
   emailCredits,
   emailPackages = [],
   stripeMinCheckoutUsd = 0.5,
@@ -194,6 +202,8 @@ export default function SupporterShowLivestream({
     participantRoster: initialParticipantRoster,
     rosterPollUrl: route("livestreams.supporter.participant-roster", initialLivestream.id),
   })
+
+  useUnityMeetGiftNotifications(broadcastChannel, authUserId)
 
   const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]>; success?: string }>()
   const prepareYoutubeError = inertiaProps.errors?.youtube
@@ -219,6 +229,8 @@ export default function SupporterShowLivestream({
   const [isEndingMeeting, setIsEndingMeeting] = useState(false)
   const [participantsPanelOpen, setParticipantsPanelOpen] = useState(true)
   const [participantsMobileOpen, setParticipantsMobileOpen] = useState(false)
+  const [giftRecipient, setGiftRecipient] = useState<UnityMeetParticipant | null>(null)
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false)
   const [vdoVideoActive, setVdoVideoActive] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("meeting-info")
 
@@ -235,6 +247,11 @@ export default function SupporterShowLivestream({
     setSidebarTab("share")
     setInfoOpen(true)
   }
+
+  const openGiftDialog = useCallback((participant: UnityMeetParticipant) => {
+    setGiftRecipient(participant)
+    setGiftDialogOpen(true)
+  }, [])
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLivePrecheckOpen, setGoLivePrecheckOpen] = useState(false)
   const [goLiveConfirmOpen, setGoLiveConfirmOpen] = useState(false)
@@ -1193,6 +1210,7 @@ export default function SupporterShowLivestream({
                         className="min-h-0 flex-1 border-0"
                         participants={participantRoster}
                         authUserId={authUserId}
+                        onGiveGift={openGiftDialog}
                         onInvite={showScheduledEmailInvites ? openParticipantsInvite : undefined}
                         onCopyViewerLink={() => copyToClipboard(liveViewerUrl, "viewer")}
                         onClose={() => setParticipantsMobileOpen(false)}
@@ -1459,6 +1477,7 @@ export default function SupporterShowLivestream({
                 className="hidden lg:flex w-72 xl:w-80 shrink-0 min-h-0 border-l"
                 participants={participantRoster}
                 authUserId={authUserId}
+                onGiveGift={openGiftDialog}
                 onInvite={showScheduledEmailInvites ? openParticipantsInvite : undefined}
                 onCopyViewerLink={() => copyToClipboard(liveViewerUrl, "viewer")}
                 onClose={() => setParticipantsPanelOpen(false)}
@@ -1700,6 +1719,20 @@ export default function SupporterShowLivestream({
         stripeMinCheckoutUsd={stripeMinCheckoutUsd}
         returnRoute="livestreams.supporter.show"
         returnId={livestream.id}
+      />
+
+      <UnityMeetGiftDialog
+        open={giftDialogOpen}
+        onOpenChange={setGiftDialogOpen}
+        recipient={giftRecipient}
+        giftOccasions={giftOccasions}
+        senderBalances={senderGiftBalances}
+        livestreamKind="user"
+        livestreamId={livestream.id}
+        onSent={() => {
+          setGiftRecipient(null)
+          router.reload({ only: ["senderGiftBalances"], preserveScroll: true })
+        }}
       />
     </UnityMeetLayout>
   )

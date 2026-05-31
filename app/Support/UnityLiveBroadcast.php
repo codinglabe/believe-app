@@ -3,10 +3,12 @@
 namespace App\Support;
 
 use App\Events\UnityLiveViewerStatusChanged;
+use App\Events\UnityMeetGiftReceived;
 use App\Events\UnityMeetHostDashboardChanged;
 use App\Models\LivestreamRecordingDecline;
 use App\Models\OrganizationLivestream;
 use App\Models\StreamingJob;
+use App\Models\User;
 use App\Models\UserLivestream;
 use App\Services\Streaming\StreamingQueueService;
 use Illuminate\Support\Facades\Log;
@@ -165,6 +167,39 @@ final class UnityLiveBroadcast
         }
 
         self::notifyHostDashboard($livestream, $reason);
+    }
+
+    public static function notifyGiftReceived(
+        OrganizationLivestream|UserLivestream $livestream,
+        User $sender,
+        User $recipient,
+        float $amount,
+        string $occasion,
+        ?string $message = null,
+    ): void {
+        try {
+            $amt = rtrim(rtrim(number_format($amount, 2), '0'), '.');
+            event(new UnityMeetGiftReceived(
+                channelName: self::channelName($livestream),
+                payload: [
+                    'recipientId' => $recipient->id,
+                    'senderId' => $sender->id,
+                    'senderName' => $sender->name,
+                    'amount' => $amount,
+                    'amountLabel' => $amt,
+                    'occasion' => $occasion,
+                    'message' => $message,
+                    'title' => 'You received a gift',
+                    'body' => "{$sender->name} sent you {$amt} BP during the meeting.",
+                ],
+            ));
+        } catch (Throwable $e) {
+            Log::warning('Unity Meet gift broadcast skipped', [
+                'livestream_id' => $livestream->id,
+                'recipient_id' => $recipient->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public static function notifyMeetingStarted(OrganizationLivestream|UserLivestream $livestream): void

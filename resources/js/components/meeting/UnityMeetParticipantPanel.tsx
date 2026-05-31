@@ -29,6 +29,7 @@ type UnityMeetParticipantPanelProps = {
   authUserId: number
   onInvite?: () => void
   onCopyViewerLink?: () => void
+  onGiveGift?: (participant: UnityMeetParticipant) => void
   viewerLinkHint?: string
   className?: string
   onClose?: () => void
@@ -46,6 +47,7 @@ export default function UnityMeetParticipantPanel({
   authUserId,
   onInvite,
   onCopyViewerLink,
+  onGiveGift,
   viewerLinkHint = "Guests can view the livestream when it's public.",
   className = "",
   onClose,
@@ -133,13 +135,11 @@ export default function UnityMeetParticipantPanel({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 shrink-0 text-purple-600 hover:bg-purple-500/10 hover:text-purple-700 dark:text-purple-400"
-                  asChild
                   title="Give Gift"
+                  onClick={() => onGiveGift?.(participant)}
                 >
-                  <Link href={route("supporters.gift", participant.id!)}>
-                    <Gift className="h-4 w-4" />
-                    <span className="sr-only">Give gift to {participant.name}</span>
-                  </Link>
+                  <Gift className="h-4 w-4" />
+                  <span className="sr-only">Give gift to {participant.name}</span>
                 </Button>
               ) : null}
 

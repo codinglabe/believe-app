@@ -378,6 +378,7 @@ class LivestreamController extends Controller
                         'kind' => 'organization',
                         'id' => $orgStream->id,
                     ],
+                    'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($orgStream),
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -421,6 +422,7 @@ class LivestreamController extends Controller
                         'kind' => 'user',
                         'id' => $userStream->id,
                     ],
+                    'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($userStream),
                 ],
                 'organization' => [
                     'id' => 0,
@@ -496,6 +498,7 @@ class LivestreamController extends Controller
                     'kind' => 'organization',
                     'id' => $livestream->id,
                 ],
+                'broadcastChannel' => \App\Support\UnityLiveBroadcast::channelName($livestream),
             ],
             'organization' => [
                 'id' => $livestream->organization->id,

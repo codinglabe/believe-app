@@ -23,6 +23,7 @@ import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConse
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
+import { useUnityMeetGiftNotifications } from "@/hooks/useUnityMeetGiftNotifications"
 
 const BRAND = {
   from: "#9333ea",
@@ -38,6 +39,7 @@ interface Livestream {
   participantUrl: string
   status: string
   recordingEnabled?: boolean
+  broadcastChannel?: string
   declineContext?: { kind: "user" | "organization"; id: number }
 }
 
@@ -68,11 +70,12 @@ export default function SupporterMeetJoin({
   joinDisplayName: joinDisplayNameProp,
 }: Props) {
   const pageProps = usePage().props as unknown as Props & {
-    auth?: { user?: { email?: string } }
+    auth?: { user?: { email?: string; id?: number } }
   }
   const errors = propsErrors ?? pageProps.errors
   const joinDisplayName = joinDisplayNameProp ?? pageProps.joinDisplayName ?? ""
   const guestEmail = pageProps.auth?.user?.email?.trim() ?? null
+  const authUserId = pageProps.auth?.user?.id ?? 0
   const displayLabel = joinDisplayName.trim() || "Guest"
   const requiresPasscodeStep =
     requiresPasscodeStepProp ?? pageProps.requiresPasscodeStep ?? false
@@ -118,6 +121,8 @@ export default function SupporterMeetJoin({
     email: guestEmail,
     active: Boolean(livestream && joined),
   })
+
+  useUnityMeetGiftNotifications(livestream?.broadcastChannel, authUserId)
 
   const iframeUrl = useMemo(() => {
     if (!livestream?.participantUrl || !joined) return null
