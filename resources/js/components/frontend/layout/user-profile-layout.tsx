@@ -236,7 +236,7 @@ const navigationItems = [
     color: "from-indigo-500 to-purple-600",
   },
   {
-    name: "AI Media Studio",
+    name: "AI Video Studio",
     href: "/ai-media-studio",
     icon: Video,
     description: "Short AI videos (OpenAI + fal.ai), queued in the background",

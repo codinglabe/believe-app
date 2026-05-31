@@ -8,12 +8,15 @@ import { Button } from "@/components/frontend/ui/button"
 import { Slider } from "@/components/frontend/ui/slider"
 import { ArrowLeft, Loader2, Radio, Volume2, VolumeX, Maximize2, Minimize2 } from "lucide-react"
 import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import UnityLiveOverlayLayer from "@/components/unity-live/UnityLiveOverlayLayer"
+import type { UnityLiveOverlay } from "@/types/livestream-overlay"
 
 interface LivestreamItem {
   slug: string
   title: string
   organizationName: string
   viewUrl: string
+  overlay?: UnityLiveOverlay | null
 }
 
 interface Props {
@@ -187,7 +190,13 @@ export default function LiveShow({ seo, livestream }: Props) {
                   LIVE
                 </span>
               </div>
-              {!isLoading ? <UnityMeetVideoLogoOverlay className="z-20" /> : null}
+              {!isLoading ? (
+                livestream.overlay ? (
+                  <UnityLiveOverlayLayer overlay={livestream.overlay} hideLiveBadge />
+                ) : (
+                  <UnityMeetVideoLogoOverlay className="z-20" />
+                )
+              ) : null}
               {/* Fullscreen overlay controls (only in fullscreen, show on move) */}
               {isFullscreen && (
                 <div

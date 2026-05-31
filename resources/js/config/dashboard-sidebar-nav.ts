@@ -165,7 +165,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'AI Media Studio',
+                title: 'AI Video Studio',
                 href: '/ai-media-studio',
                 icon: Video,
                 permission: 'ai.media.read',

@@ -64,7 +64,7 @@ export default function CreditsPurchase({
 
   const backLabel =
     activeWallet === "ai_media_studio"
-      ? "← AI Media Studio"
+      ? "← AI Video Studio"
       : context === "supporter"
         ? "← Profile"
         : "← Dashboard"
@@ -117,7 +117,7 @@ export default function CreditsPurchase({
   }
 
   const walletLabel = (w: PurchaseHistoryRow["wallet"]) =>
-    w === "ai_media_studio" ? "AI Media Studio" : "Wallet credits"
+    w === "ai_media_studio" ? "AI Video Studio" : "Wallet credits"
 
   const quantityLabel = (row: PurchaseHistoryRow) => {
     if (row.quantity < 0.005) return "—"
@@ -131,7 +131,7 @@ export default function CreditsPurchase({
     <AccountContextLayout
       context={context}
       title="AI Top Up"
-      description="Top up your AI Media Studio balance: US$1 = 1 credit. Each queued video deducts credits by resolution and length."
+      description="Top up your AI Video Studio balance: US$1 = 1 credit. Each queued video deducts credits by resolution and length."
     >
       <div className="mx-auto max-w-4xl space-y-8 px-4 py-6 md:px-8 md:py-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -141,7 +141,7 @@ export default function CreditsPurchase({
           <Button variant="outline" size="sm" asChild className="w-full sm:w-auto">
             <Link href={studioHref}>
               <Video className="mr-2 h-4 w-4" />
-              Open AI Media Studio
+              Open AI Video Studio
             </Link>
           </Button>
         </div>
@@ -173,7 +173,7 @@ export default function CreditsPurchase({
                 <div>
                   <CardTitle className="flex items-center gap-2 text-xl">
                     <Sparkles className="h-5 w-5 text-violet-400" />
-                    AI Media Studio
+                    AI Video Studio
                   </CardTitle>
                   <CardDescription className="text-base leading-snug">
                     Short-form video generation (OpenAI + fal.ai). Your balance is in credits where US$1 = 1 credit.
@@ -193,7 +193,7 @@ export default function CreditsPurchase({
               </div>
             </CardHeader>
             <CardContent className="relative space-y-3 pt-2">
-              <p className="text-muted-foreground text-xs sm:text-sm">Choose a pack — checkout opens in a secure window, then sends you back to AI Media Studio.</p>
+              <p className="text-muted-foreground text-xs sm:text-sm">Choose a pack — checkout opens in a secure window, then sends you back to AI Video Studio.</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {Object.entries(mediaStudioPacks).map(([key, pack]) => (
                   <Button
@@ -210,7 +210,7 @@ export default function CreditsPurchase({
               <Button variant="secondary" className="w-full" asChild>
                 <Link href={studioHref}>
                   <Video className="mr-2 h-4 w-4" />
-                  Back to AI Media Studio
+                  Back to AI Video Studio
                 </Link>
               </Button>
             </CardContent>

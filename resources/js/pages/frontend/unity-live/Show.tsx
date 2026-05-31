@@ -10,7 +10,9 @@ import { ArrowLeft, Loader2, Radio, Volume2, VolumeX, Maximize2, Minimize2, Play
 import { useUnityLiveViewerStatus } from "@/hooks/useUnityLiveViewerStatus"
 import StreamEndedOverlay from "@/components/unity-live/StreamEndedOverlay"
 import GoingLiveOverlay from "@/components/unity-live/GoingLiveOverlay"
+import UnityLiveOverlayLayer from "@/components/unity-live/UnityLiveOverlayLayer"
 import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import type { UnityLiveOverlay } from "@/types/livestream-overlay"
 
 interface LivestreamItem {
   id: number
@@ -21,6 +23,7 @@ interface LivestreamItem {
   viewUrlMuted?: string
   viewUrlFallback: string
   startedAt: string | null
+  overlay?: UnityLiveOverlay | null
 }
 
 interface Props {
@@ -212,8 +215,12 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                       </span>
                     </div>
                   ) : null}
-                  {!isLoading && !streamEnded && !isGoingLive ? (
-                    <UnityMeetVideoLogoOverlay className="z-20" />
+                  {!streamEnded && !isGoingLive ? (
+                    livestream.overlay ? (
+                      <UnityLiveOverlayLayer overlay={livestream.overlay} hideLiveBadge />
+                    ) : (
+                      <UnityMeetVideoLogoOverlay className="z-20" />
+                    )
                   ) : null}
                   {isFullscreen && (
                     <div

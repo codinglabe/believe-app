@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use App\Support\LivestreamOverlayConfig;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,6 +38,9 @@ class LiveViewController extends Controller
                     'title' => $orgStream->title ?: 'Live Stream',
                     'organizationName' => $orgStream->organization?->name ?? 'Organization',
                     'viewUrl' => $viewUrl,
+                    'overlay' => LivestreamOverlayConfig::toPublicPayload(
+                        LivestreamOverlayConfig::forLivestream($orgStream),
+                    ),
                 ],
             ]);
         }
@@ -58,6 +62,9 @@ class LiveViewController extends Controller
                     'title' => $userStream->title ?: 'Live Stream',
                     'organizationName' => $userStream->user?->name ?? 'Host',
                     'viewUrl' => $viewUrl,
+                    'overlay' => LivestreamOverlayConfig::toPublicPayload(
+                        LivestreamOverlayConfig::forLivestream($userStream),
+                    ),
                 ],
             ]);
         }

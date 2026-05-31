@@ -4,6 +4,9 @@
         @php
             $isLivestock = function_exists('is_livestock_domain') ? is_livestock_domain() : false;
             $isMerchant = request()->getHost() === config('merchant.domain') || str_contains(request()->getHost(), 'merchant.');
+            $og = (! $isLivestock && ! $isMerchant)
+                ? \App\Services\SeoService::openGraphForView($page ?? [], request())
+                : null;
         @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,7 +18,7 @@
         <meta name="firebase-vapid-key" content="{{ config('services.firebase.vapid_key', '') }}">
         @endunless
         @unless($isLivestock || $isMerchant)
-        @include('partials.social-meta')
+        @include('partials.social-meta', ['og' => $og])
         @endunless
 
         <!-- PWA Meta Tags -->
@@ -60,7 +63,7 @@
             }
         </style>
 
-        <title inertia>@if($isLivestock) Bida Livestock - Premium Livestock Marketplace @elseif($isMerchant) {{ config('app.name', 'Believe') }} Merchant Program @else {{ config('app.name', 'Laravel') }} @endif</title>
+        <title inertia>@if($isLivestock) Bida Livestock - Premium Livestock Marketplace @elseif($isMerchant) {{ config('app.name', 'Believe') }} Merchant Program @else {{ $og['title'] ?? config('app.name', 'Laravel') }} @endif</title>
 
         @if($isMerchant)
             <link rel="icon" href="/merchant/merchant.ico" sizes="any">

@@ -23,15 +23,19 @@ use App\Services\UnityMeetBiuNotifier;
 use App\Services\DropboxOrgApi;
 use App\Services\RecordingYoutubePublishService;
 use App\Services\YouTubeService;
+use App\Services\LivestreamVideoOverlayService;
+use App\Support\LivestreamOverlayConfig;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Supporter livestream — same flow as organization livestreams (VDO.Ninja): index, create, edit, delete, room page.
@@ -1527,6 +1531,94 @@ class SupporterLivestreamController extends Controller
         }
 
         return redirect()->away($link);
+    }
+
+    public function recordingBrandedDownload(Request $request): RedirectResponse|StreamedResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+        $path = $request->query('path');
+        if (! is_string($path) || $path === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file.');
+        }
+        $path = trim($path);
+        if (str_contains($path, '..')) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+        }
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+        }
+        $folderPath = (string) $ctx['folderPath'];
+        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only download files from your recording folder.');
+        }
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+        }
+
+        $overlayService = app(LivestreamVideoOverlayService::class);
+        if (! $overlayService->canApply()) {
+            return redirect()->route('livestreams.supporter.recordings')->with(
+                'error',
+                'FFmpeg is not available on the server. Use the regular download or install FFmpeg.',
+            );
+        }
+
+        $org = Organization::forAuthUser($user);
+        $overlayConfig = $org !== null
+            ? LivestreamOverlayConfig::forOrganization($org)
+            : LivestreamOverlayConfig::forUser($user);
+
+        if (LivestreamOverlayConfig::toVideoPayload($overlayConfig) === null) {
+            return redirect()->route('livestreams.supporter.recordings')->with(
+                'error',
+                'Configure a logo or bottom banner in Overlay Studio first.',
+            );
+        }
+
+        $api = new DropboxOrgApi((string) $ctx['token']);
+        $link = $api->getTemporaryLink($path);
+        if (! $link) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not generate download link.');
+        }
+
+        $inputTmp = tempnam(sys_get_temp_dir(), 'unity_rec_');
+        if ($inputTmp === false) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not prepare download.');
+        }
+
+        try {
+            $download = Http::timeout(7200)->connectTimeout(60)->sink($inputTmp)->get($link);
+            if (! $download->successful() || ! is_file($inputTmp) || filesize($inputTmp) < 500) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not download recording from Dropbox.');
+            }
+
+            $brandedPath = $overlayService->brandLocalFile($inputTmp, $overlayConfig);
+            if ($brandedPath === null) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not apply overlay branding.');
+            }
+
+            $basename = basename($path);
+            $filename = pathinfo($basename, PATHINFO_FILENAME).'-branded.mp4';
+
+            return response()->streamDownload(function () use ($brandedPath): void {
+                $stream = fopen($brandedPath, 'rb');
+                if ($stream !== false) {
+                    fpassthru($stream);
+                    fclose($stream);
+                }
+                @unlink($brandedPath);
+            }, $filename, [
+                'Content-Type' => 'video/mp4',
+            ]);
+        } finally {
+            if (is_file($inputTmp)) {
+                @unlink($inputTmp);
+            }
+        }
     }
 
     public function recordingDelete(Request $request): RedirectResponse

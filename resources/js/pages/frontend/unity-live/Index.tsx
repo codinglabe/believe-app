@@ -15,6 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import UnityLiveOverlayLayer from "@/components/unity-live/UnityLiveOverlayLayer"
+import type { UnityLiveOverlay } from "@/types/livestream-overlay"
 
 interface LivestreamItem {
   id: number
@@ -25,6 +27,7 @@ interface LivestreamItem {
   viewUrlMuted?: string
   viewUrlFallback?: string
   startedAt: string | null
+  overlay?: UnityLiveOverlay | null
 }
 
 interface UpcomingMeetingItem {
@@ -192,7 +195,15 @@ export default function UnityLiveIndex({ seo, livestreams, upcomingMeetings = []
                               LIVE
                             </span>
                           </div>
-                          <UnityMeetVideoLogoOverlay className="z-20 scale-[0.85] origin-top-right" />
+                          {stream.overlay ? (
+                            <UnityLiveOverlayLayer
+                              overlay={stream.overlay}
+                              className="z-20"
+                              hideLiveBadge
+                            />
+                          ) : (
+                            <UnityMeetVideoLogoOverlay className="z-20 scale-[0.85] origin-top-right" />
+                          )}
                           <div className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="bg-black/70 text-white text-xs font-medium px-2 py-1 rounded-md">
                               Watch

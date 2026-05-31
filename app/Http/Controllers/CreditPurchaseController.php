@@ -44,7 +44,7 @@ class CreditPurchaseController extends Controller
                     'payment_method' => $t->payment_method !== null ? (string) $t->payment_method : null,
                     'wallet' => $isStudio ? 'ai_media_studio' : 'credits',
                     'quantity' => round($qty, 2),
-                    'summary' => (string) ($meta['description'] ?? ($isStudio ? 'AI Media Studio credits' : 'Wallet credits')),
+                    'summary' => (string) ($meta['description'] ?? ($isStudio ? 'AI Video Studio credits' : 'Wallet credits')),
                     'package' => isset($meta['package']) && (is_string($meta['package']) || is_numeric($meta['package']))
                         ? (string) $meta['package']
                         : null,
@@ -146,7 +146,7 @@ class CreditPurchaseController extends Controller
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $amount, 'card');
 
             $grantLabel = $wallet === 'ai_media_studio'
-                ? "{$mediaCreditsToAdd} AI Media Studio credits (US\$1 = 1 credit)"
+                ? "{$mediaCreditsToAdd} AI Video Studio credits (US\$1 = 1 credit)"
                 : "{$creditsToAdd} credits";
 
             // Record pending transaction
@@ -318,7 +318,7 @@ class CreditPurchaseController extends Controller
             if ($wallet === 'ai_media_studio') {
                 $mediaCreditsToAdd = (int) (is_object($metadata) ? ($metadata->media_credits_to_add ?? 0) : ($metadata['media_credits_to_add'] ?? 0));
                 if ($mediaCreditsToAdd < 1) {
-                    return redirect()->route($returnRouteFromMetadata)->with('error', 'Invalid AI Media Studio credit amount.');
+                    return redirect()->route($returnRouteFromMetadata)->with('error', 'Invalid AI Video Studio credit amount.');
                 }
 
                 $user->increment('ai_media_studio_credits', $mediaCreditsToAdd);
@@ -340,7 +340,7 @@ class CreditPurchaseController extends Controller
                     ]);
                 }
 
-                Log::info('AI Media Studio credits purchased', [
+                Log::info('AI Video Studio credits purchased', [
                     'user_id' => $user->id,
                     'credits_added' => $mediaCreditsToAdd,
                     'session_id' => $sessionId,
@@ -348,7 +348,7 @@ class CreditPurchaseController extends Controller
 
                 return redirect()->route($returnRouteFromMetadata)->with(
                     'success',
-                    "Successfully added {$mediaCreditsToAdd} credits to your AI Media Studio balance (US\$1 = 1 credit)."
+                    "Successfully added {$mediaCreditsToAdd} credits to your AI Video Studio balance (US\$1 = 1 credit)."
                 );
             }
 

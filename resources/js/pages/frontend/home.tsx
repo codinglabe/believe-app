@@ -14,6 +14,11 @@ import { Link, router, usePage } from "@inertiajs/react"
 import SearchSection from "@/components/frontend/SearchSection"
 import { WalletDemoPopup } from "@/components/WalletDemoPopup"
 import { PageHead } from "@/components/frontend/PageHead"
+import type { SharedData } from "@/types"
+
+const HOME_HERO_HEADLINE = "The Affordable All-in-One Operating System for Nonprofits"
+const HOME_HERO_SUBTITLE =
+  "Donations • CRM • Volunteers • Events • Email • Video Meetings • Marketplace • Fundraising"
 
 const features = [
   {
@@ -51,7 +56,7 @@ interface PageProps {
   }
 
 export default function HomePage() {
-    const { seo, homeHero } = usePage<PageProps>().props
+    const { seo, homeHero, auth } = usePage<PageProps & SharedData>().props
     const [isLoading, setIsLoading] = useState(false)
     const [hasStartedDemo, setHasStartedDemo] = useState(false)
     const [walletPopupOpen, setWalletPopupOpen] = useState(false)
@@ -277,6 +282,26 @@ export default function HomePage() {
       router.visit("/organizations")
     }
 
+    const handleDonate = () => {
+      router.visit(route("donate"))
+    }
+
+    const handleGiftCards = () => {
+      router.visit(route("gift-cards.index"))
+    }
+
+    const handleBelievePoints = () => {
+      router.visit(route("believe-points.index"))
+    }
+
+    const handleRaffles = () => {
+      router.visit(auth?.user ? route("frontend.raffles.index") : route("login"))
+    }
+
+    const handleMerchants = () => {
+      router.visit(route("merchant-hub.index"))
+    }
+
     // TEMP: show only the hero section on homepage
     const showOnlyHero = false
 
@@ -330,7 +355,7 @@ export default function HomePage() {
 
     return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Home"} description={seo?.description} image={seo?.share_image} />
+      <PageHead title={seo?.title || HOME_HERO_HEADLINE} description={seo?.description} image={seo?.share_image} />
     <div className="min-h-screen">
       {/* Homepage hero — Believ.Cash style (background: public/images/top-hero.png) */}
       <section className="relative overflow-hidden min-h-[280px] pb-8 sm:min-h-[320px] sm:pb-10 md:min-h-[360px] md:pb-12 lg:min-h-[400px] lg:pb-14">
@@ -340,7 +365,7 @@ export default function HomePage() {
         />
         {/* Readability overlay — stronger on the left where copy sits */}
         <div
-          className="absolute inset-0 z-[1] bg-gradient-to-r from-[#0b061a]/95 via-[#13062b]/82 to-[#2d1560]/50"
+          className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-r from-[#0b061a]/95 via-[#13062b]/82 to-[#2d1560]/50"
           aria-hidden
         />
         <div
@@ -362,7 +387,7 @@ export default function HomePage() {
                   transition={{ duration: 0.55, delay: 0.08 }}
                   className="text-2xl font-bold leading-tight text-white sm:text-3xl md:text-4xl lg:text-5xl"
                 >
-                  {homeHero?.headline ?? "The Affordable All-in-One Operating System for Nonprofits"}
+                  {homeHero?.headline || HOME_HERO_HEADLINE}
                 </motion.h1>
 
                 <motion.p
@@ -372,7 +397,7 @@ export default function HomePage() {
                   className="mt-3 text-sm font-medium leading-relaxed sm:mt-4 sm:text-base md:text-lg"
                 >
                   <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                    {homeHero?.subtitle ?? "Donations • CRM • Volunteers • Events • Email • Video Meetings • Marketplace • Fundraising"}
+                    {homeHero?.subtitle || HOME_HERO_SUBTITLE}
                   </span>
                 </motion.p>
               </motion.div>
@@ -412,7 +437,16 @@ export default function HomePage() {
                   <button
                     type="button"
                     key={title}
-                    className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-2.5 py-2 text-left backdrop-blur-sm transition-all hover:bg-white/20 sm:w-auto sm:gap-3 sm:rounded-xl sm:px-4 sm:py-3"
+                    onClick={
+                      title === "Donate Now"
+                        ? handleDonate
+                        : title === "Enter to win"
+                          ? handleRaffles
+                          : title === "Buy Gift Card"
+                            ? handleGiftCards
+                            : handleBelievePoints
+                    }
+                    className="flex w-full touch-manipulation items-center gap-2 rounded-lg bg-white/10 px-2.5 py-2 text-left backdrop-blur-sm transition-all hover:bg-white/20 sm:w-auto sm:gap-3 sm:rounded-xl sm:px-4 sm:py-3"
                   >
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconBg} sm:h-10 sm:w-10`}>
                       <Icon className="h-4 w-4 text-white sm:h-5 sm:w-5" />
@@ -512,7 +546,7 @@ export default function HomePage() {
                       <div role="tabpanel" aria-label="Organizations">
                         <div className="mb-3 flex items-center justify-between sm:mb-4">
                           <h3 className="text-base font-semibold text-foreground sm:text-lg">Featured Organizations</h3>
-                      <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
+                      <button type="button" onClick={handleViewAllOrganizations} className="touch-manipulation text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                             View All
                       </button>
                         </div>
@@ -539,7 +573,7 @@ export default function HomePage() {
                             <div className="text-lg font-bold text-foreground">{org.raised}</div>
                               </div>
                           <div className="mt-auto">
-                                <Button className="mt-4 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
+                                <Button type="button" onClick={handleDonate} className="mt-4 w-full touch-manipulation bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
                                   <Heart className="mr-1 h-3 w-3" fill="white" />
                                   Donate
                                 </Button>
@@ -552,7 +586,7 @@ export default function HomePage() {
                       <div role="tabpanel" aria-label="Merchants">
                         <div className="mb-3 flex items-center justify-between sm:mb-4">
                           <h3 className="text-base font-semibold text-foreground sm:text-lg">Featured Merchants</h3>
-                          <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
+                          <button type="button" onClick={handleMerchants} className="touch-manipulation text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                             View All
                           </button>
                         </div>
@@ -570,7 +604,7 @@ export default function HomePage() {
                               <h4 className="font-semibold text-foreground line-clamp-1">{merchant.name}</h4>
                               <p className="text-xs text-muted-foreground line-clamp-1">{merchant.category}</p>
                               <p className="mt-1 text-xs text-violet-600 line-clamp-2">{merchant.impact} of sales go to impact</p>
-                              <Button type="button" className="mt-auto w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
+                              <Button type="button" onClick={handleMerchants} className="mt-auto w-full touch-manipulation bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
                                 Shop Now
                               </Button>
                             </div>
@@ -588,7 +622,7 @@ export default function HomePage() {
                     <CardContent className="p-4 sm:p-6">
                       <div className="mb-3 flex items-center justify-between sm:mb-4">
                         <h3 className="text-base font-semibold text-foreground sm:text-lg">Gift Cards</h3>
-                      <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
+                      <button type="button" onClick={handleGiftCards} className="touch-manipulation text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                           View All
                       </button>
                       </div>
@@ -609,7 +643,7 @@ export default function HomePage() {
                         ))}
                       </div>
                       <div className="block">
-                        <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                        <Button type="button" onClick={handleGiftCards} className="mt-3 w-full touch-manipulation bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                           <Gift className="mr-2 h-4 w-4" />
                           Buy Gift Card
                         </Button>
@@ -629,7 +663,7 @@ export default function HomePage() {
                           <button
                             key={option.amount}
                             onClick={() => setSelectedPoints(option.amount)}
-                            className={`relative rounded-lg border-2 px-2 py-2.5 sm:px-3 sm:py-3 text-center transition-all min-h-[64px] flex flex-col items-center justify-center ${
+                            className={`relative touch-manipulation rounded-lg border-2 px-2 py-2.5 sm:px-3 sm:py-3 text-center transition-all min-h-[64px] flex flex-col items-center justify-center ${
                               selectedPoints === option.amount
                                 ? "border-transparent bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-sm"
                                 : "border-border bg-white/0 hover:border-violet-300 hover:bg-violet-50/50"
@@ -655,7 +689,7 @@ export default function HomePage() {
                             <button
                               key={option.amount}
                               onClick={() => setSelectedPoints(option.amount)}
-                              className={`relative rounded-lg border-2 px-2 py-2.5 sm:px-3 sm:py-3 text-center transition-all min-h-[64px] flex flex-col items-center justify-center ${
+                              className={`relative touch-manipulation rounded-lg border-2 px-2 py-2.5 sm:px-3 sm:py-3 text-center transition-all min-h-[64px] flex flex-col items-center justify-center ${
                                 selectedPoints === option.amount
                                   ? "border-transparent bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-sm"
                                   : "border-border bg-white/0 hover:border-violet-300 hover:bg-violet-50/50"
@@ -672,7 +706,7 @@ export default function HomePage() {
                         </div>
                       )}
                       <div className="block">
-                        <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                        <Button type="button" onClick={handleBelievePoints} className="mt-3 w-full touch-manipulation bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                           <Wallet className="mr-2 h-4 w-4" />
                           Add Points Now
                     </Button>
@@ -692,7 +726,7 @@ export default function HomePage() {
                   <CardContent className="p-4 sm:p-6">
                     <div className="mb-3 flex items-center justify-between sm:mb-4">
                       <h3 className="text-base font-semibold text-foreground sm:text-lg">Active sweepstakes</h3>
-                      <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
+                      <button type="button" onClick={handleRaffles} className="touch-manipulation text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                         View All
                       </button>
                     </div>
@@ -738,7 +772,7 @@ export default function HomePage() {
                         </div>
 
                         <div className="block">
-                          <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                          <Button type="button" onClick={handleRaffles} className="mt-3 w-full touch-manipulation bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                             <Ticket className="mr-2 h-4 w-4" />
                             Enter sweepstakes
                           </Button>

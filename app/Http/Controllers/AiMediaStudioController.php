@@ -176,7 +176,7 @@ class AiMediaStudioController extends Controller
             if ($balance < round($cost, 2)) {
                 $need = number_format($cost, 2);
                 throw ValidationException::withMessages([
-                    'title' => 'You need '.$need.' AI Media Studio credits for this video (1 credit = US$1.00). Organizations receive credits with their subscription; supporters can buy credit packs from Credits / purchase.',
+                    'title' => 'You need '.$need.' AI Video Studio credits for this video (1 credit = US$1.00). Organizations receive credits with their subscription; supporters can buy credit packs from Credits / purchase.',
                 ]);
             }
 

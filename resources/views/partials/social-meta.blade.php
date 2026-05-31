@@ -1,6 +1,7 @@
 @php
+    /** @var array<string, mixed>|null $og */
     /** @var array<string, mixed> $page */
-    $og = \App\Services\SeoService::openGraphForView($page ?? [], request());
+    $og = $og ?? \App\Services\SeoService::openGraphForView($page ?? [], request());
 @endphp
 <meta name="description" content="{{ $og['description'] }}">
 <link rel="canonical" href="{{ $og['url'] }}">

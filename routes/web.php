@@ -449,8 +449,15 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
     Route::get('/livestreams/supporter/live', [SupporterLivestreamController::class, 'live'])->name('livestreams.supporter.live');
     Route::get('/livestreams/supporter/settings', [SupporterLivestreamController::class, 'settings'])->name('livestreams.supporter.settings');
+    Route::get('/livestreams/supporter/overlay-studio', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'supporterIndex'])->name('livestreams.supporter.overlay-studio');
+    Route::patch('/livestreams/supporter/overlay-studio', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'supporterUpdate'])->name('livestreams.supporter.overlay-studio.update');
+    Route::post('/livestreams/supporter/overlay-studio/logo', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'supporterUploadLogo'])->name('livestreams.supporter.overlay-studio.upload-logo');
+    Route::post('/livestreams/supporter/overlay-studio/sponsor', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'supporterUploadSponsor'])->name('livestreams.supporter.overlay-studio.upload-sponsor');
+    Route::post('/livestreams/supporter/overlay-studio/qr', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'supporterUploadQr'])->name('livestreams.supporter.overlay-studio.upload-qr');
+    Route::delete('/livestreams/supporter/overlay-studio/asset', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'supporterRemoveAsset'])->name('livestreams.supporter.overlay-studio.remove-asset');
     Route::get('/livestreams/supporter/recordings/search', [SupporterLivestreamController::class, 'recordingsSearch'])->name('livestreams.supporter.recordings.search');
     Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
+    Route::get('/livestreams/supporter/recordings/branded-download', [SupporterLivestreamController::class, 'recordingBrandedDownload'])->name('livestreams.supporter.recordings.branded-download');
     Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');
     Route::put('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingRename'])->name('livestreams.supporter.recordings.file.rename');
     Route::post('/livestreams/supporter/recordings/youtube', [SupporterLivestreamController::class, 'recordingPublishToYoutube'])->name('livestreams.supporter.recordings.youtube.publish');
@@ -1318,6 +1325,12 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     // Organization Livestreams
     Route::prefix('livestreams')->name('organization.livestreams.')->group(function () {
         Route::get('/', [LivestreamController::class, 'index'])->name('index');
+        Route::get('/overlay-studio', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationIndex'])->name('overlay-studio');
+        Route::patch('/overlay-studio', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationUpdate'])->name('overlay-studio.update');
+        Route::post('/overlay-studio/logo', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationUploadLogo'])->name('overlay-studio.upload-logo');
+        Route::post('/overlay-studio/sponsor', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationUploadSponsor'])->name('overlay-studio.upload-sponsor');
+        Route::post('/overlay-studio/qr', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationUploadQr'])->name('overlay-studio.upload-qr');
+        Route::delete('/overlay-studio/asset', [\App\Http\Controllers\LivestreamOverlayStudioController::class, 'organizationRemoveAsset'])->name('overlay-studio.remove-asset');
         Route::get('/create', [LivestreamController::class, 'create'])->name('create');
         Route::post('/', [LivestreamController::class, 'store'])->name('store');
         Route::get('/{id}/ready', [LivestreamController::class, 'ready'])->name('ready');
