@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
  */
 final class LivestreamMeetingPresence
 {
-    private const TTL_SECONDS = 45;
+    private const TTL_SECONDS = 14_400;
 
     private static function cacheKey(string $kind, int $livestreamId): string
     {

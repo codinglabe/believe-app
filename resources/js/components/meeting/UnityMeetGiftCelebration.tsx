@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Gift, Sparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { UnityMeetGiftPayload } from "@/hooks/useUnityMeetGiftNotifications"
 
-const AUTO_DISMISS_MS = 9_000
+const AUTO_DISMISS_SEC = 9
 
 type UnityMeetGiftCelebrationProps = {
   gift: UnityMeetGiftPayload | null
@@ -14,26 +14,13 @@ type UnityMeetGiftCelebrationProps = {
 }
 
 export default function UnityMeetGiftCelebration({ gift, onDismiss }: UnityMeetGiftCelebrationProps) {
-  const [progress, setProgress] = useState(100)
-
   useEffect(() => {
     if (!gift) {
       return
     }
 
-    setProgress(100)
-    const started = Date.now()
-    const tick = window.setInterval(() => {
-      const elapsed = Date.now() - started
-      const remaining = Math.max(0, 100 - (elapsed / AUTO_DISMISS_MS) * 100)
-      setProgress(remaining)
-      if (remaining <= 0) {
-        window.clearInterval(tick)
-        onDismiss()
-      }
-    }, 50)
-
-    return () => window.clearInterval(tick)
+    const timerId = window.setTimeout(onDismiss, AUTO_DISMISS_SEC * 1000)
+    return () => window.clearTimeout(timerId)
   }, [gift, onDismiss])
 
   return (
@@ -122,11 +109,13 @@ export default function UnityMeetGiftCelebration({ gift, onDismiss }: UnityMeetG
               </motion.blockquote>
             ) : null}
 
-            <div className="h-1 w-full bg-purple-100 dark:bg-purple-950/60">
+            <div className="h-1 w-full overflow-hidden bg-purple-100 dark:bg-purple-950/60">
               <motion.div
+                key={gift.senderId}
                 className="h-full bg-gradient-to-r from-purple-600 to-blue-600"
-                style={{ width: `${progress}%` }}
-                transition={{ ease: "linear", duration: 0.05 }}
+                initial={{ width: "100%" }}
+                animate={{ width: "0%" }}
+                transition={{ duration: AUTO_DISMISS_SEC, ease: "linear" }}
               />
             </div>
           </motion.div>

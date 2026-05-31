@@ -200,7 +200,6 @@ export default function SupporterShowLivestream({
     livestream: initialLivestream,
     recordingConsentDeclines: initialRecordingConsentDeclines,
     participantRoster: initialParticipantRoster,
-    rosterPollUrl: route("livestreams.supporter.participant-roster", initialLivestream.id),
   })
 
   const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]>; success?: string }>()

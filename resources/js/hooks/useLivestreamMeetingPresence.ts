@@ -4,8 +4,6 @@ import {
   postMeetingPresenceJson,
 } from "@/lib/livestreamMeetingPresence"
 
-const HEARTBEAT_MS = 20_000
-
 function storageKey(roomName: string): string {
   return `unity-meet-presence:${roomName}`
 }
@@ -41,7 +39,7 @@ type Options = {
 }
 
 /**
- * Register guest presence when they enter the VDO room so the host roster updates in real time.
+ * Register guest presence on join; leave pushes a Reverb roster update to the host (no polling).
  */
 export function useLivestreamMeetingPresence({
   roomName,
@@ -64,7 +62,9 @@ export function useLivestreamMeetingPresence({
     }
 
     joinedRef.current = false
-    beaconMeetingPresenceLeave(roomName, sessionId)
+    await postMeetingPresenceJson(route("livestreams.presence.leave", roomName), {
+      sessionId,
+    })
     clearSessionId(roomName)
     sessionIdRef.current = null
   }, [roomName])
@@ -101,31 +101,23 @@ export function useLivestreamMeetingPresence({
       return
     }
 
-    const sessionId = sessionIdRef.current ?? getOrCreateSessionId(roomName)
-    sessionIdRef.current = sessionId
-
-    const heartbeatId = window.setInterval(() => {
-      if (!joinedRef.current || !sessionIdRef.current) {
+    const onPageHide = () => {
+      const sessionId = sessionIdRef.current
+      if (!joinedRef.current || !sessionId) {
         return
       }
-      void postMeetingPresenceJson(route("livestreams.presence.heartbeat", roomName), {
-        sessionId: sessionIdRef.current,
-      })
-    }, HEARTBEAT_MS)
-
-    const onLeave = () => {
-      void leaveMeeting()
+      joinedRef.current = false
+      beaconMeetingPresenceLeave(roomName, sessionId)
+      clearSessionId(roomName)
+      sessionIdRef.current = null
     }
 
-    window.addEventListener("pagehide", onLeave)
-    window.addEventListener("beforeunload", onLeave)
+    window.addEventListener("pagehide", onPageHide)
 
     return () => {
-      window.clearInterval(heartbeatId)
-      window.removeEventListener("pagehide", onLeave)
-      window.removeEventListener("beforeunload", onLeave)
+      window.removeEventListener("pagehide", onPageHide)
     }
-  }, [active, roomName, leaveMeeting])
+  }, [active, roomName])
 
   return { leaveMeeting }
 }

@@ -43,11 +43,7 @@ type Options<TLivestream extends LivestreamRealtimeSlice> = {
   livestream: TLivestream
   recordingConsentDeclines: RecordingConsentDeclineRow[]
   participantRoster?: UnityMeetParticipant[]
-  /** Poll roster JSON while meeting is active (Reverb backup). */
-  rosterPollUrl?: string | null
 }
-
-const ROSTER_POLL_MS = 2_000
 
 function rosterSignature(roster: UnityMeetParticipant[]): string {
   return roster
@@ -56,35 +52,14 @@ function rosterSignature(roster: UnityMeetParticipant[]): string {
     .join("|")
 }
 
-async function fetchParticipantRoster(url: string): Promise<UnityMeetParticipant[] | null> {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      credentials: "same-origin",
-    })
-    if (!res.ok) {
-      return null
-    }
-    const data = (await res.json()) as { participantRoster?: UnityMeetParticipant[] }
-    return Array.isArray(data.participantRoster) ? data.participantRoster : null
-  } catch {
-    return null
-  }
-}
-
 /**
- * Push host dashboard updates over Reverb — no full-page reload.
- * Roster also polls while the meeting is active so guests appear even if a Reverb event is missed.
+ * Push host dashboard updates over Reverb — roster, status, and queue sync (no polling).
  */
 export function useUnityMeetHostRealtime<TLivestream extends LivestreamRealtimeSlice>({
   broadcastChannel,
   livestream,
   recordingConsentDeclines,
   participantRoster = [],
-  rosterPollUrl = null,
 }: Options<TLivestream>) {
   const [liveLivestream, setLiveLivestream] = useState(livestream)
   const [liveDeclines, setLiveDeclines] = useState(recordingConsentDeclines)
@@ -157,30 +132,6 @@ export function useUnityMeetHostRealtime<TLivestream extends LivestreamRealtimeS
     [channel, applyViewerStatus],
     "public",
   )
-
-  useEffect(() => {
-    const meetingActive = ["meeting_live", "live", "starting"].includes(liveLivestream.status ?? "")
-    if (!meetingActive || !rosterPollUrl) {
-      return
-    }
-
-    let cancelled = false
-
-    const poll = async () => {
-      const roster = await fetchParticipantRoster(rosterPollUrl)
-      if (!cancelled && roster) {
-        applyRoster(roster)
-      }
-    }
-
-    void poll()
-    const intervalId = window.setInterval(() => void poll(), ROSTER_POLL_MS)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [liveLivestream.status, rosterPollUrl, applyRoster])
 
   return {
     livestream: liveLivestream,
