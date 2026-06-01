@@ -9,14 +9,15 @@ import UnityLiveVideoOverlayLayer from "@/components/unity-live/UnityLiveVideoOv
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { Switch } from "@/components/frontend/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
+  OVERLAY_CTA_PRESETS,
   overlayToLivePreview,
   overlayToVideoPreview,
   type OverlayStudioPayload,
 } from "@/types/livestream-overlay"
-import { Layers, Upload, Trash2, Save, Radio, Film } from "lucide-react"
+import { Layers, Upload, Trash2, Save, Radio, Film, Sparkles } from "lucide-react"
 
 type Props = {
   overlay: OverlayStudioPayload
@@ -97,6 +98,7 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
   const form = useForm({
     enabled: initialOverlay.enabled,
     accent_color: initialOverlay.accentColor,
+    speaker_name: initialOverlay.speakerName,
     banner_message: initialOverlay.bannerMessage,
     banner_cta: initialOverlay.bannerCta,
     donation_message: initialOverlay.donationMessage,
@@ -107,12 +109,29 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
     show_live_badge: initialOverlay.showLiveBadge,
   })
 
+  const applyCtaPreset = useCallback(
+    (presetId: string) => {
+      const preset = OVERLAY_CTA_PRESETS.find((p) => p.id === presetId)
+      if (!preset) return
+      form.setData({
+        ...form.data,
+        banner_message: preset.bannerMessage,
+        banner_cta: preset.bannerCta,
+        donation_message: preset.donationMessage ?? form.data.donation_message,
+        donation_cta: preset.donationCta ?? form.data.donation_cta,
+        scrolling_message: preset.scrollingMessage ?? form.data.scrolling_message,
+      })
+    },
+    [form],
+  )
+
   const previewOverlay = useMemo(
     (): OverlayStudioPayload => ({
       enabled: form.data.enabled,
       accentColor: form.data.accent_color,
       logoUrl: initialOverlay.logoUrl,
       logoFromProfile: initialOverlay.logoFromProfile,
+      speakerName: form.data.speaker_name,
       bannerMessage: form.data.banner_message,
       bannerCta: form.data.banner_cta,
       donationMessage: form.data.donation_message,
@@ -186,7 +205,7 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
                   Unity Live Overlay Studio
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Brand {meta.ownerLabel} on Unity Live — logo, CTAs, sponsors, and ticker. Recordings get logo + bottom banner.
+                  Brand {meta.ownerLabel} on Unity Live — logo, CTAs, sponsors, and ticker. Recordings get the same logo, speaker, sponsor, and bottom banner.
                 </p>
               </div>
             </div>
@@ -245,6 +264,43 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
                   onRemove={() => removeAsset("logo")}
                 />
 
+                <div className="grid gap-2">
+                  <Label htmlFor="speaker_name">Speaker / host name</Label>
+                  <Input
+                    id="speaker_name"
+                    placeholder="Kenneth Matthews"
+                    value={form.data.speaker_name}
+                    onChange={(e) => form.setData("speaker_name", e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Lower-third name shown on live streams and burned into recordings. VDO.Ninja also labels speakers in multi-guest streams.
+                  </p>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <p className="text-sm font-medium">CTA presets (Call To Action)</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    CTAs tell viewers what to do next — donate, register, join, or scan. Pick a preset to fill banner fields, then edit as needed.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {OVERLAY_CTA_PRESETS.map((preset) => (
+                      <Button
+                        key={preset.id}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-auto whitespace-normal py-1.5 text-left text-xs"
+                        onClick={() => applyCtaPreset(preset.id)}
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="grid gap-2">
                     <Label htmlFor="banner_message">Bottom banner message</Label>
@@ -263,6 +319,7 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
                       value={form.data.banner_cta}
                       onChange={(e) => form.setData("banner_cta", e.target.value)}
                     />
+                    <p className="text-xs text-muted-foreground">The action you want viewers to take — shown with 👉 on screen.</p>
                   </div>
                 </div>
 
@@ -289,7 +346,7 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
 
                 <AssetUpload
                   label="Sponsor image"
-                  hint="Shown above the bottom banner during live streams."
+                  hint="Shown above the bottom banner on live streams and in branded recording downloads."
                   currentUrl={initialOverlay.sponsorImageUrl}
                   uploading={uploading === "sponsor"}
                   onUpload={(file) => uploadFile(meta.uploadSponsorUrl, "sponsor", file)}
@@ -385,8 +442,8 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
                   Recording preview
                 </CardTitle>
                 <CardDescription>
-                  Finished clips get logo + bottom banner only
-                  {ffmpegAvailable ? " (FFmpeg ready on server)." : " (install FFmpeg to burn into MP4 downloads)."}
+                  Finished clips get logo, speaker name, sponsor, and bottom CTA banner
+                  {ffmpegAvailable ? " (FFmpeg ready — use Download branded on Recordings)." : " (install FFmpeg to burn into MP4 downloads)."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -396,7 +453,7 @@ export default function OverlayStudio({ overlay: initialOverlay, meta, ffmpegAva
                     <UnityLiveVideoOverlayLayer overlay={videoPreview} />
                   ) : (
                     <p className="absolute inset-0 flex items-center justify-center text-sm text-white/50">
-                      Logo or bottom banner required
+                      Add a logo, speaker name, or banner text to preview
                     </p>
                   )}
                 </div>

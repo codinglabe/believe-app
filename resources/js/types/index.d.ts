@@ -61,6 +61,7 @@ export interface User {
     contact_number?: string;
     whatsapp_opt_in: boolean;
     push_token?: string;
+    has_push_device?: boolean;
     login_status: boolean;
     /** false when user is Care Alliance without a valid 9-digit EIN (wallet blocked) */
     care_alliance_wallet_eligible?: boolean;

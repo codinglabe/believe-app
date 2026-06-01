@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils"
 import type { UnityLiveVideoOverlay } from "@/types/livestream-overlay"
 
-/** Recorded clip overlay: logo top-right + bottom CTA banner only. */
+/** Recorded clip overlay: logo, speaker, sponsor, bottom CTA banner. */
 export default function UnityLiveVideoOverlayLayer({
   overlay,
   className,
@@ -13,6 +13,8 @@ export default function UnityLiveVideoOverlayLayer({
 }) {
   const accent = overlay.accentColor || "#7C3AED"
   const showBanner = overlay.bannerMessage.trim() !== "" || overlay.bannerCta.trim() !== ""
+  const showSpeaker = overlay.speakerName.trim() !== ""
+  const showSponsor = Boolean(overlay.sponsorImageUrl)
 
   return (
     <div className={cn("pointer-events-none absolute inset-0 z-20 overflow-hidden", className)}>
@@ -23,6 +25,31 @@ export default function UnityLiveVideoOverlayLayer({
             alt=""
             className="max-h-10 max-w-[120px] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)] sm:max-h-12 sm:max-w-[140px]"
           />
+        </div>
+      ) : null}
+
+      {showSpeaker ? (
+        <div className="absolute bottom-24 left-3 sm:bottom-28 sm:left-4">
+          <span className="inline-flex max-w-[min(100%,16rem)] items-center rounded-lg bg-black/60 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-sm sm:max-w-xs sm:text-base">
+            {overlay.speakerName}
+          </span>
+        </div>
+      ) : null}
+
+      {showSponsor ? (
+        <div className="absolute bottom-24 left-3 right-3 sm:bottom-28 sm:left-4 sm:right-4">
+          <div className="flex items-center justify-center gap-3 rounded-xl border border-white/20 bg-black/70 px-3 py-2 backdrop-blur-md sm:px-4 sm:py-3">
+            {overlay.sponsorLabel ? (
+              <span className="hidden shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/70 sm:inline sm:text-xs">
+                {overlay.sponsorLabel}
+              </span>
+            ) : null}
+            <img
+              src={overlay.sponsorImageUrl!}
+              alt=""
+              className="max-h-10 w-auto max-w-full object-contain sm:max-h-12"
+            />
+          </div>
         </div>
       ) : null}
 

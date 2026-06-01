@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Livestock\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Livestock\LoginRequest;
-use App\Models\UserPushToken;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -58,9 +57,12 @@ class LivestockAuthenticatedSessionController extends Controller
     {
         $user = $request->user('livestock');
 
-        // Delete all push tokens for the user before logging out
-        if ($user) {
-            UserPushToken::where('user_id', $user->id)->delete();
+        if ($user && $request->filled('device_id')) {
+            app(\App\Services\DeviceTokenService::class)->removeDevice(
+                $user->id,
+                $request->input('device_id')
+            );
+            app(\App\Services\DeviceTokenService::class)->syncLegacyPushToken($user->id);
         }
 
         Auth::guard('livestock')->logout();

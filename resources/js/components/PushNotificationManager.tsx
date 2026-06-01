@@ -15,6 +15,7 @@ interface Auth {
   user: {
     id: number
     push_token?: string
+    has_push_device?: boolean
   }
 }
 
@@ -27,8 +28,16 @@ export function PushNotificationManager({ userId }: PushNotificationManagerProps
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (auth?.user?.push_token) {
+    if (auth?.user?.has_push_device) {
       setHasToken(true)
+    } else if (auth?.user?.push_token && Notification.permission === "granted") {
+      // Legacy column set but device row may be stale — re-sync silently.
+      void syncPushTokenWithServer({ force: true }).then((token) => {
+        if (token) {
+          setHasToken(true)
+          router.reload({ only: ["auth"] })
+        }
+      })
     }
   }, [auth])
 
@@ -41,7 +50,7 @@ export function PushNotificationManager({ userId }: PushNotificationManagerProps
       setError(null)
       setIsLoading(true)
 
-      const fcmToken = await syncPushTokenWithServer({ prompt: true })
+      const fcmToken = await syncPushTokenWithServer({ prompt: true, force: true })
 
       if (fcmToken && auth?.user?.id) {
         setHasToken(true)

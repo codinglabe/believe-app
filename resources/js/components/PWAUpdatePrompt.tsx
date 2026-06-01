@@ -6,92 +6,75 @@ import { Button } from "@/components/ui/button"
 import { isLivestockDomain } from "@/lib/livestock-domain"
 import {
   activateWaitingServiceWorker,
+  fetchServerAppVersion,
   initStoredAppVersion,
-  isStandalonePwa,
-  registrationHasWaitingWorker,
+  markPwaUpdateComplete,
   reloadForPwaUpdate,
   runPwaUpdateCheck,
+  silentlyActivateIfAcknowledged,
   startPwaUpdateListeners,
-  watchServiceWorkerInstall,
 } from "@/lib/pwa-update"
 import { registerServiceWorker } from "@/pwa/register-service-worker"
 
 export function PWAUpdatePrompt() {
-  const [isPwa, setIsPwa] = useState(false)
   const [showUpdate, setShowUpdate] = useState(false)
-  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
 
-  const revealUpdate = useCallback((reg: ServiceWorkerRegistration | null) => {
-    if (!isStandalonePwa()) {
-      return
-    }
-
-    setRegistration(reg)
-    setShowUpdate(true)
+  const checkForPendingDeploy = useCallback(async () => {
+    const { updateAvailable } = await runPwaUpdateCheck()
+    setShowUpdate(updateAvailable)
   }, [])
 
   useEffect(() => {
-    if (isLivestockDomain() || !("serviceWorker" in navigator)) {
-      return
-    }
-
-    const standalone = isStandalonePwa()
-    setIsPwa(standalone)
-
-    if (!standalone) {
+    if (isLivestockDomain() || !("serviceWorker" in navigator) || import.meta.env.DEV) {
       return
     }
 
     initStoredAppVersion()
 
-    let stopWatching: (() => void) | undefined
-
-    void registerServiceWorker().then((reg) => {
-      if (!reg) {
-        return
-      }
-
-      if (registrationHasWaitingWorker(reg)) {
-        revealUpdate(reg)
-      }
-
-      stopWatching = watchServiceWorkerInstall(reg, revealUpdate)
+    void registerServiceWorker().then(async () => {
+      await silentlyActivateIfAcknowledged()
+      await checkForPendingDeploy()
     })
 
     const stopListeners = startPwaUpdateListeners(() => {
-      void runPwaUpdateCheck().then(({ registration: reg }) => {
-        revealUpdate(reg)
-      })
+      void checkForPendingDeploy()
     })
 
     return () => {
-      stopWatching?.()
       stopListeners()
     }
-  }, [revealUpdate])
+  }, [checkForPendingDeploy])
 
   const handleUpdate = async () => {
     setIsUpdating(true)
 
     try {
-      const reg = registration ?? (await navigator.serviceWorker.ready)
+      const server = await fetchServerAppVersion()
+      if (server?.version) {
+        markPwaUpdateComplete(server.version)
+      }
 
-      if (reg.waiting) {
+      const reg = await navigator.serviceWorker.getRegistration("/")
+      if (reg?.waiting) {
         await activateWaitingServiceWorker(reg)
+      } else if (reg) {
+        await reg.update().catch(console.error)
+        if (reg.waiting) {
+          await activateWaitingServiceWorker(reg)
+        }
       }
 
       reloadForPwaUpdate()
     } catch (error) {
       console.error("[PWA] Update failed:", error)
+      const server = await fetchServerAppVersion()
+      markPwaUpdateComplete(server?.version ?? null)
       reloadForPwaUpdate()
-    } finally {
-      setIsUpdating(false)
-      setShowUpdate(false)
     }
   }
 
-  if (isLivestockDomain() || !isPwa || !showUpdate) {
+  if (isLivestockDomain() || !showUpdate) {
     return null
   }
 
@@ -120,7 +103,7 @@ export function PWAUpdatePrompt() {
               size="sm"
             >
               <RefreshCw className={`h-4 w-4 ${isUpdating ? "animate-spin" : ""}`} />
-              {isUpdating ? "Reloading..." : "Reload Now"}
+              {isUpdating ? "Updating..." : "Reload Now"}
             </Button>
           </div>
         </div>
