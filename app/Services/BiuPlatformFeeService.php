@@ -8,9 +8,11 @@ use App\Models\CartItem;
 use App\Models\Product;
 
 /**
- * BIU platform fee % for all sales modules (marketplace, service hub, courses, raffles, gift cards, merchant hub).
+ * BIU platform fee % for sales modules that charge buyers (marketplace, service hub, courses, raffles, merchant hub).
  *
- * Applied to the sale base amount (product subtotal, ticket total, course fee, gift card face paid, merchant cash spent — not tax/shipping).
+ * Gift cards are excluded: face-value checkout with no buyer platform fee; BIU share is taken from provider commission via {@see GiftCardRevenueShareService}.
+ *
+ * Applied to the sale base amount (product subtotal, ticket total, course fee, merchant cash spent — not tax/shipping).
  * For marketplace product orders this fee is added to the buyer-facing order total and should appear on receipts / invoices.
  */
 final class BiuPlatformFeeService

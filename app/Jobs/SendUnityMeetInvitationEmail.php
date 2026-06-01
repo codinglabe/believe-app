@@ -87,7 +87,7 @@ class SendUnityMeetInvitationEmail implements ShouldQueue
         }
 
         $hostName = trim((string) ($settings['display_name'] ?? $livestream->user?->name ?? 'Your host'));
-        $joinUrl = url('/livestreams/join/'.$livestream->room_name);
+        $joinUrl = \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name);
         $scheduledAtFormatted = $livestream->scheduled_at
             ? $livestream->scheduled_at->timezone(config('app.timezone'))->format('l, F j, Y \a\t g:i A T')
             : 'Join when ready';

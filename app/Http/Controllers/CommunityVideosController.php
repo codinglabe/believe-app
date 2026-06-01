@@ -84,7 +84,13 @@ class CommunityVideosController extends Controller
 
             $youtubeService = app(YouTubeService::class);
             // Never list empty / 0:00 / zero-length items (not real videos or shorts). LIVE kept for live hub.
-            $youtubeVideos = $youtubeVideos->reject(fn (array $v) => $youtubeService->shouldOmitFromVideoHub($v))->values();
+            $youtubeVideos = $youtubeVideos->reject(function (array $v) use ($youtubeService) {
+                if (($v['source'] ?? '') === 'import') {
+                    return false;
+                }
+
+                return $youtubeService->shouldOmitFromVideoHub($v);
+            })->values();
 
             $isShort = static function (array $v) use ($youtubeService): bool {
                 if (array_key_exists('is_youtube_short', $v)) {
@@ -554,7 +560,291 @@ class CommunityVideosController extends Controller
             }
         }
 
+        $all = $this->appendImportedUrlVideos($all);
+
         return $all->sortByDesc('sort_at')->values();
+    }
+
+    /**
+     * Import a public YouTube video by URL into Unity Video Hub (no channel connection required).
+     */
+    public function importFromUrl(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'youtube_url' => 'required|string|max:2048',
+        ]);
+
+        $url = trim($validated['youtube_url']);
+        $videoId = $this->extractYoutubeVideoId($url);
+        if (! $videoId) {
+            return response()->json([
+                'message' => 'Please paste a valid public YouTube video URL (watch, Shorts, or youtu.be link).',
+            ], 422);
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $organization = Organization::forAuthUser($user);
+        $organizationId = $organization?->id;
+        $userId = $organizationId ? null : $user->id;
+
+        $youtubeService = app(YouTubeService::class);
+        $details = $youtubeService->getVideoDetails($videoId);
+
+        $title = is_array($details) && ! empty($details['title'])
+            ? (string) $details['title']
+            : 'YouTube Video';
+        $description = is_array($details) ? Str::limit((string) ($details['description'] ?? ''), 2000) : null;
+        $thumbnailUrl = is_array($details) && ! empty($details['thumbnail_url'])
+            ? (string) $details['thumbnail_url']
+            : sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+        $durationSeconds = is_array($details) ? max(0, (int) ($details['duration_seconds'] ?? 0)) : 0;
+        $durationDisplay = is_array($details) ? (string) ($details['duration'] ?? '') : '';
+
+        if ($durationSeconds < 1 && $durationDisplay !== '' && $durationDisplay !== 'LIVE') {
+            $durationSeconds = $this->parseYoutubeDurationDisplayToSeconds($durationDisplay);
+        }
+
+        if ($durationSeconds < 1 && str_contains(strtolower($url), '/shorts/')) {
+            $durationSeconds = 30;
+            $durationDisplay = $durationDisplay !== '' ? $durationDisplay : '0:30';
+        }
+
+        $isShort = $this->importedVideoIsShort($url, $durationDisplay, $durationSeconds, $details, $youtubeService);
+        $category = $isShort ? 'shorts' : 'videos';
+
+        $watchUrl = str_contains(strtolower($url), '/shorts/')
+            ? 'https://www.youtube.com/shorts/'.$videoId
+            : 'https://www.youtube.com/watch?v='.$videoId;
+
+        $communityVideo = CommunityVideo::updateOrCreate(
+            ['youtube_video_id' => $videoId],
+            [
+                'title' => Str::limit($title, 255),
+                'slug' => $videoId,
+                'description' => $description,
+                'thumbnail_url' => $thumbnailUrl,
+                'video_url' => $watchUrl,
+                'duration_seconds' => $durationSeconds,
+                'organization_id' => $organizationId,
+                'user_id' => $userId,
+                'category' => $category,
+            ]
+        );
+
+        $communityVideo->load([
+            'organization:id,name,registered_user_image,user_id',
+            'organization.user:id,slug,name',
+            'user:id,name,slug,image,registered_user_image',
+        ]);
+
+        Cache::forget('unity_videos_all_v2');
+
+        $hubRow = $this->hubRowFromImportedCommunityVideo($communityVideo, $details, $youtubeService);
+
+        return response()->json([
+            'message' => $isShort
+                ? 'Your YouTube Short was added to Unity Video Hub.'
+                : 'Your video was added to Unity Video Hub.',
+            'video' => $hubRow,
+            'is_short' => $isShort,
+        ], 201);
+    }
+
+    /**
+     * Merge URL-imported hub videos (CommunityVideo rows) into the aggregate feed.
+     *
+     * @param  Collection<int, array<string, mixed>>  $all
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function appendImportedUrlVideos(Collection $all): Collection
+    {
+        $existingSlugs = $all->pluck('slug')->flip();
+        $youtubeService = app(YouTubeService::class);
+
+        $imports = CommunityVideo::query()
+            ->whereNotNull('youtube_video_id')
+            ->with([
+                'organization:id,name,registered_user_image,user_id',
+                'organization.user:id,slug,name',
+                'user:id,name,slug,image,registered_user_image',
+            ])
+            ->orderByDesc('created_at')
+            ->get();
+
+        foreach ($imports as $record) {
+            $videoId = (string) $record->youtube_video_id;
+            if ($videoId === '' || $existingSlugs->has($videoId)) {
+                continue;
+            }
+
+            $all->push($this->hubRowFromImportedCommunityVideo($record, null, $youtubeService));
+            $existingSlugs[$videoId] = true;
+        }
+
+        return $all;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $apiDetails
+     * @return array<string, mixed>
+     */
+    private function hubRowFromImportedCommunityVideo(
+        CommunityVideo $record,
+        ?array $apiDetails,
+        YouTubeService $youtubeService
+    ): array {
+        $videoId = (string) $record->youtube_video_id;
+        $org = $record->organization;
+        $owner = $record->user;
+
+        if ($org) {
+            $creator = $org->name;
+            $creatorAvatar = $org->registered_user_image ? Storage::url($org->registered_user_image) : null;
+            $channelSlug = $org->user?->slug;
+            $organizationId = $org->id;
+        } else {
+            $creator = $owner?->name ?? 'Community';
+            $creatorAvatar = $owner?->registered_user_image
+                ? Storage::url($owner->registered_user_image)
+                : ($owner?->image ? Storage::url($owner->image) : null);
+            $channelSlug = $owner?->slug;
+            $organizationId = null;
+        }
+
+        $duration = $record->formatted_duration;
+        $durationSeconds = (int) $record->duration_seconds;
+        if (is_array($apiDetails)) {
+            if (! empty($apiDetails['duration'])) {
+                $duration = (string) $apiDetails['duration'];
+            }
+            if (isset($apiDetails['duration_seconds'])) {
+                $durationSeconds = max($durationSeconds, (int) $apiDetails['duration_seconds']);
+            }
+        }
+
+        $watchUrl = $record->video_url ?: ('https://www.youtube.com/watch?v='.$videoId);
+        $description = $record->description ?? '';
+        $title = $record->title;
+
+        $views = is_array($apiDetails) ? (int) ($apiDetails['views'] ?? 0) : 0;
+        $viewsFormatted = is_array($apiDetails)
+            ? (string) ($apiDetails['views_formatted'] ?? number_format($views))
+            : '0';
+        $likes = is_array($apiDetails) ? (int) ($apiDetails['likes'] ?? 0) : 0;
+        $commentCount = is_array($apiDetails) ? (int) ($apiDetails['comment_count'] ?? 0) : 0;
+        $timeAgo = is_array($apiDetails) ? (string) ($apiDetails['time_ago'] ?? '') : $record->time_ago;
+        $publishedAt = is_array($apiDetails) ? (string) ($apiDetails['published_at'] ?? '') : '';
+        $sortAt = $publishedAt !== ''
+            ? Carbon::parse($publishedAt)->timestamp
+            : $record->created_at->timestamp;
+
+        $thumb = $record->thumbnail_url ?: sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+
+        $base = [
+            'id' => 'yt-'.$videoId,
+            'slug' => $videoId,
+            'title' => $title,
+            'creator' => $creator,
+            'creatorAvatar' => $creatorAvatar,
+            'thumbnail_url' => $thumb,
+            'duration' => $duration,
+            'views' => $views,
+            'views_formatted' => $viewsFormatted,
+            'time_ago' => $timeAgo,
+            'likes' => $likes,
+            'likes_formatted' => number_format($likes),
+            'comment_count' => $commentCount,
+            'comment_count_formatted' => number_format($commentCount),
+            'channel_slug' => $channelSlug,
+            'organization_id' => $organizationId,
+            'hub_kind' => 'vod',
+            'source' => 'import',
+            'watch_url' => $watchUrl,
+            'sort_at' => $sortAt,
+            'description' => $description,
+            'duration_seconds' => $durationSeconds,
+            'thumbnail_width' => 0,
+            'thumbnail_height' => 0,
+        ];
+
+        $isShort = $this->importedVideoIsShort($watchUrl, $duration, $durationSeconds, $apiDetails, $youtubeService)
+            || $record->category === 'shorts';
+
+        return array_merge($base, [
+            'is_youtube_short' => $isShort,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $apiDetails
+     */
+    private function importedVideoIsShort(
+        string $watchUrl,
+        string $durationDisplay,
+        int $durationSeconds,
+        ?array $apiDetails,
+        YouTubeService $youtubeService
+    ): bool {
+        if (str_contains(strtolower($watchUrl), '/shorts/')) {
+            return true;
+        }
+
+        $row = [
+            'title' => is_array($apiDetails) ? ($apiDetails['title'] ?? '') : '',
+            'description' => is_array($apiDetails) ? ($apiDetails['description'] ?? '') : '',
+            'duration' => $durationDisplay,
+            'duration_seconds' => $durationSeconds,
+            'thumbnail_width' => 0,
+            'thumbnail_height' => 0,
+        ];
+
+        return $youtubeService->isYoutubeShort($row);
+    }
+
+    private function parseYoutubeDurationDisplayToSeconds(?string $d): int
+    {
+        if ($d === null || $d === '' || $d === 'LIVE') {
+            return 0;
+        }
+        if (preg_match('/^(\d+):(\d{2})$/', $d, $m)) {
+            return ((int) $m[1]) * 60 + (int) $m[2];
+        }
+        if (preg_match('/^(\d+):(\d{2}):(\d{2})$/', $d, $m)) {
+            return ((int) $m[1]) * 3600 + ((int) $m[2]) * 60 + (int) $m[3];
+        }
+
+        return 0;
+    }
+
+    private function extractYoutubeVideoId(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        if (preg_match('~(?:www\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~(?:www\.)?youtube\.com/watch\?[^#]*\bv=([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~youtu\.be/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~youtube\.com/embed/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~m\.youtube\.com/shorts/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        return null;
     }
 
     /**

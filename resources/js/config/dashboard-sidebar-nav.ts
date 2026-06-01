@@ -761,6 +761,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'admin',
                     },
                     {
+                        title: 'Gift card revenue',
+                        href: '/admin/gift-card-revenue',
+                        icon: Gift,
+                        role: 'admin',
+                    },
+                    {
                         title: 'IRS members',
                         href: '/admin/irs-members',
                         icon: FileText,
@@ -990,6 +996,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/credits/purchase',
                 icon: Coins,
                 role: ['organization', 'care_alliance'],
+            },
+            {
+                title: 'Unity Live Overlay Studio',
+                href: '/livestreams/overlay-studio',
+                icon: Layers,
+                role: ['organization', 'organization_pending', 'care_alliance'],
             },
             {
                 title: 'Livestream',

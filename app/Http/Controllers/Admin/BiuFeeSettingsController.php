@@ -49,7 +49,7 @@ class BiuFeeSettingsController extends Controller
             ->route('admin.biu-fee.index')
             ->with(
                 'success',
-                'BIU fee settings saved. Marketplace checkout charges buyers using the Printify/organization rate and the merchant/pool rate on matching line subtotals. Service Hub, courses, raffles, gift cards, and merchant hub cash redemptions still use the global sales platform fee percentage.'
+                'BIU fee settings saved. Marketplace checkout charges buyers using the Printify/organization rate and the merchant/pool rate on matching line subtotals. Service Hub, courses, raffles, and merchant hub cash redemptions use the global sales platform fee percentage. Gift cards sell at face value; BIU earns a share of provider commissions (see Gift card revenue).'
             );
     }
 }

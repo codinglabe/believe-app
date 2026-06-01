@@ -73,6 +73,7 @@ use App\Http\Controllers\ComplianceApplicationController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContentItemController;
 use App\Http\Controllers\CourseController;
+use App\Http\Controllers\CourseUnityMeetController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
@@ -162,6 +163,7 @@ use App\Http\Controllers\SupporterLivestreamController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
+use App\Http\Controllers\UnityLiveEngagementController;
 use App\Http\Controllers\UnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
@@ -341,6 +343,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::put('/admin/processing-fees', [ProcessingFeeSettingsController::class, 'update'])->name('admin.processing-fees.update');
     Route::get('/admin/biu-fee', [BiuFeeSettingsController::class, 'index'])->name('admin.biu-fee.index');
     Route::put('/admin/biu-fee', [BiuFeeSettingsController::class, 'update'])->name('admin.biu-fee.update');
+    Route::get('/admin/gift-card-revenue', [\App\Http\Controllers\Admin\GiftCardRevenueShareController::class, 'index'])->name('admin.gift-card-revenue.index');
 
     Route::redirect('/admin/challenge-hub', '/admin/challenge-hub/categories', 302)->name('admin.challenge-hub.index');
     Route::get('/admin/challenge-hub/categories', [AdminChallengeHubController::class, 'categoriesIndex'])->name('admin.challenge-hub.categories.index');
@@ -430,6 +433,7 @@ Route::get('/unity-videos', [CommunityVideosController::class, 'index'])->name('
 Route::get('/unity-videos/organizations', [CommunityVideosController::class, 'organizations'])->name('unity-videos.organizations');
 Route::get('/unity-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('unity-videos.channel');
 Route::get('/unity-videos/upload', [CommunityVideosController::class, 'upload'])->name('unity-videos.upload')->middleware('auth');
+Route::post('/unity-videos/import', [CommunityVideosController::class, 'importFromUrl'])->name('unity-videos.import')->middleware('auth');
 // More specific route first so /watch/yt/{id} is not matched by /watch/{slug}
 Route::get('/unity-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('unity-videos.show-youtube');
 Route::get('/unity-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('unity-videos.show-short');
@@ -443,6 +447,12 @@ Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementContro
 
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
 Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_-]+');
+Route::get('/unity-live/{slug}/stats', [UnityLiveEngagementController::class, 'stats'])->name('unity-live.stats')->where('slug', '[a-zA-Z0-9_-]+');
+Route::post('/unity-live/{slug}/viewer/join', [UnityLiveEngagementController::class, 'viewerJoin'])->name('unity-live.viewer.join')->where('slug', '[a-zA-Z0-9_-]+');
+Route::post('/unity-live/{slug}/viewer/heartbeat', [UnityLiveEngagementController::class, 'viewerHeartbeat'])->name('unity-live.viewer.heartbeat')->where('slug', '[a-zA-Z0-9_-]+');
+Route::post('/unity-live/{slug}/viewer/leave', [UnityLiveEngagementController::class, 'viewerLeave'])->name('unity-live.viewer.leave')->where('slug', '[a-zA-Z0-9_-]+');
+Route::get('/unity-live/{slug}/chat', [UnityLiveEngagementController::class, 'chatIndex'])->name('unity-live.chat.index')->where('slug', '[a-zA-Z0-9_-]+');
+Route::post('/unity-live/{slug}/chat', [UnityLiveEngagementController::class, 'chatStore'])->name('unity-live.chat.store')->where('slug', '[a-zA-Z0-9_-]+');
 
 // Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
@@ -466,6 +476,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
     Route::post('/livestreams/supporter/schedule', [SupporterLivestreamController::class, 'schedule'])->name('livestreams.supporter.schedule');
     Route::get('/livestreams/supporter/ready/{id}', [SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
+    Route::get('/unity-meet/host/user/{id}', [SupporterLivestreamController::class, 'ready'])->name('unity-meet.host.user')->where('id', '[0-9]+');
     Route::get('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
     Route::post('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
     Route::get('/livestreams/supporter/{id}/edit', [SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
@@ -848,7 +859,12 @@ Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impa
 Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
 
-// Public livestream guest join (no auth) — registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
+// Unity Meet — public guest join (Connection Hub, invitations; same handler as legacy path)
+Route::get('/unity-meet/join/{roomName}', [LivestreamController::class, 'guestJoin'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->name('unity-meet.join');
+
+// Public livestream guest join (no auth) — legacy alias; registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
 Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
     ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
@@ -1369,6 +1385,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::patch('/{id}/visibility', [LivestreamController::class, 'updateVisibility'])->name('update-visibility');
         Route::delete('/{id}', [LivestreamController::class, 'destroy'])->name('destroy');
     });
+
+    // Unity Meet host entry (organization accounts) — Meeting Ready page
+    Route::get('unity-meet/host/organization/{id}', [LivestreamController::class, 'ready'])
+        ->name('unity-meet.host.organization')
+        ->where('id', '[0-9]+');
 
     // Nonprofit Barter Network (NNBN) – EIN + KYB + Board + Bridge + Admin approved only
     Route::middleware('barter.access')->prefix('barter')->name('barter.')->group(function () {
@@ -1894,8 +1915,10 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/courses/enrollment/success', [EnrollmentController::class, 'success'])->name('courses.enrollment.success');
     Route::get('/courses/enrollment/cancel/{enrollment}', [EnrollmentController::class, 'cancel'])->name('courses.enrollment.cancel');
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
+    Route::post('/profile/my-enrollments/notification-preferences', [EnrollmentController::class, 'updateNotificationPreferences'])->name('enrollments.notification-preferences');
     Route::get('/profile/course', [FrontendCourseController::class, 'adminIndex'])->name('profile.course.index');
     Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create')->middleware('permission:course.create');
+    Route::post('/profile/course/unity-meet/prepare', [CourseUnityMeetController::class, 'prepare'])->name('profile.course.unity-meet.prepare')->middleware('permission:course.create');
     Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store')->middleware('permission:course.create');
     Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show')->middleware('permission:course.read'); // Added this line
     Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit')->middleware('permission:course.edit');
@@ -1920,6 +1943,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::prefix('admin/courses-events')->name('admin.courses.')->group(function () {
         Route::get('/', [CourseController::class, 'adminIndex'])->name('index')->middleware('permission:course.read');
         Route::get('/create', [CourseController::class, 'create'])->name('create')->middleware('permission:course.create');
+        Route::post('/unity-meet/prepare', [CourseUnityMeetController::class, 'prepare'])->name('unity-meet.prepare')->middleware('permission:course.create');
         Route::post('/', [CourseController::class, 'store'])->name('store')->middleware('permission:course.create');
         Route::get('/{course:slug}', [CourseController::class, 'adminShow'])->name('show')->middleware('permission:course.read');
         Route::get('/{course:slug}/enrollments', [CourseController::class, 'adminEnrollments'])->name('enrollments')->middleware('permission:course.read');
