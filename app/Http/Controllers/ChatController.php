@@ -528,7 +528,7 @@ class ChatController extends Controller
         $chatRoom->members()->detach(auth()->id());
 
         // Broadcast the member left event
-        broadcast(new MemberLeft($chatRoom->id, $user->id))->toOthers();
+        broadcast(new MemberLeft($chatRoom->id, $user->id, $chatRoom->type))->toOthers();
 
         // If it's a direct chat and one user leaves, delete the room
         if ($chatRoom->type === 'direct' && $chatRoom->members()->count() === 0) {

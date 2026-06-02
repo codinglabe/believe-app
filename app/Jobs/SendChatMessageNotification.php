@@ -25,6 +25,7 @@ class SendChatMessageNotification implements ShouldQueue
     public function __construct(ChatMessage $message)
     {
         $this->message = $message;
+        $this->onQueue('mail');
     }
 
     /**
