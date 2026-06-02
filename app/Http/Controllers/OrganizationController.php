@@ -1264,7 +1264,7 @@ class OrganizationController extends BaseController
     }
 
     /**
-     * Follow / unfollow a Care Alliance when no hub nonprofit is linked yet (organization_id-only favorites are impossible).
+     * Follow / unfollow a Unity Impact Alliance when no hub nonprofit is linked yet (organization_id-only favorites are impossible).
      */
     private function toggleFavoriteToggleCareAllianceOnly(Request $request, $user, CareAlliance $alliance): mixed
     {
@@ -1273,11 +1273,11 @@ class OrganizationController extends BaseController
             if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => __('You cannot follow your own Care Alliance.'),
+                    'message' => __('You cannot follow your own Unity Impact Alliance.'),
                 ], 403);
             }
 
-            return redirect()->back()->with('error', __('You cannot follow your own Care Alliance.'));
+            return redirect()->back()->with('error', __('You cannot follow your own Unity Impact Alliance.'));
         }
 
         $isFollowing = false;
@@ -1414,7 +1414,7 @@ class OrganizationController extends BaseController
     }
 
     /**
-     * Registered hub / org id or equivalent (after Care Alliance resolution).
+     * Registered hub / org id or equivalent (after Unity Impact Alliance resolution).
      */
     private function toggleFavoriteToggleRegisteredOrg(Request $request, $user, Organization $org)
     {
@@ -2629,7 +2629,7 @@ class OrganizationController extends BaseController
     }
 
     /**
-     * Active Care Alliances this nonprofit is a member of (public profile).
+     * Active Unity Impact Alliances this nonprofit is a member of (public profile).
      *
      * @return array<int, array{id: int, name: string, slug: string}>
      */

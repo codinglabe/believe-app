@@ -310,7 +310,7 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
       'user': 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20',
     }
     const roleLabels: Record<string, string> = {
-      care_alliance: 'Care Alliance',
+      care_alliance: 'Unity Impact Alliance',
       organization_pending: 'Organization Pending',
     }
     const key = role.toLowerCase().replace(/\s+/g, '_')

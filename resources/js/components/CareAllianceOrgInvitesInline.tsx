@@ -25,7 +25,7 @@ export function CareAllianceOrgInvitesInline() {
       })
       setInvites(data.invitations ?? [])
     } catch {
-      toast.error("Could not load Care Alliance invitations.")
+      toast.error("Could not load Unity Impact Alliance invitations.")
       setInvites([])
     } finally {
       setLoading(false)
@@ -60,7 +60,7 @@ export function CareAllianceOrgInvitesInline() {
           },
         }
       )
-      toast.success(action === "accept" ? "You joined the Care Alliance." : "Invitation declined.")
+      toast.success(action === "accept" ? "You joined the Unity Impact Alliance." : "Invitation declined.")
       await load()
     } catch {
       toast.error("Something went wrong. Try again.")
@@ -74,7 +74,7 @@ export function CareAllianceOrgInvitesInline() {
   return (
     <Card id="care-alliance-invitations" className="scroll-mt-4 border-violet-200 dark:border-violet-900">
       <CardHeader>
-        <CardTitle className="text-lg">Care Alliance invitations</CardTitle>
+        <CardTitle className="text-lg">Unity Impact Alliance invitations</CardTitle>
         <CardDescription>
           Accept or decline membership on behalf of your organization. This section is on your main dashboard after you sign in.
         </CardDescription>
@@ -84,7 +84,7 @@ export function CareAllianceOrgInvitesInline() {
           <div key={inv.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md border p-3">
             <div>
               <div className="font-medium">{inv.alliance.name}</div>
-              <div className="text-xs text-muted-foreground">Care Alliance membership</div>
+              <div className="text-xs text-muted-foreground">Unity Impact Alliance membership</div>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button size="sm" variant="outline" onClick={() => void respond(inv.id, "decline")}>

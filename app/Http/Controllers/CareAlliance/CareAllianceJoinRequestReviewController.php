@@ -16,7 +16,7 @@ class CareAllianceJoinRequestReviewController extends Controller
     {
         $alliance = CareAlliance::where('creator_user_id', $request->user()->id)->first();
         if (! $alliance) {
-            abort(404, 'Care Alliance not found for this account.');
+            abort(404, 'Unity Impact Alliance not found for this account.');
         }
 
         return $alliance;

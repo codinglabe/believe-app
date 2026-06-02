@@ -84,7 +84,7 @@ class CareAllianceOrgInvitationController extends Controller
             return $this->invitationRespondError($request, 'Could not accept invitation.', 500);
         }
 
-        return $this->invitationRespondSuccess($request, 'You joined the Care Alliance.', [
+        return $this->invitationRespondSuccess($request, 'You joined the Unity Impact Alliance.', [
             'membership_id' => $membership->id,
         ]);
     }

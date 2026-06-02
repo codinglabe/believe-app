@@ -90,7 +90,7 @@ class FollowerController extends Controller
             return $follower;
         });
 
-        return Inertia::render('organization/Followers/Index', [
+        return Inertia::render('Organization/Followers/Index', [
             'followers' => $followers,
             'organization' => [
                 'id' => $organization->id,

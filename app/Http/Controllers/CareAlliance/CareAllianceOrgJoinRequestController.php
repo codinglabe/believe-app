@@ -67,7 +67,7 @@ class CareAllianceOrgJoinRequestController extends Controller
 
         if (! $alliance) {
             throw ValidationException::withMessages([
-                'care_alliance_id' => 'That Care Alliance is not accepting requests.',
+                'care_alliance_id' => 'That Unity Impact Alliance is not accepting requests.',
             ]);
         }
 

@@ -280,7 +280,7 @@ export default function RegisterCareAlliancePage() {
 
   return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Register Care Alliance"} description={seo?.description} />
+      <PageHead title={seo?.title ?? "Register Unity Impact Alliance"} description={seo?.description} />
       <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
@@ -348,7 +348,7 @@ export default function RegisterCareAlliancePage() {
                   <div className="mx-auto bg-white rounded-xl w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center mb-2 shadow-lg p-2.5">
                     <img src="/favicon-96x96.png" alt="" className="h-full w-full object-contain" />
                   </div>
-                  <CardTitle className="text-xl sm:text-2xl font-bold text-white mb-1">Register Your Care Alliance</CardTitle>
+                  <CardTitle className="text-xl sm:text-2xl font-bold text-white mb-1">Register Your Unity Impact Alliance</CardTitle>
                   <CardDescription className="text-sm text-white/90 max-w-md min-h-[2.5rem] sm:min-h-[3rem] flex items-center justify-center">
                     {headerDescription}
                   </CardDescription>
@@ -542,7 +542,7 @@ export default function RegisterCareAlliancePage() {
                             id="allianceName"
                             value={form.data.name}
                             onChange={(e) => form.setData("name", e.target.value)}
-                            placeholder="e.g. Corona Care Alliance"
+                            placeholder="e.g. Southeast Unity Impact Alliance"
                             className={inputClass}
                           />
                         </div>

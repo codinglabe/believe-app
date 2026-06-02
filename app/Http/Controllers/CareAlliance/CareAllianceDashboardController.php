@@ -28,7 +28,7 @@ class CareAllianceDashboardController extends Controller
         $user = $request->user();
         $alliance = CareAlliance::where('creator_user_id', $user->id)->first();
         if (! $alliance) {
-            abort(404, 'Care Alliance not found for this account.');
+            abort(404, 'Unity Impact Alliance not found for this account.');
         }
 
         return $alliance;

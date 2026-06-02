@@ -1234,7 +1234,7 @@ export default function UserPage({
                                     {org.kind === "care_alliance" ? (
                                       <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-600">
                                         <Building2 className="h-3 w-3 shrink-0" />
-                                        Care Alliance
+                                        Unity Impact Alliance
                                       </Badge>
                                     ) : (
                                       <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-green-600 text-white hover:bg-green-600">

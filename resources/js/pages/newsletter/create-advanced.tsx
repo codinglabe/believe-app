@@ -48,7 +48,7 @@ const proTabBadgeClass =
 
 const ROLE_LABELS: Record<string, string> = {
     user: "Supporters",
-    care_alliance: "Care Alliance",
+    care_alliance: "Unity Impact Alliance",
 }
 
 function formatRoleLabel(role: string): string {
@@ -254,7 +254,7 @@ interface Organization {
     email: string
     status: string
     registration_status?: string
-    /** True when this org row is the hub for a Care Alliance (`care_alliances.hub_organization_id`). */
+    /** True when this org row is the hub for a Unity Impact Alliance (`care_alliances.hub_organization_id`). */
     is_care_alliance_hub?: boolean
 }
 
@@ -852,7 +852,7 @@ export default function CreateAdvancedNewsletter({
                                 </CardTitle>
                                 <CardDescription>
                                     {audience_scope === 'organization'
-                                        ? 'All supporters = every verified account with the Supporters role. Organizations lists all approved nonprofits (including Care Alliance). By role / Custom role segments use everyone with those roles. Manual user picks use the Supporters list.'
+                                        ? 'All supporters = every verified account with the Supporters role. Organizations lists all approved nonprofits (including Unity Impact Alliance). By role / Custom role segments use everyone with those roles. Manual user picks use the Supporters list.'
                                         : 'By role targets every verified account with those roles. Organizations uses the full nonprofit directory. Custom can combine users, orgs, and roles.'}
                                 </CardDescription>
                             </CardHeader>
@@ -1020,7 +1020,7 @@ export default function CreateAdvancedNewsletter({
                                             </Label>
                                             <p className="text-xs text-muted-foreground">
                                                 Email and SMS go to every verified user who has any of these roles (e.g.
-                                                Supporters, Care Alliance, Organization).
+                                                Supporters, Unity Impact Alliance, Organization).
                                             </p>
                                             <div className="max-h-48 overflow-y-auto rounded-lg border border-input bg-muted/30 p-3 dark:bg-muted/10">
                                                 {roles.length === 0 ? (
@@ -1063,7 +1063,7 @@ export default function CreateAdvancedNewsletter({
                                         >
                                             <Label>Select Organizations</Label>
                                             <p className="text-xs text-muted-foreground">
-                                                All approved nonprofits on the platform, including Care Alliance hubs.
+                                                All approved nonprofits on the platform, including Unity Impact Alliance hubs.
                                                 Messages go to each org’s contact email and linked user accounts where
                                                 applicable.
                                             </p>
@@ -1140,7 +1140,7 @@ export default function CreateAdvancedNewsletter({
                                             <div className="space-y-2">
                                                 <Label>Select Organizations</Label>
                                                 <p className="text-xs text-muted-foreground">
-                                                    All approved nonprofits on the platform, including Care Alliance hubs.
+                                                    All approved nonprofits on the platform, including Unity Impact Alliance hubs.
                                                 </p>
                                                 <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl border bg-muted/20 p-2.5">
                                                     {organizations.map((org) => (

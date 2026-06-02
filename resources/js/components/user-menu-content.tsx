@@ -123,7 +123,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                             onClick={cleanup}
                         >
                             <HeartHandshake className="mr-2" />
-                            Care Alliance
+                            Unity Impact Alliance
                         </Link>
                     </DropdownMenuItem>
                 )}

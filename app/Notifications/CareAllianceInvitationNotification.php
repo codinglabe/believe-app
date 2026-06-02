@@ -25,7 +25,7 @@ class CareAllianceInvitationNotification extends Notification
         if (! $invitation) {
             return [
                 'type' => 'care_alliance_invitation',
-                'title' => 'Care Alliance invitation',
+                'title' => 'Unity Impact Alliance invitation',
                 'body' => 'This invitation is no longer available. It may have been withdrawn or expired.',
                 'message' => 'This invitation is no longer available.',
                 'meta' => [
@@ -34,20 +34,20 @@ class CareAllianceInvitationNotification extends Notification
             ];
         }
 
-        $allianceName = $invitation->careAlliance?->name ?? 'a Care Alliance';
+        $allianceName = $invitation->careAlliance?->name ?? 'a Unity Impact Alliance';
         $orgName = $invitation->organization?->name ?? 'your organization';
         $inviter = $invitation->invitedBy;
         $inviterLabel = $inviter
-            ? (trim((string) $inviter->name) !== '' ? $inviter->name : ($inviter->email ?? 'A Care Alliance organizer'))
-            : 'A Care Alliance organizer';
+            ? (trim((string) $inviter->name) !== '' ? $inviter->name : ($inviter->email ?? 'A Unity Impact Alliance organizer'))
+            : 'A Unity Impact Alliance organizer';
 
         $expires = $invitation->expires_at;
         $expiresLine = $expires
             ? ' This invitation expires on '.$expires->timezone(config('app.timezone'))->format('M j, Y \a\t g:i A').'.'
             : '';
 
-        $title = 'Care Alliance invitation';
-        $body = $inviterLabel.' invited '.$orgName.' to join the '.$allianceName.' Care Alliance as a member organization. '
+        $title = 'Unity Impact Alliance invitation';
+        $body = $inviterLabel.' invited '.$orgName.' to join '.$allianceName.' as a member organization. '
             .'Accept to appear in the alliance network and participate in shared programs, or decline if you are not interested.'
             .$expiresLine;
 

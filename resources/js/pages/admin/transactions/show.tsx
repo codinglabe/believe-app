@@ -144,7 +144,7 @@ interface LedgerReportRow {
   shipping_amount?: number | null
 }
 
-/** Who this row is primarily about: personal user, nonprofit wallet, or Care Alliance. */
+/** Who this row is primarily about: personal user, nonprofit wallet, or Unity Impact Alliance. */
 interface LedgerActorContext {
   kind: "user" | "organization" | "care_alliance"
   label: string
@@ -712,7 +712,7 @@ export default function TransactionShow({ transaction: t }: Props) {
                 </CardTitle>
                 <CardDescription>
                   {t.donation.kind === "care_alliance_campaign"
-                    ? "Care Alliance campaign donation record."
+                    ? "Unity Impact Alliance campaign donation record."
                     : "Believe donation record linked to this ledger row."}
                 </CardDescription>
               </CardHeader>
@@ -740,7 +740,7 @@ export default function TransactionShow({ transaction: t }: Props) {
                     )}
                     {t.donation.care_alliance_name && (
                       <p className="text-sm text-foreground">
-                        <span className="text-muted-foreground">Care Alliance: </span>
+                        <span className="text-muted-foreground">Unity Impact Alliance: </span>
                         {t.donation.care_alliance_name}
                       </p>
                     )}
@@ -774,7 +774,7 @@ export default function TransactionShow({ transaction: t }: Props) {
                     )}
                     {t.donation.care_alliance_name && (
                       <p className="text-sm text-foreground">
-                        <span className="text-muted-foreground">Care Alliance: </span>
+                        <span className="text-muted-foreground">Unity Impact Alliance: </span>
                         {t.donation.care_alliance_name}
                       </p>
                     )}

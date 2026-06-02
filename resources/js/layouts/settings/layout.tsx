@@ -22,7 +22,7 @@ import type { PropsWithChildren } from "react"
 
 interface SettingsLayoutProps extends PropsWithChildren {
   activeTab?: string
-  /** Care Alliance hub: use Alliance Settings copy and breadcrumbs */
+  /** Unity Impact Alliance hub: use Alliance Settings copy and breadcrumbs */
   settingsBranding?: "default" | "alliance"
   /** Override the default page title / subtitle (e.g. Financial Settings page) */
   pageTitle?: string
@@ -43,7 +43,7 @@ export default function SettingsLayout({
   const pageSubtitle =
     pageSubtitleProp ??
     (isAllianceBranding
-      ? "Manage your Care Alliance and organization profile information."
+      ? "Manage your Unity Impact Alliance and organization profile information."
       : "Manage your account settings and preferences")
   const profileNavLabel = isAllianceBranding ? "Alliance Settings" : "Profile Information"
 

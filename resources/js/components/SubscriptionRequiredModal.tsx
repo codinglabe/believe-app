@@ -12,7 +12,7 @@ interface SubscriptionRequiredModalProps {
     onClose: () => void
     feature?: 'wallet' | 'products' | 'donations' | 'commissions' | 'newsletter_targeting' | 'general'
     isSupporterView?: boolean // When true, shows message for supporters (organization needs subscription)
-    /** For donation supporter view: distinguishes Care Alliance (hub nonprofit must be subscribed). */
+    /** For donation supporter view: distinguishes Unity Impact Alliance (hub nonprofit must be subscribed). */
     donationRecipientKind?: 'organization' | 'care_alliance'
     /** One-time USD price for newsletter Pro targeting (lifetime). */
     newsletterPayOnceUsd?: number
@@ -76,7 +76,7 @@ export function SubscriptionRequiredModal({
                         ? {
                               title: 'Donations Currently Unavailable',
                               description:
-                                  'The nonprofit that receives donations for this Care Alliance does not have an active subscription plan, so donations are temporarily unavailable. Please check back later or contact the alliance or that organization directly.',
+                                  'The nonprofit that receives donations for this Unity Impact Alliance does not have an active subscription plan, so donations are temporarily unavailable. Please check back later or contact the alliance or that organization directly.',
                               icon: <Gift className="h-12 w-12" />,
                           }
                         : {

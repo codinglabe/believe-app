@@ -31,7 +31,7 @@ class SendCareAllianceInvitationEmail implements ShouldQueue
             ->find($this->invitationId);
 
         if (! $invitation) {
-            Log::warning('Care Alliance invitation not found for mail job', [
+            Log::warning('Unity Impact Alliance invitation not found for mail job', [
                 'invitation_id' => $this->invitationId,
             ]);
 
@@ -39,7 +39,7 @@ class SendCareAllianceInvitationEmail implements ShouldQueue
         }
 
         if ($invitation->status !== 'pending') {
-            Log::info('Care Alliance invitation no longer pending; skipping email', [
+            Log::info('Unity Impact Alliance invitation no longer pending; skipping email', [
                 'invitation_id' => $invitation->id,
                 'status' => $invitation->status,
             ]);
@@ -49,7 +49,7 @@ class SendCareAllianceInvitationEmail implements ShouldQueue
 
         $to = $this->resolveRecipientEmail($invitation);
         if (! $to || ! filter_var($to, FILTER_VALIDATE_EMAIL)) {
-            Log::warning('Care Alliance invitation has no valid recipient email', [
+            Log::warning('Unity Impact Alliance invitation has no valid recipient email', [
                 'invitation_id' => $invitation->id,
                 'organization_id' => $invitation->organization_id,
             ]);
@@ -57,9 +57,9 @@ class SendCareAllianceInvitationEmail implements ShouldQueue
             return;
         }
 
-        $allianceName = $invitation->careAlliance?->name ?? 'Care Alliance';
+        $allianceName = $invitation->careAlliance?->name ?? 'Unity Impact Alliance';
         $orgName = $invitation->organization?->name ?? 'your organization';
-        $inviterName = $invitation->invitedBy?->name ?? 'A Care Alliance admin';
+        $inviterName = $invitation->invitedBy?->name ?? 'A Unity Impact Alliance admin';
 
         try {
             Mail::to($to)->send(new CareAllianceInvitationMail(
@@ -69,12 +69,12 @@ class SendCareAllianceInvitationEmail implements ShouldQueue
                 url('/organization/alliance-membership'),
             ));
 
-            Log::info('Care Alliance invitation email sent', [
+            Log::info('Unity Impact Alliance invitation email sent', [
                 'invitation_id' => $invitation->id,
                 'email' => $to,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Failed to send Care Alliance invitation email', [
+            Log::error('Failed to send Unity Impact Alliance invitation email', [
                 'invitation_id' => $invitation->id,
                 'error' => $e->getMessage(),
             ]);

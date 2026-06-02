@@ -52,7 +52,7 @@ class PlaidVerificationController extends Controller
                 'link_token_length' => strlen($linkToken)
             ]);
 
-            return Inertia::render('organization/verification', [
+            return Inertia::render('Organization/verification', [
                 'organization' => $user->organization,
                 'linkToken' => $linkToken,
             ]);
@@ -233,7 +233,7 @@ class PlaidVerificationController extends Controller
             'verification_status' => $verification->verification_status
         ]);
 
-        return Inertia::render('organization/verification-results', [
+        return Inertia::render('Organization/verification-results', [
             'verification' => $verification,
             'organization' => $user->organization,
         ]);

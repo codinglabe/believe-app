@@ -105,10 +105,10 @@ export default function SocialFeedLayout({
                     </nav>
                   </div>
 
-                  {/* User Info Card — Care Alliance hubs see alliance name + public page link */}
+                  {/* User Info Card — Unity Impact Alliance hubs see alliance name + public page link */}
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
                     <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
-                      {showAllianceInUserCard ? 'Care Alliance' : 'User Info'}
+                      {showAllianceInUserCard ? 'Unity Impact Alliance' : 'User Info'}
                     </p>
                     <div className="flex items-center gap-3 mb-4">
                       <Avatar className="w-10 h-10">

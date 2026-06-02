@@ -154,7 +154,7 @@ class CareAllianceOrgMembershipController extends Controller
                 break;
         }
 
-        return Inertia::render('organization/AllianceMembership/Index', [
+        return Inertia::render('Organization/AllianceMembership/Index', [
             'activeTab' => $tab,
             'pendingInvitationsCount' => $pendingInvitationsCount,
             'organization' => [

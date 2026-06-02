@@ -32,7 +32,7 @@ export default function ProfileCompletionBanner({
   const { percent, completed, total, missing, completeSetupHref } = profileCompletion
   const headline =
     variant === "care_alliance"
-      ? `Your Care Alliance profile is ${percent}% Complete`
+      ? `Your Unity Impact Alliance profile is ${percent}% Complete`
       : `Your Organization Profile is ${percent}% Complete`
 
   return (

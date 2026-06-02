@@ -31,7 +31,7 @@ interface FeePreviewFromServer {
   estimated_net_to_org_usd: number
 }
 
-/** Nonprofit or Care Alliance (donation routes to hub org via organization_id). */
+/** Nonprofit or Unity Impact Alliance (donation routes to hub org via organization_id). */
 interface DonateCause {
   id: string
   kind: "organization" | "care_alliance"
@@ -82,7 +82,7 @@ function CauseKindBadge({ kind }: { kind: DonateCause["kind"] }) {
   return kind === "care_alliance" ? (
     <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-600">
       <Building2 className="h-3 w-3 shrink-0" />
-      Care Alliance
+      Unity Impact Alliance
     </Badge>
   ) : (
     <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-green-600 text-white hover:bg-green-600">

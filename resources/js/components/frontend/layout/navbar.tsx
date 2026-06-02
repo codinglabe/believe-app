@@ -204,7 +204,7 @@ export default function Navbar() {
   const role = auth?.user?.role
   const isAdmin = role === "admin"
   const isOrgUser = role === "organization" || role === "organization_pending"
-  /** Organizations + Care Alliance: show * (org-only) nav entries; admins see them too. */
+  /** Organizations + Unity Impact Alliance: show * (org-only) nav entries; admins see them too. */
   const showOrgOnlyNav = isOrgUser || hasCareAllianceRole || isAdmin
 
   /** Unity Meet routes: user, organization, organization_pending, care_alliance (see web.php). */
@@ -259,7 +259,7 @@ export default function Navbar() {
   const communityNavItems: LandingNavItem[] = [
     ...(isLoggedIn ? [{ name: "Social Feed", href: route("social-feed.index"), icon: Users }] : []),
     ...(isLoggedIn ? [{ name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
-    { name: "Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
+    { name: "Unity Impact Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
     { name: "Unity Loaves", href: route("unity-loaves.index"), icon: Heart },
     ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index"), icon: MessageSquare }] : []),
@@ -668,7 +668,7 @@ export default function Navbar() {
                                               href={publicViewHref}
                                               aria-label={
                                                 hasCareAllianceRole && u?.care_alliance?.slug
-                                                  ? `Public Care Alliance page: ${u.care_alliance.name}`
+                                                  ? `Public Unity Impact Alliance page: ${u.care_alliance.name}`
                                                   : undefined
                                               }
                                           >
@@ -698,7 +698,7 @@ export default function Navbar() {
                                           <DropdownMenuItem asChild>
                                               <Link href={route('care-alliance.dashboard')}>
                                                   <HeartHandshake className="mr-2 h-4 w-4" />
-                                                  <span>Care Alliance</span>
+                                                  <span>Unity Impact Alliance</span>
                                               </Link>
                                           </DropdownMenuItem>
                                       )}
@@ -1200,7 +1200,7 @@ export default function Navbar() {
                                               <Link href={route('care-alliance.dashboard')}>
                                                   <Button variant="ghost" className="w-full justify-start">
                                                       <HeartHandshake className="mr-2 h-4 w-4" />
-                                                      Care Alliance
+                                                      Unity Impact Alliance
                                                   </Button>
                                               </Link>
                                           )}

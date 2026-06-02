@@ -81,7 +81,7 @@ class DonationController extends Controller
     }
 
     /**
-     * Care Alliance donations often credit a member/hub org whose owner is not the paying platform user.
+     * Unity Impact Alliance donations often credit a member/hub org whose owner is not the paying platform user.
      * Allow when the alliance creator (subscriber) has an active plan, if they are the real billing account.
      */
     private function donationRecipientMatchesAlliance(CareAlliance $alliance, Organization $recipientOrg): bool
@@ -224,7 +224,7 @@ class DonationController extends Controller
             ];
         });
 
-        // Care Alliances: show when an approved recipient org exists (hub or active member).
+        // Unity Impact Alliances: show when an approved recipient org exists (hub or active member).
         // Listing matches organizations (no subscription filter); store() enforces subscription at checkout.
         $allianceQuery = CareAlliance::query()
             ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
@@ -256,7 +256,7 @@ class DonationController extends Controller
                 'name' => $alliance->name,
                 'description' => $alliance->description
                     ? strip_tags((string) $alliance->description)
-                    : 'Care Alliance — shared fundraising for member nonprofits.',
+                    : 'Unity Impact Alliance — shared fundraising for member nonprofits.',
                 'image' => $image,
                 'raised' => (float) ($recipient->balance ?? 0),
                 'goal' => 0,
@@ -330,7 +330,7 @@ class DonationController extends Controller
                                 'name' => $alliance->name,
                                 'description' => $alliance->description
                                     ? strip_tags((string) $alliance->description)
-                                    : 'Care Alliance — shared fundraising for member nonprofits.',
+                                    : 'Unity Impact Alliance — shared fundraising for member nonprofits.',
                                 'image' => $image,
                                 'raised' => (float) ($recipient->balance ?? 0),
                                 'goal' => 0,
@@ -504,7 +504,7 @@ class DonationController extends Controller
 
                 if (! $orgRecipientHasPlan && ! $creatorCovers) {
                     return redirect()->back()->withErrors([
-                        'subscription' => 'The nonprofit receiving donations for this Care Alliance does not have an active subscription. Donations are not available at this time.',
+                        'subscription' => 'The nonprofit receiving donations for this Unity Impact Alliance does not have an active subscription. Donations are not available at this time.',
                     ])->with('subscription_required', true);
                 }
             } elseif ($orgUser && ! $orgRecipientHasPlan) {
@@ -692,7 +692,7 @@ class DonationController extends Controller
 
         // Handle Stripe payment
         try {
-            // Stripe line item: alliance donations show only the Care Alliance name (no member list or payout copy).
+            // Stripe line item: alliance donations show only the Unity Impact Alliance name (no member list or payout copy).
             $checkoutLineTitle = $allianceForCheckout !== null
                 ? sprintf('Donation to %s', $allianceForCheckout->name)
                 : "Donation to {$organizationName}";

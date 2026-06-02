@@ -328,7 +328,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
     setCareAllianceActionLoadingId(notification.id)
     try {
       await axios.post(`/organization/care-alliance-invitations/${invitationId}/${action}`)
-      toast.success(action === "accept" ? "You joined the Care Alliance." : "Invitation declined.")
+      toast.success(action === "accept" ? "You joined the Unity Impact Alliance." : "Invitation declined.")
       await axios.post(`/notifications/${notification.id}/read`)
       setNotifications((prev) =>
         prev.map((n) =>

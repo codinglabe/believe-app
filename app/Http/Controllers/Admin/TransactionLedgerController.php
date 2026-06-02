@@ -690,7 +690,7 @@ class TransactionLedgerController extends Controller
     }
 
     /**
-     * Donor vs recipient (and split) for Believe / Care Alliance donation ledger rows.
+     * Donor vs recipient (and split) for Believe / Unity Impact Alliance donation ledger rows.
      *
      * @param  array<string, mixed>|null  $donationPayload
      * @return string|null donor|recipient_direct|recipient_split|alliance_fee|campaign
@@ -766,7 +766,7 @@ class TransactionLedgerController extends Controller
     }
 
     /**
-     * Whether this row is primarily about a personal user, a nonprofit (organization wallet), or Care Alliance.
+     * Whether this row is primarily about a personal user, a nonprofit (organization wallet), or Unity Impact Alliance.
      *
      * @param  array<string, mixed>|null  $donationLedger
      * @return array{kind: string, label: string, detail: string|null, organization_id: int|null, care_alliance_id: int|null, care_alliance_name: string|null}
@@ -793,7 +793,7 @@ class TransactionLedgerController extends Controller
 
             return [
                 'kind' => 'care_alliance',
-                'label' => 'Care Alliance',
+                'label' => 'Unity Impact Alliance',
                 'detail' => $name,
                 'organization_id' => null,
                 'care_alliance_id' => $caId > 0 ? $caId : null,
@@ -851,7 +851,7 @@ class TransactionLedgerController extends Controller
 
             return [
                 'kind' => 'care_alliance',
-                'label' => 'Care Alliance',
+                'label' => 'Unity Impact Alliance',
                 'detail' => $name,
                 'organization_id' => null,
                 'care_alliance_id' => null,
@@ -1417,7 +1417,7 @@ class TransactionLedgerController extends Controller
 
             return [
                 'related_kind' => 'Campaign donation',
-                'related_purpose' => 'Campaign donation checkout (Care Alliance). Shows as a gift from the donor’s side; recipient org lines may appear separately.',
+                'related_purpose' => 'Campaign donation checkout (Unity Impact Alliance). Shows as a gift from the donor’s side; recipient org lines may appear separately.',
                 'related_display_name' => $label,
                 'related_label' => (string) ($donationPayload['campaign_name'] ?? 'Campaign'),
                 'related_source' => 'meta',
@@ -1439,9 +1439,9 @@ class TransactionLedgerController extends Controller
         $purpose = match ($perspective) {
             'donor' => 'Donation sent: payment from the donor (card, points, or subscription). Audit row may not change wallet balance.',
             'recipient_direct' => 'Donation received: credit to this nonprofit’s wallet from the gift.',
-            'recipient_split' => 'Donation received: member share of a Care Alliance–distributed gift.',
-            'alliance_fee' => 'Care Alliance fee share from a distributed donation (credited per alliance rules).',
-            default => 'Believe donation (Stripe payment, points, or Care Alliance distribution).',
+            'recipient_split' => 'Donation received: member share of a Unity Impact Alliance–distributed gift.',
+            'alliance_fee' => 'Unity Impact Alliance fee share from a distributed donation (credited per alliance rules).',
+            default => 'Believe donation (Stripe payment, points, or Unity Impact Alliance distribution).',
         };
 
         return [
@@ -1873,7 +1873,7 @@ class TransactionLedgerController extends Controller
             if ($d) {
                 $org = $d->organization?->name ?? ('Organization #'.$d->organization_id);
                 $purpose = $d->care_alliance_id
-                    ? 'Believe donation (Care Alliance general give). Recipient credit or split lines follow alliance financial rules when configured.'
+                    ? 'Believe donation (Unity Impact Alliance general give). Recipient credit or split lines follow alliance financial rules when configured.'
                     : 'Believe donation to a nonprofit (direct recipient credit, or Believe Points).';
 
                 return [
@@ -1903,7 +1903,7 @@ class TransactionLedgerController extends Controller
 
                 return [
                     'related_kind' => 'Campaign donation',
-                    'related_purpose' => 'Care Alliance campaign checkout donation (care_alliance_donations).',
+                    'related_purpose' => 'Unity Impact Alliance campaign checkout donation (care_alliance_donations).',
                     'related_display_name' => $label,
                     'related_label' => $camp,
                 ];
@@ -1924,10 +1924,10 @@ class TransactionLedgerController extends Controller
             return [
                 'related_kind' => 'Donation',
                 'related_purpose' => $role === 'alliance_fee'
-                    ? 'Wallet credit from a Believe donation: Care Alliance fee share (split distribution).'
+                    ? 'Wallet credit from a Believe donation: Unity Impact Alliance fee share (split distribution).'
                     : ($role === 'member_share'
-                        ? 'Wallet credit from a Believe donation: member nonprofit share (Care Alliance split).'
-                        : 'Wallet credit from a Believe donation (Care Alliance split; see role in metadata).'),
+                        ? 'Wallet credit from a Believe donation: member nonprofit share (Unity Impact Alliance split).'
+                        : 'Wallet credit from a Believe donation (Unity Impact Alliance split; see role in metadata).'),
                 'related_display_name' => $name.' · '.$roleLabel,
                 'related_label' => $name,
             ];
@@ -1938,7 +1938,7 @@ class TransactionLedgerController extends Controller
             if ($d) {
                 $org = $d->organization?->name ?? ('Organization #'.$d->organization_id);
                 $purpose = $d->care_alliance_id
-                    ? 'Believe donation matched by Stripe PaymentIntent (Care Alliance general give may apply).'
+                    ? 'Believe donation matched by Stripe PaymentIntent (Unity Impact Alliance general give may apply).'
                     : 'Believe donation matched by Stripe PaymentIntent (normal nonprofit gift).';
 
                 return [
@@ -1958,10 +1958,10 @@ class TransactionLedgerController extends Controller
             return [
                 'related_kind' => 'Donation',
                 'related_purpose' => $role === 'alliance_fee'
-                    ? 'Donation-related wallet movement: Care Alliance fee context in metadata.'
+                    ? 'Donation-related wallet movement: Unity Impact Alliance fee context in metadata.'
                     : ($role === 'member_share'
-                        ? 'Donation-related wallet movement: member share (Care Alliance context in metadata).'
-                        : 'Donation-related wallet movement (Care Alliance name in metadata).'),
+                        ? 'Donation-related wallet movement: member share (Unity Impact Alliance context in metadata).'
+                        : 'Donation-related wallet movement (Unity Impact Alliance name in metadata).'),
                 'related_display_name' => $label,
                 'related_label' => $label,
             ];
@@ -2302,7 +2302,7 @@ class TransactionLedgerController extends Controller
         $ca = $model->careAlliance?->name;
         $parts = array_filter([
             $org,
-            $ca ? 'Care Alliance: '.$ca : null,
+            $ca ? 'Unity Impact Alliance: '.$ca : null,
         ]);
 
         return $parts !== [] ? implode(' · ', $parts) : ('Donation #'.$model->id);
@@ -2390,7 +2390,7 @@ class TransactionLedgerController extends Controller
             ],
             Donation::class => [
                 'kind' => 'Donation',
-                'purpose' => 'Believe donation (card, subscription, or points); may route through Care Alliance splits.',
+                'purpose' => 'Believe donation (card, subscription, or points); may route through Unity Impact Alliance splits.',
             ],
             BelievePointPurchase::class => [
                 'kind' => 'Believe Points purchase',
