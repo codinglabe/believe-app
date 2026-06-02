@@ -5,6 +5,7 @@ import { Head, useForm } from "@inertiajs/react"
 import { ExternalLink, LoaderCircle, Lock, User } from "lucide-react"
 import InputError from "@/components/input-error"
 import { PageHead } from "@/components/frontend/PageHead"
+import { BelieveInUnityBrandMark } from "@/components/site-title"
 
 type LoginForm = {
   email: string
@@ -36,7 +37,7 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
   const year = new Date().getFullYear()
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#12081f] text-white">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 text-white">
       <PageHead
         title={seo?.title ?? "Developer Access"}
         description={seo?.description ?? "Sign in to the Believe In Unity development environment."}
@@ -45,56 +46,39 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
         <meta name="robots" content="noindex, nofollow" />
       </Head>
 
-      {/* Ambient background */}
+      {/* Background — matches consumer login / site hero */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 top-1/4 h-[28rem] w-[28rem] rounded-full bg-purple-600/20 blur-3xl" />
-        <div className="absolute -right-24 bottom-0 h-[24rem] w-[24rem] rounded-full bg-blue-600/15 blur-3xl" />
         <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 20% 80%, rgba(147, 51, 234, 0.35) 0%, transparent 45%), radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.25) 0%, transparent 40%)",
-          }}
-        />
-        <svg
-          className="absolute bottom-0 left-0 w-full opacity-40"
-          viewBox="0 0 1440 320"
-          preserveAspectRatio="none"
-          aria-hidden
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+          style={{ backgroundImage: "url(/images/believe-hero.png)" }}
         >
-          <path
-            fill="url(#devWave)"
-            d="M0,192L48,197.3C96,203,192,213,288,229.3C384,245,480,267,576,250.7C672,235,768,181,864,181.3C960,181,1056,235,1152,234.7C1248,235,1344,181,1392,154.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-          />
-          <defs>
-            <linearGradient id="devWave" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#2563eb" stopOpacity="0.35" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div className="absolute inset-0 bg-[url('/images/believe-hero.png')] bg-cover bg-center opacity-[0.07]" />
+          <div className="absolute inset-0 bg-purple-900/70" />
+        </div>
+        <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+        <div className="absolute -left-32 top-1/4 h-[28rem] w-[28rem] rounded-full bg-purple-500/25 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-[24rem] w-[24rem] rounded-full bg-blue-500/20 blur-3xl" />
       </div>
 
       <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6">
         <div className="w-full max-w-md text-center">
           <div className="mb-6 flex flex-col items-center gap-3">
-            <img
-              src="/favicon-96x96.png"
-              alt="Believe In Unity"
-              className="h-16 w-16 object-contain sm:h-20 sm:w-20"
+            <BelieveInUnityBrandMark
+              className="flex-col items-center gap-3 [&_img]:h-16 [&_img]:w-16 sm:[&_img]:h-20 sm:[&_img]:w-20"
+              imageClassName="h-16 w-16 sm:h-20 sm:w-20 brightness-0 invert"
+              wordmarkClassName="bg-gradient-to-r from-purple-100 to-blue-100 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl"
             />
-            <span className="font-serif text-2xl tracking-wide text-white sm:text-3xl">Believe In Unity</span>
-            <p className="text-sm font-medium tracking-wide text-blue-300/90">{devHost}</p>
+            <p className="bg-gradient-to-r from-purple-200 to-blue-200 bg-clip-text text-sm font-medium tracking-wide text-transparent">
+              {devHost}
+            </p>
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Developing For Purpose</h1>
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-white/70 sm:text-base">
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-purple-100/90 sm:text-base">
             Building technology that helps nonprofits serve more people.
           </p>
 
           {status && (
-            <div className="mt-6 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            <div className="mt-6 rounded-lg border border-blue-300/30 bg-white/10 px-4 py-3 text-sm text-blue-50">
               {status}
             </div>
           )}
@@ -105,7 +89,7 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
                 Email Address
               </label>
               <div className="relative">
-                <User className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
+                <User className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-purple-200/70" />
                 <input
                   id="email"
                   type="email"
@@ -115,10 +99,10 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
                   placeholder="Email Address"
                   value={data.email}
                   onChange={(e) => setData("email", e.target.value)}
-                  className="h-12 w-full rounded-lg border border-white/10 bg-white/5 pl-11 pr-4 text-white placeholder:text-white/40 outline-none transition focus:border-purple-400/50 focus:ring-2 focus:ring-purple-500/30"
+                  className="h-12 w-full rounded-lg border border-white/20 bg-white/10 pl-11 pr-4 text-white placeholder:text-purple-100/50 outline-none backdrop-blur-sm transition focus:border-blue-300/60 focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <InputError message={errors.email} className="mt-1.5 text-red-300" />
+              <InputError message={errors.email} className="mt-1.5 text-red-200" />
             </div>
 
             <div>
@@ -126,7 +110,7 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
                 Password
               </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-purple-200/70" />
                 <input
                   id="password"
                   type="password"
@@ -135,16 +119,16 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
                   placeholder="Password"
                   value={data.password}
                   onChange={(e) => setData("password", e.target.value)}
-                  className="h-12 w-full rounded-lg border border-white/10 bg-white/5 pl-11 pr-4 text-white placeholder:text-white/40 outline-none transition focus:border-purple-400/50 focus:ring-2 focus:ring-purple-500/30"
+                  className="h-12 w-full rounded-lg border border-white/20 bg-white/10 pl-11 pr-4 text-white placeholder:text-purple-100/50 outline-none backdrop-blur-sm transition focus:border-blue-300/60 focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <InputError message={errors.password} className="mt-1.5 text-red-300" />
+              <InputError message={errors.password} className="mt-1.5 text-red-200" />
             </div>
 
             <button
               type="submit"
               disabled={processing}
-              className="flex h-12 w-full items-center justify-center rounded-lg bg-purple-600 text-base font-semibold text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex h-12 w-full items-center justify-center rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-base font-semibold text-white shadow-lg transition hover:from-purple-700 hover:to-blue-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-70"
             >
               {processing ? (
                 <>
@@ -158,22 +142,22 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
           </form>
 
           <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-white/15" />
-            <span className="text-xs uppercase tracking-wider text-white/40">or</span>
-            <div className="h-px flex-1 bg-white/15" />
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+            <span className="text-xs uppercase tracking-wider text-purple-100/60">or</span>
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
           </div>
 
           <a
             href={productionUrl}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-white/20 bg-transparent text-sm font-medium text-white/90 transition hover:border-white/35 hover:bg-white/5"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-purple-200/40 bg-white/5 text-sm font-medium text-white backdrop-blur-sm transition hover:border-blue-200/50 hover:bg-white/10"
           >
             Go to Believe In Unity
-            <ExternalLink className="h-4 w-4 opacity-70" />
+            <ExternalLink className="h-4 w-4 text-blue-200/80" />
           </a>
         </div>
       </main>
 
-      <footer className="relative z-10 pb-8 text-center text-xs text-white/45">
+      <footer className="relative z-10 pb-8 text-center text-xs text-purple-100/60">
         © {year} Believe In Unity | Developer Access Only
       </footer>
     </div>
