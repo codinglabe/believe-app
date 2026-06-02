@@ -23,6 +23,7 @@ import {
   Copy,
   Calendar,
   Info,
+  MapPin,
   Plus,
 } from "lucide-react"
 import { Link, useForm, usePage } from "@inertiajs/react"
@@ -74,6 +75,7 @@ interface ProfileEditPageProps {
     account_visibility?: "public" | "private"
     messaging_policy?: "everyone" | "followers_only" | "organizations_i_follow" | "no_one"
     preferred_theme?: Appearance | null
+    proximity_notifications_enabled?: boolean
   }
   availablePositions: { id: number; name: string }[]
   availableSupporterInterests: { id: number; name: string }[]
@@ -113,6 +115,7 @@ export default function ProfileEdit() {
     primary_organization_id: user?.primary_organization_id ?? "",
     secondary_organization_ids: user?.secondary_organization_ids ?? [],
     preferred_theme: ((user?.preferred_theme as Appearance) ?? "system") as Appearance,
+    proximity_notifications_enabled: user?.proximity_notifications_enabled !== false,
   })
 
   inertiaForm.transform((payload) => ({
@@ -815,6 +818,37 @@ export default function ProfileEdit() {
             </div>
             <p className="text-sm text-slate-400">These settings apply across the entire BIU platform.</p>
             {errors.preferred_theme && <p className="text-sm text-red-400">{errors.preferred_theme}</p>}
+
+            <div className="mt-6 border-t border-slate-700/60 pt-5">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-600/20 to-blue-600/20 text-purple-300">
+                  <MapPin className="h-4 w-4" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-slate-100">Nearby organization alerts</p>
+                      <p className="mt-1 text-sm text-slate-400">
+                        Alerts are on when you use the app. Your browser may ask for location access on visit. Turn this
+                        off to stop nearby alerts.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        className="peer sr-only"
+                        checked={data.proximity_notifications_enabled !== false}
+                        onChange={(e) => setData("proximity_notifications_enabled", e.target.checked)}
+                      />
+                      <span className="peer h-6 w-11 rounded-full bg-slate-600 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-blue-600 peer-checked:after:translate-x-full" />
+                    </label>
+                  </div>
+                  {errors.proximity_notifications_enabled ? (
+                    <p className="mt-2 text-sm text-red-400">{errors.proximity_notifications_enabled}</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

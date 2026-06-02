@@ -150,6 +150,7 @@ use App\Http\Controllers\PrintifyWebhookController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\Api\PushNotificationOpenController;
+use App\Http\Controllers\ProximityLocationController;
 use App\Http\Controllers\PushTokenController;
 use App\Http\Controllers\PwaInstallController;
 use App\Http\Controllers\RaffleController;
@@ -1204,6 +1205,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::post('/api/push-notifications/open', [PushNotificationOpenController::class, 'store'])
         ->name('push-notifications.open');
 });
+
+Route::middleware(['auth', 'web', 'throttle:120,1'])->post('/api/user/proximity-location', [ProximityLocationController::class, 'store'])->name('api.user.proximity-location');
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->group(function () {
     Route::get('/content', [ContentItemController::class, 'index'])->name('content.items.index');

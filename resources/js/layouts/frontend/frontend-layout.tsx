@@ -12,6 +12,7 @@ import { CsrfTokenSync } from "@/components/CsrfTokenSync"
 // import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { syncPushTokenWithServer } from "@/lib/push-token-sync"
 import { registerServiceWorker } from "@/pwa/register-service-worker"
+import { ProximityLocationManager } from "@/components/ProximityLocationManager"
 
 
 export default function RootLayout({
@@ -49,6 +50,7 @@ export default function RootLayout({
       <NotificationProvider>
           {/* Keep CSRF meta in sync so 419 never happens on public/org pages */}
           <CsrfTokenSync />
+          <ProximityLocationManager />
           {/* Toast Container */}
             <Toaster
                 position="top-right"

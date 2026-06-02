@@ -11,6 +11,7 @@ import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 import { syncPushTokenWithServer, startPushTokenRefreshListeners } from '@/lib/push-token-sync';
 import { registerServiceWorker } from '@/pwa/register-service-worker';
 import { PushNotificationManager } from '@/components/PushNotificationManager';
+import { ProximityLocationManager } from '@/components/ProximityLocationManager';
 import { shouldAutoPromptForPushPermission } from '@/lib/push-environment';
 
 interface AppLayoutProps {
@@ -77,6 +78,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     return (
             <NotificationProvider user={auth.user}>
             <CsrfTokenSync />
+            <ProximityLocationManager />
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
                  {/* <PWAInstallPrompt /> */}
         {/* <PWAUpdatePrompt /> */}
