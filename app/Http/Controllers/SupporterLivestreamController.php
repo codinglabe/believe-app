@@ -20,6 +20,7 @@ use App\Support\MeetingRecordingPreference;
 use App\Support\UnityMeetInviteNotifyVia;
 use App\Support\UserEmailCredits;
 use App\Support\StreamingWorkerSourceUrl;
+use App\Services\ConnectionHubUnityMeetListing;
 use App\Services\DropboxOAuthService;
 use App\Services\UnityMeetBiuNotifier;
 use App\Services\DropboxOrgApi;
@@ -115,27 +116,42 @@ class SupporterLivestreamController extends Controller
 
         $livestreams = $query
             ->paginate(20)
-            ->through(function (UserLivestream $livestream) {
-                return [
-                    'id' => $livestream->id,
-                    'title' => $livestream->title,
-                    'roomName' => $livestream->room_name,
-                    'status' => $livestream->status,
-                    'isPublic' => (bool) $livestream->is_public,
-                    'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
-                    'startedAt' => $livestream->started_at?->toIso8601String(),
-                    'endedAt' => $livestream->ended_at?->toIso8601String(),
-                    'createdAt' => $livestream->created_at->toIso8601String(),
-                    'directorUrl' => $livestream->getDirectorUrl(false),
-                    'joinUrl' => url('/livestreams/join/'.$livestream->room_name),
-                ];
-            });
+            ->through(fn (UserLivestream $livestream) => $this->mapPersonalLivestreamRow($livestream));
+
+        $connectionHubMeetings = ConnectionHubUnityMeetListing::forUser(
+            $request->user(),
+            $meetingsView ? $meetingsTab : null,
+        )->values()->all();
 
         return Inertia::render('frontend/livestreams/Index', [
             'livestreams' => $livestreams,
+            'connectionHubMeetings' => $connectionHubMeetings,
             'meetingsView' => $meetingsView,
             'meetingsTab' => $meetingsView ? $meetingsTab : null,
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapPersonalLivestreamRow(UserLivestream $livestream): array
+    {
+        return [
+            'id' => $livestream->id,
+            'listKey' => 'user-'.$livestream->id,
+            'source' => 'personal',
+            'title' => $livestream->title,
+            'roomName' => $livestream->room_name,
+            'status' => $livestream->status,
+            'isPublic' => (bool) $livestream->is_public,
+            'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
+            'startedAt' => $livestream->started_at?->toIso8601String(),
+            'endedAt' => $livestream->ended_at?->toIso8601String(),
+            'createdAt' => $livestream->created_at->toIso8601String(),
+            'directorUrl' => $livestream->getDirectorUrl(false),
+            'joinUrl' => \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name),
+            'hostUrl' => route('livestreams.supporter.show', $livestream->id),
+        ];
     }
 
     /**
@@ -459,10 +475,11 @@ class SupporterLivestreamController extends Controller
         $errorBag = $errors ? $errors->getBag('default')->getMessages() : [];
 
         return Inertia::render('frontend/livestreams/Join', [
-            'oldMeetingId' => $request->old('meeting_id'),
+            'oldMeetingId' => $request->old('meeting_id') ?? $request->query('meeting_id'),
             'errors' => $errorBag,
             'requiresPasscodeStep' => (bool) $request->session()->pull('join_requires_passcode', false),
             'pendingMeetingTitle' => $request->session()->pull('join_pending_title'),
+            'connectionHubMeetings' => ConnectionHubUnityMeetListing::forUser($request->user(), 'upcoming')->values()->all(),
         ]);
     }
 
@@ -599,7 +616,7 @@ class SupporterLivestreamController extends Controller
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
         $password = $livestream->getDecryptedPassword();
-        $joinUrl = url('/livestreams/join/' . $livestream->room_name);
+        $joinUrl = \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name);
         $settings = is_array($livestream->settings) ? $livestream->settings : [];
 
         return Inertia::render('frontend/livestreams/Ready', [
@@ -648,7 +665,7 @@ class SupporterLivestreamController extends Controller
         $watchUrl = $livestream->getPublicViewUrl();
         $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
         $liveViewerUrl = url('/live/' . $livestream->room_name);
-        $joinUrl = url('/livestreams/join/' . $livestream->room_name);
+        $joinUrl = \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name);
 
         $vdoRoom = $livestream->getVdoRoomName();
         $passwordParam = $password !== '' ? '&password=' . rawurlencode($password) : '';
@@ -1672,7 +1689,7 @@ class SupporterLivestreamController extends Controller
         if (LivestreamOverlayConfig::toVideoPayload($overlayConfig) === null) {
             return redirect()->route('livestreams.supporter.recordings')->with(
                 'error',
-                'Configure a logo or bottom banner in Overlay Studio first.',
+                'Configure a logo, speaker name, sponsor, or bottom banner in Overlay Studio first.',
             );
         }
 

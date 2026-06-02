@@ -24,6 +24,7 @@ use App\Services\Admin\LedgerListFilters;
 use App\Services\Admin\UnifiedLedgerFlatFileMapper;
 use App\Services\Admin\UnifiedLedgerPresenter;
 use App\Services\DonationProcessingFeeEstimator;
+use App\Services\GiftCardLedgerService;
 use App\Services\MarketplaceOrderLedgerService;
 use App\Services\ServiceOrderLedgerService;
 use Carbon\Carbon;
@@ -1238,6 +1239,7 @@ class TransactionLedgerController extends Controller
             $isOrder = $rt === Order::class || $relatedBasename === 'Order';
             $isServiceOrder = $rt === ServiceOrder::class || str_ends_with($rt, 'ServiceOrder');
             $isEnrollment = $rt === Enrollment::class || str_ends_with($rt, 'Enrollment');
+            $isGiftCard = $rt === GiftCard::class || str_ends_with($rt, 'GiftCard');
             if ($isOrder) {
                 $order = Order::query()->with('orderSplit')->find((int) $t->related_id);
                 if ($order) {
@@ -1257,6 +1259,11 @@ class TransactionLedgerController extends Controller
                         $out['supplier_name'] = $instructorName;
                         $out['supplier_type'] = 'SUPPORTER';
                     }
+                }
+            } elseif ($isGiftCard) {
+                $giftCard = GiftCard::query()->with('organization')->find((int) $t->related_id);
+                if ($giftCard) {
+                    $out = GiftCardLedgerService::mergeLedgerFinancials($giftCard, $t, $out);
                 }
             }
         }

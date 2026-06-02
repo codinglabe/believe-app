@@ -133,6 +133,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'secondary_organization_ids',
         'preferred_theme',
         'auto_share_youtube_imports_to_feed',
+        'enrollment_notifications_via',
+        'enrollment_reminders_via',
     ];
 
     /**
@@ -634,9 +636,51 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     // Notification preferences
+    public function enrollmentNotificationsVia(): string
+    {
+        return \App\Support\EnrollmentNotificationVia::normalize(
+            $this->enrollment_notifications_via,
+            \App\Support\EnrollmentNotificationVia::PUSH_EMAIL
+        );
+    }
+
+    public function enrollmentRemindersVia(): string
+    {
+        return \App\Support\EnrollmentNotificationVia::normalize(
+            $this->enrollment_reminders_via,
+            \App\Support\EnrollmentNotificationVia::PUSH
+        );
+    }
+
+    public function wantsEnrollmentPush(string $context = 'enrollments'): bool
+    {
+        $via = $context === 'reminders'
+            ? $this->enrollmentRemindersVia()
+            : $this->enrollmentNotificationsVia();
+
+        return in_array($via, [\App\Support\EnrollmentNotificationVia::PUSH, \App\Support\EnrollmentNotificationVia::PUSH_EMAIL], true);
+    }
+
+    public function wantsEnrollmentEmail(string $context = 'enrollments'): bool
+    {
+        $via = $context === 'reminders'
+            ? $this->enrollmentRemindersVia()
+            : $this->enrollmentNotificationsVia();
+
+        return in_array($via, [\App\Support\EnrollmentNotificationVia::EMAIL, \App\Support\EnrollmentNotificationVia::PUSH_EMAIL], true);
+    }
+
+    public function hasActivePushDevice(): bool
+    {
+        return $this->pushTokens()
+            ->where('is_active', true)
+            ->where('status', UserPushToken::STATUS_ACTIVE)
+            ->exists();
+    }
+
     public function shouldReceivePush()
     {
-        return ! empty($this->push_token) && $this->login_status;
+        return $this->login_status && $this->hasActivePushDevice();
     }
 
     public function shouldReceiveWhatsApp()

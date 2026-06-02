@@ -26,6 +26,8 @@ import {
   Code,
   FileText,
   ArrowLeft,
+  Layers,
+  Clapperboard,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
@@ -112,7 +114,7 @@ export default function ShowLivestream({
   useAutoStopLivestreamOnLeave({
     livestreamId: livestream.id,
     status: livestream.status,
-    stopUrl: route("livestreams.abandon-host-session", livestream.id),
+    stopUrl: route("organization.livestreams.abandon-host-session", livestream.id),
   })
 
   const streamRelayInProgress = useMemo(
@@ -244,14 +246,28 @@ export default function ShowLivestream({
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Livestreams
         </Link>
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-2">
               {livestream.title || "Untitled Livestream"}
             </h1>
             <p className="text-gray-400">{organization.name}</p>
           </div>
-          {getStatusBadge()}
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/livestreams/overlay-studio">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Layers className="h-4 w-4" />
+                Overlay Studio
+              </Button>
+            </Link>
+            <Link href="/livestreams/supporter/recordings">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Clapperboard className="h-4 w-4" />
+                Recordings
+              </Button>
+            </Link>
+            {getStatusBadge()}
+          </div>
         </div>
 
         {recordingConsentDeclines.length > 0 && (

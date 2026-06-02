@@ -1,5 +1,7 @@
 import { Link } from "@inertiajs/react"
 import { ArrowLeft, Radio, Sparkles } from "lucide-react"
+import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import UnityLiveOverlayLayer from "@/components/unity-live/UnityLiveOverlayLayer"
 import { UnityLiveBadge } from "@/components/unity-live/UnityLiveBadge"
 import { UnityLivePreviewIframe } from "@/components/unity-live/UnityLivePreviewIframe"
 import type { UnityLiveStreamItem } from "@/lib/unity-live-display"
@@ -20,7 +22,7 @@ export function UnityLiveOtherStreamsSidebar({
     : streams
 
   return (
-    <aside className="w-full shrink-0 lg:w-80 xl:w-[340px]">
+    <aside className="w-full shrink-0">
       <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-900/60">
         <div className="flex items-center gap-2 border-b border-neutral-200 bg-gradient-to-r from-purple-600/5 to-blue-600/5 px-4 py-3.5 dark:border-white/10 dark:from-purple-950/30 dark:to-blue-950/20">
           <Sparkles className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
@@ -49,9 +51,14 @@ export function UnityLiveOtherStreamsSidebar({
                 >
                   <div className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-lg bg-black sm:w-32">
                     <UnityLivePreviewIframe stream={stream} title={stream.title} />
-                    <div className="absolute left-1.5 top-1.5 z-10 origin-top-left scale-90">
+                    <div className="absolute left-1.5 top-1.5 z-20 origin-top-left scale-90">
                       <UnityLiveBadge />
                     </div>
+                    {stream.overlay ? (
+                      <UnityLiveOverlayLayer overlay={stream.overlay} className="z-20 scale-[0.55] origin-top-right" hideLiveBadge />
+                    ) : (
+                      <UnityMeetVideoLogoOverlay className="z-20 origin-top-right scale-[0.55]" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1 py-0.5">
                     <p className="line-clamp-2 text-sm font-medium leading-snug text-neutral-900 group-hover:text-purple-700 dark:text-white dark:group-hover:text-purple-300">

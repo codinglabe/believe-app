@@ -1,6 +1,11 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import {
+  overlayBannerGradient,
+  overlayBannerGradientSoft,
+  ulive,
+} from "@/lib/unity-live-theme"
 import type { UnityLiveOverlay } from "@/types/livestream-overlay"
 
 type Props = {
@@ -8,14 +13,22 @@ type Props = {
   className?: string
   /** Hide live badge when the page already shows one (Unity Live header). */
   hideLiveBadge?: boolean
+  /** Sponsor / donation / bottom CTA render below the player on the watch page instead. */
+  belowPlayerChrome?: boolean
 }
 
-export default function UnityLiveOverlayLayer({ overlay, className, hideLiveBadge = false }: Props) {
+export default function UnityLiveOverlayLayer({
+  overlay,
+  className,
+  hideLiveBadge = false,
+  belowPlayerChrome = false,
+}: Props) {
   const accent = overlay.accentColor || "#7C3AED"
   const showDonationBanner =
     overlay.donationMessage.trim() !== "" || overlay.donationCta.trim() !== ""
   const showBottomBanner =
     overlay.bannerMessage.trim() !== "" || overlay.bannerCta.trim() !== ""
+  const showSpeaker = overlay.speakerName.trim() !== ""
   const showSponsor = Boolean(overlay.sponsorImageUrl)
   const showTicker = overlay.scrollingMessage.trim() !== ""
   const showQr = Boolean(overlay.qrCodeUrl)
@@ -41,23 +54,31 @@ export default function UnityLiveOverlayLayer({ overlay, className, hideLiveBadg
         </div>
       ) : null}
 
-      {showDonationBanner ? (
+      {showDonationBanner && !belowPlayerChrome ? (
         <div
           className="absolute left-3 right-3 top-14 rounded-lg px-3 py-2 text-white shadow-lg backdrop-blur-sm sm:left-4 sm:right-auto sm:max-w-md sm:px-4 sm:py-2.5"
-          style={{ backgroundColor: `${accent}E6` }}
+          style={{ background: overlayBannerGradientSoft(accent) }}
         >
           <p className="text-xs font-medium leading-snug sm:text-sm">
             {overlay.donationMessage}
             {overlay.donationCta ? (
-              <span className="ml-2 font-semibold text-yellow-300">👉 {overlay.donationCta}</span>
+              <span className={ulive.ctaInlineBadge}>{overlay.donationCta}</span>
             ) : null}
           </p>
         </div>
       ) : null}
 
-      {showSponsor ? (
+      {showSpeaker ? (
+        <div className="absolute bottom-24 left-3 sm:bottom-28 sm:left-4">
+          <span className="inline-flex max-w-[min(100%,16rem)] items-center rounded-lg bg-black/60 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-sm sm:max-w-xs sm:text-base">
+            {overlay.speakerName}
+          </span>
+        </div>
+      ) : null}
+
+      {showSponsor && !belowPlayerChrome ? (
         <div className="absolute bottom-24 left-3 right-3 sm:bottom-28 sm:left-4 sm:right-4">
-          <div className="flex items-center gap-3 rounded-xl border border-white/20 bg-black/70 px-3 py-2 backdrop-blur-md sm:px-4 sm:py-3">
+          <div className={cn("flex items-center gap-3 rounded-xl px-3 py-2 sm:px-4 sm:py-3", ulive.sponsorPanel)}>
             {overlay.sponsorLabel ? (
               <span className="hidden shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/70 sm:inline sm:text-xs">
                 {overlay.sponsorLabel}
@@ -72,24 +93,22 @@ export default function UnityLiveOverlayLayer({ overlay, className, hideLiveBadg
         </div>
       ) : null}
 
-      {showBottomBanner ? (
+      {showBottomBanner && !belowPlayerChrome ? (
         <div
           className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4"
-          style={{ backgroundColor: `${accent}EB` }}
+          style={{ background: overlayBannerGradient(accent) }}
         >
           <p className="min-w-0 truncate text-sm font-medium text-white sm:text-base">
             {overlay.bannerMessage}
           </p>
           {overlay.bannerCta ? (
-            <span className="shrink-0 text-sm font-semibold text-yellow-300 sm:text-base">
-              👉 {overlay.bannerCta}
-            </span>
+            <span className={ulive.ctaPill}>{overlay.bannerCta}</span>
           ) : null}
         </div>
       ) : null}
 
       {showTicker ? (
-        <div className="absolute inset-x-0 bottom-16 overflow-hidden bg-black/55 py-1.5 sm:bottom-[4.5rem]">
+        <div className={cn("absolute inset-x-0 bottom-16 overflow-hidden py-1.5 sm:bottom-[4.5rem]", ulive.ticker)}>
           <div className="animate-[unity-live-ticker_18s_linear_infinite] whitespace-nowrap text-xs font-medium text-white sm:text-sm">
             {overlay.scrollingMessage}
             <span className="mx-8">{overlay.scrollingMessage}</span>

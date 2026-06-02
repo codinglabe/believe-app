@@ -19,6 +19,9 @@ import {
   Copy,
   Video,
   CreditCard,
+  Bell,
+  Mail,
+  Send,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -26,6 +29,25 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/frontend/ui/input"
 import { usePage, router, Link } from "@inertiajs/react"
 import type { ConnectionHubType } from "@/lib/connection-hub-type"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
+
+type EnrollmentNotifyVia = "push_email" | "push" | "email"
+
+interface EnrollmentNotificationPreferences {
+  enrollments_via: EnrollmentNotifyVia
+  reminders_via: EnrollmentNotifyVia
+}
+
+const NOTIFY_VIA_OPTIONS: {
+  id: EnrollmentNotifyVia
+  label: string
+  icon: typeof Mail
+}[] = [
+  { id: "push_email", label: "Push / Email", icon: Send },
+  { id: "push", label: "Push", icon: Bell },
+  { id: "email", label: "Email", icon: Mail },
+]
 
 interface Enrollment {
   id: number
@@ -85,10 +107,18 @@ interface PageProps {
     search: string
     status: string
   }
+  notificationPreferences: EnrollmentNotificationPreferences
 }
 
 export default function MyEnrollments() {
-  const { enrollments, enrollmentStats, filters } = usePage<PageProps>().props
+  const { enrollments, enrollmentStats, filters, notificationPreferences } = usePage<PageProps>().props
+
+  const defaultNotificationPreferences: EnrollmentNotificationPreferences = {
+    enrollments_via: "push_email",
+    reminders_via: "push",
+  }
+
+  const safeNotificationPreferences = notificationPreferences || defaultNotificationPreferences
 
   // Ensure we have default values if data is missing
   const safeEnrollments = enrollments || {
@@ -110,7 +140,42 @@ export default function MyEnrollments() {
 
   const [search, setSearch] = useState(safeFilters.search)
   const [statusFilter, setStatusFilter] = useState(safeFilters.status)
+  const [notifyPrefs, setNotifyPrefs] = useState<EnrollmentNotificationPreferences>(safeNotificationPreferences)
+  const [savingNotifyPref, setSavingNotifyPref] = useState<string | null>(null)
   const isInitialMount = useRef(true)
+
+  useEffect(() => {
+    setNotifyPrefs(safeNotificationPreferences)
+  }, [safeNotificationPreferences.enrollments_via, safeNotificationPreferences.reminders_via])
+
+  const saveNotificationPreference = (
+    field: keyof EnrollmentNotificationPreferences,
+    value: EnrollmentNotifyVia,
+  ) => {
+    if (notifyPrefs[field] === value) return
+
+    const nextPrefs = { ...notifyPrefs, [field]: value }
+    setNotifyPrefs(nextPrefs)
+    setSavingNotifyPref(field)
+
+    router.post(
+      "/profile/my-enrollments/notification-preferences",
+      {
+        enrollments_via: nextPrefs.enrollments_via,
+        reminders_via: nextPrefs.reminders_via,
+      },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => toast.success("Notification preference saved"),
+        onError: () => {
+          setNotifyPrefs(safeNotificationPreferences)
+          toast.error("Could not save notification preference")
+        },
+        onFinish: () => setSavingNotifyPref(null),
+      },
+    )
+  }
 
   // Auto-filter when search/status changes, but not on initial mount or pagination
   useEffect(() => {
@@ -352,6 +417,97 @@ export default function MyEnrollments() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Notification preferences — numbered options */}
+        <Card className="border border-indigo-200 dark:border-indigo-800/60 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-indigo-50/80 to-blue-50/50 dark:from-indigo-950/30 dark:to-blue-950/20">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-3 mb-5">
+              <div className="p-3 bg-indigo-500 rounded-full shadow-lg shrink-0">
+                <Bell className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Notification settings</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                  Choose how you receive enrollment updates and course reminders across all your enrollments.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-800/50 bg-white/70 dark:bg-gray-900/50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex gap-3 min-w-0">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white shadow">
+                      1
+                    </span>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Enrollments</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+                        Push / Email for all enrollments — confirmations, updates, and changes.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {NOTIFY_VIA_OPTIONS.map(({ id, label, icon: Icon }) => (
+                      <Button
+                        key={`enrollments-${id}`}
+                        type="button"
+                        size="sm"
+                        variant={notifyPrefs.enrollments_via === id ? "default" : "outline"}
+                        disabled={savingNotifyPref === "enrollments_via"}
+                        className={cn(
+                          "h-9 gap-1.5",
+                          notifyPrefs.enrollments_via === id &&
+                            "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600",
+                        )}
+                        onClick={() => saveNotificationPreference("enrollments_via", id)}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-purple-200/80 dark:border-purple-800/50 bg-white/70 dark:bg-gray-900/50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex gap-3 min-w-0">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-600 text-sm font-bold text-white shadow">
+                      2
+                    </span>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">Reminders</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+                        Push for all reminders — course start alerts and upcoming session nudges.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {NOTIFY_VIA_OPTIONS.map(({ id, label, icon: Icon }) => (
+                      <Button
+                        key={`reminders-${id}`}
+                        type="button"
+                        size="sm"
+                        variant={notifyPrefs.reminders_via === id ? "default" : "outline"}
+                        disabled={savingNotifyPref === "reminders_via"}
+                        className={cn(
+                          "h-9 gap-1.5",
+                          notifyPrefs.reminders_via === id &&
+                            "bg-purple-600 hover:bg-purple-700 text-white border-purple-600",
+                        )}
+                        onClick={() => saveNotificationPreference("reminders_via", id)}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Search and Filter */}
         <Card className="border border-gray-200 dark:border-gray-600 shadow-lg hover:shadow-xl transition-all duration-300">

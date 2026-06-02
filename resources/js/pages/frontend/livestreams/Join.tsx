@@ -25,6 +25,7 @@ import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresence"
 import UnityMeetGiftCelebrationLayer from "@/components/meeting/UnityMeetGiftCelebrationLayer"
 import { LogOut } from "lucide-react"
+import ConnectionHubMeetingsList, { type ConnectionHubMeetingRow } from "@/components/course/ConnectionHubMeetingsList"
 
 const BRAND = {
   from: "#9333ea",
@@ -59,6 +60,7 @@ interface Props {
   organization?: Organization
   /** Logged-in user's display name for VDO label (server-set after meeting lookup). */
   joinDisplayName?: string
+  connectionHubMeetings?: ConnectionHubMeetingRow[]
 }
 
 export default function SupporterMeetJoin({
@@ -69,6 +71,7 @@ export default function SupporterMeetJoin({
   livestream,
   organization,
   joinDisplayName: joinDisplayNameProp,
+  connectionHubMeetings = [],
 }: Props) {
   const pageProps = usePage().props as unknown as Props & {
     auth?: { user?: { email?: string; id?: number } }
@@ -83,6 +86,19 @@ export default function SupporterMeetJoin({
   const [meetingId, setMeetingId] = useState(oldMeetingId ?? "")
   const [passcode, setPasscode] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if ((oldMeetingId ?? "").trim() !== "") {
+      return
+    }
+    if (typeof window === "undefined") {
+      return
+    }
+    const fromQuery = new URLSearchParams(window.location.search).get("meeting_id")?.trim() ?? ""
+    if (fromQuery !== "") {
+      setMeetingId(fromQuery)
+    }
+  }, [oldMeetingId])
 
   const showPasscodeStep =
     requiresPasscodeStep || (!!errors?.passcode?.[0] && !!(oldMeetingId ?? "").trim())
@@ -341,7 +357,17 @@ export default function SupporterMeetJoin({
           </div>
         </div>
 
-        <div className="w-full max-w-md mx-auto px-4 py-10 md:px-6">
+        <div className="w-full max-w-2xl mx-auto px-4 py-10 md:px-6 space-y-6">
+          {connectionHubMeetings.length > 0 && !showPasscodeStep ? (
+            <ConnectionHubMeetingsList
+              meetings={connectionHubMeetings}
+              title="Your Connection Hub meetings"
+              description="Join with one click — or copy the Unity Meet link to share with participants."
+              showHostLink={false}
+              compact
+            />
+          ) : null}
+
           <Card className="border-border bg-card shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

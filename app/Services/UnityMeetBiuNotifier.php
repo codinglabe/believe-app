@@ -41,7 +41,7 @@ class UnityMeetBiuNotifier
 
         $hostName = trim((string) ($settings['display_name'] ?? $livestream->user?->name ?? 'Your host'));
         $meetingLabel = trim((string) ($livestream->title ?? '')) ?: 'Unity Meet';
-        $joinUrl = url('/livestreams/join/'.$livestream->room_name);
+        $joinUrl = \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name);
 
         $title = 'Unity Meet invitation';
         $body = "{$hostName} invited you to {$meetingLabel}.";

@@ -18,6 +18,7 @@ class GiftCard extends Model
         'total_commission',
         'platform_commission',
         'nonprofit_commission',
+        'merchant_revenue',
         'brand',
         'brand_name',
         'country',
@@ -39,6 +40,7 @@ class GiftCard extends Model
         'total_commission' => 'decimal:8', // Support up to 8 decimal places for very small commission amounts
         'platform_commission' => 'decimal:8', // Support up to 8 decimal places for very small commission amounts
         'nonprofit_commission' => 'decimal:8', // Support up to 8 decimal places for very small commission amounts
+        'merchant_revenue' => 'decimal:8',
         'is_sent' => 'boolean',
         'purchased_at' => 'datetime',
         'expires_at' => 'datetime',

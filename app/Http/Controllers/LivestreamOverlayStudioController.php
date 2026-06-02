@@ -105,6 +105,7 @@ class LivestreamOverlayStudioController extends Controller
         $validated = $request->validate([
             'enabled' => 'nullable|boolean',
             'accent_color' => 'nullable|string|max:7',
+            'speaker_name' => 'nullable|string|max:80',
             'banner_message' => 'nullable|string|max:120',
             'banner_cta' => 'nullable|string|max:60',
             'donation_message' => 'nullable|string|max:120',
@@ -130,6 +131,7 @@ class LivestreamOverlayStudioController extends Controller
             ),
             'banner_message' => (string) ($validated['banner_message'] ?? $current['banner_message']),
             'banner_cta' => (string) ($validated['banner_cta'] ?? $current['banner_cta']),
+            'speaker_name' => (string) ($validated['speaker_name'] ?? $current['speaker_name']),
             'donation_message' => (string) ($validated['donation_message'] ?? $current['donation_message']),
             'donation_cta' => (string) ($validated['donation_cta'] ?? $current['donation_cta']),
             'sponsor_label' => (string) ($validated['sponsor_label'] ?? $current['sponsor_label']),

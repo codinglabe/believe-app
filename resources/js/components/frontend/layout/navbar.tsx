@@ -62,6 +62,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
 import { Link, router, usePage } from "@inertiajs/react"
+import { prepareLogout } from "@/lib/logout"
 import toast from "react-hot-toast"
 import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
 import { NotificationBell } from "@/components/notification-bell"
@@ -331,9 +332,12 @@ export default function Navbar() {
 
   const cleanup = useMobileNavigation()
 
-  const handleLogout = () => {
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.preventDefault()
     cleanup()
     setIsLoggedIn(false)
+    await prepareLogout()
+    router.post(route('logout.main'))
     router.flushAll()
   }
 

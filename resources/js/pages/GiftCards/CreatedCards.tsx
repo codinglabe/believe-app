@@ -516,7 +516,7 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                     <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                                         <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Summary</h4>
                                         <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
-                                            Believe is not soliciting donations through gift card sales. Gift cards are sold at face value, and the gift card issuer pays a commission to Believe as the platform operator. Believe retains an 8% administrative and platform fee and distributes the remaining commission to participating nonprofits as earned fundraising revenue. Purchases are not tax-deductible, and all funds are reported as program-related income.
+                                            Believe is not soliciting donations through gift card sales. Gift cards are sold at face value with no additional platform fee on the purchase price. The gift card provider pays a commission; Believe retains 10% of that provider commission as a platform share and distributes the remainder to participating nonprofits as earned fundraising revenue. Purchases are not tax-deductible, and all funds are reported as program-related income.
                                         </p>
                                     </div>
 
