@@ -132,6 +132,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'primary_organization_id',
         'secondary_organization_ids',
         'preferred_theme',
+        'proximity_notifications_enabled',
+        'last_latitude',
+        'last_longitude',
+        'last_location_reported_at',
         'auto_share_youtube_imports_to_feed',
         'enrollment_notifications_via',
         'enrollment_reminders_via',
@@ -190,6 +194,10 @@ class User extends Authenticatable implements MustVerifyEmail
             'dropbox_token_expires_at' => 'datetime',
             'secondary_organization_ids' => 'array',
             'auto_share_youtube_imports_to_feed' => 'boolean',
+            'proximity_notifications_enabled' => 'boolean',
+            'last_latitude' => 'float',
+            'last_longitude' => 'float',
+            'last_location_reported_at' => 'datetime',
         ];
     }
 
@@ -218,6 +226,10 @@ class User extends Authenticatable implements MustVerifyEmail
                 }
 
                 $user->slug = $slug;
+            }
+
+            if ($user->proximity_notifications_enabled === null) {
+                $user->proximity_notifications_enabled = true;
             }
 
             // Ensure guard_name is set

@@ -255,6 +255,7 @@ class HandleInertiaRequests extends Middleware
                             'slug' => $careAllianceHub->slug,
                             'name' => $careAllianceHub->name,
                         ] : null,
+                        'proximity_notifications_enabled' => $user->proximity_notifications_enabled !== false,
                         'organization' => $user->organization ? [
                             'id' => $user->organization->id,
                             'ein' => $user->organization->ein ?? null,

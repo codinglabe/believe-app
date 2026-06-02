@@ -247,6 +247,7 @@ class UserProfileController extends Controller
                 'preferred_theme' => in_array((string) ($user->preferred_theme ?? $user->appearance_preference ?? 'system'), ['system', 'light', 'dark'], true)
                     ? (string) ($user->preferred_theme ?? $user->appearance_preference ?? 'system')
                     : 'system',
+                'proximity_notifications_enabled' => $user->proximity_notifications_enabled !== false,
             ],
             'availablePositions' => $positions,
             'availableSupporterInterests' => $supporterInterests,
@@ -363,6 +364,7 @@ class UserProfileController extends Controller
             'secondary_organization_ids' => ['sometimes', 'array'],
             'secondary_organization_ids.*' => ['integer', Rule::exists('organizations', 'id')],
             'preferred_theme' => ['nullable', 'string', Rule::in(['system', 'light', 'dark'])],
+            'proximity_notifications_enabled' => ['sometimes', 'boolean'],
         ]);
 
         $primaryOrganizationId = isset($validated['primary_organization_id']) && $validated['primary_organization_id'] !== null
@@ -469,6 +471,10 @@ class UserProfileController extends Controller
                 $updateData['preferred_theme'] = $validated['preferred_theme'];
                 $updateData['appearance_preference'] = $validated['preferred_theme'];
             }
+        }
+
+        if (array_key_exists('proximity_notifications_enabled', $validated)) {
+            $updateData['proximity_notifications_enabled'] = (bool) $validated['proximity_notifications_enabled'];
         }
 
         if (array_key_exists('religion', $validated)) {
