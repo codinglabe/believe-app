@@ -1,7 +1,7 @@
 "use client"
 
 import { Head, Link, usePage } from "@inertiajs/react"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,14 +23,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Plus, Calendar, Users, Link2, MoreVertical, Play, Check, Pencil, Trash2, LogIn } from "lucide-react"
+import { Plus, Calendar, Users, Link2, MoreVertical, Play, Check, Pencil, Trash2, LogIn, Heart } from "lucide-react"
 import { router } from "@inertiajs/react"
 import { cn } from "@/lib/utils"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
+import ConnectionHubMeetingsList, { type ConnectionHubMeetingRow } from "@/components/course/ConnectionHubMeetingsList"
 
 interface Livestream {
   id: number
+  listKey?: string
+  source?: "personal" | "connection_hub"
   title: string | null
   roomName: string
   status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
@@ -41,6 +44,9 @@ interface Livestream {
   createdAt: string
   directorUrl: string
   joinUrl: string
+  hostUrl?: string
+  connectionHubLabel?: string
+  courseSlug?: string
 }
 
 interface Paginator {
@@ -55,6 +61,7 @@ interface Paginator {
 
 interface Props {
   livestreams: Paginator
+  connectionHubMeetings?: ConnectionHubMeetingRow[]
   meetingsView?: boolean
   meetingsTab?: "upcoming" | "past" | null
 }
@@ -77,6 +84,7 @@ function formatMeetingWhen(iso: string | null, fallbackIso: string): string {
 
 export default function SupporterLivestreamsIndex({
   livestreams,
+  connectionHubMeetings = [],
   meetingsView = false,
   meetingsTab,
 }: Props) {
@@ -86,25 +94,68 @@ export default function SupporterLivestreamsIndex({
   const welcomeName = firstName.length > 0 ? firstName : "there"
 
   const tab: "upcoming" | "past" = meetingsView && meetingsTab === "past" ? "past" : "upcoming"
-  const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Livestream | null>(null)
 
-  const handleDelete = (id: number) => {
-    router.delete(`/livestreams/supporter/${id}`, {
+  const personalRows: Livestream[] = useMemo(
+    () =>
+      livestreams.data.map((row) => ({
+        ...row,
+        source: row.source ?? "personal",
+        listKey: row.listKey ?? `user-${row.id}`,
+        hostUrl: row.hostUrl ?? `/livestreams/supporter/${row.id}`,
+      })),
+    [livestreams.data],
+  )
+
+  const mergedRows: Livestream[] = useMemo(() => {
+    const hubRows: Livestream[] = connectionHubMeetings.map((m) => ({
+      id: m.id,
+      listKey: m.listKey,
+      source: "connection_hub",
+      title: m.title,
+      roomName: m.roomName,
+      status: m.status as Livestream["status"],
+      isPublic: true,
+      scheduledAt: m.scheduledAt,
+      startedAt: null,
+      endedAt: null,
+      createdAt: m.createdAt,
+      directorUrl: "",
+      joinUrl: m.joinUrl,
+      hostUrl: m.hostUrl,
+      connectionHubLabel: m.connectionHubLabel,
+      courseSlug: m.courseSlug,
+    }))
+    const combined = [...hubRows, ...personalRows]
+    combined.sort((a, b) => {
+      const ta = new Date(a.scheduledAt ?? a.createdAt).getTime()
+      const tb = new Date(b.scheduledAt ?? b.createdAt).getTime()
+      return meetingsView && tab === "upcoming" ? ta - tb : tb - ta
+    })
+    return combined
+  }, [connectionHubMeetings, personalRows, meetingsView, tab])
+
+  const handleDelete = (row: Livestream) => {
+    if (row.source === "connection_hub") return
+    router.delete(`/livestreams/supporter/${row.id}`, {
       preserveScroll: true,
       onFinish: () => setDeleteTarget(null),
     })
   }
 
   const copyInviteLink = (row: Livestream) => {
+    const key = row.listKey ?? String(row.id)
     const url =
       typeof row.joinUrl === "string" && row.joinUrl.length > 0
         ? row.joinUrl
-        : `${typeof window !== "undefined" ? window.location.origin : ""}/livestreams/join/${row.roomName}`
+        : `${typeof window !== "undefined" ? window.location.origin : ""}/livestreams/supporter/join?meeting_id=${encodeURIComponent(row.roomName)}`
     void navigator.clipboard.writeText(url)
-    setCopiedId(row.id)
+    setCopiedId(key)
     setTimeout(() => setCopiedId(null), 2000)
   }
+
+  const rowKey = (row: Livestream) => row.listKey ?? String(row.id)
 
   const getStatusBadge = (status: Livestream["status"]) => {
     const statusConfig: Record<
@@ -183,7 +234,7 @@ export default function SupporterLivestreamsIndex({
   const displayWhen = (row: Livestream) =>
     formatMeetingWhen(row.scheduledAt ?? row.endedAt ?? row.startedAt, row.createdAt)
 
-  const recent = livestreams.data.slice(0, 3)
+  const recent = mergedRows.slice(0, 5)
 
   const from = livestreams.from ?? 0
   const to = livestreams.to ?? 0
@@ -267,6 +318,13 @@ export default function SupporterLivestreamsIndex({
               </Link>
             </div>
 
+            <ConnectionHubMeetingsList
+              meetings={connectionHubMeetings}
+              compact
+              title="Connection Hub meetings"
+              description="Unity Meet sessions from your Companion, Learning, and Events listings."
+            />
+
             <Card className="mt-6 border-border bg-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base">Recent Meetings</CardTitle>
@@ -284,13 +342,20 @@ export default function SupporterLivestreamsIndex({
                   <div className="divide-y divide-border">
                     {recent.map((livestream) => (
                       <div
-                        key={livestream.id}
+                        key={rowKey(livestream)}
                         className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {livestream.title || "Untitled Meeting"}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {livestream.title || "Untitled Meeting"}
+                            </p>
+                            {livestream.source === "connection_hub" && livestream.connectionHubLabel ? (
+                              <Badge variant="outline" className="text-xs border-purple-500/30">
+                                {livestream.connectionHubLabel}
+                              </Badge>
+                            ) : null}
+                          </div>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {livestream.scheduledAt
                               ? formatMeetingWhen(livestream.scheduledAt, livestream.createdAt)
@@ -300,13 +365,25 @@ export default function SupporterLivestreamsIndex({
 
                         <div className="flex items-center gap-3">
                           {getStatusBadge(livestream.status)}
-                          <Link href={`/livestreams/supporter/${livestream.id}`}>
+                          <Button variant="outline" size="sm" className="h-9 gap-1.5" type="button" onClick={() => copyInviteLink(livestream)}>
+                            <Link2 className="h-3.5 w-3.5" />
+                            Copy join link
+                          </Button>
+                          <Link
+                            href={
+                              livestream.source === "connection_hub"
+                                ? (livestream.hostUrl ?? "#")
+                                : `/livestreams/supporter/${livestream.id}`
+                            }
+                          >
                             <Button variant="outline" size="sm" className="h-9">
                               View
                             </Button>
                           </Link>
 
-                          {livestream.status !== "live" && livestream.status !== "meeting_live" && (
+                          {livestream.source !== "connection_hub" &&
+                            livestream.status !== "live" &&
+                            livestream.status !== "meeting_live" && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" size="sm" className="h-9">
@@ -324,7 +401,7 @@ export default function SupporterLivestreamsIndex({
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                                   <AlertDialogAction
-                                    onClick={() => handleDelete(livestream.id)}
+                                    onClick={() => handleDelete(livestream)}
                                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   >
                                     Delete
@@ -348,7 +425,9 @@ export default function SupporterLivestreamsIndex({
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">My Meetings</h1>
-                <p className="mt-1 text-sm text-muted-foreground">Meetings tied to your Unity Meet room.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Personal Unity Meet sessions and Connection Hub listings with scheduled meetings.
+                </p>
               </div>
               <Link href="/livestreams/supporter/create?schedule=1">
                 <Button className="h-10 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90">
@@ -387,9 +466,9 @@ export default function SupporterLivestreamsIndex({
 
             <Card className="mt-6 border-border bg-card shadow-sm">
               <CardContent className="p-0">
-                {livestreams.data.length === 0 ? (
+                {mergedRows.length === 0 ? (
                   <div className="px-6 py-14 text-center text-sm text-muted-foreground">
-                    {tab === "past" ? "No past meetings yet." : "No upcoming meetings. Schedule one or create an instant meeting."}
+                    {tab === "past" ? "No past meetings yet." : "No upcoming meetings. Schedule one or create a Connection Hub listing."}
                   </div>
                 ) : (
                   <>
@@ -399,29 +478,51 @@ export default function SupporterLivestreamsIndex({
                           <tr className="border-b border-border text-left">
                             <th className="px-6 py-3 font-semibold text-muted-foreground">Meeting Title</th>
                             <th className="px-6 py-3 font-semibold text-muted-foreground">Date &amp; Time</th>
+                            <th className="px-6 py-3 font-semibold text-muted-foreground">Type</th>
                             <th className="px-6 py-3 font-semibold text-muted-foreground">Status</th>
                             <th className="px-6 py-3 font-semibold text-muted-foreground">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {livestreams.data.map((row) => (
-                            <tr key={row.id} className="border-b border-border last:border-0">
+                          {mergedRows.map((row) => (
+                            <tr key={rowKey(row)} className="border-b border-border last:border-0">
                               <td className="max-w-[220px] px-6 py-4 font-medium text-foreground truncate">
                                 {row.title || "Untitled Meeting"}
                               </td>
                               <td className="whitespace-nowrap px-6 py-4 text-muted-foreground">{displayWhen(row)}</td>
+                              <td className="px-6 py-4">
+                                {row.source === "connection_hub" ? (
+                                  <Badge variant="outline" className="text-xs gap-1 border-purple-500/30">
+                                    <Heart className="h-3 w-3" />
+                                    {row.connectionHubLabel ?? "Connection Hub"}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Personal</span>
+                                )}
+                              </td>
                               <td className="px-6 py-4">{meetingsRowBadge(row)}</td>
                               <td className="px-6 py-4">
                                 <div className="flex flex-wrap items-center gap-2">
                                   {tab === "upcoming" ? (
                                     <>
-                                      <Link href={`/livestreams/supporter/${row.id}`}>
-                                        <Button variant="outline" size="sm" className="h-9">
-                                          Join
+                                      {row.source === "connection_hub" ? (
+                                        <Button asChild variant="outline" size="sm" className="h-9">
+                                          <a href={row.hostUrl ?? "#"}>Host</a>
                                         </Button>
-                                      </Link>
+                                      ) : (
+                                        <Link href={`/livestreams/supporter/${row.id}`}>
+                                          <Button variant="outline" size="sm" className="h-9">
+                                            Host
+                                          </Button>
+                                        </Link>
+                                      )}
+                                      <Button asChild variant="outline" size="sm" className="h-9">
+                                        <a href={row.joinUrl} target="_blank" rel="noopener noreferrer">
+                                          Join
+                                        </a>
+                                      </Button>
                                       <Button variant="outline" size="sm" className="h-9 gap-2" type="button" onClick={() => copyInviteLink(row)}>
-                                        {copiedId === row.id ? (
+                                        {copiedId === rowKey(row) ? (
                                           <>
                                             <Check className="h-3.5 w-3.5 text-emerald-600" />
                                             Copied
@@ -429,50 +530,61 @@ export default function SupporterLivestreamsIndex({
                                         ) : (
                                           <>
                                             <Link2 className="h-3.5 w-3.5" />
-                                            Copy Link
+                                            Copy join link
                                           </>
                                         )}
                                       </Button>
                                     </>
                                   ) : (
-                                    <Link href={`/livestreams/supporter/${row.id}`}>
-                                      <Button variant="outline" size="sm" className="h-9 gap-2">
-                                        <Play className="h-3.5 w-3.5" />
-                                        View Recording
+                                    row.source === "connection_hub" ? (
+                                      <Button asChild variant="outline" size="sm" className="h-9 gap-2">
+                                        <a href={row.joinUrl} target="_blank" rel="noopener noreferrer">
+                                          <Play className="h-3.5 w-3.5" />
+                                          Open
+                                        </a>
                                       </Button>
-                                    </Link>
+                                    ) : (
+                                      <Link href={`/livestreams/supporter/${row.id}`}>
+                                        <Button variant="outline" size="sm" className="h-9 gap-2">
+                                          <Play className="h-3.5 w-3.5" />
+                                          View Recording
+                                        </Button>
+                                      </Link>
+                                    )
                                   )}
 
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="outline" size="icon" className="h-9 w-9" aria-label="More actions">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-48">
-                                      <DropdownMenuItem asChild>
-                                        <Link href={`/livestreams/supporter/${row.id}`} className="cursor-pointer">
-                                          Open meeting
-                                        </Link>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem asChild>
-                                        <Link href={`/livestreams/supporter/${row.id}/edit`} className="flex cursor-pointer items-center gap-2">
-                                          <Pencil className="h-4 w-4" />
-                                          Edit meeting
-                                        </Link>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      {row.status !== "live" && row.status !== "meeting_live" && (
-                                        <DropdownMenuItem
-                                          className="cursor-pointer gap-2 text-destructive focus:text-destructive"
-                                          onSelect={() => setDeleteTarget(row)}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                          Cancel meeting
+                                  {row.source !== "connection_hub" && (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" size="icon" className="h-9 w-9" aria-label="More actions">
+                                          <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="w-48">
+                                        <DropdownMenuItem asChild>
+                                          <Link href={`/livestreams/supporter/${row.id}`} className="cursor-pointer">
+                                            Open meeting
+                                          </Link>
                                         </DropdownMenuItem>
-                                      )}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                        <DropdownMenuItem asChild>
+                                          <Link href={`/livestreams/supporter/${row.id}/edit`} className="flex cursor-pointer items-center gap-2">
+                                            <Pencil className="h-4 w-4" />
+                                            Edit meeting
+                                          </Link>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        {row.status !== "live" && row.status !== "meeting_live" && (
+                                          <DropdownMenuItem
+                                            className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+                                            onSelect={() => setDeleteTarget(row)}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                            Cancel meeting
+                                          </DropdownMenuItem>
+                                        )}
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  )}
                                 </div>
                               </td>
                             </tr>

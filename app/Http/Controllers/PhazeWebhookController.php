@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\GiftCard;
+use App\Services\GiftCardRevenueShareService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -101,67 +102,33 @@ class PhazeWebhookController extends Controller
 
             DB::beginTransaction();
 
-            // Calculate commissions from webhook payload if not already calculated
-            // IMPORTANT: The commission amount from Phaze API is the TOTAL commission that should go to the organization
-            // Platform (Believe) takes 8% of this total commission, and the nonprofit gets the remaining 92%
-
-            // Phaze provides commission as a direct amount in these fields:
-            // 1. 'commission' - direct commission amount (preferred)
-            // 2. 'phazeCommission' - alternative field name for commission amount
-            // 3. 'commissionAmount' - alternative field name for commission amount
-
-            // If commission is provided as percentage, we calculate it from purchase amount:
-            // 'commissionPercentage' or 'commission_percentage' - percentage of purchase amount
-
-            $totalCommission = null;
-            $commissionPercentage = null;
-
-            // First, check if Phaze provides commission as a direct amount (this is what organization should receive)
-            if (isset($payload['commission']) && is_numeric($payload['commission']) && $giftCard->total_commission === null) {
-                $totalCommission = (float)$payload['commission'];
-            } elseif (isset($payload['phazeCommission']) && is_numeric($payload['phazeCommission']) && $giftCard->total_commission === null) {
-                $totalCommission = (float)$payload['phazeCommission'];
-            } elseif (isset($payload['commissionAmount']) && is_numeric($payload['commissionAmount']) && $giftCard->total_commission === null) {
-                $totalCommission = (float)$payload['commissionAmount'];
-            } else {
-                $totalCommission = $giftCard->total_commission;
+            $resolved = GiftCardRevenueShareService::resolveProviderCommission($payload, (float) $giftCard->amount);
+            $providerCommission = $resolved['provider_commission'];
+            if ($providerCommission === null && $giftCard->total_commission !== null) {
+                $providerCommission = (float) $giftCard->total_commission;
             }
 
-            // If we have a commission amount, calculate the percentage for reference
-            if ($totalCommission !== null && $totalCommission > 0 && $giftCard->amount > 0) {
-                $commissionPercentage = ($totalCommission / $giftCard->amount) * 100;
-            }
+            $commissionPercentage = $resolved['commission_percentage']
+                ?? ($giftCard->commission_percentage !== null ? (float) $giftCard->commission_percentage : null);
 
-            // If no direct amount found, check for percentage (fallback)
-            if ($totalCommission === null || $totalCommission === 0) {
-                $commissionPercentage = $payload['commissionPercentage'] ??
-                                      $payload['commission_percentage'] ??
-                                      $giftCard->commission_percentage;
-
-                if ($commissionPercentage !== null && is_numeric($commissionPercentage) && $giftCard->total_commission === null) {
-                    // Commission is a percentage of the purchase amount
-                    $totalCommission = ($giftCard->amount * (float)$commissionPercentage) / 100;
-                } elseif ($giftCard->total_commission !== null) {
-                    $totalCommission = $giftCard->total_commission;
-                }
-            }
-
-            // Calculate platform and nonprofit commissions if not already set
-            // The totalCommission from Phaze is what the organization should receive
-            // Platform takes 8% of this total commission
-            // Nonprofit gets the remaining 92%
-            $platformCommissionPercentage = config('services.phaze.gift_card_platform_commission_percentage', 8);
             $platformCommission = $giftCard->platform_commission;
             $nonprofitCommission = $giftCard->nonprofit_commission;
+            $merchantRevenue = $giftCard->merchant_revenue ?? 0;
+            $commissionCalculation = $giftCard->meta['commission_calculation'] ?? [];
 
-            if ($totalCommission !== null && $totalCommission > 0 && $platformCommission === null) {
-                // Platform takes 8% of the total commission (from Phaze)
-                $platformCommission = ($totalCommission * $platformCommissionPercentage) / 100;
-                // Nonprofit gets the rest (92% of the total commission)
-                $nonprofitCommission = $totalCommission - $platformCommission;
+            if ($providerCommission !== null && $providerCommission > 0 && $platformCommission === null) {
+                $split = GiftCardRevenueShareService::splitProviderCommission($providerCommission, $commissionPercentage);
+                $commissionPercentage = $split['commission_percentage'];
+                $platformCommission = $split['platform_commission'];
+                $nonprofitCommission = $split['nonprofit_commission'];
+                $merchantRevenue = $split['merchant_revenue'];
+                $commissionCalculation = array_merge($commissionCalculation, $split['commission_calculation'], [
+                    'updated_via_webhook' => true,
+                ]);
             }
 
-            // Update gift card with Phaze transaction data
+            $totalCommission = $providerCommission ?? $giftCard->total_commission;
+
             $existingMeta = $giftCard->meta ?? [];
             $updateData = [
                 'external_id' => $transactionId ?? $giftCard->external_id,
@@ -169,21 +136,15 @@ class PhazeWebhookController extends Controller
                 'total_commission' => $totalCommission ?? $giftCard->total_commission,
                 'platform_commission' => $platformCommission ?? $giftCard->platform_commission,
                 'nonprofit_commission' => $nonprofitCommission ?? $giftCard->nonprofit_commission,
+                'merchant_revenue' => $merchantRevenue,
                 'meta' => array_merge($existingMeta, [
-                    'phaze_purchase' => $payload, // Store full purchase data from webhook
+                    'phaze_purchase' => $payload,
                     'phaze_webhook' => $payload,
                     'phaze_status' => $status,
                     'phaze_updated_at' => now()->toIso8601String(),
                     'orderId' => $orderId ?? $existingMeta['orderId'] ?? null,
                     'phaze_transaction_id' => $transactionId,
-                    'commission_calculation' => array_merge($existingMeta['commission_calculation'] ?? [], [
-                        'commission_percentage' => $commissionPercentage,
-                        'total_commission' => $totalCommission,
-                        'platform_commission_percentage' => $platformCommissionPercentage,
-                        'platform_commission' => $platformCommission,
-                        'nonprofit_commission' => $nonprofitCommission,
-                        'updated_via_webhook' => true,
-                    ]),
+                    'commission_calculation' => $commissionCalculation,
                 ]),
             ];
 
@@ -217,9 +178,17 @@ class PhazeWebhookController extends Controller
                     ->first();
 
                 if ($transaction) {
+                    $card = $giftCard->fresh();
+                    $ledgerSlice = GiftCardRevenueShareService::ledgerMetaSlice(
+                        (float) $card->amount,
+                        $card->total_commission !== null ? (float) $card->total_commission : null,
+                        $card->platform_commission !== null ? (float) $card->platform_commission : null,
+                        $card->nonprofit_commission !== null ? (float) $card->nonprofit_commission : null,
+                        (float) ($card->merchant_revenue ?? 0)
+                    );
                     $transaction->update([
                         'status' => $status === 'failed' ? 'failed' : 'completed',
-                        'meta' => array_merge($transaction->meta ?? [], [
+                        'meta' => array_merge($transaction->meta ?? [], $ledgerSlice, [
                             'phaze_status' => $status,
                             'phaze_transaction_id' => $transactionId,
                             'phaze_error' => $error,

@@ -14,12 +14,14 @@ import { ImageUpload } from "@/components/admin/ImageUpload"
 import type { User } from "@/types"
 import { toast } from "sonner"
 import AppLayout from "@/layouts/app-layout"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import UnityMeetCourseScheduleSection from "@/components/course/UnityMeetCourseScheduleSection"
+import { usesUnityMeet } from "@/hooks/useCourseUnityMeetPrepare"
 import type { ConnectionHubListingLockType } from "@/lib/connection-hub-hero-hrefs"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
@@ -76,6 +78,9 @@ export default function NonprofitCoursesCreate() {
     event_type_id: defaultEventTypeIdForHub(initialHubType, companionEventTypes, eventTypes),
     target_audience: "",
     meeting_link: "",
+    host_meeting_link: "",
+    unity_meet_livestream_kind: "",
+    unity_meet_livestream_id: "",
     pricing_type: "free",
     course_fee: "",
     start_date: "",
@@ -184,15 +189,22 @@ export default function NonprofitCoursesCreate() {
         }
         return true
       }
-      case "schedule":
-        return !!(
-          data.meeting_link &&
+      case "schedule": {
+        const scheduleFieldsOk = !!(
           data.format &&
           data.start_date &&
           data.start_time &&
           data.session_duration_minutes &&
           data.max_participants
         )
+        if (!scheduleFieldsOk) {
+          return false
+        }
+        if (usesUnityMeet(data.format)) {
+          return !!(data.meeting_link && data.host_meeting_link && data.unity_meet_livestream_id)
+        }
+        return true
+      }
       case "settings":
         return true
       default:
@@ -255,6 +267,24 @@ export default function NonprofitCoursesCreate() {
   const isFormValid = () => validateTab("basics") && validateTab("schedule")
 
   const tabOrder = ["basics", "schedule", "settings"] as const
+
+  const handleUnityMeetPrepared = useCallback(
+    (payload: {
+      meeting_link: string
+      host_meeting_link: string
+      unity_meet_livestream_kind: string
+      unity_meet_livestream_id: string
+    }) => {
+      setData((current) => ({
+        ...current,
+        meeting_link: payload.meeting_link,
+        host_meeting_link: payload.host_meeting_link,
+        unity_meet_livestream_kind: payload.unity_meet_livestream_kind,
+        unity_meet_livestream_id: payload.unity_meet_livestream_id,
+      }))
+    },
+    [setData],
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -520,23 +550,24 @@ export default function NonprofitCoursesCreate() {
                   <CardTitle>Schedule & Meeting Details</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <label htmlFor="meeting_link" className="text-sm font-medium">
-                      Meeting Link *
-                    </label>
-                    <Input
-                      id="meeting_link"
-                      type="url"
-                      value={data.meeting_link}
-                      onChange={(e) => setData("meeting_link", e.target.value)}
-                      placeholder="https://zoom.us/j/123456789 or https://meet.google.com/abc-defg-hij"
-                      className={errors.meeting_link ? "border-destructive" : ""}
-                    />
-                    {errors.meeting_link && <p className="text-sm text-destructive">{errors.meeting_link}</p>}
-                    <p className="text-xs text-muted-foreground">
-                      Provide the meeting link where participants will join this {connectionHubTypeLabel(data.type)} listing
-                    </p>
-                  </div>
+                  <UnityMeetCourseScheduleSection
+                    enabled={currentTab === "schedule" && validateTab("basics")}
+                    prepareUrl={route("admin.courses.unity-meet.prepare")}
+                    hubTypeLabel={connectionHubTypeLabel(data.type)}
+                    name={data.name}
+                    description={data.description}
+                    format={data.format}
+                    startDate={data.start_date}
+                    startTime={data.start_time}
+                    sessionDurationMinutes={data.session_duration_minutes}
+                    maxParticipants={data.max_participants}
+                    livestreamKind={data.unity_meet_livestream_kind}
+                    livestreamId={data.unity_meet_livestream_id}
+                    hostMeetingLink={data.host_meeting_link}
+                    meetingLink={data.meeting_link}
+                    onPrepared={handleUnityMeetPrepared}
+                    error={typeof errors.meeting_link === "string" ? errors.meeting_link : undefined}
+                  />
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-2">

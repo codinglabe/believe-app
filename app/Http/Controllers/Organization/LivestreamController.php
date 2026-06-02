@@ -189,7 +189,7 @@ class LivestreamController extends Controller
             ->findOrFail($id);
 
         $password = $livestream->getDecryptedPassword();
-        $joinUrl = url('/livestreams/join/' . $livestream->room_name);
+        $joinUrl = \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name);
 
         return Inertia::render('Organization/Livestreams/Ready', [
             'livestream' => [

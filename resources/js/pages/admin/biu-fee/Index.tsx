@@ -57,8 +57,9 @@ export default function AdminBiuFeeIndex({
             <span className="font-medium text-foreground">Marketplace checkout</span> charges supporters a platform fee on each line&apos;s subtotal: one
             rate for Printify and organization catalog goods, and another for merchant marketplace items and organization-adopted merchant pool listings.
             Mixed carts combine both.{" "}
-            <span className="font-medium text-foreground">Other sales modules</span> (Service Hub, courses, raffles, gift cards, merchant hub cash) use the
-            global sales rate below on each module&apos;s sale base.
+            <span className="font-medium text-foreground">Other sales modules</span> (Service Hub, courses, raffles, merchant hub cash) use the global sales
+            rate below. <span className="font-medium text-foreground">Gift cards</span> sell at face value with no buyer platform fee; BIU revenue is a share
+            of provider commissions (see Gift card revenue).
           </p>
         </div>
 

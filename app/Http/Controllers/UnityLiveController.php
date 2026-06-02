@@ -6,6 +6,8 @@ use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
 use App\Support\LivestreamOverlayConfig;
 use App\Support\UnityLiveBroadcast;
+use App\Support\UnityLiveHostProfileBuilder;
+use App\Support\UnityLiveViewerPresence;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,20 +25,12 @@ class UnityLiveController extends Controller
         if (! $viewUrl) {
             return null;
         }
-        return [
+        return array_merge($this->baseLivestreamFields($ls), [
             'id' => 'org_' . $ls->id,
-            'slug' => $ls->room_name,
-            'title' => $ls->title ?: 'Live Stream',
             'organizationName' => $ls->organization?->name ?? 'Organization',
             'hostType' => 'organization',
-            'viewUrl' => $viewUrl,
-            'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
-            'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
-            'startedAt' => $ls->started_at?->toIso8601String(),
-            'overlay' => LivestreamOverlayConfig::toPublicPayload(
-                LivestreamOverlayConfig::forLivestream($ls),
-            ),
-        ];
+            'hostProfile' => UnityLiveHostProfileBuilder::forLivestream($ls),
+        ]);
     }
 
     /**
@@ -50,12 +44,30 @@ class UnityLiveController extends Controller
         if (! $viewUrl) {
             return null;
         }
-        return [
+        return array_merge($this->baseLivestreamFields($ls), [
             'id' => 'user_' . $ls->id,
-            'slug' => $ls->room_name,
-            'title' => $ls->title ?: 'Live Stream',
             'organizationName' => $ls->user?->name ?? 'Host',
             'hostType' => 'supporter',
+            'hostProfile' => UnityLiveHostProfileBuilder::forLivestream($ls),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function baseLivestreamFields(OrganizationLivestream|UserLivestream $ls): array
+    {
+        $viewUrl = $ls->getPublicViewUrl();
+        if (! $viewUrl) {
+            return [];
+        }
+
+        $kind = $ls instanceof UserLivestream ? 'user' : 'organization';
+
+        return [
+            'slug' => $ls->room_name,
+            'title' => $ls->title ?: 'Live Stream',
+            'description' => $ls->description ? trim((string) $ls->description) : null,
             'viewUrl' => $viewUrl,
             'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
             'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
@@ -63,6 +75,7 @@ class UnityLiveController extends Controller
             'overlay' => LivestreamOverlayConfig::toPublicPayload(
                 LivestreamOverlayConfig::forLivestream($ls),
             ),
+            'viewerCount' => UnityLiveViewerPresence::count($kind, $ls->id),
         ];
     }
 
@@ -289,6 +302,7 @@ class UnityLiveController extends Controller
                 'livestream' => $item,
                 'otherLivestreams' => $otherLivestreams,
                 'broadcastChannel' => UnityLiveBroadcast::channelName($livestream),
+                'earnSaveLinks' => UnityLiveHostProfileBuilder::earnSaveLinks(),
             ]);
         }
 

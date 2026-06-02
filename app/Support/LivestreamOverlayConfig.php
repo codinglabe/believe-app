@@ -74,6 +74,13 @@ class LivestreamOverlayConfig
             return self::defaults();
         }
 
+        // Org accounts configure overlay on the organization (see Overlay Studio); supporter
+        // UserLivestreams must use the same settings, not empty user-level JSON.
+        $org = Organization::forAuthUser($user);
+        if ($org !== null) {
+            return self::forOrganization($org);
+        }
+
         $config = self::merge($user->livestream_overlay_settings);
 
         if (empty($config['logo_path'])) {

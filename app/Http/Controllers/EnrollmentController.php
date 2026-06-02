@@ -7,6 +7,7 @@ use App\Models\Enrollment;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
 use App\Support\CourseEnrollmentCheckoutItems;
+use App\Support\EnrollmentNotificationVia;
 use App\Support\StripeAutomaticTax;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -641,7 +642,51 @@ class EnrollmentController extends Controller
                 'search' => $request->get('search', ''),
                 'status' => $request->get('status', ''),
             ],
+            'notificationPreferences' => [
+                'enrollments_via' => EnrollmentNotificationVia::normalize(
+                    $user->enrollment_notifications_via,
+                    EnrollmentNotificationVia::PUSH_EMAIL
+                ),
+                'reminders_via' => EnrollmentNotificationVia::normalize(
+                    $user->enrollment_reminders_via,
+                    EnrollmentNotificationVia::PUSH
+                ),
+            ],
         ]);
+    }
+
+    /**
+     * Update enrollment notification channel preferences for the authenticated user.
+     */
+    public function updateNotificationPreferences(Request $request)
+    {
+        $validated = $request->validate([
+            'enrollments_via' => 'nullable|string|in:'.implode(',', EnrollmentNotificationVia::allowed()),
+            'reminders_via' => 'nullable|string|in:'.implode(',', EnrollmentNotificationVia::allowed()),
+        ]);
+
+        $user = Auth::user();
+        $updates = [];
+
+        if (array_key_exists('enrollments_via', $validated) && $validated['enrollments_via'] !== null) {
+            $updates['enrollment_notifications_via'] = EnrollmentNotificationVia::normalize(
+                $validated['enrollments_via'],
+                EnrollmentNotificationVia::PUSH_EMAIL
+            );
+        }
+
+        if (array_key_exists('reminders_via', $validated) && $validated['reminders_via'] !== null) {
+            $updates['enrollment_reminders_via'] = EnrollmentNotificationVia::normalize(
+                $validated['reminders_via'],
+                EnrollmentNotificationVia::PUSH
+            );
+        }
+
+        if ($updates !== []) {
+            $user->update($updates);
+        }
+
+        return back()->with('success', 'Notification preferences updated.');
     }
 
     /**

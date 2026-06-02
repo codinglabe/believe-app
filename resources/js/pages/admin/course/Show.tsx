@@ -87,6 +87,7 @@ interface Course {
   created_at: string
   updated_at: string
   meeting_link: string | null
+  host_meeting_link?: string | null
   topic: Topic | null
   event_type: EventType | null
   organization: Organization
@@ -422,33 +423,57 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Meeting Link Card */}
-            {course.meeting_link && (
+            {(course.meeting_link || course.host_meeting_link) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <ExternalLink className="h-5 w-5" />
-                    Meeting Link
+                    Unity Meet
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="p-3 bg-muted rounded-lg">
-                    <div className="text-sm font-mono break-all text-muted-foreground mb-2">{course.meeting_link}</div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyToClipboard(course.meeting_link!)}
-                        className="flex-1"
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        {copied ? "Copied!" : "Copy"}
-                      </Button>
-                      <Button size="sm" onClick={() => window.open(course.meeting_link!, "_blank")} className="flex-1">
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Open
-                      </Button>
+                  {course.host_meeting_link ? (
+                    <div className="p-3 bg-muted rounded-lg space-y-2">
+                      <div className="text-xs font-medium text-muted-foreground">Host link</div>
+                      <div className="text-sm font-mono break-all text-muted-foreground">{course.host_meeting_link}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => copyToClipboard(course.host_meeting_link!)}
+                          className="flex-1"
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          {copied ? "Copied!" : "Copy host"}
+                        </Button>
+                        <Button size="sm" onClick={() => window.open(course.host_meeting_link!, "_blank")} className="flex-1">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open host
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
+                  {course.meeting_link ? (
+                    <div className="p-3 bg-muted rounded-lg space-y-2">
+                      <div className="text-xs font-medium text-muted-foreground">Join link</div>
+                      <div className="text-sm font-mono break-all text-muted-foreground">{course.meeting_link}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => copyToClipboard(course.meeting_link!)}
+                          className="flex-1"
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          {copied ? "Copied!" : "Copy join"}
+                        </Button>
+                        <Button size="sm" onClick={() => window.open(course.meeting_link!, "_blank")} className="flex-1">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open join
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             )}

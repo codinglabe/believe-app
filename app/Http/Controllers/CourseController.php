@@ -10,6 +10,7 @@ use App\Models\PrimaryActionCategory;
 use App\Models\EventType;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
+use App\Services\CourseUnityMeetService;
 use App\Services\SeoService;
 use App\Support\ConnectionHubType;
 use App\Support\SessionDurationMinutes;
@@ -726,6 +727,9 @@ class CourseController extends BaseController
             'topic_id' => ['nullable', 'exists:topics,id'],
             'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
+            'host_meeting_link' => 'nullable|url|max:500',
+            'unity_meet_livestream_kind' => 'nullable|in:organization,user',
+            'unity_meet_livestream_id' => 'nullable|integer|min:1',
 
             // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
@@ -812,6 +816,16 @@ class CourseController extends BaseController
         ]);
 
         CourseTaxClassificationService::validateFeeBreakdown($request);
+
+        if (app(CourseUnityMeetService::class)->usesUnityMeet($validated['format'])) {
+            $hasUnityMeet = ! empty($validated['unity_meet_livestream_kind'])
+                && ! empty($validated['unity_meet_livestream_id']);
+            if (! $hasUnityMeet && empty($validated['meeting_link'])) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['meeting_link' => 'A Unity Meet meeting must be created on the Schedule step before submitting.']);
+            }
+        }
 
         // Handle image upload
         $imagePath = null;
@@ -900,6 +914,23 @@ class CourseController extends BaseController
             ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
             $this->syncPrimaryActionCategories($course, $request);
+
+            if (app(CourseUnityMeetService::class)->usesUnityMeet($validated['format'])
+                && ! empty($validated['unity_meet_livestream_kind'])
+                && ! empty($validated['unity_meet_livestream_id'])) {
+                $links = app(CourseUnityMeetService::class)->finalizeForCourse(
+                    $request->user(),
+                    $course,
+                    $validated['unity_meet_livestream_kind'],
+                    (int) $validated['unity_meet_livestream_id'],
+                );
+                $course->update([
+                    'meeting_link' => $links['join_link'],
+                    'host_meeting_link' => $links['host_link'],
+                    'unity_meet_livestream_kind' => $links['livestream_kind'],
+                    'unity_meet_livestream_id' => $links['livestream_id'],
+                ]);
+            }
 
             DB::commit();
 
@@ -1209,6 +1240,9 @@ class CourseController extends BaseController
             'topic_id' => ['nullable', 'exists:topics,id'],
             'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
+            'host_meeting_link' => 'nullable|url|max:500',
+            'unity_meet_livestream_kind' => 'nullable|in:organization,user',
+            'unity_meet_livestream_id' => 'nullable|integer|min:1',
 
             // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
@@ -1294,6 +1328,16 @@ class CourseController extends BaseController
         ]);
 
         CourseTaxClassificationService::validateFeeBreakdown($request);
+
+        if (app(CourseUnityMeetService::class)->usesUnityMeet($validated['format'])) {
+            $hasUnityMeet = ! empty($validated['unity_meet_livestream_kind'])
+                && ! empty($validated['unity_meet_livestream_id']);
+            if (! $hasUnityMeet && empty($validated['meeting_link'])) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['meeting_link' => 'A Unity Meet meeting must be created on the Schedule step before submitting.']);
+            }
+        }
 
         // Handle image upload
         $imagePath = $course->image;
@@ -1381,6 +1425,23 @@ class CourseController extends BaseController
             ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
             $this->syncPrimaryActionCategories($course, $request);
+
+            if (app(CourseUnityMeetService::class)->usesUnityMeet($validated['format'])
+                && ! empty($validated['unity_meet_livestream_kind'])
+                && ! empty($validated['unity_meet_livestream_id'])) {
+                $links = app(CourseUnityMeetService::class)->finalizeForCourse(
+                    $request->user(),
+                    $course,
+                    $validated['unity_meet_livestream_kind'],
+                    (int) $validated['unity_meet_livestream_id'],
+                );
+                $course->update([
+                    'meeting_link' => $links['join_link'],
+                    'host_meeting_link' => $links['host_link'],
+                    'unity_meet_livestream_kind' => $links['livestream_kind'],
+                    'unity_meet_livestream_id' => $links['livestream_id'],
+                ]);
+            }
 
             DB::commit();
 

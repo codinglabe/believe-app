@@ -344,7 +344,9 @@ return [
         'api_secret' => env('PHAZE_API_SECRET'),
         'base_url' => env('PHAZE_BASE_URL', 'https://api.phaze.io'),
         'environment' => env('PHAZE_ENVIRONMENT', 'sandbox'), // sandbox or production
-        'gift_card_platform_commission_percentage' => env('GIFT_CARD_PLATFORM_COMMISSION_PERCENTAGE', 8), // Platform commission percentage (8% default)
+        // BIU share of Phaze provider commission (not added to gift card face price). Legacy env: GIFT_CARD_PLATFORM_COMMISSION_PERCENTAGE.
+        'gift_card_biu_revenue_share_percentage' => env('GIFT_CARD_BIU_REVENUE_SHARE_PERCENTAGE', env('GIFT_CARD_PLATFORM_COMMISSION_PERCENTAGE', 10)),
+        'gift_card_platform_commission_percentage' => env('GIFT_CARD_PLATFORM_COMMISSION_PERCENTAGE', env('GIFT_CARD_BIU_REVENUE_SHARE_PERCENTAGE', 10)),
         // Note: webhook_api_key is now stored in database (phaze_webhooks table)
         // No need to set PHAZE_WEBHOOK_API_KEY in .env anymore
     ],

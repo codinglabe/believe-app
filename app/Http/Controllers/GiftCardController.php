@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
-use App\Services\BiuPlatformFeeService;
 use App\Services\GiftCardGiftedPointsPolicy;
+use App\Services\GiftCardRevenueShareService;
 use App\Services\GiftCardService;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
@@ -647,64 +647,22 @@ class GiftCardController extends Controller
                 }
 
                 // Calculate commissions from Phaze response (same as Stripe flow)
-                // IMPORTANT: The commission amount from Phaze API is the TOTAL commission that should go to the organization
-                // Platform (Believe) takes 8% of this total commission, and the nonprofit gets the remaining 92%
-
-                $totalCommission = null;
-                $commissionPercentage = null;
-
-                // First, check if Phaze provides commission as a direct amount
-                if (isset($phazePurchaseResult['commission']) && is_numeric($phazePurchaseResult['commission'])) {
-                    $totalCommission = (float) $phazePurchaseResult['commission'];
-                } elseif (isset($phazePurchaseResult['phazeCommission']) && is_numeric($phazePurchaseResult['phazeCommission'])) {
-                    $totalCommission = (float) $phazePurchaseResult['phazeCommission'];
-                } elseif (isset($phazePurchaseResult['commissionAmount']) && is_numeric($phazePurchaseResult['commissionAmount'])) {
-                    $totalCommission = (float) $phazePurchaseResult['commissionAmount'];
-                }
-
-                // If we have a commission amount, calculate the percentage for reference
-                if ($totalCommission !== null && $totalCommission > 0 && $purchaseAmount > 0) {
-                    $commissionPercentage = ($totalCommission / $purchaseAmount) * 100;
-                }
-
-                // If no direct amount found, check for percentage (fallback)
-                if ($totalCommission === null) {
-                    $commissionPercentage = $phazePurchaseResult['commissionPercentage'] ??
-                                         $phazePurchaseResult['commission_percentage'] ??
-                                         null;
-
-                    if ($commissionPercentage !== null && is_numeric($commissionPercentage)) {
-                        // Commission is a percentage of the purchase amount
-                        $totalCommission = ($purchaseAmount * (float) $commissionPercentage) / 100;
-                    }
-                }
-
-                // Calculate platform and nonprofit commissions
-                // The totalCommission from Phaze is what the organization should receive
-                // Platform takes 8% of this total commission
-                // Nonprofit gets the remaining 92%
-                $platformCommissionPercentage = config('services.phaze.gift_card_platform_commission_percentage', 8);
-                $platformCommission = null;
-                $nonprofitCommission = null;
+                $revenueSplit = GiftCardRevenueShareService::calculateFromPhazeResponse($phazePurchaseResult, $purchaseAmount);
+                $commissionPercentage = $revenueSplit['commission_percentage'];
+                $totalCommission = $revenueSplit['total_commission'];
+                $platformCommission = $revenueSplit['platform_commission'];
+                $nonprofitCommission = $revenueSplit['nonprofit_commission'];
+                $merchantRevenue = $revenueSplit['merchant_revenue'];
 
                 if ($totalCommission !== null && $totalCommission > 0) {
-                    // Platform takes 8% of the total commission (from Phaze)
-                    $platformCommission = ($totalCommission * $platformCommissionPercentage) / 100;
-                    // Nonprofit gets the rest (92% of the total commission)
-                    $nonprofitCommission = $totalCommission - $platformCommission;
-
-                    // Log commission calculation for debugging
                     Log::info('Gift card commission calculated (Believe Points)', [
                         'purchase_amount' => $purchaseAmount,
-                        'total_commission' => $totalCommission,
-                        'commission_percentage' => $commissionPercentage,
-                        'platform_commission_percentage' => $platformCommissionPercentage,
-                        'platform_commission' => $platformCommission,
-                        'nonprofit_commission' => $nonprofitCommission,
+                        'provider_commission' => $totalCommission,
+                        'biu_revenue_share' => $platformCommission,
+                        'organization_revenue' => $nonprofitCommission,
                         'phaze_response_keys' => array_keys($phazePurchaseResult),
                     ]);
                 } else {
-                    // Log when commission is not found or zero
                     Log::warning('Gift card commission is zero or not found (Believe Points)', [
                         'purchase_amount' => $purchaseAmount,
                         'phaze_response' => $phazePurchaseResult,
@@ -742,6 +700,7 @@ class GiftCardController extends Controller
                     'total_commission' => $totalCommission,
                     'platform_commission' => $platformCommission,
                     'nonprofit_commission' => $nonprofitCommission,
+                    'merchant_revenue' => $merchantRevenue,
                     'meta' => $selectedBrand ? [
                         'productId' => $selectedBrand['productId'] ?? null,
                         'productImage' => $selectedBrand['productImage'] ?? null,
@@ -773,13 +732,7 @@ class GiftCardController extends Controller
                         'believe_points_from_gifted' => $pointsSplit['from_gifted'],
                         'believe_points_from_purchased' => $pointsSplit['from_purchased'],
                         'allowed_for_gifted_points' => $productAllowsGifted,
-                        'commission_calculation' => [
-                            'commission_percentage' => $commissionPercentage,
-                            'total_commission' => $totalCommission,
-                            'platform_commission_percentage' => $platformCommissionPercentage,
-                            'platform_commission' => $platformCommission,
-                            'nonprofit_commission' => $nonprofitCommission,
-                        ],
+                        'commission_calculation' => $revenueSplit['commission_calculation'],
                     ]),
                 ];
 
@@ -828,7 +781,13 @@ class GiftCardController extends Controller
                     'allowed_for_gifted_points' => $productAllowsGifted,
                     'phaze_order_id' => $phazePurchaseResult['orderId'] ?? null,
                     'brand' => $validated['brand_name'],
-                ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
+                ], GiftCardRevenueShareService::ledgerMetaSlice(
+                    (float) $purchaseAmount,
+                    $totalCommission !== null ? (float) $totalCommission : null,
+                    $platformCommission !== null ? (float) $platformCommission : null,
+                    $nonprofitCommission !== null ? (float) $nonprofitCommission : null,
+                    (float) $merchantRevenue
+                ));
 
                 if ($phazePurchaseResult) {
                     $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
@@ -1264,74 +1223,23 @@ class GiftCardController extends Controller
                 Log::info('Phaze purchase result', ['result' => $phazePurchaseResult]);
 
                 if ($phazePurchaseResult) {
-                    // Calculate commissions from Phaze response
-                    // IMPORTANT: The commission amount from Phaze API is the TOTAL commission that should go to the organization
-                    // Platform (Believe) takes 8% of this total commission, and the nonprofit gets the remaining 92%
-
-                    // Phaze provides commission as a direct amount in these fields:
-                    // 1. 'commission' - direct commission amount (preferred)
-                    // 2. 'phazeCommission' - alternative field name for commission amount
-                    // 3. 'commissionAmount' - alternative field name for commission amount
-
-                    // If commission is provided as percentage, we calculate it from purchase amount:
-                    // 'commissionPercentage' or 'commission_percentage' - percentage of purchase amount
-
-                    $totalCommission = null;
-                    $commissionPercentage = null;
-
-                    // First, check if Phaze provides commission as a direct amount (this is what organization should receive)
-                    if (isset($phazePurchaseResult['commission']) && is_numeric($phazePurchaseResult['commission'])) {
-                        $totalCommission = (float) $phazePurchaseResult['commission'];
-                    } elseif (isset($phazePurchaseResult['phazeCommission']) && is_numeric($phazePurchaseResult['phazeCommission'])) {
-                        $totalCommission = (float) $phazePurchaseResult['phazeCommission'];
-                    } elseif (isset($phazePurchaseResult['commissionAmount']) && is_numeric($phazePurchaseResult['commissionAmount'])) {
-                        $totalCommission = (float) $phazePurchaseResult['commissionAmount'];
-                    }
-
-                    // If we have a commission amount, calculate the percentage for reference
-                    if ($totalCommission !== null && $totalCommission > 0 && $purchaseAmount > 0) {
-                        $commissionPercentage = ($totalCommission / $purchaseAmount) * 100;
-                    }
-
-                    // If no direct amount found, check for percentage (fallback)
-                    if ($totalCommission === null) {
-                        $commissionPercentage = $phazePurchaseResult['commissionPercentage'] ??
-                                             $phazePurchaseResult['commission_percentage'] ??
-                                             null;
-
-                        if ($commissionPercentage !== null && is_numeric($commissionPercentage)) {
-                            // Commission is a percentage of the purchase amount
-                            $totalCommission = ($purchaseAmount * (float) $commissionPercentage) / 100;
-                        }
-                    }
-
-                    // Calculate platform and nonprofit commissions
-                    // The totalCommission from Phaze is what the organization should receive
-                    // Platform takes 8% of this total commission
-                    // Nonprofit gets the remaining 92%
-                    $platformCommissionPercentage = config('services.phaze.gift_card_platform_commission_percentage', 8);
-                    $platformCommission = null;
-                    $nonprofitCommission = null;
+                    $revenueSplit = GiftCardRevenueShareService::calculateFromPhazeResponse($phazePurchaseResult, $purchaseAmount);
+                    $commissionPercentage = $revenueSplit['commission_percentage'];
+                    $totalCommission = $revenueSplit['total_commission'];
+                    $platformCommission = $revenueSplit['platform_commission'];
+                    $nonprofitCommission = $revenueSplit['nonprofit_commission'];
+                    $merchantRevenue = $revenueSplit['merchant_revenue'];
 
                     if ($totalCommission !== null && $totalCommission > 0) {
-                        // Platform takes 8% of the total commission (from Phaze)
-                        $platformCommission = ($totalCommission * $platformCommissionPercentage) / 100;
-                        // Nonprofit gets the rest (92% of the total commission)
-                        $nonprofitCommission = $totalCommission - $platformCommission;
-
-                        // Log commission calculation for debugging
                         Log::info('Gift card commission calculated', [
                             'gift_card_id' => $giftCard->id,
                             'purchase_amount' => $purchaseAmount,
-                            'total_commission' => $totalCommission,
-                            'commission_percentage' => $commissionPercentage,
-                            'platform_commission_percentage' => $platformCommissionPercentage,
-                            'platform_commission' => $platformCommission,
-                            'nonprofit_commission' => $nonprofitCommission,
+                            'provider_commission' => $totalCommission,
+                            'biu_revenue_share' => $platformCommission,
+                            'organization_revenue' => $nonprofitCommission,
                             'phaze_response_keys' => array_keys($phazePurchaseResult),
                         ]);
                     } else {
-                        // Log when commission is not found or zero
                         Log::warning('Gift card commission is zero or not found', [
                             'gift_card_id' => $giftCard->id,
                             'purchase_amount' => $purchaseAmount,
@@ -1339,7 +1247,6 @@ class GiftCardController extends Controller
                         ]);
                     }
 
-                    // Update gift card with Phaze purchase details
                     $existingMeta = $giftCard->meta ?? [];
                     $updateData = [
                         'external_id' => $phazePurchaseResult['id'] ?? null,
@@ -1349,19 +1256,14 @@ class GiftCardController extends Controller
                         'total_commission' => $totalCommission,
                         'platform_commission' => $platformCommission,
                         'nonprofit_commission' => $nonprofitCommission,
+                        'merchant_revenue' => $merchantRevenue,
                         'meta' => array_merge($existingMeta, [
-                            'phaze_purchase' => $phazePurchaseResult, // Store full purchase response
-                            'orderId' => $orderId, // Store orderId for webhook matching
+                            'phaze_purchase' => $phazePurchaseResult,
+                            'orderId' => $orderId,
                             'phaze_purchase_id' => $phazePurchaseResult['id'] ?? null,
                             'phaze_status' => $phazePurchaseResult['status'] ?? 'pending',
-                            'phaze_initial_response' => $phazePurchaseResult, // Keep initial response
-                            'commission_calculation' => [
-                                'commission_percentage' => $commissionPercentage,
-                                'total_commission' => $totalCommission,
-                                'platform_commission_percentage' => $platformCommissionPercentage,
-                                'platform_commission' => $platformCommission,
-                                'nonprofit_commission' => $nonprofitCommission,
-                            ],
+                            'phaze_initial_response' => $phazePurchaseResult,
+                            'commission_calculation' => $revenueSplit['commission_calculation'],
                         ]),
                     ];
 
@@ -1499,7 +1401,13 @@ class GiftCardController extends Controller
                         'gift_card_id' => $giftCard->id,
                         'brand' => $brandName,
                         'phaze_order_id' => $orderId,
-                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
+                    ], GiftCardRevenueShareService::ledgerMetaSlice(
+                        (float) $purchaseAmount,
+                        isset($totalCommission) && $totalCommission !== null ? (float) $totalCommission : null,
+                        isset($platformCommission) && $platformCommission !== null ? (float) $platformCommission : null,
+                        isset($nonprofitCommission) && $nonprofitCommission !== null ? (float) $nonprofitCommission : null,
+                        isset($merchantRevenue) ? (float) $merchantRevenue : 0.0
+                    ));
 
                     if ($phazePurchaseResult) {
                         $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
