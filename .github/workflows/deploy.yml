@@ -1,9 +1,12 @@
 # Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
 # PRODUCTION https://believeinunity.org is NOT deployed by this workflow.
-# If the repo root is believe-wallet/ (monorepo), use ../.github/workflows/deploy-backend.yml instead.
+#
+# Dev login landing: code is host-gated (501c3ers.com only). Production deploys are unaffected.
+# Post-deploy always syncs PRODUCTION_APP_URL + DEVELOPMENT_HOSTS into server .env — do not remove.
 #
 # Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
-# Secret: CPANEL_SSH_KEY
+# Optional repository variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL, SSH_PORT,
+#   PRODUCTION_APP_URL (dev login → production link), DEVELOPMENT_HOSTS (dev landing hosts)
 name: Deploy development (501c3ers.com)
 
 on:
@@ -26,6 +29,8 @@ jobs:
       DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'c3ers' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
       APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
+      PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL != '' && vars.PRODUCTION_APP_URL || 'https://believeinunity.org' }}
+      DEVELOPMENT_HOSTS: ${{ vars.DEVELOPMENT_HOSTS != '' && vars.DEVELOPMENT_HOSTS || '501c3ers.com,www.501c3ers.com' }}
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
       RSYNC_EXCLUDES: >-
         --exclude=.git/
@@ -74,6 +79,8 @@ jobs:
           echo "Environment: development (501c3ers.com)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
           echo "APP_URL (build only): ${APP_URL}"
+          echo "PRODUCTION_APP_URL (server .env): ${PRODUCTION_APP_URL}"
+          echo "DEVELOPMENT_HOSTS (server .env): ${DEVELOPMENT_HOSTS}"
           if echo "${DEPLOY_HOST}" | grep -qi 'believeinunity'; then
             echo "::error::Refusing to deploy to production host. Use 501c3ers.com for development only."
             exit 1
@@ -226,6 +233,10 @@ jobs:
           mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
+          chmod +x scripts/sync-server-env-keys.sh 2>/dev/null || true
+          bash scripts/sync-server-env-keys.sh .env \
+            "PRODUCTION_APP_URL=${PRODUCTION_APP_URL}" \
+            "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}"
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           php artisan config:clear
           php artisan route:clear

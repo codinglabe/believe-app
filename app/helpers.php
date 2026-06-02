@@ -70,6 +70,29 @@ if (! function_exists('streaming_status_callback_url')) {
     }
 }
 
+if (! function_exists('is_development_site')) {
+    /**
+     * True on the staging host (501c3ers.com). Not used on production or merchant portal.
+     */
+    function is_development_site(?\Illuminate\Http\Request $request = null): bool
+    {
+        $request ??= function_exists('request') ? request() : null;
+
+        if (! $request instanceof \Illuminate\Http\Request || request_is_merchant_portal($request)) {
+            return false;
+        }
+
+        $host = strtolower($request->getHost());
+        $hosts = config('app.development_hosts', []);
+
+        if ($hosts === []) {
+            $hosts = ['501c3ers.com', 'www.501c3ers.com'];
+        }
+
+        return in_array($host, $hosts, true);
+    }
+}
+
 if (! function_exists('app_version')) {
     function app_version(): string
     {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\DevLoginController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
@@ -73,6 +74,10 @@ Route::middleware('guest')->group(function () {
     //     ->name('login-old');
 
     Route::get('/login', function (Request $request) {
+        if (is_development_site($request)) {
+            return app(DevLoginController::class)->create($request);
+        }
+
         return Inertia::render('frontend/login', [
             'seo' => SeoService::forPage('login'),
             'status' => $request->session()->get('status'),

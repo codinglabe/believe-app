@@ -56,6 +56,25 @@ return [
     'url' => env('APP_URL', 'http://localhost'),
 
     /*
+    | Public production site — linked from the dev login landing page.
+    */
+    'production_url' => env('PRODUCTION_APP_URL', 'https://believeinunity.org'),
+
+    /*
+    | Hostnames that use the developer login landing (comma-separated in .env).
+    | Defaults are baked in so merges/deploys cannot accidentally disable dev landing
+    | on 501c3ers.com unless DEVELOPMENT_HOSTS is explicitly overridden.
+    */
+    'development_hosts' => (function () {
+        $raw = env('DEVELOPMENT_HOSTS');
+        if ($raw === null || trim((string) $raw) === '') {
+            return ['501c3ers.com', 'www.501c3ers.com'];
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', (string) $raw))));
+    })(),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Version
     |--------------------------------------------------------------------------

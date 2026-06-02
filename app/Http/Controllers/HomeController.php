@@ -13,6 +13,10 @@ class HomeController extends Controller
 {
     public function index(Request $request)
     {
+        if (! $request->user() && is_development_site($request)) {
+            return app(DevLoginController::class)->create($request);
+        }
+
         // Get filter options for search
         // $categories = NteeCode::select('category')
         //     ->distinct()
