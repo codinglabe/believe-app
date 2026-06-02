@@ -60,18 +60,6 @@ type Device = {
   user?: { id: number; name: string; email: string; slug?: string };
 };
 
-type Log = {
-  id: number;
-  user_id: number;
-  title: string;
-  body: string | null;
-  source_type: string | null;
-  status: string;
-  fcm_error_code: string | null;
-  sent_at: string;
-  user?: { id: number; name: string; email: string };
-};
-
 type PaginationLink = {
   url: string | null;
   label: string;
@@ -83,8 +71,6 @@ type Props = {
     total_devices: number;
     active_devices: number;
     invalid_devices: number;
-    total_sent: number;
-    total_failed: number;
   };
   devices: {
     data: Device[];
@@ -96,14 +82,12 @@ type Props = {
     total?: number;
     per_page?: number;
   };
-  recentLogs: Log[];
   filters: { status?: string; search?: string };
 };
 
 export default function PushNotificationsIndex({
   stats,
   devices,
-  recentLogs,
   filters,
 }: Props) {
   const { props } = usePage();
@@ -153,17 +137,20 @@ export default function PushNotificationsIndex({
 
   return (
     <AdminLayout>
-      <Head title="Push Notifications (FCM)" />
+      <Head title="FCM Devices" />
 
       <div className="space-y-6 px-1 sm:px-0">
-        {/* Page header */}
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl flex items-center gap-2 flex-wrap">
             <Bell className="h-7 w-7 sm:h-8 sm:w-8 shrink-0" />
-            Push Notifications (FCM)
+            FCM Devices
           </h1>
           <p className="text-sm text-muted-foreground sm:text-base">
-            View devices, delivery history, and who received messages. Admin only.
+            Manage registered FCM devices. View delivery history in{" "}
+            <Link href="/admin/push-notifications" className="text-primary underline">
+              Push Notification Logs
+            </Link>
+            .
           </p>
         </div>
 
@@ -181,7 +168,7 @@ export default function PushNotificationsIndex({
         )}
 
         {/* Stats grid - responsive */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 sm:pt-6">
               <CardTitle className="text-xs font-medium sm:text-sm">
@@ -209,24 +196,6 @@ export default function PushNotificationsIndex({
             </CardHeader>
             <CardContent className="pb-4 sm:pb-6">
               <div className="text-xl font-bold sm:text-2xl">{stats.invalid_devices}</div>
-            </CardContent>
-          </Card>
-          <Card className="overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 sm:pt-6">
-              <CardTitle className="text-xs font-medium sm:text-sm">Sent</CardTitle>
-              <Send className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="pb-4 sm:pb-6">
-              <div className="text-xl font-bold sm:text-2xl">{stats.total_sent}</div>
-            </CardContent>
-          </Card>
-          <Card className="overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 sm:pt-6">
-              <CardTitle className="text-xs font-medium sm:text-sm">Failed</CardTitle>
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
-            </CardHeader>
-            <CardContent className="pb-4 sm:pb-6">
-              <div className="text-xl font-bold sm:text-2xl">{stats.total_failed}</div>
             </CardContent>
           </Card>
         </div>
@@ -444,85 +413,6 @@ export default function PushNotificationsIndex({
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Recent delivery logs card */}
-        <Card>
-          <CardHeader className="space-y-1.5 pb-4">
-            <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 shrink-0" />
-              Recent delivery logs
-            </CardTitle>
-            <p className="text-xs text-muted-foreground sm:text-sm">
-              Who received which message and whether it succeeded or failed.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="whitespace-nowrap">User</TableHead>
-                    <TableHead className="whitespace-nowrap">Title</TableHead>
-                    <TableHead className="whitespace-nowrap">Source</TableHead>
-                    <TableHead className="whitespace-nowrap">Status</TableHead>
-                    <TableHead className="whitespace-nowrap min-w-[100px]">Error</TableHead>
-                    <TableHead className="whitespace-nowrap">Sent at</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentLogs.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center text-muted-foreground py-12 text-sm"
-                      >
-                        No delivery logs yet. Logs are created when notifications are sent
-                        (campaigns, events, chat, etc.).
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    recentLogs.map((log) => (
-                      <TableRow key={log.id} className="align-top">
-                        <TableCell className="py-3">
-                          <div className="min-w-0">
-                            <div className="font-medium truncate max-w-[140px] sm:max-w-none">
-                              {log.user?.name ?? "—"}
-                            </div>
-                            <div className="text-xs text-muted-foreground truncate max-w-[140px] sm:max-w-none">
-                              {log.user?.email ?? "—"}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-3 font-medium max-w-[160px] sm:max-w-none truncate">
-                          {log.title}
-                        </TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground capitalize">
-                          {log.source_type?.replace(/_/g, " ") ?? "—"}
-                        </TableCell>
-                        <TableCell className="py-3">
-                          <Badge
-                            variant={log.status === "sent" ? "default" : "destructive"}
-                            className="capitalize"
-                          >
-                            {log.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground max-w-[150px]">
-                          <span className="line-clamp-2" title={log.fcm_error_code ?? undefined}>
-                            {log.fcm_error_code || "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
-                          {new Date(log.sent_at).toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
           </CardContent>
         </Card>
       </div>

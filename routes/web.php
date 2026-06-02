@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\PreGeneratedTagController;
 use App\Http\Controllers\Admin\PrimaryActionCategoryController;
 use App\Http\Controllers\Admin\ProcessingFeeSettingsController;
 use App\Http\Controllers\Admin\PromotionalBannerController;
+use App\Http\Controllers\Admin\PushNotificationLogController;
 use App\Http\Controllers\Admin\PushNotificationsController;
 use App\Http\Controllers\Admin\RewardPointController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
@@ -148,6 +149,7 @@ use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\Api\PushNotificationOpenController;
 use App\Http\Controllers\PushTokenController;
 use App\Http\Controllers\PwaInstallController;
 use App\Http\Controllers\RaffleController;
@@ -1199,6 +1201,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::post('/push-token', [PushTokenController::class, 'store']);
     Route::delete('/push-token', [PushTokenController::class, 'destroy']);
+    Route::post('/api/push-notifications/open', [PushNotificationOpenController::class, 'store'])
+        ->name('push-notifications.open');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->group(function () {
@@ -2016,13 +2020,26 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sel
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
 
-    // FCM / Push Notifications overview (admin only)
-    Route::get('/push-notifications', [PushNotificationsController::class, 'index'])->name('admin.push-notifications.index');
+    // FCM device management (admin only)
+    Route::get('/push-notifications/devices', [PushNotificationsController::class, 'devices'])->name('admin.push-notifications.devices');
     Route::post('/push-notifications/send-test', [PushNotificationsController::class, 'sendTest'])->name('admin.push-notifications.send-test');
     Route::post('/push-notifications/request-reregister', [PushNotificationsController::class, 'requestReregister'])->name('admin.push-notifications.request-reregister');
     Route::post('/push-notifications/invalidate-token', [PushNotificationsController::class, 'invalidateToken'])->name('admin.push-notifications.invalidate-token');
+});
 
-    // Barter Network audit (both nonprofits, listings, delta, ledger, status, dispute)
+// Push notification logs (platform admin + org-scoped users)
+Route::prefix('admin/push-notifications')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])
+    ->name('admin.push-notifications.')
+    ->group(function () {
+        Route::get('/', [PushNotificationLogController::class, 'index'])->name('index');
+        Route::get('/export/csv', [PushNotificationLogController::class, 'exportCsv'])->name('export.csv');
+        Route::get('/export/excel', [PushNotificationLogController::class, 'exportExcel'])->name('export.excel');
+        Route::get('/{pushNotificationLog}', [PushNotificationLogController::class, 'show'])->name('show');
+        Route::post('/{pushNotificationLog}/repush', [PushNotificationLogController::class, 'repush'])->name('repush');
+    });
+
+Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin|'])->group(function () {
     Route::get('/barter', [BarterAuditController::class, 'index'])->name('admin.barter.index');
     Route::get('/barter/{transaction}', [BarterAuditController::class, 'show'])->name('admin.barter.show');
 

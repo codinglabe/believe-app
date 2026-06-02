@@ -1,8 +1,8 @@
 // Firebase initialization for React/Inertia app
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getMessaging, getToken, onMessage, isSupported, type Messaging } from "firebase/messaging";
-import { registerServiceWorker } from "@/pwa/register-service-worker";
 import { isPushCapableBrowser } from "@/lib/push-environment";
+import { registerServiceWorker } from "@/pwa/register-service-worker";
 
 type FirebaseWebConfig = {
     apiKey: string;
@@ -15,13 +15,13 @@ type FirebaseWebConfig = {
 };
 
 const FALLBACK_CONFIG: FirebaseWebConfig = {
-    apiKey: "AIzaSyBRd7Jf0kxrlCRFa9zYtwtubiPbPDohVmA",
-    authDomain: "c3ers-c6fbe.firebaseapp.com",
-    projectId: "c3ers-c6fbe",
-    storageBucket: "c3ers-c6fbe.firebasestorage.app",
-    messagingSenderId: "554135699251",
-    appId: "1:554135699251:web:5a34568d2f0cde065ac846",
-    vapidKey: "BC_RUtntF6QVwsng1uiwnd6qHozF8Q8y_P4qG0G1BrgtAK5GKQr4_J8k2509yhssNFB7ZqgqrzHN_frrOVcN-2I",
+    apiKey: "AIzaSyD2t6nAHQzhfWWso5nqV0mClX7R-Q6HjlA",
+    authDomain: "believe-in-unity-d8adc.firebaseapp.com",
+    projectId: "believe-in-unity-d8adc",
+    storageBucket: "believe-in-unity-d8adc.firebasestorage.app",
+    messagingSenderId: "829146180648",
+    appId: "1:829146180648:web:8ba15be8d65c2c54d5991d",
+    vapidKey: "BJFh0nhZNQCWlgxQd_mxVma112zteSV2YBsbJeJ44Ils4Yz9V17FIiFV0ZfcEbMvR7m20T-EYt0jaVL1vBfF_eA",
 };
 
 function readFirebaseWebConfig(): FirebaseWebConfig {

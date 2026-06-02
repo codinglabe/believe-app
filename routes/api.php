@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\KnowledgeBaseController;
+use App\Http\Controllers\Api\PushNotificationOpenController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -105,5 +106,7 @@ Route::middleware('auth:api')->group(function () {
                 return response()->json(['message' => 'NFT API endpoint']);
             });
         });
+
+        Route::post('/push-notifications/open', [PushNotificationOpenController::class, 'store']);
     });
 });

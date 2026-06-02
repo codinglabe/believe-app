@@ -5,12 +5,12 @@ importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js");
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBRd7Jf0kxrlCRFa9zYtwtubiPbPDohVmA",
-    authDomain: "c3ers-c6fbe.firebaseapp.com",
-    projectId: "c3ers-c6fbe",
-    storageBucket: "c3ers-c6fbe.firebasestorage.app",
-    messagingSenderId: "554135699251",
-    appId: "1:554135699251:web:5a34568d2f0cde065ac846",
+    apiKey: "AIzaSyD2t6nAHQzhfWWso5nqV0mClX7R-Q6HjlA",
+    authDomain: "believe-in-unity-d8adc.firebaseapp.com",
+    projectId: "believe-in-unity-d8adc",
+    storageBucket: "believe-in-unity-d8adc.firebasestorage.app",
+    messagingSenderId: "829146180648",
+    appId: "1:829146180648:web:8ba15be8d65c2c54d5991d",
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -20,6 +20,27 @@ const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation";
 
 function notificationIconUrl() {
     return new URL("/favicon-96x96.png", self.location.origin).href;
+}
+
+function trackPushOpenFromData(data) {
+    const logId = data.notification_log_id;
+    const recipientId = data.recipient_id;
+    if (!logId || !recipientId) {
+        return;
+    }
+    fetch("/api/push-notifications/open", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+            notification_log_id: Number(logId),
+            recipient_id: Number(recipientId),
+        }),
+    }).catch(function () {});
 }
 
 function resolveClickUrl(data) {
@@ -161,6 +182,7 @@ function openNotificationUrl(clientList, absoluteUrl) {
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
     const data = event.notification.data || {};
+    trackPushOpenFromData(data);
     let urlToOpen = resolveClickUrl(data);
 
     if (event.action === "join") {
