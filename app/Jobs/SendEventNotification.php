@@ -48,12 +48,13 @@ class SendEventNotification implements ShouldQueue
                 $creatorType = 'organization';
             }
 
-            if ($followers->isEmpty()) {
+            if ($this->event->visibility === 'private' && $followers->isEmpty()) {
                 Log::info('No followers found for event creator', [
                     'event_id' => $this->event->id,
                     'creator_type' => $creatorType,
-                    'creator_id' => $organization->id
+                    'creator_id' => $organization->id,
                 ]);
+
                 return;
             }
 
@@ -62,29 +63,43 @@ class SendEventNotification implements ShouldQueue
             $location = $this->event->city ?: $this->event->location;
 
             $title = "New {$eventType} Event";
-            $body = "{$creatorName} created a new event: {$eventName}" .
-                   ($location ? " in {$location}" : "");
+            $body = "{$creatorName} created a new event: {$eventName}".
+                   ($location ? " in {$location}" : '');
 
             $eventUrl = route('viewEvent', $this->event->id);
 
             $firebaseService = app(FirebaseService::class);
 
+            if ($this->event->visibility === 'private') {
+                $followerIds = $followers->pluck('id')->all();
+            } elseif ($this->event->visibility === 'public') {
+                $followerIds = $users->pluck('id')->all();
+            } else {
+                $followerIds = [];
+            }
 
-            if($this->event->visibility === 'private') {
-                foreach ($followers as $follower) {
-                    $this->sendNotificationToFollower($follower, $title, $body, $eventUrl, $firebaseService);
-                }
-            }elseif($this->event->visibility === 'public') {
-                foreach ($users as $follower) {
-                    $this->sendNotificationToFollower($follower, $title, $body, $eventUrl, $firebaseService);
-                }
+            if ($followerIds !== []) {
+                $firebaseService->sendToUsers($followerIds, $title, $body, [
+                    'content_item_id' => (string) $this->event->id,
+                    'type' => 'new_event',
+                    'event_id' => (string) $this->event->id,
+                    'event_type_id' => $this->event->event_type_id ? (string) $this->event->event_type_id : null,
+                    'organization_id' => $this->event->organization_id,
+                    'user_id' => $this->event->user_id ? (string) $this->event->user_id : null,
+                    'url' => $eventUrl,
+                    'click_action' => $eventUrl,
+                    'module_name' => 'events',
+                    'module_record_id' => $this->event->id,
+                    'deep_link' => parse_url($eventUrl, PHP_URL_PATH) ?: $eventUrl,
+                    'audience_type' => $this->event->visibility === 'public' ? 'all_users' : 'followers',
+                ]);
             }
 
             Log::info('Event notifications sent successfully', [
                 'event_id' => $this->event->id,
                 'creator_type' => $creatorType,
                 'creator_name' => $creatorName,
-                'followers_count' => $followers->count()
+                'recipients_count' => count($followerIds),
             ]);
 
         } catch (\Exception $e) {
@@ -93,49 +108,6 @@ class SendEventNotification implements ShouldQueue
                 'trace' => $e->getTraceAsString()
             ]);
             throw $e;
-        }
-    }
-
-    /**
-     * Send notification to individual follower
-     */
-    private function sendNotificationToFollower($follower, $title, $body, $eventUrl, $firebaseService): void
-    {
-        try {
-            $data = [
-                'content_item_id' => (string) $this->event->id,
-                'type' => 'new_event',
-                'event_id' => (string) $this->event->id,
-                'event_type_id' => $this->event->event_type_id ? (string) $this->event->event_type_id : null,
-                'organization_id' => $this->event->organization_id ? (string) $this->event->organization_id : null,
-                'user_id' => $this->event->user_id ? (string) $this->event->user_id : null,
-                'url' => $eventUrl,
-                'click_action' => $eventUrl,
-                'source_type' => 'event',
-                'source_id' => (string) $this->event->id,
-            ];
-
-            // Send Firebase notification (logs to push_notification_logs for admin overview)
-            $result = $firebaseService->sendToUser($follower->id, $title, $body, $data);
-
-            $successCount = is_array($result) ? count(array_filter($result, fn ($r) => ($r['success'] ?? false))) : 0;
-            if ($successCount > 0) {
-                Log::info('✅ Firebase Event notification sent successfully', [
-                    'user_id' => $follower->id,
-                    'event_id' => $this->event->id,
-                ]);
-            } else {
-                Log::warning('❌ Firebase Event notification failed', [
-                    'user_id' => $follower->id,
-                    'event_id' => $this->event->id,
-                ]);
-            }
-
-        } catch (\Exception $e) {
-            Log::error('Error sending notification to follower: ' . $e->getMessage(), [
-                'follower_id' => $follower->id,
-                'event_id' => $this->event->id
-            ]);
         }
     }
 

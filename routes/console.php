@@ -21,6 +21,11 @@ Schedule::command('supporters:notify-birthdays')
     ->dailyAt('08:00')
     ->withoutOverlapping();
 
+// Daily rotating engagement push for supporters and organization accounts
+Schedule::command('engagement:send-daily')
+    ->dailyAt('09:30')
+    ->withoutOverlapping();
+
 // Warm Unity Videos cache so /unity-videos loads quickly on first visit
 Schedule::command('unity-videos:warm-cache')->everyFiveMinutes();
 

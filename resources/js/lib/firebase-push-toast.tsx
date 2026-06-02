@@ -1,4 +1,5 @@
 import { UNITY_MEET_INVITATION_TYPE } from "@/lib/notification-map"
+import { trackPushNotificationOpen } from "@/lib/push-open-tracker"
 
 export type FirebaseNotificationDetail = {
     title?: string
@@ -96,6 +97,7 @@ export async function showNativePushNotification(detail: FirebaseNotificationDet
             data: options.data,
         })
         notification.onclick = () => {
+            void trackPushNotificationOpen(data.notification_log_id, data.recipient_id)
             window.focus()
             window.location.href = clickUrl
             notification.close()

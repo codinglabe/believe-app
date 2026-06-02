@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\PushNotificationLog;
 use App\Models\UserPushToken;
 use App\Services\DeviceTokenService;
 use App\Services\FirebaseService;
@@ -14,16 +13,14 @@ use Inertia\Response;
 class PushNotificationsController extends Controller
 {
     /**
-     * FCM overview: devices, stats, and delivery logs. Admin only.
+     * FCM device overview: devices and token management. Admin only.
      */
-    public function index(Request $request): Response
+    public function devices(Request $request): Response
     {
         $stats = [
             'total_devices' => UserPushToken::count(),
             'active_devices' => UserPushToken::where('is_active', true)->where('status', UserPushToken::STATUS_ACTIVE)->count(),
             'invalid_devices' => UserPushToken::where('status', UserPushToken::STATUS_INVALID)->count(),
-            'total_sent' => PushNotificationLog::where('status', PushNotificationLog::STATUS_SENT)->count(),
-            'total_failed' => PushNotificationLog::where('status', PushNotificationLog::STATUS_FAILED)->count(),
         ];
 
         $devicesQuery = UserPushToken::with('user:id,name,email,slug')
@@ -47,15 +44,9 @@ class PushNotificationsController extends Controller
 
         $devices = $devicesQuery->paginate(20)->withQueryString();
 
-        $recentLogs = PushNotificationLog::with('user:id,name,email')
-            ->orderByDesc('sent_at')
-            ->limit(50)
-            ->get();
-
         return Inertia::render('admin/push-notifications/index', [
             'stats' => $stats,
             'devices' => $devices,
-            'recentLogs' => $recentLogs,
             'filters' => $request->only(['status', 'search']),
         ]);
     }

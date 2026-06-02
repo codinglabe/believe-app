@@ -2,8 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\PushNotificationLog;
 use App\Models\UserPushToken;
+use App\Models\PushNotificationLog;
+use App\Services\PushNotificationLogger;
 use Google\Auth\HttpHandler\HttpHandlerFactory;
 use Google\Auth\Credentials\ServiceAccountCredentials as GoogleServiceAccountCredentials;
 use GuzzleHttp\Client;
@@ -251,76 +252,135 @@ class FirebaseService
     }
 
     /**
-     * Send to a user and log each delivery for admin overview. Updates token status on failure.
+     * Send to a user via centralized push notification logging.
+     * No notification is sent without a log record.
      *
      * @param  int  $userId
      * @param  string  $title
      * @param  string  $body
-     * @param  array  $data  Optional keys: content_item_id, click_action, source_type, source_id
+     * @param  array  $data  Optional keys: content_item_id, click_action, source_type, source_id, module_name, organization_id, module_record_id, deep_link, audience_type
      * @return array<string, array{success: bool, error_code: ?string, response: ?array}>
      */
     public function sendToUser($userId, $title, $body, $data = [])
     {
-        $deviceService = app(DeviceTokenService::class);
-        $records = $deviceService->getActiveTokenRecords($userId);
+        $logger = app(PushNotificationLogger::class);
 
-        if ($records->isEmpty()) {
-            Log::warning("No active tokens found for user: {$userId}");
-            return [];
+        $moduleName = $data['module_name'] ?? $this->resolveModuleFromSourceType($data['source_type'] ?? null);
+        $organizationId = isset($data['organization_id']) ? (int) $data['organization_id'] : null;
+        $moduleRecordId = isset($data['module_record_id'])
+            ? (int) $data['module_record_id']
+            : (isset($data['source_id']) ? (int) $data['source_id'] : null);
+
+        $deepLink = $data['deep_link'] ?? null;
+        if (! $deepLink && ! empty($data['click_action'])) {
+            $deepLink = parse_url($data['click_action'], PHP_URL_PATH) ?: $data['click_action'];
         }
 
-        $sourceType = $data['source_type'] ?? null;
-        $sourceId = $data['source_id'] ?? null;
-        unset($data['source_type'], $data['source_id']);
+        unset($data['module_name'], $data['organization_id'], $data['module_record_id'], $data['deep_link'], $data['source_type'], $data['source_id']);
+
+        $log = $logger->dispatch(
+            [
+                'organization_id' => $organizationId,
+                'user_id' => (int) $userId,
+                'module_name' => $moduleName,
+                'module_record_id' => $moduleRecordId,
+                'notification_title' => $title,
+                'notification_body' => $body,
+                'audience_type' => $data['audience_type'] ?? 'user',
+                'deep_link' => $deepLink,
+            ],
+            [(int) $userId],
+            $data,
+        );
 
         $results = [];
-        foreach ($records as $record) {
-            $out = $this->sendToDevice(
-                $record->push_token,
-                $title,
-                $body,
-                $data,
-                $record->device_type ?? 'web',
-            );
-            $results[$record->push_token] = $out;
-
-            PushNotificationLog::create([
-                'user_id' => $userId,
-                'user_push_token_id' => $record->id,
-                'title' => $title,
-                'body' => $body,
-                'source_type' => $sourceType,
-                'source_id' => $sourceId,
-                'status' => $out['success'] ? PushNotificationLog::STATUS_SENT : PushNotificationLog::STATUS_FAILED,
-                'fcm_error_code' => $out['error_code'] ?? null,
-                'fcm_response' => $out['response'] ?? null,
-                'sent_at' => now(),
-            ]);
-
-            if (!$out['success']) {
-                $record->last_error = is_array($out['response']) ? ($out['response']['error']['message'] ?? $out['error_code']) : (string) $out['error_code'];
-                $record->last_error_at = now();
-                if (in_array($out['error_code'] ?? '', ['UNREGISTERED', 'NOT_FOUND'], true)) {
-                    $record->status = UserPushToken::STATUS_INVALID;
-                    $record->is_active = false;
-                    $record->needs_reregister = true;
-                }
-                $record->save();
+        foreach ($log->recipients as $recipient) {
+            if (! $recipient->device_token) {
+                continue;
             }
+            $success = in_array(
+                $recipient->status->value ?? (string) $recipient->status,
+                ['delivered', 'sent', 'opened'],
+                true,
+            );
+            $results[$recipient->device_token] = [
+                'success' => $success,
+                'error_code' => $success ? null : 'DELIVERY_FAILED',
+                'response' => $success ? null : ['message' => $recipient->failure_reason],
+            ];
+        }
+
+        if ($results === []) {
+            Log::warning("No active tokens found for user: {$userId}");
         }
 
         $successCount = count(array_filter($results, fn ($r) => $r['success']));
-        Log::info("Notification sent to user", [
+        Log::info('Notification sent to user', [
             'user_id' => $userId,
-            'total_tokens' => $records->count(),
+            'log_id' => $log->id,
+            'total_tokens' => count($results),
             'success_count' => $successCount,
         ]);
 
-        if ($successCount === 0) {
+        if ($successCount === 0 && $results !== []) {
             app(DeviceTokenService::class)->syncLegacyPushToken($userId);
         }
 
         return $results;
+    }
+
+    /**
+     * Send push notifications to multiple users under a single log record.
+     *
+     * @param  list<int>  $userIds
+     * @param  array<string, mixed>  $data
+     */
+    public function sendToUsers(array $userIds, string $title, string $body, array $data = []): PushNotificationLog
+    {
+        $logger = app(PushNotificationLogger::class);
+
+        $moduleName = $data['module_name'] ?? $this->resolveModuleFromSourceType($data['source_type'] ?? null);
+        $organizationId = isset($data['organization_id']) ? (int) $data['organization_id'] : null;
+        $moduleRecordId = isset($data['module_record_id'])
+            ? (int) $data['module_record_id']
+            : (isset($data['source_id']) ? (int) $data['source_id'] : null);
+
+        $deepLink = $data['deep_link'] ?? null;
+        if (! $deepLink && ! empty($data['click_action'])) {
+            $deepLink = parse_url($data['click_action'], PHP_URL_PATH) ?: $data['click_action'];
+        }
+
+        unset($data['module_name'], $data['organization_id'], $data['module_record_id'], $data['deep_link'], $data['source_type'], $data['source_id']);
+
+        return $logger->dispatch(
+            [
+                'organization_id' => $organizationId,
+                'module_name' => $moduleName,
+                'module_record_id' => $moduleRecordId,
+                'notification_title' => $title,
+                'notification_body' => $body,
+                'audience_type' => $data['audience_type'] ?? 'users',
+                'deep_link' => $deepLink,
+            ],
+            $userIds,
+            $data,
+        );
+    }
+
+    private function resolveModuleFromSourceType(?string $sourceType): string
+    {
+        return match ($sourceType) {
+            'event' => 'events',
+            'course' => 'courses',
+            'campaign' => 'campaigns',
+            'donation' => 'donations',
+            'chat' => 'system',
+            'job_post' => 'volunteer',
+            'newsletter', 'email' => 'email',
+            'marketplace', 'order' => 'marketplace',
+            'admin_test' => 'system',
+            default => 'system',
+        };
     }
 
     /**
