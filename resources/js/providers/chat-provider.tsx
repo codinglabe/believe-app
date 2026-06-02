@@ -552,7 +552,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         echoInstance.leave(`presence-chat.${roomId}`)
       }
     }
-  }, [activeRoom, currentUser.id, deduplicateMessages, markRoomAsRead])
+  }, [activeRoom?.id, activeRoom?.type, currentUser.id, deduplicateMessages, markRoomAsRead])
 
   const createRoom = useCallback(
     async (

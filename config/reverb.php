@@ -82,26 +82,42 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
+                // Reverb compares Origin *hostnames* only (see InvalidOrigin in laravel/reverb).
+                // Entries must be host patterns like "501c3ers.com" or "*", not full URLs.
                 'allowed_origins' => (function () {
+                    $normalize = static function (string $origin): ?string {
+                        $origin = trim($origin);
+                        if ($origin === '') {
+                            return null;
+                        }
+                        if ($origin === '*') {
+                            return '*';
+                        }
+
+                        $host = parse_url($origin, PHP_URL_HOST);
+
+                        return $host ?: $origin;
+                    };
+
+                    $raw = (string) env(
+                        'REVERB_ALLOWED_ORIGINS',
+                        '501c3ers.com,www.501c3ers.com,merchant.501c3ers.com,believeinunity.org,www.believeinunity.org,merchant.believeinunity.org',
+                    );
+
                     $configured = array_values(array_filter(array_map(
-                        trim(...),
-                        explode(',', (string) env('REVERB_ALLOWED_ORIGINS', 'https://501c3ers.com,https://www.501c3ers.com,https://merchant.501c3ers.com,https://believeinunity.org,https://www.believeinunity.org,https://merchant.believeinunity.org'))
+                        $normalize,
+                        explode(',', $raw),
                     )));
 
-                    if (env('APP_ENV', 'production') !== 'local') {
-                        return $configured;
+                    if (in_array('*', $configured, true)) {
+                        return ['*'];
                     }
 
-                    $localOrigins = [
-                        'http://localhost',
-                        'http://127.0.0.1',
-                        'http://localhost:8000',
-                        'http://localhost:8001',
-                        'http://127.0.0.1:8000',
-                        'http://127.0.0.1:8001',
-                    ];
+                    if (env('APP_ENV', 'production') === 'local') {
+                        return ['*'];
+                    }
 
-                    return array_values(array_unique([...$configured, ...$localOrigins]));
+                    return array_values(array_unique($configured));
                 })(),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),

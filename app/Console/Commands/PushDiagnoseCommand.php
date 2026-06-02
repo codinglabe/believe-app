@@ -44,6 +44,22 @@ class PushDiagnoseCommand extends Command
             return self::FAILURE;
         }
 
+        $serviceAccountEmail = null;
+        try {
+            $creds = json_decode((string) file_get_contents($credentialsPath), true, 512, JSON_THROW_ON_ERROR);
+            $serviceAccountEmail = $creds['client_email'] ?? null;
+            if ($serviceAccountEmail) {
+                $this->line('  Service account: '.$serviceAccountEmail);
+            }
+            if (($creds['project_id'] ?? null) && ($creds['project_id'] !== $projectId)) {
+                $this->warn('  Credentials project_id ('.$creds['project_id'].') differs from FIREBASE_PROJECT_ID ('.$projectId.')');
+            }
+        } catch (\Throwable $e) {
+            $this->error('  Credentials JSON invalid: '.$e->getMessage());
+        }
+
+        $fcmPermissionOk = false;
+
         try {
             $firebase = app(FirebaseService::class);
             $reflection = new \ReflectionClass($firebase);
@@ -51,12 +67,39 @@ class PushDiagnoseCommand extends Command
             $method->setAccessible(true);
             $token = $method->invoke($firebase);
             if ($token) {
-                $this->info('Firebase API access token: OK (server can send pushes)');
+                $this->info('Firebase OAuth access token: OK');
             } else {
                 $this->error('Could not obtain Firebase access token — check credentials JSON and FIREBASE_VERIFY_SSL');
+
+                return self::FAILURE;
+            }
+
+            // Probe FCM IAM: 403 = missing permission; 404 UNREGISTERED = permission OK.
+            $probe = $firebase->sendToDevice('permission-probe-invalid-token', 'Probe', 'Probe', [], 'web');
+            $errorCode = (string) ($probe['error_code'] ?? '');
+
+            if ($probe['success']) {
+                $fcmPermissionOk = true;
+                $this->info('FCM send permission: OK');
+            } elseif (str_contains($errorCode, 'UNREGISTERED') || str_contains($errorCode, 'INVALID_ARGUMENT')) {
+                $fcmPermissionOk = true;
+                $this->info('FCM send permission: OK (API accepted request; token rejected as expected)');
+            } elseif (str_contains($errorCode, 'cloudmessaging.messages.create') || str_contains($errorCode, 'PERMISSION_DENIED')) {
+                $this->error('FCM send permission: DENIED (403 IAM)');
+                $this->newLine();
+                $this->warn('Fix in Google Cloud Console:');
+                $this->line('  1. Open https://console.cloud.google.com/iam-admin/iam?project='.($projectId ?: 'believe-in-unity-d8adc'));
+                $this->line('  2. Find: '.($serviceAccountEmail ?: 'firebase-adminsdk-…@….iam.gserviceaccount.com'));
+                $this->line('  3. Edit → Add role → "Firebase Cloud Messaging Admin"');
+                $this->line('  4. Enable API: https://console.cloud.google.com/apis/library/fcm.googleapis.com?project='.($projectId ?: 'believe-in-unity-d8adc'));
+                $this->line('  5. Wait 1–2 minutes, then run: php artisan push:diagnose');
+            } else {
+                $this->warn('FCM probe returned: '.$errorCode);
             }
         } catch (\Throwable $e) {
             $this->error('Firebase error: '.$e->getMessage());
+
+            return self::FAILURE;
         }
 
         $this->newLine();
@@ -64,6 +107,6 @@ class PushDiagnoseCommand extends Command
         $this->line('After login, run in DevTools console: enableBelievePush()');
         $this->line('Test toast only: testBelievePushToast()');
 
-        return self::SUCCESS;
+        return $fcmPermissionOk ? self::SUCCESS : self::FAILURE;
     }
 }
