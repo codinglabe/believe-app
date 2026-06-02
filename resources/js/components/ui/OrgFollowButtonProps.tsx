@@ -32,9 +32,9 @@ interface OrgFollowButtonProps {
   initialNotifications?: boolean
   /** When true, do not render (e.g. viewing own organization) */
   isOwnOrganization?: boolean
-  /** Logged-in creator viewing their own Care Alliance public page — disabled hub label instead of Follow. */
+  /** Logged-in creator viewing their own Unity Impact Alliance public page — disabled hub label instead of Follow. */
   allianceHubOwner?: boolean
-  /** Care Alliance primary key from page props — fallback when organization ids are missing client-side. */
+  /** Unity Impact Alliance primary key from page props — fallback when organization ids are missing client-side. */
   careAlliancePublicId?: number | null
 }
 
@@ -57,7 +57,7 @@ export default function OrgFollowButton({
         variant="outline"
         size="lg"
         className="min-w-[40px] sm:min-w-0 h-9 sm:h-10 md:h-11 flex-shrink-0 justify-center sm:justify-start px-2 sm:px-3 md:px-4 border-2 opacity-80 cursor-not-allowed border-indigo-500/40 text-indigo-900 dark:text-indigo-100 bg-indigo-500/10"
-        title="You manage this Care Alliance. Supporters and other organizations can follow this page."
+        title="You manage this Unity Impact Alliance. Supporters and other organizations can follow this page."
       >
         <UserCheck className="h-4 w-4 sm:mr-1.5 md:mr-2 shrink-0" />
         <span className="hidden sm:inline whitespace-nowrap truncate">Your alliance hub</span>
@@ -72,7 +72,7 @@ export default function OrgFollowButton({
   // Track if we're in the middle of an update to prevent loops
   const updateInProgressRef = useRef(false)
 
-  // Prefer explicit toggle id (Care Alliance); else same as nonprofit profiles (excel / org id on organization.id).
+  // Prefer explicit toggle id (Unity Impact Alliance); else same as nonprofit profiles (excel / org id on organization.id).
   const favoriteId = useMemo(() => {
     const raw =
       organization?.toggle_favorite_id ??
@@ -122,7 +122,7 @@ export default function OrgFollowButton({
   )
 
   /**
-   * Backend resolves id against Excel vs Organization vs Care Alliance; context avoids id collisions
+   * Backend resolves id against Excel vs Organization vs Unity Impact Alliance; context avoids id collisions
    * (e.g. organizations.id 9 vs excel_data.id 9).
    */
   const toggleFavoriteBody = useMemo(() => {

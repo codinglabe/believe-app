@@ -199,7 +199,7 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                                 <div className="inline-flex max-w-full flex-col items-center gap-2 rounded-2xl border border-violet-200/80 bg-gradient-to-r from-violet-50/95 to-indigo-50/90 px-5 py-4 text-center shadow-sm dark:border-violet-500/25 dark:from-violet-950/40 dark:to-indigo-950/35">
                                                     <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">
                                                         <HeartHandshake className="h-4 w-4 shrink-0" aria-hidden />
-                                                        Care Alliance
+                                                        Unity Impact Alliance
                                                     </span>
                                                     <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white md:text-2xl">
                                                         {donationDetails.allianceName}
@@ -279,12 +279,12 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                             </div>
                                         </div>
 
-                                        {/* Care Alliance (when donation was to an alliance from /donate) */}
+                                        {/* Unity Impact Alliance (when donation was to an alliance from /donate) */}
                                         {donationDetails.allianceName ? (
                                             <div className="space-y-2 md:col-span-2">
                                                 <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
                                                     <HeartHandshake className="h-4 w-4" />
-                                                    Care Alliance
+                                                    Unity Impact Alliance
                                                 </div>
                                                 <p className="text-lg font-semibold text-gray-900 dark:text-white">
                                                     {donationDetails.allianceName}
@@ -292,7 +292,7 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                             </div>
                                         ) : null}
 
-                                        {/* Organization — omit for Care Alliance (funds are attributed to the alliance, not a single recipient line item) */}
+                                        {/* Organization — omit for Unity Impact Alliance (funds are attributed to the alliance, not a single recipient line item) */}
                                         {!isCareAllianceDonation ? (
                                             <div className="space-y-2">
                                                 <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">

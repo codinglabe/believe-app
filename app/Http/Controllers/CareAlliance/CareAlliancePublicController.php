@@ -87,7 +87,7 @@ class CareAlliancePublicController extends Controller
 
         return Inertia::render('frontend/organization/organization-show', array_merge($props, [
             'seo' => [
-                'title' => $alliance->name.' — Care Alliance | '.config('app.name'),
+                'title' => $alliance->name.' — Unity Impact Alliance | '.config('app.name'),
                 'description' => $descriptionPlain !== '' ? Str::limit($descriptionPlain, 160) : 'Support member nonprofits through '.$alliance->name.'.',
             ],
         ]));

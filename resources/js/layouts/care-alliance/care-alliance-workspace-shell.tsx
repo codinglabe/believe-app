@@ -26,7 +26,7 @@ export default function CareAllianceWorkspaceShell({
 
   const breadcrumbs: BreadcrumbItem[] = [
     { title: "Dashboard", href: "/dashboard" },
-    { title: "Care Alliance", href: DEFAULT_WORKSPACE_HREF },
+    { title: "Unity Impact Alliance", href: DEFAULT_WORKSPACE_HREF },
     { title: meta.title, href: meta.href },
   ]
 
@@ -35,7 +35,7 @@ export default function CareAllianceWorkspaceShell({
       <div className="flex w-full min-w-0 flex-col gap-6 px-3 py-4 md:px-6 md:py-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{allianceName}</h1>
-          <p className="text-muted-foreground text-sm">Care Alliance</p>
+          <p className="text-muted-foreground text-sm">Unity Impact Alliance</p>
         </div>
         <div className="flex min-w-0 flex-col gap-6">{children}</div>
       </div>

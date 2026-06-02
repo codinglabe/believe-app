@@ -73,7 +73,7 @@ export type OrganizationSearchHit = {
   primary_action_categories?: Array<{ id: number; name: string }>
 }
 
-/** Care Alliance workspace Members page URL `tab` (each tab loads its own payload). */
+/** Unity Impact Alliance workspace Members page URL `tab` (each tab loads its own payload). */
 export type CareAllianceMembersTab = "invite" | "requests" | "invitations" | "memberships"
 
 export type CareAllianceDonationActivitySplitLine = {

@@ -17,7 +17,7 @@ export interface NavGroup {
     icon?: LucideIcon | null;
     permission?: string,
     role?: string | string[],
-    /** Alliance-style links: show only for org/pending users who are not Care Alliance hub (no care_alliance role). */
+    /** Alliance-style links: show only for org/pending users who are not Unity Impact Alliance hub (no care_alliance role). */
     organizationOnlyNav?: boolean;
     /** Hide for users with Spatie role care_alliance (use separate Alliance Settings link). */
     excludeCareAllianceHub?: boolean;
@@ -30,7 +30,7 @@ export interface NavItem {
     isActive?: boolean;
     permission?: string | Array;
     role?: string | Array;
-    /** Alliance-style links: show only for org/pending users who are not Care Alliance hub (no care_alliance role). */
+    /** Alliance-style links: show only for org/pending users who are not Unity Impact Alliance hub (no care_alliance role). */
     organizationOnlyNav?: boolean;
     /** Hide for users with Spatie role care_alliance (use separate Alliance Settings link). */
     excludeCareAllianceHub?: boolean;
@@ -63,11 +63,11 @@ export interface User {
     push_token?: string;
     has_push_device?: boolean;
     login_status: boolean;
-    /** false when user is Care Alliance without a valid 9-digit EIN (wallet blocked) */
+    /** false when user is Unity Impact Alliance without a valid 9-digit EIN (wallet blocked) */
     care_alliance_wallet_eligible?: boolean;
     /** false when org/CA user lacks a valid 9-digit EIN for their context (header wallet hidden). */
     wallet_header_visible?: boolean;
-    /** Present when the user is the active Care Alliance hub creator */
+    /** Present when the user is the active Unity Impact Alliance hub creator */
     care_alliance?: { slug: string; name: string } | null;
     [key: string]: unknown; // This allows for additional properties...
 }

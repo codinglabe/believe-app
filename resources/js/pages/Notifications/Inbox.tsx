@@ -304,7 +304,7 @@ export default function NotificationsInbox() {
     setCareAllianceActionLoadingId(notification.id)
     try {
       await postAction(`/organization/care-alliance-invitations/${invitationId}/${action}`)
-      toast.success(action === "accept" ? "You joined the Care Alliance." : "Invitation declined.")
+      toast.success(action === "accept" ? "You joined the Unity Impact Alliance." : "Invitation declined.")
       await postAction(`/notifications/${notification.id}/read`)
       if (action === "accept") {
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")

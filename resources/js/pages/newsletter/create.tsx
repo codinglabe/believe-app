@@ -246,7 +246,15 @@ function audiencePaginationRange(current: number, total: number, maxButtons: num
     return Array.from({ length: end - start + 1 }, (_, i) => start + i)
 }
 
+const ROLE_LABELS: Record<string, string> = {
+    care_alliance: "Unity Impact Alliance",
+}
+
 function formatRoleLabel(role: string): string {
+    const key = role.toLowerCase().replace(/\s+/g, "_")
+    if (ROLE_LABELS[key]) {
+        return ROLE_LABELS[key]
+    }
     return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 

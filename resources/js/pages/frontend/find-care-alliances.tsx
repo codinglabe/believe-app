@@ -282,15 +282,15 @@ export default function FindCareAlliancesPage() {
 
   return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Find Care Alliances"} description={seo?.description} />
+      <PageHead title={seo?.title ?? "Find Unity Impact Alliances"} description={seo?.description} />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
         <div className="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-8">
             <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
-              Find Care Alliances
+              Find Unity Impact Alliances
             </h1>
             <p className="text-gray-600 dark:text-gray-400 text-base sm:text-lg">
-              Discover Care Alliances by cause, location, and activity — same tools as Find Supporters, tailored for alliance hubs.
+              Discover Unity Impact Alliances by cause, location, and activity — same tools as Find Supporters, tailored for alliance hubs.
             </p>
           </div>
 
@@ -299,7 +299,7 @@ export default function FindCareAlliancesPage() {
             <aside className="lg:col-span-3">
               <Card className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-lg rounded-2xl overflow-hidden sticky top-6">
                 <CardContent className="p-6">
-                  <h2 className="font-semibold text-gray-900 dark:text-white mb-6 text-lg">Filter Care Alliances</h2>
+                  <h2 className="font-semibold text-gray-900 dark:text-white mb-6 text-lg">Filter Unity Impact Alliances</h2>
 
                   <button
                     type="button"
@@ -615,7 +615,7 @@ export default function FindCareAlliancesPage() {
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                       <Search className="w-8 h-8 text-gray-400" />
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Care Alliances found</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Unity Impact Alliances found</h3>
                     <p className="text-gray-500 dark:text-gray-400">Try adjusting your filters or search terms to find more alliances.</p>
                   </CardContent>
                 </Card>

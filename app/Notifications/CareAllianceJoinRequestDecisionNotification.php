@@ -24,7 +24,7 @@ class CareAllianceJoinRequestDecisionNotification extends Notification
             ->find($this->joinRequestId);
 
         $approved = $this->decision === 'approved';
-        $allianceName = $row?->careAlliance?->name ?? 'the Care Alliance';
+        $allianceName = $row?->careAlliance?->name ?? 'the Unity Impact Alliance';
 
         $title = $approved ? 'Request approved' : 'Request declined';
         $body = $approved

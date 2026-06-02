@@ -71,7 +71,7 @@ class CareAllianceInvitationController extends Controller
 
         if (! $this->isEligibleInviteOrganization($organization)) {
             throw ValidationException::withMessages([
-                'invite' => 'Only approved organizations with a linked user can be invited to a Care Alliance.',
+                'invite' => 'Only approved organizations with a linked user can be invited to a Unity Impact Alliance.',
             ]);
         }
 

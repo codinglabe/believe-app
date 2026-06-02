@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Builds the same Inertia props as organization public profiles, for Care Alliance public URLs.
+ * Builds the same Inertia props as organization public profiles, for Unity Impact Alliance public URLs.
  */
 class CareAlliancePublicPageService
 {
@@ -130,7 +130,7 @@ class CareAlliancePublicPageService
             'toggle_favorite_id' => $toggleFavoriteId,
             /**
              * Disambiguates numeric id vs excel_data / organizations / care_alliances primary keys.
-             * Must be sent with toggle-favorite and toggle-notifications for Care Alliance public pages.
+             * Must be sent with toggle-favorite and toggle-notifications for Unity Impact Alliance public pages.
              */
             'toggle_favorite_context' => $toggleFavoriteContext,
             'ein' => $alliance->ein ?? '',
@@ -163,7 +163,7 @@ class CareAlliancePublicPageService
                     'cover_img' => $creator->cover_img,
                 ],
             ],
-            'description' => $desc !== '' ? $desc : 'This Care Alliance partners with nonprofits for shared fundraising.',
+            'description' => $desc !== '' ? $desc : 'This Unity Impact Alliance partners with nonprofits for shared fundraising.',
             'mission' => '',
             'website' => $alliance->website,
             'wefunder_project_url' => null,
@@ -696,7 +696,7 @@ class CareAlliancePublicPageService
     {
         $creator = $alliance->creator;
         if (! $creator) {
-            abort(404, 'Care Alliance creator not found.');
+            abort(404, 'Unity Impact Alliance creator not found.');
         }
 
         $creatorOrg = $this->hubOrganizationForAlliance($alliance);

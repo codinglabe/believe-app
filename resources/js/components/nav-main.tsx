@@ -26,7 +26,7 @@ type PageProps = {
 const isGroup = (item: NavEntry): item is NavGroup => 'items' in item;
 const isNavItem = (item: NavEntry): item is NavItem => 'href' in item;
 
-/** Care Alliance users use the same org dashboard/sidebar; treat like organization for nav visibility. */
+/** Unity Impact Alliance users use the same org dashboard/sidebar; treat like organization for nav visibility. */
 const ORG_SIDEBAR_ROLE_ALIASES = new Set(['organization', 'care_alliance']);
 
 function userHasOrgSidebarRole(userRoles: string[]): boolean {

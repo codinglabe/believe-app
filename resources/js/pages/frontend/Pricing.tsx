@@ -138,7 +138,7 @@ const EVERYTHING_INCLUDED_COLUMNS: string[][] = [
   ],
   [
     "Supporter Management (CRM)",
-    "Care Alliances",
+    "Unity Impact Alliances",
     "Companion Hub",
     "Learning / Courses",
     "Events (Unlimited)",

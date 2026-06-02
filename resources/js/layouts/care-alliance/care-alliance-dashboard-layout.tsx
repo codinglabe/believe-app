@@ -121,7 +121,7 @@ export default function CareAllianceDashboardLayout({
           <p className="truncate text-sm font-semibold text-white">{allianceName}</p>
           <p className="mt-0.5 flex items-center gap-1 text-[10px] text-violet-200/95">
             <HeartHandshake className="h-3 w-3 shrink-0" />
-            Care Alliance
+            Unity Impact Alliance
           </p>
         </div>
       </div>
@@ -157,7 +157,7 @@ export default function CareAllianceDashboardLayout({
 
   return (
     <>
-      <PageHead title={`${allianceName} — Care Alliance`} />
+      <PageHead title={`${allianceName} — Unity Impact Alliance`} />
       <CsrfTokenSync />
       <Toaster position="top-right" />
 
@@ -227,7 +227,7 @@ export default function CareAllianceDashboardLayout({
                 <div className="flex w-full items-center justify-between gap-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="hidden shrink-0 text-[10px] font-semibold uppercase tracking-wider text-white/55 sm:inline">
-                      Care Alliance
+                      Unity Impact Alliance
                     </span>
                     <span className="hidden text-white/25 sm:inline" aria-hidden>
                       ·

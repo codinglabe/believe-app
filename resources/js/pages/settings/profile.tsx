@@ -991,7 +991,7 @@ const getCroppedImage = async (
                 ) : (
                   <User className="h-5 w-5 text-blue-500" />
                 )}
-                {isCareAllianceHub ? "Care Alliance profile" : "Additional Information"}
+                {isCareAllianceHub ? "Unity Impact Alliance profile" : "Additional Information"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1008,7 +1008,7 @@ const getCroppedImage = async (
                         value={data.alliance_name ?? ""}
                         onChange={(e) => setData("alliance_name", e.target.value)}
                         className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Your Care Alliance name"
+                        placeholder="Your Unity Impact Alliance name"
                         required
                       />
                       <InputError message={errors.alliance_name} className="mt-1" />
@@ -1059,7 +1059,7 @@ const getCroppedImage = async (
                       autoComplete="off"
                     />
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      A valid 9-digit EIN unlocks wallet and payout features for your alliance. It is stored on your Care Alliance and synced to your linked organization record.
+                      A valid 9-digit EIN unlocks wallet and payout features for your alliance. It is stored on your Unity Impact Alliance and synced to your linked organization record.
                     </p>
                     <InputError message={errors.alliance_ein} className="mt-1" />
                   </div>
@@ -1200,7 +1200,7 @@ const getCroppedImage = async (
             rows={4}
             placeholder={
               isCareAllianceHub
-                ? "Describe your Care Alliance, its purpose, and how you work with member organizations…"
+                ? "Describe your Unity Impact Alliance, its purpose, and how you work with member organizations…"
                 : "Briefly describe your organization..."
             }
             required={showOrgProfileCard}

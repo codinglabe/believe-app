@@ -7,8 +7,8 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Alliance Membership / org-side invite flows are for nonprofits joining a Care Alliance,
- * not for users who operate a Care Alliance (Spatie role care_alliance).
+ * Alliance Membership / org-side invite flows are for nonprofits joining a Unity Impact Alliance,
+ * not for users who operate a Unity Impact Alliance (Spatie role care_alliance).
  */
 class DenyCareAllianceHubUser
 {
@@ -19,13 +19,13 @@ class DenyCareAllianceHubUser
         if ($user && $user->hasRole('care_alliance')) {
             if ($request->expectsJson() || $request->wantsJson()) {
                 return response()->json([
-                    'message' => 'This area is for organization alliance membership, not Care Alliance administrators.',
+                    'message' => 'This area is for organization alliance membership, not Unity Impact Alliance administrators.',
                 ], 403);
             }
 
             return redirect()
                 ->route('dashboard')
-                ->with('error', 'Alliance Membership is for nonprofits joining an alliance. Use Care Alliance in the sidebar to manage your alliance.');
+                ->with('error', 'Alliance Membership is for nonprofits joining an alliance. Use Unity Impact Alliance in the sidebar to manage your alliance.');
         }
 
         return $next($request);

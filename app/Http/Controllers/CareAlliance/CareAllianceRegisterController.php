@@ -93,7 +93,7 @@ class CareAllianceRegisterController extends Controller
                         $fail('This EIN is already registered to an organization.');
                     }
                     if (CareAlliance::query()->where('ein', $digits)->exists()) {
-                        $fail('This EIN is already registered to a Care Alliance.');
+                        $fail('This EIN is already registered to a Unity Impact Alliance.');
                     }
                 },
             ],
@@ -110,7 +110,7 @@ class CareAllianceRegisterController extends Controller
         $validated = $validator->validated();
         $einRaw = $validated['ein'] ?? null;
         /** @var string $hubOrgEin digits-only — internal hub org record only when user omits EIN */
-        /** @var string|null $allianceEin null until user adds EIN on Care Alliance (wallet/header use alliance row) */
+        /** @var string|null $allianceEin null until user adds EIN on Unity Impact Alliance (wallet/header use alliance row) */
         if (is_string($einRaw) && trim($einRaw) !== '') {
             $hubOrgEin = preg_replace('/\D/', '', $einRaw);
             $allianceEin = $hubOrgEin;
@@ -179,10 +179,10 @@ class CareAllianceRegisterController extends Controller
                 'email' => $validated['email'],
                 'phone' => '0000000000',
                 'contact_name' => $validated['contact_name'],
-                'contact_title' => 'Care Alliance',
+                'contact_title' => 'Unity Impact Alliance',
                 'website' => $validated['website'] ?? null,
                 'description' => $validated['description'] ?? '',
-                'mission' => $validated['description'] ?? 'Care Alliance',
+                'mission' => $validated['description'] ?? 'Unity Impact Alliance',
                 'registration_status' => 'approved',
                 'status' => 'Active',
                 'tax_period' => Carbon::now()->format('Ym'),
@@ -195,7 +195,7 @@ class CareAllianceRegisterController extends Controller
             BoardMember::create([
                 'organization_id' => $organization->id,
                 'user_id' => $user->id,
-                'position' => 'Care Alliance Administrator',
+                'position' => 'Unity Impact Alliance Administrator',
                 'appointed_on' => now(),
             ]);
 
@@ -230,7 +230,7 @@ class CareAllianceRegisterController extends Controller
         Auth::login($user);
 
         return redirect(AuthRedirectHelper::defaultRedirectForUser($user))
-            ->with('success', 'Care Alliance registered successfully!');
+            ->with('success', 'Unity Impact Alliance registered successfully!');
     }
 
     /**

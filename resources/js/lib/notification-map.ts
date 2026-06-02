@@ -60,7 +60,7 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
         : rawType
   const title =
     notificationData.title ||
-    (type === CARE_ALLIANCE_INVITATION_TYPE ? "Care Alliance invitation" : "Notification")
+    (type === CARE_ALLIANCE_INVITATION_TYPE ? "Unity Impact Alliance invitation" : "Notification")
   const body = notificationData.body || notificationData.message || ""
   const invitationId = notificationData.invitation_id ?? notificationData.meta?.invitation_id
   const joinUrl =

@@ -175,7 +175,7 @@ export default function RegisterPage() {
               </Card>
             </motion.div>
 
-            {/* Care Alliance registration */}
+            {/* Unity Impact Alliance registration */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
@@ -189,7 +189,7 @@ export default function RegisterPage() {
                     <div className="mx-auto bg-white/20 backdrop-blur-sm w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
                       <Network className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
                     </div>
-                    <CardTitle className="text-2xl sm:text-3xl font-bold text-white mb-2">Care Alliance</CardTitle>
+                    <CardTitle className="text-2xl sm:text-3xl font-bold text-white mb-2">Unity Impact Alliance</CardTitle>
                     <CardDescription className="text-base text-white/90 max-w-sm">
                       Coordinate member nonprofits, shared campaigns, and transparent fund splits
                     </CardDescription>
@@ -218,7 +218,7 @@ export default function RegisterPage() {
                   </ul>
                   <Link href="/register/care-alliance" className="block">
                     <Button className="w-full bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white font-bold h-12 sm:h-14 text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
-                      Register Care Alliance
+                      Register Unity Impact Alliance
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>

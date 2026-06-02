@@ -73,7 +73,7 @@ class CommunityVideosSeeder extends Seeder
             ],
             [
                 'title' => 'Beach Clean-Up Crew',
-                'description' => 'Ocean Care Alliance beach cleanup day.',
+                'description' => 'Ocean Unity Impact Alliance beach cleanup day.',
                 'thumbnail_url' => 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=320&q=80',
                 'duration_seconds' => 6 * 60 + 37,
                 'views' => 11234,

@@ -348,7 +348,7 @@ export default function CareAllianceFinancialSettingsSection({ allianceDisplayNa
                 animate={{ opacity: 1, height: "auto" }}
                 className="mt-4 overflow-hidden rounded-lg border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100"
               >
-                Complete and save these settings to enable Care Alliance donations from the general donate flow.
+                Complete and save these settings to enable Unity Impact Alliance donations from the general donate flow.
               </motion.div>
             ) : null}
           </CardHeader>

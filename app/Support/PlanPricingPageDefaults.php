@@ -49,7 +49,7 @@ final class PlanPricingPageDefaults
             ],
             [
                 'Supporter Management (CRM)',
-                'Care Alliances',
+                'Unity Impact Alliances',
                 'Companion Hub',
                 'Learning / Courses',
                 'Events (Unlimited)',

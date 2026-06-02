@@ -229,7 +229,7 @@ export default function OrganizationPage({
   }, [careAlliancePublic?.slug, organization?.registered_organization?.user?.slug, currentPath, url])
 
   /**
-   * Normal org: hide on own profile. Care Alliance public: show Follow (toggle-favorite) whenever we can resolve
+   * Normal org: hide on own profile. Unity Impact Alliance public: show Follow (toggle-favorite) whenever we can resolve
    * the alliance slug — same POST as nonprofit profiles; supporter accounts can follow the hub.
    */
   const showOrgFollowButton =
@@ -835,7 +835,7 @@ export default function OrganizationPage({
                       {organization.is_care_alliance_public && (
                         <Badge className="bg-indigo-600 hover:bg-indigo-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
                           <Building2 className="w-3 h-3" />
-                          Care Alliance
+                          Unity Impact Alliance
                         </Badge>
                       )}
                       {organization.is_registered && !organization.is_care_alliance_public && (
@@ -1111,10 +1111,10 @@ export default function OrganizationPage({
                     <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-150 border border-indigo-500/15 dark:border-indigo-400/10">
                       <h3 className="font-semibold mb-1 text-gray-900 dark:text-white flex items-center gap-2">
                         <UsersRound className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                        Care Alliances
+                        Unity Impact Alliances
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                        This organization is connected to these Care Alliances.
+                        This organization is connected to these Unity Impact Alliances.
                       </p>
                       <ul className="space-y-2">
                         {connectedCareAlliances.map((a) => (
@@ -1256,7 +1256,7 @@ export default function OrganizationPage({
                                         </h4>
                                       )}
                                       {allianceFeed && organization.is_registered && (
-                                        <Badge className="bg-indigo-600/90 text-white text-[10px] px-1.5 py-0 border-0">Care Alliance</Badge>
+                                        <Badge className="bg-indigo-600/90 text-white text-[10px] px-1.5 py-0 border-0">Unity Impact Alliance</Badge>
                                       )}
                                       {!allianceFeed && postItem.creator_type === 'organization' && organization.is_registered && (
                                         <CheckCircle className="w-4 h-4 text-blue-400" />
@@ -2065,7 +2065,7 @@ export default function OrganizationPage({
                   </div>
                 )}
 
-                {/* Members — Care Alliance member nonprofits */}
+                {/* Members — Unity Impact Alliance member nonprofits */}
                 {activeTab === "Members" && organization.is_registered && organization.is_care_alliance_public && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500 border border-indigo-500/15 dark:border-indigo-400/10">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
@@ -2078,7 +2078,7 @@ export default function OrganizationPage({
                       </Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                      Registered nonprofits in this Care Alliance. Visit a member&apos;s public profile to learn more or support their work.
+                      Registered nonprofits in this Unity Impact Alliance. Visit a member&apos;s public profile to learn more or support their work.
                     </p>
                     {allianceMembers.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

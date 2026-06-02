@@ -72,7 +72,7 @@ type OrgJoinRequestRow = {
   alliance: AllianceRef
 }
 
-/** Care Alliance split credits to this org owner’s wallet (from transactions). */
+/** Unity Impact Alliance split credits to this org owner’s wallet (from transactions). */
 export type AllianceWalletActivityRow = {
   id: number
   amount: number
@@ -262,14 +262,14 @@ function AllianceWalletActivityPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">Alliance split activity</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Credits to your organization owner&apos;s wallet when Care Alliance donations are distributed to members (instant or
+            Credits to your organization owner&apos;s wallet when Unity Impact Alliance donations are distributed to members (instant or
             scheduled release). New splits appear after each payout.
           </p>
         </div>
       </div>
       {rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border/80 bg-muted/40 px-3 py-3 text-center text-xs text-muted-foreground">
-          No Care Alliance split credits yet. Once your nonprofit receives a share from an alliance, it will show here.
+          No Unity Impact Alliance split credits yet. Once your nonprofit receives a share from an alliance, it will show here.
         </p>
       ) : (
         <ul
@@ -285,7 +285,7 @@ function AllianceWalletActivityPanel({
             >
               <div className="min-w-0 flex-1">
                 <span className="font-medium text-foreground">
-                  {r.care_alliance_name?.trim() ? r.care_alliance_name : "Care Alliance"}
+                  {r.care_alliance_name?.trim() ? r.care_alliance_name : "Unity Impact Alliance"}
                 </span>
                 <span className="text-muted-foreground"> · </span>
                 <span className="text-xs text-muted-foreground">{walletActivityRoleLabel(r.role)}</span>
@@ -434,7 +434,7 @@ export default function OrganizationAllianceMembershipIndex() {
 
   const submitJoinRequest = () => {
     if (!selectedAlliance) {
-      toast.error("Select a Care Alliance first.")
+      toast.error("Select a Unity Impact Alliance first.")
       return
     }
     setSubmittingJoinRequest(true)
@@ -540,9 +540,9 @@ export default function OrganizationAllianceMembershipIndex() {
                     <Search className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 space-y-1.5">
-                    <CardTitle className="text-xl font-semibold tracking-tight">Request to join a Care Alliance</CardTitle>
+                    <CardTitle className="text-xl font-semibold tracking-tight">Request to join a Unity Impact Alliance</CardTitle>
                     <CardDescription className="max-w-2xl text-sm leading-relaxed">
-                      Type at least 2 characters to search the server for Care Alliances. Select one, add an optional message, and send
+                      Type at least 2 characters to search the server for Unity Impact Alliances. Select one, add an optional message, and send
                       your request.
                     </CardDescription>
                   </div>
@@ -558,7 +558,7 @@ export default function OrganizationAllianceMembershipIndex() {
                   <>
                     <div ref={allianceComboRef} className="relative z-50">
                       <Label htmlFor="alliance-join-search" className="sr-only">
-                        Search Care Alliances
+                        Search Unity Impact Alliances
                       </Label>
                       <div className="relative">
                         <Input
@@ -569,7 +569,7 @@ export default function OrganizationAllianceMembershipIndex() {
                           onFocus={() => {
                             if (draftSearchQ.trim().length >= 2) setAllianceDropdownOpen(true)
                           }}
-                          placeholder="Search Care Alliances…"
+                          placeholder="Search Unity Impact Alliances…"
                           autoComplete="off"
                           aria-busy={allianceSearchBusy}
                           aria-expanded={showAllianceDropdown}
@@ -766,7 +766,7 @@ export default function OrganizationAllianceMembershipIndex() {
                       <li key={jr.id} className="px-5 py-4 sm:px-6">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0 space-y-1">
-                            <p className="text-base font-semibold text-foreground">{jr.alliance.name ?? "Care Alliance"}</p>
+                            <p className="text-base font-semibold text-foreground">{jr.alliance.name ?? "Unity Impact Alliance"}</p>
                             <p className="text-xs text-muted-foreground">/{jr.alliance.slug}</p>
                             {jr.created_at ? (
                               <p className="text-xs text-muted-foreground">Sent {formatMembershipTimestamp(jr.created_at)}</p>
@@ -824,7 +824,7 @@ export default function OrganizationAllianceMembershipIndex() {
                         ) : null}
                       </div>
                       <CardDescription className="max-w-2xl text-sm leading-relaxed">
-                        Care Alliances that want <span className="font-medium text-foreground/90">{organization.name}</span> in their
+                        Unity Impact Alliances that want <span className="font-medium text-foreground/90">{organization.name}</span> in their
                         network. Review each request and accept to join shared programs, or decline if it is not a fit.
                       </CardDescription>
                     </div>
@@ -839,7 +839,7 @@ export default function OrganizationAllianceMembershipIndex() {
                     </div>
                     <p className="text-base font-medium text-foreground">You&apos;re all caught up</p>
                     <p className="mt-1.5 max-w-sm text-sm text-muted-foreground leading-relaxed">
-                      There are no pending Care Alliance invitations for your organization. New invites will appear here and in your
+                      There are no pending Unity Impact Alliance invitations for your organization. New invites will appear here and in your
                       notifications.
                     </p>
                   </div>
@@ -847,7 +847,7 @@ export default function OrganizationAllianceMembershipIndex() {
                   <ul className="divide-y divide-border/70">
                     {invitations.map((inv) => {
                       const busy = actingInvitationId === inv.id
-                      const allianceLabel = inv.alliance.name?.trim() || "Care Alliance"
+                      const allianceLabel = inv.alliance.name?.trim() || "Unity Impact Alliance"
                       return (
                         <li key={inv.id}>
                           <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6 sm:p-6">
@@ -944,7 +944,7 @@ export default function OrganizationAllianceMembershipIndex() {
                         ) : null}
                       </div>
                       <CardDescription className="max-w-2xl text-sm leading-relaxed">
-                        Every Care Alliance your organization has joined, is waiting on, or has stepped back from.
+                        Every Unity Impact Alliance your organization has joined, is waiting on, or has stepped back from.
                       </CardDescription>
                     </div>
                   </div>
@@ -964,7 +964,7 @@ export default function OrganizationAllianceMembershipIndex() {
                 ) : (
                   <ul className="divide-y divide-border/70">
                     {memberships.map((m) => {
-                      const allianceLabel = m.alliance.name?.trim() || "Care Alliance"
+                      const allianceLabel = m.alliance.name?.trim() || "Unity Impact Alliance"
                       const statusExtra = statusBadgeClassName(m.status)
                       return (
                         <li key={m.id}>
@@ -1032,7 +1032,7 @@ export default function OrganizationAllianceMembershipIndex() {
                     <div className="min-w-0 space-y-1.5">
                       <CardTitle className="text-xl font-semibold tracking-tight">Activity</CardTitle>
                       <CardDescription className="max-w-2xl text-sm leading-relaxed">
-                        Transaction-style log of Care Alliance member share credits to{" "}
+                        Transaction-style log of Unity Impact Alliance member share credits to{" "}
                         <span className="font-medium text-foreground/90">{organization.name}</span>&apos;s wallet (up to 50 recent).
                       </CardDescription>
                     </div>

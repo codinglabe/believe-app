@@ -682,7 +682,7 @@ export default function Dashboard({
   const isOrgUser = userRole === "organization" || userRole === "organization_pending"
   const userRoles = (auth?.roles ?? []) as string[]
   const isCareAllianceHub = userRoles.some((r) => String(r).toLowerCase() === "care_alliance")
-  /** Nonprofits joining an alliance — not Care Alliance administrators */
+  /** Nonprofits joining an alliance — not Unity Impact Alliance administrators */
   const showOrgAllianceMembershipUi = isOrgUser && !isCareAllianceHub
   const userId = auth?.user?.id // Get user ID to detect user changes
 
@@ -964,7 +964,7 @@ export default function Dashboard({
     admin: `Welcome back, Administrator ${auth.user?.name}!`,
     organization: `Welcome, ${organization?.name}!`,
     organization_pending: `Welcome, ${organization?.name}!`,
-    care_alliance: `Welcome, ${careAllianceProfile?.name ?? auth.user?.name ?? "Care Alliance"}!`,
+    care_alliance: `Welcome, ${careAllianceProfile?.name ?? auth.user?.name ?? "Unity Impact Alliance"}!`,
   }
 
   const quickActions = {
@@ -1153,9 +1153,9 @@ export default function Dashboard({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
       <div className="flex flex-col gap-6 m-3 md:m-6">
-        {/* Pending Care Alliance invites — org dashboard: sign in → /dashboard → this card (also linked from invitation emails) */}
+        {/* Pending Unity Impact Alliance invites — org dashboard: sign in → /dashboard → this card (also linked from invitation emails) */}
         {showOrgAllianceMembershipUi && <CareAllianceOrgInvitesInline />}
-        {/* Profile completion: hub org integrations — not shown on Care Alliance dashboard (use care_alliances-driven flows only). */}
+        {/* Profile completion: hub org integrations — not shown on Unity Impact Alliance dashboard (use care_alliances-driven flows only). */}
         {isOrgUser && profileCompletion && profileCompletion.percent < 100 && (
           <ProfileCompletionBanner profileCompletion={profileCompletion} variant="organization" />
         )}
@@ -1281,7 +1281,7 @@ export default function Dashboard({
           </div>
         )}
 
-        {/* Form 990 Filing Alert — nonprofit org records only, not Care Alliance dashboard */}
+        {/* Form 990 Filing Alert — nonprofit org records only, not Unity Impact Alliance dashboard */}
         {!isCareAllianceHub && overdueForm990Filings && overdueForm990Filings.length > 0 && (
           <Card className="border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/20 dark:text-red-100">
             <CardHeader>

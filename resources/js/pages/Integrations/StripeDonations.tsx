@@ -144,7 +144,7 @@ export default function StripeDonations({
                 <div>
                   <p className="font-medium">Stripe payouts enabled</p>
                   <p className="text-sm text-muted-foreground">
-                    Qualifying one-time gifts to your organization where Care Alliance splitting is not controlling settlement can route
+                    Qualifying one-time gifts to your organization where Unity Impact Alliance splitting is not controlling settlement can route
                     through direct charges when this onboarding is active.
                   </p>
                 </div>
