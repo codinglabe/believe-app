@@ -6,7 +6,7 @@
 #
 # Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
 # Optional repository variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL, SSH_PORT,
-#   PRODUCTION_APP_URL (dev login → production link), DEVELOPMENT_HOSTS (dev landing hosts)
+#   SSH_HOST (IPv4 for SSH — default 72.60.226.88), SSH_IPV6_HOST, PRODUCTION_APP_URL, DEVELOPMENT_HOSTS
 name: Deploy development (501c3ers.com)
 
 on:
@@ -26,6 +26,9 @@ jobs:
       PHP_VERSION: '8.4'
       NODE_VERSION: '20'
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST != '' && vars.DEPLOY_HOST || '501c3ers.com' }}
+      # GitHub runners often fail 501c3ers.com over broken IPv6 — connect via VPS IPv4 first.
+      SSH_CONNECT_HOST: ${{ vars.SSH_HOST != '' && vars.SSH_HOST || '72.60.226.88' }}
+      SSH_IPV6_HOST: ${{ vars.SSH_IPV6_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'c3ers' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
       APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
@@ -78,6 +81,10 @@ jobs:
         run: |
           echo "Environment: development (501c3ers.com)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
+          echo "SSH connect host: ${SSH_CONNECT_HOST}"
+          if [ -n "${SSH_IPV6_HOST:-}" ]; then
+            echo "SSH IPv6 fallback: ${SSH_IPV6_HOST}"
+          fi
           echo "APP_URL (build only): ${APP_URL}"
           echo "PRODUCTION_APP_URL (server .env): ${PRODUCTION_APP_URL}"
           echo "DEVELOPMENT_HOSTS (server .env): ${DEVELOPMENT_HOSTS}"
@@ -89,46 +96,11 @@ jobs:
       - name: Setup SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          SSH_DIR: ${{ github.workspace }}/.ssh-deploy
         run: |
           set -euo pipefail
-          if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "::error::Add repository secret CPANEL_SSH_KEY (private key for ${DEPLOY_USER}@${DEPLOY_HOST})."
-            exit 1
-          fi
-          SSH_DIR="${GITHUB_WORKSPACE}/.ssh-deploy"
-          mkdir -p "${SSH_DIR}"
-          chmod 700 "${SSH_DIR}"
-          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
-          chmod 600 "${SSH_DIR}/cpanel_deploy"
-          ssh-keyscan -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-          printf '%s\n' \
-            'Host cpanel-deploy' \
-            "  HostName ${DEPLOY_HOST}" \
-            "  User ${DEPLOY_USER}" \
-            "  Port ${SSH_PORT}" \
-            "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
-            '  IdentitiesOnly yes' \
-            '  StrictHostKeyChecking accept-new' \
-            '  ServerAliveInterval 60' \
-            '  ServerAliveCountMax 3' \
-            > "${SSH_DIR}/config"
-          chmod 600 "${SSH_DIR}/config"
-          echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
-          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
-          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
-          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=20 cpanel-deploy "echo SSH_OK && whoami && hostname"'
-          for attempt in 1 2 3 4 5; do
-            if eval "${SSH_TEST}"; then
-              echo "SSH connected on attempt ${attempt}"
-              break
-            fi
-            if [ "${attempt}" -eq 5 ]; then
-              echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST}:${SSH_PORT} failed after 5 attempts"
-              exit 1
-            fi
-            echo "::warning::SSH attempt ${attempt} failed; retrying in 8s..."
-            sleep 8
-          done
+          chmod +x .github/scripts/setup-cpanel-ssh.sh
+          .github/scripts/setup-cpanel-ssh.sh
 
       - name: Cache Composer
         uses: actions/cache@v4
