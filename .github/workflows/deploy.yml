@@ -15,8 +15,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cpanel-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-cpanel-development
+  cancel-in-progress: false
 
 jobs:
   deploy:
