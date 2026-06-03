@@ -80,9 +80,11 @@ run_ssh_test() {
     cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"
 }
 
-# IPv4 first — hostname last (avoids broken IPv6 "Network is unreachable" on runners).
+# IPv4 only by default — GitHub-hosted runners cannot reach Hostinger over IPv6.
+# Set SSH_ALLOW_IPV6=true only if you run a self-hosted runner with working IPv6.
+SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
 SSH_HOSTS=()
-for candidate in "${SSH_CONNECT_HOST}" "${DEPLOY_HOST}" "${SSH_IPV6_HOST:-}"; do
+for candidate in "${SSH_CONNECT_HOST}" "${DEPLOY_HOST}"; do
   if [ -n "${candidate}" ]; then
     already=0
     for existing in "${SSH_HOSTS[@]:-}"; do
@@ -96,6 +98,18 @@ for candidate in "${SSH_CONNECT_HOST}" "${DEPLOY_HOST}" "${SSH_IPV6_HOST:-}"; do
     fi
   fi
 done
+if [ "${SSH_ALLOW_IPV6}" = "true" ] && [ -n "${SSH_IPV6_HOST:-}" ]; then
+  already=0
+  for existing in "${SSH_HOSTS[@]:-}"; do
+    if [ "${existing}" = "${SSH_IPV6_HOST}" ]; then
+      already=1
+      break
+    fi
+  done
+  if [ "${already}" -eq 0 ]; then
+    SSH_HOSTS+=("${SSH_IPV6_HOST}")
+  fi
+fi
 
 if [ "${#SSH_HOSTS[@]}" -eq 0 ]; then
   echo "::error::No SSH hosts configured (SSH_CONNECT_HOST / DEPLOY_HOST)."
@@ -130,6 +144,9 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
 done
 
 if [ "${connected}" -ne 1 ]; then
-  echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after ${SSH_MAX_ATTEMPTS} attempts (tried: ${SSH_HOSTS[*]}). Runner IP was ${RUNNER_IP} — allowlist GitHub Actions IPs in Hostinger or re-run the workflow."
+  echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after ${SSH_MAX_ATTEMPTS} attempts (tried: ${SSH_HOSTS[*]})."
+  echo "::error::Runner IPv4 was ${RUNNER_IP}. GitHub-hosted runners use random Azure IPs — Hostinger/WHM firewall or fail2ban often blocks them."
+  echo "::error::Fix: Hostinger hPanel → VPS → Firewall → allow TCP ${SSH_PORT} from GitHub Actions (https://api.github.com/meta → actions). Or install a self-hosted runner on the VPS."
+  echo "::error::Remove repo variable PRODUCTION_SSH_IPV6 if set — IPv6 does not work from GitHub runners."
   exit 1
 fi

@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: deploy-production-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,9 +22,8 @@ jobs:
       PHP_VERSION: '8.4'
       NODE_VERSION: '20'
       DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
-      # Use IP for SSH when set — believeinunity.org often times out from GitHub; 501c3ers.com has IPv6.
-      SSH_CONNECT_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || vars.PRODUCTION_DEPLOY_HOST }}
-      SSH_IPV6_HOST: ${{ vars.PRODUCTION_SSH_IPV6 }}
+      # GitHub runners must use VPS IPv4 — hostname/IPv6 often time out from Azure datacenters.
+      SSH_CONNECT_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
       DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
       APP_URL: ${{ vars.PRODUCTION_APP_URL }}
@@ -84,9 +83,6 @@ jobs:
           echo "Environment: production (believeinunity.org)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
           echo "SSH connect host: ${SSH_CONNECT_HOST}"
-          if [ -n "${SSH_IPV6_HOST:-}" ]; then
-            echo "SSH IPv6 fallback: ${SSH_IPV6_HOST}"
-          fi
           echo "APP_URL (build only): ${APP_URL}"
           if echo "${DEPLOY_HOST}" | grep -qi '501c3ers'; then
             echo "::error::Production workflow must not target 501c3ers.com (development server)."
@@ -96,93 +92,15 @@ jobs:
       - name: Setup SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
+          SSH_DIR: ${{ github.workspace }}/.ssh-deploy-prod
         run: |
           set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
           fi
-          SSH_DIR="${GITHUB_WORKSPACE}/.ssh-deploy-prod"
-          mkdir -p "${SSH_DIR}"
-          chmod 700 "${SSH_DIR}"
-          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
-          chmod 600 "${SSH_DIR}/cpanel_deploy"
-          ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-          ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-          if [ -n "${SSH_IPV6_HOST:-}" ]; then
-            ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${SSH_IPV6_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-          fi
-          echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
-          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=60 -o AddressFamily=any" >> "${GITHUB_ENV}"
-          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=60 -o AddressFamily=any" >> "${GITHUB_ENV}"
-
-          format_ssh_hostname() {
-            local host="$1"
-            if [[ "${host}" == *:* && "${host}" != \[*\] ]]; then
-              printf '[%s]' "${host}"
-            else
-              printf '%s' "${host}"
-            fi
-          }
-
-          write_ssh_host() {
-            local host="$1"
-            local formatted
-            formatted="$(format_ssh_hostname "${host}")"
-            printf '%s\n' \
-              'Host cpanel-deploy' \
-              "  HostName ${formatted}" \
-              "  User ${DEPLOY_USER}" \
-              "  Port ${SSH_PORT}" \
-              "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
-              '  IdentitiesOnly yes' \
-              '  StrictHostKeyChecking accept-new' \
-              '  ServerAliveInterval 30' \
-              '  ServerAliveCountMax 6' \
-              '  AddressFamily any' \
-              > "${SSH_DIR}/config"
-            chmod 600 "${SSH_DIR}/config"
-          }
-
-          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=60 -o AddressFamily=any cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
-          SSH_HOSTS=()
-          for candidate in "${SSH_CONNECT_HOST}" "${DEPLOY_HOST}" "${SSH_IPV6_HOST:-}"; do
-            if [ -n "${candidate}" ]; then
-              already=0
-              for existing in "${SSH_HOSTS[@]:-}"; do
-                if [ "${existing}" = "${candidate}" ]; then
-                  already=1
-                  break
-                fi
-              done
-              if [ "${already}" -eq 0 ]; then
-                SSH_HOSTS+=("${candidate}")
-              fi
-            fi
-          done
-
-          if [ "${#SSH_HOSTS[@]}" -eq 0 ]; then
-            echo "::error::No SSH hosts configured (PRODUCTION_SSH_HOST / PRODUCTION_DEPLOY_HOST)."
-            exit 1
-          fi
-
-          connected=0
-          for attempt in $(seq 1 18); do
-            host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
-            write_ssh_host "${host}"
-            if eval "${SSH_TEST}"; then
-              echo "SSH connected on attempt ${attempt} (${host})"
-              connected=1
-              break
-            fi
-            echo "::warning::SSH attempt ${attempt} failed for ${host}; retrying in 10s..."
-            sleep 10
-          done
-
-          if [ "${connected}" -ne 1 ]; then
-            echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after 18 attempts (tried: ${SSH_HOSTS[*]}). GitHub runner IPs may be blocked — retry deploy or allow SSH from GitHub Actions in Hostinger."
-            exit 1
-          fi
+          chmod +x .github/scripts/setup-cpanel-ssh.sh
+          .github/scripts/setup-cpanel-ssh.sh
 
       - name: Cache Composer
         uses: actions/cache@v4
