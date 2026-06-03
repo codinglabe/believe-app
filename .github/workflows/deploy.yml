@@ -28,7 +28,6 @@ jobs:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST != '' && vars.DEPLOY_HOST || '501c3ers.com' }}
       # GitHub runners often fail 501c3ers.com over broken IPv6 — connect via VPS IPv4 first.
       SSH_CONNECT_HOST: ${{ vars.SSH_HOST != '' && vars.SSH_HOST || '72.60.226.88' }}
-      SSH_IPV6_HOST: ${{ vars.SSH_IPV6_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'c3ers' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
       APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
@@ -82,9 +81,6 @@ jobs:
           echo "Environment: development (501c3ers.com)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
           echo "SSH connect host: ${SSH_CONNECT_HOST}"
-          if [ -n "${SSH_IPV6_HOST:-}" ]; then
-            echo "SSH IPv6 fallback: ${SSH_IPV6_HOST}"
-          fi
           echo "APP_URL (build only): ${APP_URL}"
           echo "PRODUCTION_APP_URL (server .env): ${PRODUCTION_APP_URL}"
           echo "DEVELOPMENT_HOSTS (server .env): ${DEVELOPMENT_HOSTS}"
