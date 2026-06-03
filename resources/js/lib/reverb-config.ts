@@ -31,6 +31,21 @@ export const resolveReverbScheme = () => {
 
 export const resolveReverbPort = (scheme: string) => {
   const parsed = Number(import.meta.env.VITE_REVERB_PORT)
+  const runtimeHost = typeof window !== "undefined" ? window.location.hostname : ""
+  const wsHost = resolveReverbHost()
+
+  // ForgeStack / nginx: HTTPS site on 443, Reverb on 127.0.0.1:8080 behind /app proxy.
+  if (
+    scheme === "https" &&
+    typeof window !== "undefined" &&
+    runtimeHost === wsHost &&
+    window.location.protocol === "https:" &&
+    (!Number.isFinite(parsed) || parsed === 8080)
+  ) {
+    const pagePort = Number(window.location.port)
+    return Number.isFinite(pagePort) && pagePort > 0 ? pagePort : 443
+  }
+
   if (Number.isFinite(parsed) && parsed > 0) {
     return parsed
   }

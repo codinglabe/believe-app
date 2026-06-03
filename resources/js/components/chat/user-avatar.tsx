@@ -7,6 +7,7 @@ interface UserAvatarProps {
   user: {
     name?: string | null
     avatar?: string | null
+    avatar_url?: string | null
   }
   className?: string
 }
@@ -22,7 +23,7 @@ export function UserAvatar({ user, className }: UserAvatarProps) {
 
   return (
     <Avatar className={cn("relative", className)}>
-      <AvatarImage src={user.avatar || undefined} alt={user.name || "User Avatar"} />
+      <AvatarImage src={user.avatar || user.avatar_url || undefined} alt={user.name || "User Avatar"} />
       <AvatarFallback>{initials}</AvatarFallback>
     </Avatar>
   )
