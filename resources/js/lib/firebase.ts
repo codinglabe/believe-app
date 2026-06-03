@@ -176,9 +176,7 @@ function attachMessagingInstance(registration: ServiceWorkerRegistration): void 
     }
 
     messagingListenersAttached = false;
-    messaging = getMessaging(firebaseApp(), {
-        serviceWorkerRegistration: registration,
-    });
+    messaging = getMessaging(firebaseApp());
     attachForegroundMessageListener(messaging);
 }
 
@@ -244,7 +242,12 @@ export async function activateForegroundMessaging(): Promise<void> {
     if (Notification.permission !== "granted") {
         return;
     }
-    resetMessagingRegistration();
+    // Only reset if the messaging instance isn't already live - avoids a redundant
+    // teardown/rebuild when called immediately after a successful syncPushTokenWithServer,
+    // which eliminates the brief window where foreground pushes produce no toast.
+    if (!messaging || !messagingListenersAttached) {
+        resetMessagingRegistration();
+    }
     await ensureMessagingReady();
 }
 

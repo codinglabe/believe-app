@@ -207,7 +207,12 @@ class PushNotificationLogger
                 'failure_reason' => $failureReason,
             ]);
 
-            if ($tokenRecord && in_array($result['error_code'] ?? '', ['UNREGISTERED', 'NOT_FOUND'], true)) {
+            $errorCode = strtoupper((string) ($result['error_code'] ?? ''));
+            $errorMessage = strtoupper((string) data_get($result, 'response.error.message', ''));
+            $isPermanentTokenFailure = in_array($errorCode, ['UNREGISTERED', 'NOT_FOUND'], true)
+                || ($errorCode === 'INVALID_ARGUMENT' && str_contains($errorMessage, 'SENDERID'));
+
+            if ($tokenRecord && $isPermanentTokenFailure) {
                 $tokenRecord->status = UserPushToken::STATUS_INVALID;
                 $tokenRecord->is_active = false;
                 $tokenRecord->needs_reregister = true;

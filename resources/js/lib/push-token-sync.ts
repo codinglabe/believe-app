@@ -53,6 +53,9 @@ async function postPushTokenToServer(token: string): Promise<void> {
 
     if (!response.ok) {
         const text = await response.text();
+        if (response.status !== 401 && response.status !== 403) {
+            localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+        }
         throw new Error(`Push token save failed (${response.status}): ${text}`);
     }
 
