@@ -1046,51 +1046,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
           )}
           </main>
 
-          {/* Right sidebar: Your YouTube Channel or Connect CTA */}
+          {/* Right sidebar: Import YouTube Video (channel block hidden while sync is disabled) */}
           <aside className="w-full lg:w-[320px] shrink-0 space-y-6">
-            {myChannel ? (
-              <div className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-gray-500 mb-3">Your YouTube Channel</h3>
-                <div className="flex items-center gap-3 mb-3">
-                  <Avatar className="h-12 w-12 rounded-full border-2 border-neutral-200 dark:border-gray-700">
-                    {myChannel.avatar && <AvatarImage src={myChannel.avatar} alt={myChannel.name} />}
-                    <AvatarFallback className="rounded-full bg-neutral-200 dark:bg-gray-700 text-neutral-600 dark:text-gray-300 text-sm">{myChannel.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-neutral-900 dark:text-white truncate flex items-center gap-1">
-                      {myChannel.name}
-                      <span className="text-blue-500 dark:text-blue-400" title="Verified">✓</span>
-                    </p>
-                    <p className="text-xs text-neutral-500 dark:text-gray-500">{myChannel.subscriber_count_formatted} Subscribers</p>
-                  </div>
-                </div>
-                {myChannel.channel_slug && (
-                  <Link href={`/unity-videos/channel/${myChannel.channel_slug}`}>
-                    <Button size="sm" className="w-full rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm mb-4">
-                      Visit Channel
-                    </Button>
-                  </Link>
-                )}
-                <div className="flex gap-2 border-b border-neutral-200 dark:border-gray-800 pb-2 text-xs text-neutral-500 dark:text-gray-500">
-                  <span>Home</span><span>Videos</span><span>Playlists</span><span>About</span>
-                </div>
-                <div className="flex gap-2 mt-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {myChannel.preview_videos.map((pv) => (
-                    <Link key={pv.slug} href={myChannel.channel_slug ? `/unity-videos/watch/yt/${pv.slug}?channel_slug=${encodeURIComponent(myChannel.channel_slug)}&creator=${encodeURIComponent(myChannel.name)}` : `/unity-videos/watch/yt/${pv.slug}`} className="shrink-0 w-[100px] block rounded-lg overflow-hidden bg-neutral-100 dark:bg-gray-800 group">
-                      <div className="aspect-video relative">
-                        <img src={pv.thumbnail_url} alt={pv.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                        {pv.duration === "LIVE" ? (
-                          <span className="absolute bottom-0.5 right-0.5 bg-red-600 text-white text-[10px] px-1 rounded">LIVE</span>
-                        ) : pv.duration ? (
-                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-white text-[10px] px-1 rounded">{pv.duration}</span>
-                        ) : null}
-                      </div>
-                      <p className="text-[10px] text-neutral-500 dark:text-gray-400 truncate px-1 py-0.5 line-clamp-2">{pv.title}</p>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
             <div
               ref={importPanelRef}
               className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4 shadow-sm"

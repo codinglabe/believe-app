@@ -145,7 +145,7 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
               </Link>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Your videos are shown on your Unity Videos page.
+              Add videos from the Import YouTube Video panel on the Unity Videos page.
             </p>
             <Button
               type="button"
