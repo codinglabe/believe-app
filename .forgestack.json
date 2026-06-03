@@ -1,0 +1,10 @@
+{
+  "name": "believe-wallet",
+  "url": "believeinunity.test",
+  "phpVersion": "8.4",
+  "ssl": true,
+  "status": "online",
+  "projectType": "laravel",
+  "webRoot": "D:\\client\\mathew\\believe-wallet\\backend\\public",
+  "notes": "Laravel Reverb: proxy /app and /apps to 127.0.0.1:8080 — see forgestack/README.md"
+}

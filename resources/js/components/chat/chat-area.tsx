@@ -21,6 +21,7 @@ type ChatAreaProps = {
 
 export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
   const { activeRoom, currentUser, typingUsers, joinRoom } = useChat()
+  const otherTypingUsers = typingUsers.filter((u) => u.id !== currentUser?.id)
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
 
   // Calculate membership status reactively
@@ -116,9 +117,9 @@ export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
       </div>
 
       <div className="p-3 sm:p-4 border-t border-border/50 bg-card/60 backdrop-blur-md flex-shrink-0 safe-area-inset-bottom shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.35)]">
-        {typingUsers.length > 0 && (
+        {otherTypingUsers.length > 0 && (
           <div className="mb-3 px-2">
-            <TypingIndicator users={typingUsers} />
+            <TypingIndicator users={otherTypingUsers} />
           </div>
         )}
         {!isMember && activeRoom.type === "public" ? (

@@ -3,7 +3,6 @@ import type React from "react"
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react"
 import axios from "axios"
 import { usePage } from "@inertiajs/react"
-import { useDebounce } from "@/hooks/useDebounce"
 import toast from "react-hot-toast"
 import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
@@ -200,6 +199,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isScrolledToBottomRef = useRef(true)
+  const typingActiveRef = useRef(false)
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const remoteTypingTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
@@ -477,12 +479,55 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })
 
+    const normalizeTypingUser = (payload: {
+      id: number
+      name: string
+      avatar?: string
+      avatar_url?: string
+    }): User => {
+      const avatar = payload.avatar ?? payload.avatar_url ?? "/placeholder.svg?height=32&width=32"
+
+      return {
+        id: payload.id,
+        name: payload.name,
+        avatar_url: avatar,
+        is_online: true,
+        role: "",
+      }
+    }
+
+    const clearRemoteTypingTimer = (userId: number) => {
+      const existing = remoteTypingTimersRef.current.get(userId)
+      if (existing) {
+        clearTimeout(existing)
+        remoteTypingTimersRef.current.delete(userId)
+      }
+    }
+
     // Typing indicator listener
-    channel.listen(".user.typing", (e: { user: User; is_typing: boolean }) => {
-      setTypingUsers((prev) =>
-        e.is_typing ? [...prev.filter((u) => u.id !== e.user.id), e.user] : prev.filter((u) => u.id !== e.user.id),
-      )
-    })
+    channel.listen(
+      ".user.typing",
+      (e: { user: { id: number; name: string; avatar?: string; avatar_url?: string }; is_typing: boolean }) => {
+        if (e.user.id === currentUser.id) return
+
+        if (e.is_typing) {
+          const user = normalizeTypingUser(e.user)
+          setTypingUsers((prev) => [...prev.filter((u) => u.id !== user.id), user])
+
+          clearRemoteTypingTimer(user.id)
+          remoteTypingTimersRef.current.set(
+            user.id,
+            setTimeout(() => {
+              setTypingUsers((prev) => prev.filter((u) => u.id !== user.id))
+              remoteTypingTimersRef.current.delete(user.id)
+            }, 4000),
+          )
+        } else {
+          clearRemoteTypingTimer(e.user.id)
+          setTypingUsers((prev) => prev.filter((u) => u.id !== e.user.id))
+        }
+      },
+    )
 
     // Add membership event listeners
     channel.listen(".member.joined", (e: { user: User }) => {
@@ -547,6 +592,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return () => {
+      channel.stopListening(".MessageSent")
+      channel.stopListening(".user.typing")
+      channel.stopListening(".member.joined")
+      channel.stopListening(".member.left")
+      remoteTypingTimersRef.current.forEach((timer) => clearTimeout(timer))
+      remoteTypingTimersRef.current.clear()
       echoInstance.leave(channelName)
       if (roomType !== "public") {
         echoInstance.leave(`presence-chat.${roomId}`)
@@ -826,14 +877,63 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [activeRoom?.id, currentUser],
   )
 
-  const setTypingStatus = useDebounce(async (isTyping: boolean) => {
-    if (!activeRoom) return
+  const emitTypingStatus = useCallback(async (roomId: number, isTyping: boolean) => {
     try {
-      await api.post(`/chat/rooms/${activeRoom.id}/typing`, { is_typing: isTyping })
+      await api.post(`/chat/rooms/${roomId}/typing`, { is_typing: isTyping })
     } catch (error) {
-      console.error("Error setting typing status:", error)
+      if (import.meta.env.DEV) {
+        console.error("Error setting typing status:", error)
+      }
     }
-  }, 300)
+  }, [])
+
+  const setTypingStatus = useCallback(
+    (isTyping: boolean) => {
+      const roomId = activeRoomRef.current?.id
+      if (!roomId) return
+
+      if (isTyping) {
+        if (!typingActiveRef.current) {
+          typingActiveRef.current = true
+          void emitTypingStatus(roomId, true)
+        }
+
+        if (typingStopTimerRef.current) {
+          clearTimeout(typingStopTimerRef.current)
+        }
+
+        typingStopTimerRef.current = setTimeout(() => {
+          typingActiveRef.current = false
+          typingStopTimerRef.current = null
+          void emitTypingStatus(roomId, false)
+        }, 2500)
+      } else {
+        if (typingStopTimerRef.current) {
+          clearTimeout(typingStopTimerRef.current)
+          typingStopTimerRef.current = null
+        }
+        if (typingActiveRef.current) {
+          typingActiveRef.current = false
+          void emitTypingStatus(roomId, false)
+        }
+      }
+    },
+    [emitTypingStatus],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (typingStopTimerRef.current) {
+        clearTimeout(typingStopTimerRef.current)
+        typingStopTimerRef.current = null
+      }
+      const roomId = activeRoomRef.current?.id
+      if (typingActiveRef.current && roomId) {
+        typingActiveRef.current = false
+        void emitTypingStatus(roomId, false)
+      }
+    }
+  }, [emitTypingStatus])
 
   // Auto-scroll handling
   useEffect(() => {
