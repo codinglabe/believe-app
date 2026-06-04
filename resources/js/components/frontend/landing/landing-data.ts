@@ -23,6 +23,9 @@ import {
   LineChart,
 } from "lucide-react"
 
+/** YouTube ID for the hero “Watch demo” modal (https://youtu.be/ILMg56oTkp8) */
+export const LANDING_HERO_VIDEO_YOUTUBE_ID = "ILMg56oTkp8"
+
 export const LANDING_HERO_BENEFITS = [
   { label: "Everything You Need", icon: LayoutGrid },
   { label: "All In One Place", icon: Sparkles },

@@ -1,8 +1,10 @@
+import { useState } from "react"
 import { Link } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { Play } from "lucide-react"
 import { LANDING_HERO_BENEFITS } from "./landing-data"
 import { LandingHeroHub } from "./landing-hero-hub"
+import { LandingHeroVideoModal } from "./landing-hero-video-modal"
 import { GradientCtaButton, LandingGradientText } from "./landing-section"
 import { landingTheme } from "./landing-theme"
 
@@ -12,6 +14,7 @@ type LandingHeroProps = {
 }
 
 export function LandingHero({ headline, subtitle }: LandingHeroProps) {
+  const [videoOpen, setVideoOpen] = useState(false)
   const title = headline ?? "One Platform. One Mission."
   const highlight = "Unlimited Impact."
   const sub =
@@ -61,16 +64,19 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
             <Link href={route("register")} className="w-full sm:w-auto">
               <GradientCtaButton className="w-full sm:w-auto">Get Started</GradientCtaButton>
             </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-purple-600 bg-white px-5 py-3 text-sm font-semibold text-purple-700 shadow-sm transition hover:bg-purple-50 sm:w-auto sm:justify-start sm:px-6 sm:py-3.5 sm:text-base dark:border-white/25 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+            <button
+              type="button"
+              onClick={() => setVideoOpen(true)}
+              className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border-2 border-purple-600 bg-white px-5 py-3 text-sm font-semibold text-purple-700 shadow-sm transition hover:bg-purple-50 sm:w-auto sm:justify-start sm:px-6 sm:py-3.5 sm:text-base dark:border-white/25 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             >
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white">
                 <Play className="h-4 w-4 fill-white" />
               </span>
               Watch 2-Minute Demo
-            </a>
+            </button>
           </div>
+
+          <LandingHeroVideoModal open={videoOpen} onOpenChange={setVideoOpen} />
 
           <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:items-center sm:gap-3">
             <div className="flex -space-x-2 shrink-0">
