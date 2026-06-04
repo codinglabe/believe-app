@@ -50,11 +50,12 @@ export function MessageInput() {
   }
 
   const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessage(e.target.value)
-    if (e.target.value.length > 0 && !isTypingRef.current) {
+    const value = e.target.value
+    setMessage(value)
+    if (value.length > 0) {
       isTypingRef.current = true
       setTypingStatus(true)
-    } else if (e.target.value.length === 0 && isTypingRef.current) {
+    } else if (isTypingRef.current) {
       isTypingRef.current = false
       setTypingStatus(false)
     }
@@ -67,6 +68,15 @@ export function MessageInput() {
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [message]);
+
+  useEffect(() => {
+    return () => {
+      if (isTypingRef.current) {
+        isTypingRef.current = false
+        setTypingStatus(false)
+      }
+    }
+  }, [setTypingStatus])
 
   return (
     <div className="flex flex-col gap-3">

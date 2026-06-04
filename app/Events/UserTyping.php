@@ -42,13 +42,16 @@ class UserTyping implements ShouldBroadcastNow
         return 'user.typing';
     }
 
-    public function broadcastWith()
+    public function broadcastWith(): array
     {
+        $avatar = $this->user->avatar_url ?? '/placeholder.svg?height=32&width=32';
+
         return [
             'user' => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,
-                'avatar' => $this->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
+                'avatar' => $avatar,
+                'avatar_url' => $avatar,
             ],
             'room_id' => $this->roomId,
             'is_typing' => $this->isTyping,
