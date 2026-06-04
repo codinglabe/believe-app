@@ -46,7 +46,9 @@ class PushNotificationLogger
             'audience_type' => $data['audience_type'] ?? 'users',
             'deep_link' => $data['deep_link'] ?? null,
             'scheduled_at' => $data['scheduled_at'] ?? null,
-            'created_by' => $data['created_by'] ?? auth()->id(),
+            'created_by' => array_key_exists('created_by', $data)
+                ? $data['created_by']
+                : auth()->id(),
             'status' => PushNotificationLogStatus::Draft,
             'recipient_count' => 0,
             'sent_count' => 0,

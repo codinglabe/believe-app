@@ -33,6 +33,8 @@ class SendChatMessageNotification implements ShouldQueue
     public function handle(): void
     {
         try {
+            $this->message->loadMissing(['chatRoom', 'user:id,name,role']);
+
             $chatRoom = $this->message->chatRoom;
             $sender = $this->message->user;
             $senderName = $sender->name;
@@ -109,6 +111,10 @@ class SendChatMessageNotification implements ShouldQueue
                 'click_action' => $chatUrl,
                 'source_type' => 'chat',
                 'source_id' => (string) $this->message->id,
+                'module_name' => 'chat',
+                'module_record_id' => $this->message->chat_room_id,
+                'created_by' => $this->message->user_id,
+                'deep_link' => parse_url($chatUrl, PHP_URL_PATH) ?: $chatUrl,
             ];
 
             // Send Firebase notification (logs to push_notification_logs for admin overview)

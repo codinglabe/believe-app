@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -157,29 +160,75 @@ class TimezoneService
     }
 
     /**
-     * Get user's timezone with fallback chain
+     * IANA timezone for the current HTTP request (browser header, then web user profile).
+     * Does not mutate config('app.timezone'); app stays UTC for storage and queues.
      */
-    public static function getUserTimezone()
+    public static function requestTimezone(?Request $request = null): string
     {
-        // 1. Try to get from user's stored preference
-        if (\Illuminate\Support\Facades\Auth::check() && \Illuminate\Support\Facades\Auth::user()->timezone) {
-            return \Illuminate\Support\Facades\Auth::user()->timezone;
+        $request = $request ?? (app()->bound('request') ? request() : null);
+
+        if ($request instanceof Request) {
+            $browserTimezone = $request->header('X-Timezone');
+            if ($browserTimezone && self::isValidTimezone($browserTimezone)) {
+                return $browserTimezone;
+            }
         }
 
-        // 2. Try to get from IP address
-        $ipTimezone = self::getTimezoneFromIp();
-        if ($ipTimezone !== config('app.timezone', 'UTC')) {
-            return $ipTimezone;
+        $webUser = Auth::guard('web')->user();
+        if ($webUser instanceof User && $webUser->timezone && self::isValidTimezone($webUser->timezone)) {
+            return $webUser->timezone;
         }
 
-        // 3. Try to get from browser header
-        $browserTimezone = request()->header('X-Timezone');
-        if ($browserTimezone && self::isValidTimezone($browserTimezone)) {
-            return $browserTimezone;
-        }
-
-        // 4. Default fallback
         return config('app.timezone', 'UTC');
+    }
+
+    /**
+     * IANA timezone for a specific user (notifications, emails, per-recipient display).
+     */
+    public static function forUser(?User $user): string
+    {
+        if ($user && $user->timezone && self::isValidTimezone($user->timezone)) {
+            return $user->timezone;
+        }
+
+        return 'America/Chicago';
+    }
+
+    /**
+     * @deprecated Use requestTimezone() for HTTP or forUser() for a specific account.
+     */
+    public static function getUserTimezone(): string
+    {
+        return self::requestTimezone();
+    }
+
+    /**
+     * Format a UTC-stored datetime for display in a target timezone.
+     */
+    public static function formatUtcForTimezone(
+        mixed $datetime,
+        ?string $timezone = null,
+        string $format = 'M j, Y g:i A T',
+    ): string {
+        if ($datetime === null || $datetime === '') {
+            return '';
+        }
+
+        $timezone = $timezone && self::isValidTimezone($timezone)
+            ? $timezone
+            : config('app.timezone', 'UTC');
+
+        try {
+            return \Carbon\Carbon::parse($datetime, 'UTC')->timezone($timezone)->format($format);
+        } catch (\Exception $e) {
+            Log::warning('UTC datetime format failed', [
+                'datetime' => $datetime,
+                'timezone' => $timezone,
+                'error' => $e->getMessage(),
+            ]);
+
+            return (string) $datetime;
+        }
     }
 
     /**
@@ -211,7 +260,7 @@ class TimezoneService
         }
 
         try {
-            return \Carbon\Carbon::parse($datetime)->setTimezone($timezone);
+            return \Carbon\Carbon::parse($datetime, 'UTC')->setTimezone($timezone);
         } catch (\Exception $e) {
             Log::warning('Timezone conversion failed', [
                 'datetime' => $datetime,

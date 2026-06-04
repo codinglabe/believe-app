@@ -46,9 +46,11 @@ class UnityMeetBiuNotifier
         $title = 'Unity Meet invitation';
         $body = "{$hostName} invited you to {$meetingLabel}.";
         if ($livestream->scheduled_at) {
-            $body .= ' Scheduled for '.$livestream->scheduled_at
-                ->timezone(config('app.timezone'))
-                ->format('l, F j, Y \a\t g:i A T').'.';
+            $body .= ' Scheduled for '.TimezoneService::formatUtcForTimezone(
+                $livestream->scheduled_at,
+                TimezoneService::forUser($recipient),
+                'l, F j, Y \a\t g:i A T',
+            ).'.';
         }
 
         $recipient->notify(new UnityMeetInvitationNotification($livestream, $hostName, $joinUrl));
@@ -67,6 +69,10 @@ class UnityMeetBiuNotifier
             'scheduled_at' => $livestream->scheduled_at?->toIso8601String() ?? '',
             'source_type' => 'unity_meet',
             'source_id' => (string) $livestream->id,
+            'module_name' => 'unity_meet',
+            'module_record_id' => $livestream->id,
+            'created_by' => $livestream->user_id,
+            'deep_link' => parse_url($joinUrl, PHP_URL_PATH) ?: $joinUrl,
         ]);
 
         $pushResults = $this->firebaseService->sendToUser($recipient->id, $title, $body, $pushData);

@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\NewsletterAiHtmlSanitizer;
 use App\Services\OpenAiService;
+use App\Services\TimezoneService;
 use App\Support\StripeCustomerChargeAmount;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -856,7 +857,7 @@ AIHTML;
         $newsletters = $query->latest()->paginate(5);
 
         // Format all dates - Convert from UTC (database) to user's timezone
-        $userTimezone = config('app.timezone', 'UTC');
+        $userTimezone = TimezoneService::requestTimezone($request);
         $newsletters->getCollection()->transform(function ($newsletter) use ($userTimezone) {
             if ($newsletter->scheduled_at) {
                 // Get raw UTC value from database - Laravel stores as UTC string
@@ -2582,7 +2583,7 @@ TXT;
         Log::info('Newsletter store request data:', [
             'send_date' => $request->send_date,
             'schedule_type' => $request->schedule_type,
-            'user_timezone' => config('app.timezone'),
+            'user_timezone' => TimezoneService::requestTimezone($request),
             'browser_timezone' => $request->header('X-Timezone'),
             'all_data' => $request->all(),
         ]);
@@ -2628,8 +2629,8 @@ TXT;
         // We removed 'after_or_equal:now' to allow past dates (late newsletters will be sent immediately)
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), $rules);
 
-        // Add custom validation for send_date - Carbon automatically uses config('app.timezone')
-        $validator->after(function ($validator) use ($request) {
+        $userTimezone = TimezoneService::requestTimezone($request);
+        $validator->after(function ($validator) use ($request, $userTimezone) {
             if ($request->input('target_type') === 'roles') {
                 $roles = $request->input('target_roles', []);
                 if (! is_array($roles) || $roles === [] || ! collect($roles)->filter(fn ($r) => is_string($r) && $r !== '')->isNotEmpty()) {
@@ -2650,8 +2651,7 @@ TXT;
 
             if (($request->schedule_type === 'scheduled' || $request->schedule_type === 'recurring') && $request->send_date) {
                 try {
-                    // Carbon automatically uses config('app.timezone') set by middleware
-                    $sendDate = Carbon::parse($request->send_date);
+                    $sendDate = Carbon::parse($request->send_date, $userTimezone);
                     $now = Carbon::now();
 
                     // Allow past dates (late newsletters will be sent immediately)
@@ -2661,7 +2661,7 @@ TXT;
                         Log::warning('Newsletter scheduled for more than 24 hours in the past', [
                             'send_date' => $sendDate->toDateTimeString(),
                             'current_time' => $now->toDateTimeString(),
-                            'timezone' => config('app.timezone'),
+                            'timezone' => $userTimezone,
                         ]);
                     }
                 } catch (\Exception $e) {
@@ -2723,8 +2723,7 @@ TXT;
         $sendDate = null;
         $status = 'draft';
 
-        // Get user's timezone (set by middleware)
-        $userTimezone = config('app.timezone', 'UTC');
+        $userTimezone = TimezoneService::requestTimezone($request);
 
         switch ($request->schedule_type) {
             case 'immediate':
@@ -2825,7 +2824,7 @@ TXT;
         $this->assertNewsletterAccessible($request, $newsletter);
 
         // Format all dates - Convert from UTC (database) to user's timezone
-        $userTimezone = config('app.timezone', 'UTC');
+        $userTimezone = TimezoneService::requestTimezone($request);
 
         if ($newsletter->scheduled_at) {
             // Get raw UTC value from database - Laravel stores as UTC string
@@ -3181,26 +3180,25 @@ TXT;
             'scheduled_at' => 'required|date',
         ]);
 
-        // Carbon automatically uses config('app.timezone') set by middleware
+        $userTimezone = TimezoneService::requestTimezone($request);
+
         \Illuminate\Support\Facades\Log::info('Update schedule debug:', [
             'scheduled_at_input' => $request->scheduled_at,
-            'user_timezone' => config('app.timezone'),
+            'user_timezone' => $userTimezone,
             'browser_timezone' => $request->header('X-Timezone'),
         ]);
 
-        // Parse the scheduled time (in user's timezone from config) and convert to UTC
-        $scheduledAt = Carbon::parse($request->scheduled_at)->utc();
+        $scheduledAt = Carbon::parse($request->scheduled_at, $userTimezone)->utc();
 
-        // Convert back to user timezone for verification
-        $localTime = $scheduledAt->copy()->setTimezone(config('app.timezone'));
+        $localTime = $scheduledAt->copy()->setTimezone($userTimezone);
 
         Log::info('Schedule conversion result:', [
             'original_input' => $request->scheduled_at,
-            'user_timezone' => config('app.timezone'),
+            'user_timezone' => $userTimezone,
             'converted_utc' => $scheduledAt->toISOString(),
             'converted_local' => $localTime->toDateTimeString(),
             'converted_local_iso' => $localTime->toISOString(),
-            'verification' => "User entered {$request->scheduled_at} in ".config('app.timezone').", stored as {$scheduledAt->toDateTimeString()} UTC, which is {$localTime->toDateTimeString()} in ".config('app.timezone'),
+            'verification' => "User entered {$request->scheduled_at} in {$userTimezone}, stored as {$scheduledAt->toDateTimeString()} UTC, which is {$localTime->toDateTimeString()} in {$userTimezone}",
         ]);
 
         // Check if updating to a past date (late newsletter)
@@ -3223,18 +3221,18 @@ TXT;
             ? 'Newsletter schedule updated. Since the time is in the past, it will be sent immediately when the scheduler runs.'
             : 'Newsletter schedule updated successfully.';
 
-        $localTime = $scheduledAt->copy()->setTimezone(config('app.timezone'));
+        $localTime = $scheduledAt->copy()->setTimezone($userTimezone);
 
         Log::info('Newsletter schedule updated', [
             'newsletter_id' => $newsletter->id,
             'old_scheduled_at_utc' => $newsletter->getOriginal('scheduled_at'),
-            'old_scheduled_at_local' => $newsletter->getOriginal('scheduled_at') ? Carbon::parse($newsletter->getOriginal('scheduled_at'))->setTimezone(config('app.timezone'))->toDateTimeString() : null,
+            'old_scheduled_at_local' => $newsletter->getOriginal('scheduled_at') ? Carbon::parse($newsletter->getOriginal('scheduled_at'), 'UTC')->setTimezone($userTimezone)->toDateTimeString() : null,
             'new_scheduled_at_utc' => $scheduledAt->toISOString(),
             'new_scheduled_at_local' => $localTime->toDateTimeString(),
             'old_send_date_utc' => $newsletter->getOriginal('send_date'),
             'new_send_date_utc' => $scheduledAt->toISOString(),
             'is_late' => $isLate,
-            'user_timezone' => config('app.timezone'),
+            'user_timezone' => TimezoneService::requestTimezone($request),
         ]);
 
         return redirect()->route('newsletter.index')

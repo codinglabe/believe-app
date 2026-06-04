@@ -66,7 +66,11 @@ class PushNotificationsController extends Controller
         }
 
         $firebase = app(FirebaseService::class);
-        $data = ['source_type' => 'admin_test', 'source_id' => null];
+        $data = [
+            'source_type' => 'admin_test',
+            'source_id' => null,
+            'created_by' => $request->user()->id,
+        ];
         $results = $firebase->sendToUser($record->user_id, 'Test from Admin', 'This is a test push notification.', $data);
         $success = !empty($results) && collect($results)->contains(fn ($r) => $r['success'] ?? false);
 

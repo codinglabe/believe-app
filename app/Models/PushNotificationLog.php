@@ -2,14 +2,19 @@
 
 namespace App\Models;
 
+use App\Casts\UtcDatetime;
 use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationModule;
+use App\Models\Concerns\HasUtcTimestamps;
+use App\Support\PushNotificationLogMetadata;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PushNotificationLog extends Model
 {
+    use HasUtcTimestamps;
+
     protected $table = 'push_notification_logs';
 
     protected $fillable = [
@@ -33,8 +38,10 @@ class PushNotificationLog extends Model
     ];
 
     protected $casts = [
-        'scheduled_at' => 'datetime',
-        'sent_at' => 'datetime',
+        'scheduled_at' => UtcDatetime::class,
+        'sent_at' => UtcDatetime::class,
+        'created_at' => UtcDatetime::class,
+        'updated_at' => UtcDatetime::class,
         'recipient_count' => 'integer',
         'sent_count' => 'integer',
         'delivered_count' => 'integer',
@@ -65,6 +72,31 @@ class PushNotificationLog extends Model
 
     public function moduleLabel(): string
     {
-        return PushNotificationModule::labels()[$this->module_name] ?? ucfirst(str_replace('_', ' ', $this->module_name));
+        return PushNotificationLogMetadata::moduleLabel($this);
+    }
+
+    public function resolvedModuleName(): string
+    {
+        return PushNotificationLogMetadata::resolveModuleName($this);
+    }
+
+    public static function userRoleLabel(?string $role): string
+    {
+        return match ($role) {
+            'admin' => 'Admin',
+            'organization' => 'Organization',
+            'organization_pending' => 'Organization (Pending)',
+            'user' => 'Supporter',
+            'care_alliance' => 'Care Alliance',
+            default => $role ? ucfirst(str_replace('_', ' ', $role)) : 'System',
+        };
+    }
+
+    /**
+     * @return array{id: int, name: string, role: string|null, role_label: string}|null
+     */
+    public function creatorPayload(): ?array
+    {
+        return PushNotificationLogMetadata::creatorPayload($this);
     }
 }

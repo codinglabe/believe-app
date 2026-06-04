@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Organization;
 use App\Models\SupporterActivity;
 use App\Models\User;
+use App\Services\TimezoneService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -56,9 +57,11 @@ class SupporterActivityController extends BaseController
 
         $topSupporters = $this->buildTopSupporters($orgId, $from);
 
-        $recentActivity = $this->buildRecentActivityFeed($orgId, $from);
+        $viewerTimezone = TimezoneService::requestTimezone($request);
 
-        $transactionLedger = $this->buildTransactionLedger($orgId, $from);
+        $recentActivity = $this->buildRecentActivityFeed($orgId, $from, $viewerTimezone);
+
+        $transactionLedger = $this->buildTransactionLedger($orgId, $from, $viewerTimezone);
 
         $metricDrilldown = $metric
             ? $this->buildMetricDrilldown($orgId, $metric, $from)
@@ -400,7 +403,7 @@ class SupporterActivityController extends BaseController
     /**
      * @return list<array<string, mixed>>
      */
-    private function buildRecentActivityFeed(int $orgId, ?Carbon $from): array
+    private function buildRecentActivityFeed(int $orgId, ?Carbon $from, string $viewerTimezone): array
     {
         $rows = SupporterActivity::query()
             ->where('organization_id', $orgId)
@@ -410,14 +413,14 @@ class SupporterActivityController extends BaseController
             ->limit(100)
             ->get();
 
-        return $rows->map(function (SupporterActivity $row) {
+        return $rows->map(function (SupporterActivity $row) use ($viewerTimezone) {
             return [
                 'id' => $row->id,
                 'supporter_id' => $row->supporter_id,
                 'supporter_name' => $row->supporter->name ?? ('User #' . $row->supporter_id),
                 'event_type' => $row->event_type,
                 'organization_name' => $row->organization->name ?? '',
-                'date_display' => $row->created_at?->timezone(config('app.timezone'))->format('M j, Y g:i A') ?? '',
+                'date_display' => TimezoneService::formatUtcForTimezone($row->created_at, $viewerTimezone, 'M j, Y g:i A'),
                 'money_display' => $this->formatMoneyFromCents($row->amount_cents),
                 'believe_points' => $row->believe_points,
                 'points_display' => $row->believe_points !== null && (int) $row->believe_points > 0
@@ -432,7 +435,7 @@ class SupporterActivityController extends BaseController
      *
      * @return list<array<string, mixed>>
      */
-    private function buildTransactionLedger(int $orgId, ?Carbon $from): array
+    private function buildTransactionLedger(int $orgId, ?Carbon $from, string $viewerTimezone): array
     {
         $rows = SupporterActivity::query()
             ->where('organization_id', $orgId)
@@ -442,13 +445,13 @@ class SupporterActivityController extends BaseController
             ->limit(250)
             ->get();
 
-        return $rows->map(fn (SupporterActivity $row) => $this->ledgerRowFromActivity($row))->values()->all();
+        return $rows->map(fn (SupporterActivity $row) => $this->ledgerRowFromActivity($row, $viewerTimezone))->values()->all();
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function ledgerRowFromActivity(SupporterActivity $row): array
+    private function ledgerRowFromActivity(SupporterActivity $row, string $viewerTimezone): array
     {
         $cents = $row->amount_cents;
         $moneyAmount = ($cents !== null && (int) $cents > 0)
@@ -489,8 +492,8 @@ class SupporterActivityController extends BaseController
             'transaction_reference' => $this->ledgerScalarCell($txRef),
             'outcome_type' => $this->ledgerScalarCell($row->outcome_type),
             'metadata_json' => $this->ledgerJsonCell($row->metadata_json),
-            'created_at' => $row->created_at?->timezone(config('app.timezone'))->format('Y-m-d H:i:s') ?? '—',
-            'updated_at' => $row->updated_at?->timezone(config('app.timezone'))->format('Y-m-d H:i:s') ?? '—',
+            'created_at' => TimezoneService::formatUtcForTimezone($row->created_at, $viewerTimezone, 'Y-m-d H:i:s') ?: '—',
+            'updated_at' => TimezoneService::formatUtcForTimezone($row->updated_at, $viewerTimezone, 'Y-m-d H:i:s') ?: '—',
         ];
     }
 

@@ -3,6 +3,8 @@
 namespace App\Notifications;
 
 use App\Models\CareAllianceInvitation;
+use App\Models\User;
+use App\Services\TimezoneService;
 use Illuminate\Notifications\Notification;
 
 class CareAllianceInvitationNotification extends Notification
@@ -42,8 +44,15 @@ class CareAllianceInvitationNotification extends Notification
             : 'A Unity Impact Alliance organizer';
 
         $expires = $invitation->expires_at;
+        $recipientTz = $notifiable instanceof User
+            ? TimezoneService::forUser($notifiable)
+            : config('app.timezone', 'UTC');
         $expiresLine = $expires
-            ? ' This invitation expires on '.$expires->timezone(config('app.timezone'))->format('M j, Y \a\t g:i A').'.'
+            ? ' This invitation expires on '.TimezoneService::formatUtcForTimezone(
+                $expires,
+                $recipientTz,
+                'M j, Y \a\t g:i A',
+            ).'.'
             : '';
 
         $title = 'Unity Impact Alliance invitation';

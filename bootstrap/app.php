@@ -76,8 +76,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'sidebar_state',
         ]);
 
-        // DetectTimezone must run before HandleInertiaRequests so config('app.timezone') and
-        // Carbon are correct for shared props and any date formatting in that middleware.
+        // DetectTimezone syncs the viewer's IANA timezone to users.timezone (X-Timezone header).
         $middleware->web(prepend: [
             ForceHttps::class,
         ]);
@@ -85,7 +84,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             GrantMeetingEmbedPermissions::class,
             HandleAppearance::class,
-            DetectTimezone::class, // Sets timezone for entire application (reads X-Timezone header)
+            DetectTimezone::class, // Persists browser timezone to users.timezone (app stays UTC)
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             IncreaseUploadLimits::class,

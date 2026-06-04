@@ -81,6 +81,55 @@ export function setTimezoneHeader() {
     }
 }
 
+/** True when the string already includes Z or a numeric UTC offset. */
+function hasTimezoneOffset(value: string): boolean {
+    return /[Zz]$|[+-]\d{2}:\d{2}$/.test(value.trim());
+}
+
+/**
+ * Parse an API/DB timestamp as UTC, then format in the viewer's local timezone.
+ */
+export function parseUtcTimestamp(value: string | null | undefined): Date {
+    if (!value) {
+        return new Date(Number.NaN);
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return new Date(Number.NaN);
+    }
+
+    if (hasTimezoneOffset(trimmed)) {
+        return new Date(trimmed);
+    }
+
+    const normalized = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
+    return new Date(`${normalized}Z`);
+}
+
+/**
+ * Format a UTC-stored timestamp for display in the browser's local timezone.
+ */
+export function formatUtcTimestamp(
+    value: string | null | undefined,
+    options: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    },
+): string {
+    const date = parseUtcTimestamp(value);
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+}
+
 /**
  * Format date in user's timezone
  */

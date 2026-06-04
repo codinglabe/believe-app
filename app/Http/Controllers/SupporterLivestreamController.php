@@ -21,6 +21,7 @@ use App\Support\UnityMeetInviteNotifyVia;
 use App\Support\UserEmailCredits;
 use App\Support\StreamingWorkerSourceUrl;
 use App\Services\ConnectionHubUnityMeetListing;
+use App\Services\TimezoneService;
 use App\Services\DropboxOAuthService;
 use App\Services\UnityMeetBiuNotifier;
 use App\Services\DropboxOrgApi;
@@ -404,7 +405,7 @@ class SupporterLivestreamController extends Controller
         $scheduledAt = Carbon::createFromFormat(
             'Y-m-d H:i',
             $validated['schedule_date'].' '.$validated['schedule_time'],
-            config('app.timezone')
+            TimezoneService::requestTimezone($request)
         );
         if (! $scheduledAt || $scheduledAt->isPast()) {
             return back()->withErrors(['schedule_date' => 'Schedule time must be in the future.'])->withInput();

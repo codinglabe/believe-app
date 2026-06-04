@@ -125,8 +125,12 @@ final class PushNotificationLogListFilters
         return User::query()
             ->whereIn('id', $creatorIds)
             ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])
+            ->get(['id', 'name', 'role'])
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'role_label' => \App\Models\PushNotificationLog::userRoleLabel($u->role),
+            ])
             ->values()
             ->all();
     }

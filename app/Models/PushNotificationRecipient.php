@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Casts\UtcDatetime;
 use App\Enums\PushNotificationRecipientStatus;
+use App\Models\Concerns\HasUtcTimestamps;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PushNotificationRecipient extends Model
 {
+    use HasUtcTimestamps;
+
     protected $table = 'push_notification_recipients';
 
     protected $fillable = [
@@ -22,9 +26,11 @@ class PushNotificationRecipient extends Model
     ];
 
     protected $casts = [
-        'delivered_at' => 'datetime',
-        'opened_at' => 'datetime',
-        'failed_at' => 'datetime',
+        'delivered_at' => UtcDatetime::class,
+        'opened_at' => UtcDatetime::class,
+        'failed_at' => UtcDatetime::class,
+        'created_at' => UtcDatetime::class,
+        'updated_at' => UtcDatetime::class,
         'status' => PushNotificationRecipientStatus::class,
     ];
 

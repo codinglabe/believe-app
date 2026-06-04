@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Mail\UnityMeetInvitationMail;
 use App\Models\User;
 use App\Models\UserLivestream;
+use App\Services\TimezoneService;
 use App\Support\LivestreamParticipantEmails;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -88,8 +89,14 @@ class SendUnityMeetInvitationEmail implements ShouldQueue
 
         $hostName = trim((string) ($settings['display_name'] ?? $livestream->user?->name ?? 'Your host'));
         $joinUrl = \App\Support\UnityMeetUrls::guestJoinUrl($livestream->room_name);
+        $recipientUser = User::query()->whereRaw('LOWER(email) = ?', [strtolower(trim($email))])->first();
+        $recipientTz = TimezoneService::forUser($recipientUser);
         $scheduledAtFormatted = $livestream->scheduled_at
-            ? $livestream->scheduled_at->timezone(config('app.timezone'))->format('l, F j, Y \a\t g:i A T')
+            ? TimezoneService::formatUtcForTimezone(
+                $livestream->scheduled_at,
+                $recipientTz,
+                'l, F j, Y \a\t g:i A T',
+            )
             : 'Join when ready';
         $requiresPasscode = $livestream->requiresPasscode();
         $passcode = $requiresPasscode ? $livestream->getDecryptedPassword() : null;

@@ -42,6 +42,7 @@ final class PushNotificationLogExport implements FromGenerator, WithHeadings
             'Failed',
             'Status',
             'Created By',
+            'Creator Type',
             'Deep Link',
         ];
     }

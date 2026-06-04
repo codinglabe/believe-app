@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\PushNotificationModule;
+use App\Models\User;
 use App\Models\UserPushToken;
 use App\Models\PushNotificationLog;
 use App\Services\PushNotificationLogger;
+use App\Support\PushNotificationLogMetadata;
 use Google\Auth\HttpHandler\HttpHandlerFactory;
 use Google\Auth\Credentials\ServiceAccountCredentials as GoogleServiceAccountCredentials;
 use GuzzleHttp\Client;
@@ -258,25 +261,27 @@ class FirebaseService
      * @param  int  $userId
      * @param  string  $title
      * @param  string  $body
-     * @param  array  $data  Optional keys: content_item_id, click_action, source_type, source_id, module_name, organization_id, module_record_id, deep_link, audience_type
+     * @param  array  $data  Optional keys: content_item_id, click_action, source_type, source_id, module_name, organization_id, module_record_id, deep_link, audience_type, created_by, sender_id
      * @return array<string, array{success: bool, error_code: ?string, response: ?array}>
      */
     public function sendToUser($userId, $title, $body, $data = [])
     {
         $logger = app(PushNotificationLogger::class);
 
-        $moduleName = $data['module_name'] ?? $this->resolveModuleFromSourceType($data['source_type'] ?? null);
+        [$moduleName, $moduleRecordId, $deepLink, $createdBy] = $this->resolveLogContext($data, $title, $body);
+
         $organizationId = isset($data['organization_id']) ? (int) $data['organization_id'] : null;
-        $moduleRecordId = isset($data['module_record_id'])
-            ? (int) $data['module_record_id']
-            : (isset($data['source_id']) ? (int) $data['source_id'] : null);
 
-        $deepLink = $data['deep_link'] ?? null;
-        if (! $deepLink && ! empty($data['click_action'])) {
-            $deepLink = parse_url($data['click_action'], PHP_URL_PATH) ?: $data['click_action'];
-        }
-
-        unset($data['module_name'], $data['organization_id'], $data['module_record_id'], $data['deep_link'], $data['source_type'], $data['source_id']);
+        unset(
+            $data['module_name'],
+            $data['organization_id'],
+            $data['module_record_id'],
+            $data['deep_link'],
+            $data['source_type'],
+            $data['source_id'],
+            $data['created_by'],
+            $data['sender_id'],
+        );
 
         $log = $logger->dispatch(
             [
@@ -288,6 +293,7 @@ class FirebaseService
                 'notification_body' => $body,
                 'audience_type' => $data['audience_type'] ?? 'user',
                 'deep_link' => $deepLink,
+                'created_by' => $createdBy,
             ],
             [(int) $userId],
             $data,
@@ -339,18 +345,20 @@ class FirebaseService
     {
         $logger = app(PushNotificationLogger::class);
 
-        $moduleName = $data['module_name'] ?? $this->resolveModuleFromSourceType($data['source_type'] ?? null);
+        [$moduleName, $moduleRecordId, $deepLink, $createdBy] = $this->resolveLogContext($data, $title, $body);
+
         $organizationId = isset($data['organization_id']) ? (int) $data['organization_id'] : null;
-        $moduleRecordId = isset($data['module_record_id'])
-            ? (int) $data['module_record_id']
-            : (isset($data['source_id']) ? (int) $data['source_id'] : null);
 
-        $deepLink = $data['deep_link'] ?? null;
-        if (! $deepLink && ! empty($data['click_action'])) {
-            $deepLink = parse_url($data['click_action'], PHP_URL_PATH) ?: $data['click_action'];
-        }
-
-        unset($data['module_name'], $data['organization_id'], $data['module_record_id'], $data['deep_link'], $data['source_type'], $data['source_id']);
+        unset(
+            $data['module_name'],
+            $data['organization_id'],
+            $data['module_record_id'],
+            $data['deep_link'],
+            $data['source_type'],
+            $data['source_id'],
+            $data['created_by'],
+            $data['sender_id'],
+        );
 
         return $logger->dispatch(
             [
@@ -361,6 +369,7 @@ class FirebaseService
                 'notification_body' => $body,
                 'audience_type' => $data['audience_type'] ?? 'users',
                 'deep_link' => $deepLink,
+                'created_by' => $createdBy,
             ],
             $userIds,
             $data,
@@ -374,13 +383,72 @@ class FirebaseService
             'course' => 'courses',
             'campaign' => 'campaigns',
             'donation' => 'donations',
-            'chat' => 'system',
+            'chat', 'chat_message' => 'chat',
+            'unity_meet', 'unity_meet_invitation' => 'unity_meet',
+            'unity_live', 'livestream' => 'unity_live',
             'job_post' => 'volunteer',
             'newsletter', 'email' => 'email',
             'marketplace', 'order' => 'marketplace',
+            'proximity' => 'proximity',
+            'daily_engagement' => 'daily_engagement',
+            'social_feed', 'post', 'group' => 'social_feed',
+            'membership' => 'membership',
+            'wallet', 'believe_points', 'gift' => 'wallet_rewards',
             'admin_test' => 'system',
             default => 'system',
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{0: string, 1: int|null, 2: string|null, 3: int|null}
+     */
+    private function resolveLogContext(array $data, string $title, string $body): array
+    {
+        $moduleName = $data['module_name'] ?? $this->resolveModuleFromSourceType($data['source_type'] ?? null);
+        $moduleRecordId = isset($data['module_record_id'])
+            ? (int) $data['module_record_id']
+            : (isset($data['source_id']) ? (int) $data['source_id'] : null);
+
+        $deepLink = $data['deep_link'] ?? null;
+        if (! $deepLink && ! empty($data['click_action'])) {
+            $deepLink = parse_url($data['click_action'], PHP_URL_PATH) ?: $data['click_action'];
+        }
+
+        if ($moduleName === PushNotificationModule::System->value
+            && PushNotificationLogMetadata::looksLikeChat($title, $body, $deepLink)) {
+            $moduleName = PushNotificationModule::Chat->value;
+        }
+
+        $createdBy = $this->resolveCreatedBy($data);
+
+        if (! $createdBy && $moduleName === PushNotificationModule::Chat->value) {
+            $senderName = PushNotificationLogMetadata::parseSenderNameFromBody($body, $title);
+            if ($senderName) {
+                $createdBy = User::query()->where('name', $senderName)->value('id');
+                $createdBy = $createdBy ? (int) $createdBy : null;
+            }
+        }
+
+        return [$moduleName, $moduleRecordId, $deepLink, $createdBy];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveCreatedBy(array $data): ?int
+    {
+        if (isset($data['created_by']) && (int) $data['created_by'] > 0) {
+            return (int) $data['created_by'];
+        }
+
+        if (isset($data['sender_id']) && (int) $data['sender_id'] > 0) {
+            return (int) $data['sender_id'];
+        }
+
+        $authId = auth()->id();
+
+        return $authId ? (int) $authId : null;
     }
 
     /**

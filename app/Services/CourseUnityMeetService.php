@@ -56,7 +56,7 @@ class CourseUnityMeetService
         $scheduledAt = Carbon::createFromFormat(
             'Y-m-d H:i',
             $input['start_date'].' '.$input['start_time'],
-            config('app.timezone')
+            TimezoneService::forUser($user)
         );
 
         if (! $scheduledAt) {
@@ -165,7 +165,7 @@ class CourseUnityMeetService
         if ($course->start_date && $course->start_time) {
             $scheduledAt = Carbon::parse(
                 $course->start_date->format('Y-m-d').' '.$course->start_time,
-                config('app.timezone')
+                TimezoneService::forUser($course->user ?? null)
             );
             $livestream->scheduled_at = $scheduledAt;
         }

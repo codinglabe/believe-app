@@ -40,7 +40,7 @@ class PushNotificationLogController extends Controller
         }
 
         $query = PushNotificationLog::query()
-            ->with(['organization:id,name', 'creator:id,name,email']);
+            ->with(['organization:id,name', 'creator:id,name,email,role']);
 
         $this->filters->apply($query, $request, $orgScope);
 
@@ -83,7 +83,7 @@ class PushNotificationLogController extends Controller
     {
         $this->authorize('view', $pushNotificationLog);
 
-        $pushNotificationLog->load(['organization:id,name', 'creator:id,name,email']);
+        $pushNotificationLog->load(['organization:id,name', 'creator:id,name,email,role']);
 
         $recipientsQuery = $pushNotificationLog->recipients()
             ->with('recipientUser:id,name,email')
@@ -189,7 +189,7 @@ class PushNotificationLogController extends Controller
         }
 
         $query = PushNotificationLog::query()
-            ->with(['organization:id,name', 'creator:id,name']);
+            ->with(['organization:id,name', 'creator:id,name,role']);
 
         $this->filters->apply($query, $request, $orgScope);
 
@@ -208,6 +208,7 @@ class PushNotificationLogController extends Controller
                 $log->failed_count,
                 $log->status instanceof \BackedEnum ? $log->status->value : (string) $log->status,
                 $log->creator?->name,
+                $log->creator ? PushNotificationLog::userRoleLabel($log->creator->role) : 'System',
                 $log->deep_link,
             ];
         }
@@ -225,7 +226,7 @@ class PushNotificationLogController extends Controller
                 'id' => $log->organization->id,
                 'name' => $log->organization->name,
             ] : null,
-            'module_name' => $log->module_name,
+            'module_name' => $log->resolvedModuleName(),
             'module_label' => $log->moduleLabel(),
             'notification_title' => $log->notification_title,
             'audience_type' => $log->audience_type,
@@ -235,10 +236,7 @@ class PushNotificationLogController extends Controller
             'opened_count' => $log->opened_count,
             'failed_count' => $log->failed_count,
             'status' => $log->status instanceof \BackedEnum ? $log->status->value : (string) $log->status,
-            'creator' => $log->creator ? [
-                'id' => $log->creator->id,
-                'name' => $log->creator->name,
-            ] : null,
+            'creator' => $log->creatorPayload(),
         ];
     }
 

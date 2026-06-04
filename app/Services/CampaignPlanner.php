@@ -52,7 +52,7 @@ class CampaignPlanner
 
     private static function calculatePublishTime(Carbon $date, string $sendTimeLocal, string $timezone = null)
     {
-        $timezone = $timezone ?? config('app.timezone');
+        $timezone = $timezone ?? TimezoneService::requestTimezone();
 
         // Parse the local time and convert to UTC
         $localDateTime = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $sendTimeLocal, $timezone);

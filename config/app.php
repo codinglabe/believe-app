@@ -95,9 +95,8 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Default for console, queues, and code outside an HTTP request. For web and
-    | API requests, App\Http\Middleware\DetectTimezone overrides this using the
-    | X-Timezone header (browser) or the authenticated user's stored timezone.
+    | Always UTC for storage, queues, and Carbon defaults. Per-viewer display and
+    | user input parsing use App\Services\TimezoneService (X-Timezone / users.timezone).
     |
     */
 

@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Models\User;
 use App\Models\UserLivestream;
+use App\Services\TimezoneService;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -27,9 +29,14 @@ class UnityMeetInvitationNotification extends Notification
 
         $body = "{$this->hostName} invited you to {$meetingLabel}.";
         if ($this->livestream->scheduled_at) {
-            $body .= ' Scheduled for '.$this->livestream->scheduled_at
-                ->timezone(config('app.timezone'))
-                ->format('l, F j, Y \a\t g:i A T').'.';
+            $recipientTz = $notifiable instanceof User
+                ? TimezoneService::forUser($notifiable)
+                : config('app.timezone', 'UTC');
+            $body .= ' Scheduled for '.TimezoneService::formatUtcForTimezone(
+                $this->livestream->scheduled_at,
+                $recipientTz,
+                'l, F j, Y \a\t g:i A T',
+            ).'.';
         }
 
         return [

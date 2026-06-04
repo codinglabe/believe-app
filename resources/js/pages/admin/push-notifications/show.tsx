@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { format } from "date-fns";
+import { formatUtcTimestamp } from "@/lib/timezone-detection";
 import type { BreadcrumbItem } from "@/types";
 
 type LogDetail = {
@@ -36,7 +36,7 @@ type LogDetail = {
   deep_link: string | null;
   scheduled_at: string | null;
   sent_at: string | null;
-  creator: { id: number; name: string } | null;
+  creator: { id: number; name: string; role: string | null; role_label: string } | null;
 };
 
 type RecipientRow = {
@@ -84,8 +84,7 @@ export default function PushNotificationShow({ log, recipients, canRepush }: Pag
     router.post(`/admin/push-notifications/${log.id}/repush`, {}, { preserveScroll: true });
   };
 
-  const fmt = (iso: string | null) =>
-    iso ? format(new Date(iso), "MMM d, yyyy HH:mm:ss") : "—";
+  const fmt = (iso: string | null) => formatUtcTimestamp(iso);
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -145,8 +144,17 @@ export default function PushNotificationShow({ log, recipients, canRepush }: Pag
                 <span className="col-span-2">{log.audience_type}</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <span className="text-muted-foreground">Created By</span>
-                <span className="col-span-2">{log.creator?.name ?? "—"}</span>
+                <span className="text-muted-foreground">Creator</span>
+                <span className="col-span-2">
+                  {log.creator ? (
+                    <div>
+                      <div className="font-medium">{log.creator.name}</div>
+                      <div className="text-muted-foreground text-xs">{log.creator.role_label}</div>
+                    </div>
+                  ) : (
+                    "System (automated)"
+                  )}
+                </span>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <span className="text-muted-foreground">Status</span>

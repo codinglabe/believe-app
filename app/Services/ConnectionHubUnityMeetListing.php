@@ -137,7 +137,7 @@ class ConnectionHubUnityMeetListing
             ? $course->start_date->format('Y-m-d')
             : (string) $course->start_date;
 
-        return Carbon::parse($date.' '.$course->start_time, config('app.timezone'));
+        return Carbon::parse($date.' '.$course->start_time, TimezoneService::requestTimezone());
     }
 
     /**

@@ -31,7 +31,7 @@ import {
   ChevronRight,
   FileSpreadsheet,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatUtcTimestamp } from "@/lib/timezone-detection";
 import type { BreadcrumbItem } from "@/types";
 import { useCallback, useState } from "react";
 
@@ -49,7 +49,7 @@ type LogRow = {
   opened_count: number;
   failed_count: number;
   status: string;
-  creator: { id: number; name: string } | null;
+  creator: { id: number; name: string; role: string | null; role_label: string } | null;
 };
 
 type PaginationLink = { url: string | null; label: string; active: boolean };
@@ -87,7 +87,7 @@ type PageProps = {
   moduleOptions: Record<string, string>;
   statusOptions: string[];
   organizations: { id: number; name: string }[];
-  creators: { id: number; name: string }[];
+  creators: { id: number; name: string; role_label: string }[];
   isPlatformAdmin: boolean;
 };
 
@@ -282,7 +282,7 @@ export default function PushNotificationLogsIndex({
                   <SelectItem value="all">All creators</SelectItem>
                   {creators.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
+                      {c.name} ({c.role_label})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -336,7 +336,7 @@ export default function PushNotificationLogsIndex({
                   <TableHead className="text-right">Opened</TableHead>
                   <TableHead className="text-right">Failed</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Created By</TableHead>
+                  <TableHead>Creator</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -351,9 +351,13 @@ export default function PushNotificationLogsIndex({
                   logs.data.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="whitespace-nowrap text-sm">
-                        {log.created_at
-                          ? format(new Date(log.created_at), "MMM d, yyyy HH:mm")
-                          : "—"}
+                        {formatUtcTimestamp(log.created_at, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </TableCell>
                       <TableCell>{log.organization?.name ?? "—"}</TableCell>
                       <TableCell>{log.module_label}</TableCell>
@@ -369,7 +373,18 @@ export default function PushNotificationLogsIndex({
                           {log.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{log.creator?.name ?? "—"}</TableCell>
+                      <TableCell>
+                        {log.creator ? (
+                          <div>
+                            <div className="font-medium">{log.creator.name}</div>
+                            <div className="text-muted-foreground text-xs">
+                              {log.creator.role_label}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">System</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" asChild>

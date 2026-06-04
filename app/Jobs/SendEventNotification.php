@@ -92,6 +92,7 @@ class SendEventNotification implements ShouldQueue
                     'module_record_id' => $this->event->id,
                     'deep_link' => parse_url($eventUrl, PHP_URL_PATH) ?: $eventUrl,
                     'audience_type' => $this->event->visibility === 'public' ? 'all_users' : 'followers',
+                    'created_by' => $this->event->user_id ?? $organization?->user_id,
                 ]);
             }
 
