@@ -72,4 +72,27 @@ export const landingTheme = {
   heroBtnHeight: "h-11 sm:h-12",
   heroBtnText: "text-xs font-semibold sm:text-sm",
   heroBtnIcon: "h-7 w-7 sm:h-8 sm:w-8",
+
+  /** Landing modals (video demo, 501c3ers filing) */
+  modalShell:
+    "relative overflow-hidden rounded-2xl shadow-2xl shadow-slate-900/10 ring-1 ring-slate-200/90 dark:shadow-purple-950/50 dark:ring-purple-500/30",
+  modalGradient:
+    "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-purple-600/10 via-transparent to-blue-600/10 dark:from-purple-600/25 dark:to-blue-600/25",
+  modalBody: "relative bg-white/98 backdrop-blur-xl dark:bg-[#0a0514]/98",
+  modalHeaderBorder: "border-b border-slate-200 dark:border-white/10",
+  modalFooterBorder: "border-t border-slate-200 dark:border-white/10",
+  modalCloseBtn:
+    "[&>button]:right-3 [&>button]:top-3 [&>button]:z-20 [&>button]:rounded-full [&>button]:border [&>button]:border-slate-200 [&>button]:bg-white/95 [&>button]:text-slate-700 [&>button]:opacity-100 [&>button]:shadow-sm [&>button]:hover:bg-slate-100 dark:[&>button]:border-white/20 dark:[&>button]:bg-black/50 dark:[&>button]:text-white dark:[&>button]:hover:bg-black/70 [&>button]:focus:ring-purple-500/50",
+  modalEyebrow: "text-purple-700 dark:text-purple-300/90",
+  modalTitleSubtext: "text-slate-700 dark:text-white/90",
+  modalBodyText: "text-slate-600 dark:text-slate-300",
+  modalStepCard:
+    "rounded-xl border border-slate-200 bg-slate-50/90 dark:border-white/10 dark:bg-white/5",
+  modalStepTitle: "text-slate-900 dark:text-white",
+  modalStepDesc: "text-slate-600 dark:text-slate-400",
+  modalMutedText: "text-slate-500 dark:text-slate-400",
+  modalSignInLink:
+    "font-semibold text-purple-700 underline-offset-2 hover:text-purple-600 hover:underline dark:text-purple-400 dark:hover:text-purple-300",
+  modalVideoLoading:
+    "flex h-full min-h-[200px] items-center justify-center bg-gradient-to-br from-purple-100 via-white to-blue-50 dark:from-purple-950 dark:to-slate-950",
 } as const

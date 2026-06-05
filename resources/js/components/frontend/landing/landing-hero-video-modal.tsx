@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { LANDING_HERO_VIDEO_YOUTUBE_ID } from "./landing-data"
 import { LandingGradientText } from "./landing-section"
+import { landingTheme } from "./landing-theme"
 import { cn } from "@/lib/utils"
 
 type LandingHeroVideoModalProps = {
@@ -37,9 +38,7 @@ export function LandingHeroVideoModal({ open, onOpenChange }: LandingHeroVideoMo
         className={cn(
           "max-w-[calc(100%-1.5rem)] gap-0 overflow-hidden border-0 bg-transparent p-0 shadow-none sm:max-w-3xl lg:max-w-4xl",
           "data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
-          "[&>button]:right-3 [&>button]:top-3 [&>button]:z-20 [&>button]:rounded-full [&>button]:border [&>button]:border-white/20",
-          "[&>button]:bg-black/50 [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-black/70",
-          "[&>button]:focus:ring-purple-500/50",
+          landingTheme.modalCloseBtn,
         )}
       >
         <DialogTitle className="sr-only">Watch the 2-minute Believe In Unity demo</DialogTitle>
@@ -51,26 +50,23 @@ export function LandingHeroVideoModal({ open, onOpenChange }: LandingHeroVideoMo
           initial={{ opacity: 0, y: 28, scale: 0.94 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className="relative overflow-hidden rounded-2xl shadow-2xl shadow-purple-900/30 ring-1 ring-purple-500/30 dark:shadow-purple-950/50"
+          className={landingTheme.modalShell}
         >
-          <div
-            className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-purple-600/25 via-transparent to-blue-600/25"
-            aria-hidden
-          />
+          <div className={landingTheme.modalGradient} aria-hidden />
 
-          <div className="relative bg-slate-950/95 backdrop-blur-xl dark:bg-[#0a0514]/98">
-            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3.5 sm:px-5 sm:py-4">
+          <div className={landingTheme.modalBody}>
+            <div className={cn("flex items-center gap-3 px-4 py-3.5 sm:px-5 sm:py-4", landingTheme.modalHeaderBorder)}>
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-600/30">
                 <Play className="h-4 w-4 fill-white" />
               </span>
               <div className="min-w-0 flex-1 pr-8">
-                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-purple-300/90">
+                <p className={cn("flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider", landingTheme.modalEyebrow)}>
                   <Sparkles className="h-3.5 w-3.5" />
                   Quick demo
                 </p>
-                <p className="truncate text-sm font-semibold text-white sm:text-base">
+                <p className="truncate text-sm font-semibold sm:text-base">
                   <LandingGradientText hero>Believe In Unity</LandingGradientText>
-                  <span className="text-white/90"> in 2 minutes</span>
+                  <span className={landingTheme.modalTitleSubtext}> in 2 minutes</span>
                 </p>
               </div>
             </div>
@@ -91,7 +87,7 @@ export function LandingHeroVideoModal({ open, onOpenChange }: LandingHeroVideoMo
                   referrerPolicy="strict-origin-when-cross-origin"
                 />
               ) : (
-                <div className="flex h-full min-h-[200px] items-center justify-center bg-gradient-to-br from-purple-950 to-slate-950">
+                <div className={landingTheme.modalVideoLoading}>
                   <span className="h-10 w-10 animate-pulse rounded-full bg-gradient-to-r from-purple-600 to-blue-600 opacity-60" />
                 </div>
               )}
