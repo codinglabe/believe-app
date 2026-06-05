@@ -181,7 +181,14 @@ jobs:
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
-          ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
+          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          set -euo pipefail
+          test -f "${DEPLOY_PATH}/public/build/manifest.json"
+          asset_count=\$(find "${DEPLOY_PATH}/public/build/assets" -type f 2>/dev/null | wc -l | tr -d ' ')
+          test "\${asset_count}" -gt 20 || { echo "::error::public/build/assets has only \${asset_count} files"; exit 1; }
+          ls -la "${DEPLOY_PATH}/public/build/manifest.json" | head -1
+          echo "Vite assets on server: \${asset_count} files"
+          REMOTE
 
       - name: Prune non-runtime files on server
         run: |
@@ -219,7 +226,9 @@ jobs:
           php artisan config:cache
           php artisan view:cache
           # cPanel docroot is public_html; Vite assets are under public/build — nginx needs /build at account root.
+          rm -rf build 2>/dev/null || true
           ln -sfn public/build build
+          test -L build && test -d public/build/assets
           # Do not route:cache — duplicate route names can break serialization on the server.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
@@ -238,3 +247,14 @@ jobs:
             sleep 15
           done
           test "${ok}" = "1" || { echo "::error::Homepage smoke test failed after 3 attempts"; exit 1; }
+          html=$(curl -sS --max-time 60 "${APP_URL}/" || true)
+          css_path=$(echo "${html}" | grep -oE '/build/assets/[^"'\'' ]+\.css' | head -1 || true)
+          js_path=$(echo "${html}" | grep -oE '/build/assets/[^"'\'' ]+\.js' | head -1 || true)
+          test -n "${css_path}" || { echo "::error::No Vite CSS path in homepage HTML"; exit 1; }
+          test -n "${js_path}" || { echo "::error::No Vite JS path in homepage HTML"; exit 1; }
+          css_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}${css_path}" || echo "000")
+          js_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}${js_path}" || echo "000")
+          echo "GET ${APP_URL}${css_path} => HTTP ${css_code}"
+          echo "GET ${APP_URL}${js_path} => HTTP ${js_code}"
+          test "${css_code}" = "200" || { echo "::error::Vite CSS asset missing (${css_path})"; exit 1; }
+          test "${js_code}" = "200" || { echo "::error::Vite JS asset missing (${js_path})"; exit 1; }
