@@ -1,6 +1,7 @@
 import { Link } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { ArrowRight, ChevronRight } from "lucide-react"
+import { LandingFilingButton } from "./landing-filing-button"
 import { LandingCtaBackground } from "./landing-cta-background"
 import { LandingCtaVisual } from "./landing-cta-visual"
 import { LandingContainer, LandingGradientText } from "./landing-section"
@@ -53,7 +54,7 @@ export function LandingFinalCta() {
               In Unity.
             </p>
 
-            <div className="mt-6 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center md:justify-start">
+            <div className="mt-6 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center md:justify-start">
               <Link
                 href={route("register")}
                 className={`w-full sm:w-auto ${landingTheme.primaryBtn} px-6 py-3 text-sm sm:px-8 sm:py-3.5 sm:text-base`}
@@ -61,6 +62,7 @@ export function LandingFinalCta() {
                 Get Started Today
                 <ArrowRight className="h-5 w-5" />
               </Link>
+              <LandingFilingButton variant="outline" />
               <Link
                 href={route("pricing")}
                 className={`w-full sm:w-auto ${landingTheme.outlineBtn} px-6 py-3 text-sm sm:px-8 sm:py-3.5 sm:text-base`}

@@ -67,4 +67,9 @@ export const landingTheme = {
 
   outlineBtn:
     "inline-flex items-center justify-center gap-2 rounded-full border-2 border-purple-600 bg-white/80 px-8 py-3.5 text-base font-semibold text-purple-700 transition hover:border-purple-700 hover:bg-purple-50 dark:border-white/60 dark:bg-transparent dark:text-white dark:hover:border-white dark:hover:bg-white/10",
+
+  /** Hero CTA row — equal height for Get Started, demo, and filing buttons */
+  heroBtnHeight: "h-11 sm:h-12",
+  heroBtnText: "text-xs font-semibold sm:text-sm",
+  heroBtnIcon: "h-7 w-7 sm:h-8 sm:w-8",
 } as const

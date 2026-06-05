@@ -4,6 +4,7 @@ import { motion } from "framer-motion"
 import { Play } from "lucide-react"
 import { LANDING_HERO_BENEFITS } from "./landing-data"
 import { LandingHeroHub } from "./landing-hero-hub"
+import { LandingFilingButton } from "./landing-filing-button"
 import { LandingHeroVideoModal } from "./landing-hero-video-modal"
 import { GradientCtaButton, LandingGradientText } from "./landing-section"
 import { landingTheme } from "./landing-theme"
@@ -60,20 +61,27 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
             ))}
           </ul>
 
-          <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-            <Link href={route("register")} className="w-full sm:w-auto">
-              <GradientCtaButton className="w-full sm:w-auto">Get Started</GradientCtaButton>
+          <div className="mt-6 flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:mt-8 sm:gap-3 [&::-webkit-scrollbar]:hidden">
+            <Link href={route("register")} className="shrink-0">
+              <GradientCtaButton
+                className={`${landingTheme.heroBtnHeight} ${landingTheme.heroBtnText} whitespace-nowrap px-4 py-0 sm:px-6`}
+              >
+                Get Started
+              </GradientCtaButton>
             </Link>
             <button
               type="button"
               onClick={() => setVideoOpen(true)}
-              className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border-2 border-purple-600 bg-white px-5 py-3 text-sm font-semibold text-purple-700 shadow-sm transition hover:bg-purple-50 sm:w-auto sm:justify-start sm:px-6 sm:py-3.5 sm:text-base dark:border-white/25 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+              className={`inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-2 border-purple-600 bg-white px-3 text-purple-700 shadow-sm transition hover:bg-purple-50 sm:gap-2 sm:px-5 dark:border-white/25 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 ${landingTheme.heroBtnHeight} ${landingTheme.heroBtnText}`}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                <Play className="h-4 w-4 fill-white" />
+              <span
+                className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white ${landingTheme.heroBtnIcon}`}
+              >
+                <Play className="h-3.5 w-3.5 fill-white sm:h-4 sm:w-4" />
               </span>
-              Watch 2-Minute Demo
+              Watch 2-Min Demo
             </button>
+            <LandingFilingButton variant="hero" />
           </div>
 
           <LandingHeroVideoModal open={videoOpen} onOpenChange={setVideoOpen} />

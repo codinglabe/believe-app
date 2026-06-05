@@ -26,6 +26,46 @@ import {
 /** YouTube ID for the hero “Watch demo” modal (https://youtu.be/ILMg56oTkp8) */
 export const LANDING_HERO_VIDEO_YOUTUBE_ID = "ILMg56oTkp8"
 
+export const LANDING_FILING_STEPS = [
+  {
+    title: "Register your organization",
+    description:
+      "Create your nonprofit profile with EIN verification. If your EIN is not in the IRS database yet, we guide you through next steps.",
+  },
+  {
+    title: "Complete Form 1023",
+    description:
+      "Apply for 501(c)(3) tax-exempt status with our guided Form 1023 application — mission, activities, officers, and required documents.",
+  },
+  {
+    title: "Pay & submit for review",
+    description:
+      "Pay the application fee securely. Our 501c3ers team reviews your filing and keeps you updated on status.",
+  },
+] as const
+
+type LandingAuthUser = {
+  role?: string
+  organization?: { id: number } | null
+}
+
+/** Where the landing “501c3ers Filing” CTA should send the user (matches dashboard / Form 1023 flow). */
+export function resolveLandingFilingHref(auth?: { user?: LandingAuthUser | null }): string {
+  const user = auth?.user
+  if (!user) {
+    return route("register.organization")
+  }
+  if (user.role === "organization" || user.role === "organization_pending") {
+    return route("dashboard")
+  }
+  return route("register.organization")
+}
+
+export function landingFilingIsReturningOrg(auth?: { user?: LandingAuthUser | null }): boolean {
+  const user = auth?.user
+  return Boolean(user && (user.role === "organization" || user.role === "organization_pending"))
+}
+
 export const LANDING_HERO_BENEFITS = [
   { label: "Everything You Need", icon: LayoutGrid },
   { label: "All In One Place", icon: Sparkles },
