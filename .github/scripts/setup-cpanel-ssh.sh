@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Reliable cPanel SSH for GitHub Actions (IPv4-first, multi-host retries).
+# Reliable cPanel SSH for GitHub Actions (IPv4-only, minimal noise).
 # Required env: SSH_PRIVATE_KEY, DEPLOY_USER, DEPLOY_HOST, SSH_DIR
-# Optional env: SSH_CONNECT_HOST (default 72.60.226.88), SSH_IPV6_HOST, SSH_PORT (22)
+# Optional env: SSH_CONNECT_HOST, SSH_PORT (22), SSH_MAX_ATTEMPTS (6), SSH_RETRY_SLEEP (5),
+#   SSH_USE_TCP_PROBE (false), SSH_USE_DEPLOY_HOST (false)
 set -euo pipefail
 
 if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
@@ -11,23 +12,24 @@ fi
 
 SSH_PORT="${SSH_PORT:-22}"
 SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
-SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-45}"
-SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-24}"
-SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
+SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
+SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-6}"
+SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-5}"
+SSH_USE_TCP_PROBE="${SSH_USE_TCP_PROBE:-false}"
+SSH_USE_DEPLOY_HOST="${SSH_USE_DEPLOY_HOST:-false}"
+SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
 
 mkdir -p "${SSH_DIR}"
 chmod 700 "${SSH_DIR}"
 printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
 chmod 600 "${SSH_DIR}/cpanel_deploy"
 
-RUNNER_IP="$(curl -4 -fsS --max-time 10 https://ifconfig.me 2>/dev/null || curl -4 -fsS --max-time 10 https://api.ipify.org 2>/dev/null || echo unknown)"
-echo "GitHub Actions runner public IPv4: ${RUNNER_IP}"
-echo "If SSH keeps timing out, allowlist this IP in Hostinger VPS / WHM firewall for port ${SSH_PORT}."
+RUNNER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo unknown)"
+echo "Runner IPv4: ${RUNNER_IP} → ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
 
-ssh-keyscan -T 10 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-ssh-keyscan -T 10 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-if [ -n "${SSH_IPV6_HOST:-}" ]; then
-  ssh-keyscan -T 10 -p "${SSH_PORT}" -H "${SSH_IPV6_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST:-}" ] && [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
+  ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
 fi
 
 if [ -n "${GITHUB_ENV:-}" ]; then
@@ -60,7 +62,7 @@ write_ssh_host() {
     '  IdentitiesOnly yes' \
     '  StrictHostKeyChecking accept-new' \
     '  ServerAliveInterval 15' \
-    '  ServerAliveCountMax 8' \
+    '  ServerAliveCountMax 4' \
     '  AddressFamily inet' \
     '  IPQoS throughput' \
     '  TCPKeepAlive yes' \
@@ -70,53 +72,42 @@ write_ssh_host() {
 
 tcp_probe() {
   local host="$1"
-  timeout 8 bash -c "cat < /dev/null > /dev/tcp/${host}/${SSH_PORT}" 2>/dev/null
+  timeout 6 bash -c "cat < /dev/null > /dev/tcp/${host}/${SSH_PORT}" 2>/dev/null
 }
 
 run_ssh_test() {
   ssh -4 -F "${SSH_DIR}/config" \
     -o BatchMode=yes \
     -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
-    cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"
+    cpanel-deploy "echo SSH_OK && whoami && hostname"
 }
 
-# IPv4 only by default — GitHub-hosted runners cannot reach Hostinger over IPv6.
-# Set SSH_ALLOW_IPV6=true only if you run a self-hosted runner with working IPv6.
-SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
-SSH_HOSTS=()
-for candidate in "${SSH_CONNECT_HOST}" "${DEPLOY_HOST}"; do
-  if [ -n "${candidate}" ]; then
-    already=0
-    for existing in "${SSH_HOSTS[@]:-}"; do
-      if [ "${existing}" = "${candidate}" ]; then
-        already=1
-        break
-      fi
-    done
-    if [ "${already}" -eq 0 ]; then
-      SSH_HOSTS+=("${candidate}")
-    fi
+# Connect via VPS IPv4 only — do not SSH to DEPLOY_HOST when it is a public site (CDN/proxy).
+SSH_HOSTS=("${SSH_CONNECT_HOST}")
+if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST:-}" ]; then
+  if [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
+    SSH_HOSTS+=("${DEPLOY_HOST}")
   fi
-done
+fi
 if [ "${SSH_ALLOW_IPV6}" = "true" ] && [ -n "${SSH_IPV6_HOST:-}" ]; then
-  already=0
-  for existing in "${SSH_HOSTS[@]:-}"; do
-    if [ "${existing}" = "${SSH_IPV6_HOST}" ]; then
-      already=1
-      break
-    fi
-  done
-  if [ "${already}" -eq 0 ]; then
-    SSH_HOSTS+=("${SSH_IPV6_HOST}")
-  fi
+  SSH_HOSTS+=("${SSH_IPV6_HOST}")
 fi
 
-if [ "${#SSH_HOSTS[@]}" -eq 0 ]; then
-  echo "::error::No SSH hosts configured (SSH_CONNECT_HOST / DEPLOY_HOST)."
-  exit 1
-fi
+print_firewall_help() {
+  echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts (${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT})."
+  echo "::error::Runner IP ${RUNNER_IP} was blocked or port ${SSH_PORT} is closed from GitHub Actions."
+  echo "::error::On the VPS (WHM/SSH), run once as root: bash scripts/allow-github-actions-csf.sh"
+  echo "::error::Or Hostinger hPanel → VPS → Firewall → allow TCP ${SSH_PORT} from source any (or GitHub Actions CIDRs from https://api.github.com/meta)."
+  if command -v curl >/dev/null 2>&1; then
+    echo "GitHub Actions IPv4 ranges (first 8):"
+    curl -fsS --max-time 15 https://api.github.com/meta 2>/dev/null \
+      | python3 -c "import json,sys; d=json.load(sys.stdin); [print(x) for x in d.get('actions',[]) if ':' not in x][:8]" 2>/dev/null \
+      || true
+  fi
+}
 
 connected=0
+last_err=""
 for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
   host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
   write_ssh_host "${host}"
@@ -127,26 +118,32 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
     probe_host="${probe_host%]}"
   fi
 
-  if ! tcp_probe "${probe_host}"; then
-    echo "::warning::TCP port ${SSH_PORT} not reachable on ${host} (attempt ${attempt}/${SSH_MAX_ATTEMPTS})"
+  if [ "${SSH_USE_TCP_PROBE}" = "true" ] && ! tcp_probe "${probe_host}"; then
+    last_err="tcp_unreachable"
+    if [ "${attempt}" -eq "${SSH_MAX_ATTEMPTS}" ] || [ "${attempt}" -eq 1 ]; then
+      echo "Attempt ${attempt}/${SSH_MAX_ATTEMPTS}: port ${SSH_PORT} not reachable on ${host}"
+    fi
     sleep "${SSH_RETRY_SLEEP}"
     continue
   fi
 
-  if run_ssh_test; then
+  if out="$(run_ssh_test 2>&1)"; then
+    echo "${out}"
     echo "SSH connected on attempt ${attempt} (${host})"
     connected=1
     break
   fi
-
-  echo "::warning::SSH attempt ${attempt}/${SSH_MAX_ATTEMPTS} failed for ${host}; retrying in ${SSH_RETRY_SLEEP}s..."
+  last_err="${out}"
+  if [ "${attempt}" -eq "${SSH_MAX_ATTEMPTS}" ] || [ "${attempt}" -eq 1 ]; then
+    echo "Attempt ${attempt}/${SSH_MAX_ATTEMPTS} failed for ${host}"
+  fi
   sleep "${SSH_RETRY_SLEEP}"
 done
 
 if [ "${connected}" -ne 1 ]; then
-  echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after ${SSH_MAX_ATTEMPTS} attempts (tried: ${SSH_HOSTS[*]})."
-  echo "::error::Runner IPv4 was ${RUNNER_IP}. GitHub-hosted runners use random Azure IPs — Hostinger/WHM firewall or fail2ban often blocks them."
-  echo "::error::Fix: Hostinger hPanel → VPS → Firewall → allow TCP ${SSH_PORT} from GitHub Actions (https://api.github.com/meta → actions). Or install a self-hosted runner on the VPS."
-  echo "::error::Remove repo variable PRODUCTION_SSH_IPV6 if set — IPv6 does not work from GitHub runners."
+  if [ -n "${last_err}" ]; then
+    echo "${last_err}" | tail -5
+  fi
+  print_firewall_help
   exit 1
 fi

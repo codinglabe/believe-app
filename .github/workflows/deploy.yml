@@ -34,6 +34,10 @@ jobs:
       PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL != '' && vars.PRODUCTION_APP_URL || 'https://believeinunity.org' }}
       DEVELOPMENT_HOSTS: ${{ vars.DEVELOPMENT_HOSTS != '' && vars.DEVELOPMENT_HOSTS || '501c3ers.com,www.501c3ers.com' }}
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
+      SSH_MAX_ATTEMPTS: 6
+      SSH_RETRY_SLEEP: 5
+      SSH_USE_TCP_PROBE: false
+      SSH_USE_DEPLOY_HOST: false
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/

@@ -28,6 +28,10 @@ jobs:
       DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
       APP_URL: ${{ vars.PRODUCTION_APP_URL }}
       SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT != '' && vars.PRODUCTION_SSH_PORT || '22' }}
+      SSH_MAX_ATTEMPTS: 6
+      SSH_RETRY_SLEEP: 5
+      SSH_USE_TCP_PROBE: false
+      SSH_USE_DEPLOY_HOST: false
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
