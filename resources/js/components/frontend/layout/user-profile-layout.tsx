@@ -124,6 +124,13 @@ const navigationItems = [
     color: "from-green-500 to-emerald-600",
   },
   {
+    name: "Add Points",
+    href: "/believe-points#add-believe-points",
+    icon: Coins,
+    description: "Fund your Believe Points wallet (1 Point = $1 USD)",
+    color: "from-blue-500 to-purple-600",
+  },
+  {
     name: "Orders",
     href: "/profile/orders",
     icon: ShoppingBag,
@@ -178,13 +185,6 @@ const navigationItems = [
     icon: Gift,
     description: "My gift cards",
     color: "from-pink-500 to-rose-600",
-  },
-  {
-    name: "Add Points",
-    href: "/believe-points",
-    icon: Coins,
-    description: "Fund your Believe Points wallet (1 Point = $1 USD)",
-    color: "from-blue-500 to-purple-600",
   },
   {
     name: "My Applications",
@@ -487,7 +487,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                         <Link
                           key={item.name}
                           href={item.href}
-                          preserveScroll={true}
+                          preserveScroll={!item.href.includes("#")}
                           preserveState={true}
                         >
                           <motion.div

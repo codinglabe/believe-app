@@ -94,6 +94,8 @@ interface PageProps {
   }
 }
 
+const ADD_BELIEVE_POINTS_SECTION_ID = "add-believe-points"
+
 const defaultAutoReplenish: AutoReplenishProps = {
   enabled: false,
   threshold: null,
@@ -140,6 +142,28 @@ export default function BelievePointsIndex({
   const [arSubmitting, setArSubmitting] = useState(false)
 
   const believePointsFeePreviewSkipRef = useRef(true)
+
+  /** Profile menu (mobile): scroll past sidebar/header to the purchase form. */
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (window.location.hash !== `#${ADD_BELIEVE_POINTS_SECTION_ID}`) return
+    if (!window.matchMedia("(max-width: 1023px)").matches) return
+
+    const scrollToSection = () => {
+      document.getElementById(ADD_BELIEVE_POINTS_SECTION_ID)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }
+
+    const timeoutId = window.setTimeout(scrollToSection, 450)
+    window.addEventListener("hashchange", scrollToSection)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.removeEventListener("hashchange", scrollToSection)
+    }
+  }, [page.url])
 
   /** Inertia partial reload: feePreview from backend (same pattern as /donate). */
   useEffect(() => {
@@ -400,7 +424,10 @@ export default function BelievePointsIndex({
               </CardContent>
             </Card>
 
-            <Card className="gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white px-0 py-0 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <Card
+              id={ADD_BELIEVE_POINTS_SECTION_ID}
+              className="scroll-mt-24 gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white px-0 py-0 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+            >
               <CardHeader className="border-b border-gray-200 bg-gray-50/80 px-4 pb-5 pt-5 dark:border-gray-700 dark:bg-gray-900/40 sm:px-6 sm:pb-6 sm:pt-6">
                 <div className="flex items-start gap-4">
                   <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white shadow-sm ring-4 ring-purple-500/10 dark:ring-purple-400/15">
