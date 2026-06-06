@@ -11,7 +11,7 @@ import {
   Search, MapPin, Navigation, Heart, Clock, Map as MapIcon, 
   List, UtensilsCrossed, PackageOpen, Users, Church, BookOpen, 
   Shirt, CheckCircle, Flame, Baby, Milk, Navigation2, HandHeart,
-  X
+  X, Phone
 } from "lucide-react"
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api'
 import { 
@@ -138,6 +138,16 @@ const QuickActionCard = ({ icon, title, desc }: { icon: React.ReactNode, title: 
 /** Set to true when the monthly impact stats block should be visible again. */
 const SHOW_IMPACT_SECTION = false
 
+const openLocationContact = (location: LocationRow) => {
+  if (location.phone) {
+    window.location.href = `tel:${location.phone}`
+    return
+  }
+  if (location.website) {
+    window.open(location.website, "_blank", "noopener,noreferrer")
+  }
+}
+
 const ImpactStat = ({ value, label, icon }: { value: string, label: string, icon: React.ReactNode }) => (
   <div className="flex flex-col items-center justify-center p-4 text-center">
     <div className="flex items-center gap-3 mb-2">
@@ -215,7 +225,7 @@ const DirectoryCard = ({ location, onViewDetails }: { location: LocationRow, onV
 
         <div className="grid grid-cols-2 gap-2 mt-auto">
           <Button variant="outline" className="w-full text-xs h-8 border-border" onClick={() => onViewDetails(location)}>View Details</Button>
-          <Button className="w-full text-xs h-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white" onClick={() => router.get(route('donate'))}>Donate</Button>
+          <Button className="w-full text-xs h-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white" onClick={() => onViewDetails(location)}>Contact Info</Button>
         </div>
       </div>
     </div>
@@ -320,7 +330,7 @@ export default function UnityLoavesDirectory() {
         {/* Quick Actions (Overlapping Hero) */}
         <div className="container mx-auto px-4 relative -mt-14 z-20">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <QuickActionCard icon={<Heart className="text-purple-600 dark:text-purple-400 w-6 h-6"/>} title="Donate a Loaf" desc="Give a meal today" />
+            <QuickActionCard icon={<Phone className="text-purple-600 dark:text-purple-400 w-6 h-6"/>} title="Contact Info" desc="Reach a location near you" />
             <QuickActionCard icon={<PackageOpen className="text-amber-500 dark:text-amber-400 w-6 h-6"/>} title="Drop Off Food" desc="Help restock shelves" />
             <QuickActionCard icon={<MapPin className="text-blue-600 dark:text-blue-400 w-6 h-6"/>} title="Find a Meal" desc="Get help near you" />
             <QuickActionCard icon={<Users className="text-purple-600 dark:text-purple-400 w-6 h-6"/>} title="Volunteer" desc="Give your time" />
@@ -504,7 +514,7 @@ export default function UnityLoavesDirectory() {
             )}
 
             {/* Location Cards */}
-            <div>
+            <div id="unity-loaves-locations">
               <div className="flex justify-between items-center mb-5 mt-8">
                 <h3 className="text-2xl font-extrabold text-foreground">Active Locations Near You</h3>
                 <Link href="#" className="text-sm font-bold text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300">View All</Link>
@@ -592,8 +602,8 @@ export default function UnityLoavesDirectory() {
                   </div>
                 </div>
                 <div className="flex gap-4 w-full md:w-auto shrink-0">
-                  <Button className="flex-1 md:flex-none h-12 px-8 bg-transparent border-2 border-purple-300/90 text-white hover:bg-white/10 font-bold text-base" onClick={() => router.get(route('donate'))}>
-                    Donate a Loaf
+                  <Button className="flex-1 md:flex-none h-12 px-8 bg-transparent border-2 border-purple-300/90 text-white hover:bg-white/10 font-bold text-base" onClick={() => document.getElementById("unity-loaves-locations")?.scrollIntoView({ behavior: "smooth" })}>
+                    Contact Info
                   </Button>
                   <Button className="flex-1 md:flex-none h-12 px-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold text-base border-0" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
                     Drop Off Food
@@ -685,9 +695,14 @@ export default function UnityLoavesDirectory() {
               )}
 
               <div className="pt-4 flex gap-3">
-                <Button className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white" onClick={() => router.get(route('donate'))}>
-                  Donate
+                {(selectedLocation.phone || selectedLocation.website) && (
+                <Button
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                  onClick={() => openLocationContact(selectedLocation)}
+                >
+                  Contact Info
                 </Button>
+                )}
                 {selectedLocation.phone && (
                   <Button variant="outline" className="flex-1 border-border" onClick={() => window.location.href = `tel:${selectedLocation.phone}`}>
                     Call

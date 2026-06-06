@@ -79,7 +79,7 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
               >
                 <Play className="h-3.5 w-3.5 fill-white sm:h-4 sm:w-4" />
               </span>
-              Watch 2-Min Demo
+              Watch Our Impact
             </button>
             <LandingFilingButton variant="hero" />
           </div>
