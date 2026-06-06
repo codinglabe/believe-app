@@ -1244,6 +1244,19 @@ export default function SupporterShowLivestream({
                     Stream options
                   </Button>
                 ) : null}
+                {showEndMeetingButton && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-8 shrink-0 px-2.5 touch-manipulation md:hidden"
+                    onClick={handleEndMeeting}
+                    disabled={liveActionDisabled}
+                    aria-label="End meeting"
+                  >
+                    <PhoneOff className="h-4 w-4 shrink-0" />
+                    <span className="ml-1.5">{isEndingMeeting ? "Ending…" : "End"}</span>
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8 touch-manipulation" aria-label="More actions">
@@ -1268,12 +1281,6 @@ export default function SupporterShowLivestream({
                         Stream options
                       </DropdownMenuItem>
                     ) : null}
-                    {showEndMeetingButton && (
-                      <DropdownMenuItem variant="destructive" onClick={handleEndMeeting} disabled={liveActionDisabled}>
-                        <PhoneOff className="h-4 w-4 mr-2" />
-                        {isEndingMeeting ? "Ending…" : "End meeting"}
-                      </DropdownMenuItem>
-                    )}
                     {showEndYoutubeLiveButton && (
                       <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={liveActionDisabled}>
                         <Square className="h-4 w-4 mr-2" />
