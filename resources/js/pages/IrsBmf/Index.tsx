@@ -110,7 +110,7 @@ export default function Index({ records, stats }: Props) {
                     Manually trigger IRS BMF data import. Full import creates new records, update-only mode only updates existing records.
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-500">
-                    Monthly automatic updates run on the 1st at 2:00 AM in update-only mode.
+                    Automatic updates run every 72 hours at 2:00 AM in update-only mode.
                   </p>
                 </div>
                 <div className="flex gap-2">

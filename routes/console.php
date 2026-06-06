@@ -8,10 +8,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Schedule IRS BMF monthly import (update-only mode)
+// Schedule IRS BMF import every 72 hours (update-only mode)
 Schedule::command('irs:bmf:import --update-only --chunk=1000')
-    ->monthly()
-    ->at('02:00')
+    ->cron('0 2 */3 * *')
     ->withoutOverlapping();
 
 Schedule::command('rss:warm-nonprofit')->everyFifteenMinutes();
