@@ -12,7 +12,8 @@ import { MessageCircle, PlusIcon, SearchIcon, Users } from "lucide-react"
 import { NotificationBell } from "../notification-bell"
 import { Link, usePage } from "@inertiajs/react"
 import { cn } from "@/lib/utils"
-import { chatGradientBg, chatGradientBgHover, chatGradientText } from "./chat-brand"
+import { chatAccentText, chatGradientBg, chatGradientBgHover, chatInputFocusRing, chatMobileDivider, chatMobileSurface, chatSegmentTrack } from "./chat-brand"
+import { ChatSidebarHeader } from "./chat-sidebar-header"
 
 // Helper function to safely convert to lowercase
 const safeToLower = (str: any): string => {
@@ -28,7 +29,12 @@ const asPacId = (v: unknown): number | null => {
 
 type TabType = "groups" | "direct" | "users"
 
-export function Sidebar() {
+type SidebarProps = {
+  /** Full-screen mobile chat list — hides desktop breadcrumb header. */
+  mobileList?: boolean
+}
+
+export function Sidebar({ mobileList = false }: SidebarProps) {
   const {
     chatRooms = [],
     activeRoom,
@@ -113,63 +119,69 @@ export function Sidebar() {
     }
   }
 
-  // <CHANGE> Added null check for activeRoom to prevent TypeError
-  const getBreadcrumbText = () => {
-    if (!activeRoom) return "Chat"
-
-    if (activeRoom.type === "direct") {
-      return "Direct Chat"
-    } else if (activeRoom.type === "public" || activeRoom.type === "private") {
-      return "Groups Chat"
-    }
-    return "Chat"
-  }
-
   const canCreateGroups =
     currentUser?.role === "organization" || currentUser?.role === "admin" || currentUser?.role === "user"
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden border-r border-border/50 bg-card/30">
-      {/* Header */}
-      <div className="flex shrink-0 min-w-0 items-start justify-between gap-2 overflow-hidden border-b border-border/50 p-3 sm:p-4">
-        <h2 className="min-w-0 flex-1 text-sm font-semibold leading-snug sm:text-base">
-          <span className="line-clamp-2 break-words sm:line-clamp-1">
-            <Link
-              href={auth?.user?.role !== "user" ? route("dashboard") : route("user.profile.index")}
-              className={`hover:underline ${chatGradientText}`}
-            >
-              Dashboard
-            </Link>
-            <span className="text-muted-foreground font-normal"> / </span>
-            <span className="text-foreground">{getBreadcrumbText()}</span>
-          </span>
-        </h2>
-              <div className="flex shrink-0 items-center gap-0.5">
-                  <NotificationBell userId={currentUser?.id} emailVerified={!!auth?.user?.email_verified_at} />
-        {canCreateGroups && (
-          <Button
-            variant="ghost"
-            size="icon"
-            title="New chat room"
-            onClick={() => setIsGroupCreateOpen(true)}
-            className="rounded-xl text-purple-700 hover:bg-purple-500/15 hover:text-purple-900 dark:text-purple-300 dark:hover:bg-purple-500/20 dark:hover:text-purple-100"
-          >
-            <PlusIcon className="h-5 w-5" />
-          </Button>
-        )}
-              </div>
-      </div>
+    <div
+      className={cn(
+        "flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden bg-background",
+        !mobileList && "border-r border-border/50 bg-card/30",
+      )}
+    >
+      {/* Single top bar — title + actions (desktop only) */}
+      {!mobileList && (
+        <ChatSidebarHeader
+          actions={
+            <>
+              <NotificationBell userId={currentUser?.id} emailVerified={!!auth?.user?.email_verified_at} />
+              {canCreateGroups && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="New chat room"
+                  onClick={() => setIsGroupCreateOpen(true)}
+                  className="rounded-xl text-purple-700 hover:bg-purple-500/15 hover:text-purple-900 dark:text-purple-300 dark:hover:bg-purple-500/20 dark:hover:text-purple-100"
+                >
+                  <PlusIcon className="h-5 w-5" />
+                </Button>
+              )}
+            </>
+          }
+        />
+      )}
 
       {/* Search and Toggle */}
-      <div className="shrink-0 space-y-3 border-b border-border/50 p-3 sm:p-4">
-        <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Search chats or users..."
-            className="pl-9 h-10 rounded-xl border-border/60 focus-visible:ring-purple-500/25 focus-visible:border-purple-500/40"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div
+        className={cn(
+          "shrink-0 space-y-3 border-b p-3 sm:p-4",
+          mobileList ? chatMobileDivider : "border-border/50",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={mobileList ? "Search" : "Search chats or users..."}
+              className={cn(
+                "h-10 rounded-xl pl-9",
+                mobileList ? cn("border", chatMobileSurface, chatInputFocusRing) : cn("border-border/60", chatInputFocusRing),
+              )}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          {mobileList && canCreateGroups && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="New chat room"
+              onClick={() => setIsGroupCreateOpen(true)}
+              className={cn("h-10 w-10 shrink-0 rounded-full hover:bg-purple-500/10", chatAccentText)}
+            >
+              <PlusIcon className="h-5 w-5" />
+            </Button>
+          )}
         </div>
         {chatCauseFilter ? (
           <p className="text-xs text-muted-foreground">
@@ -181,7 +193,9 @@ export function Sidebar() {
             </Link>
           </p>
         ) : null}
-        <div className="flex gap-1 p-1 rounded-xl bg-muted/40 border border-border/40">
+        <div
+          className={cn("flex gap-1 p-1", mobileList ? chatMobileSurface : chatSegmentTrack)}
+        >
           {(
             [
               { id: "groups" as const, label: "Groups" },
@@ -209,7 +223,7 @@ export function Sidebar() {
       {/* Content */}
       <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-hidden [&_[data-radix-scroll-area-viewport]]:overflow-x-hidden [&_[data-radix-scroll-area-viewport]]:[scrollbar-gutter:stable]">
         {activeTab === "users" ? (
-          <div className="space-y-1 px-2 pb-2 pt-1 pr-3 sm:px-3 sm:pb-3 sm:pt-2 sm:pr-4">
+          <div className={cn(mobileList ? "px-0 pb-2 pt-0" : "space-y-1 px-2 pb-2 pt-1 pr-3 sm:px-3 sm:pb-3 sm:pt-2 sm:pr-4")}>
             {filteredUsers.length > 0 ? (
               filteredUsers.map((user) => (
                 <button
@@ -242,7 +256,7 @@ export function Sidebar() {
             )}
           </div>
         ) : (
-          <div className="space-y-1 px-2 pb-2 pt-1 pr-3 sm:px-3 sm:pb-3 sm:pt-2 sm:pr-4">
+          <div className={cn(mobileList ? "px-0 pb-2 pt-0" : "space-y-1 px-2 pb-2 pt-1 pr-3 sm:px-3 sm:pb-3 sm:pt-2 sm:pr-4")}>
             {filteredRooms.length > 0 ? (
               filteredRooms.map((room) => (
                 <ConversationItem
@@ -251,6 +265,7 @@ export function Sidebar() {
                   isActive={activeRoom?.id === room?.id}
                   onClick={() => room?.id && setActiveRoom(room)}
                   currentUser={currentUser}
+                  mobileList={mobileList}
                 />
               ))
             ) : (

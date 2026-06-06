@@ -22,6 +22,7 @@ class UploadedFile extends Model
         'processed_chunks',
         'uploaded_chunks_list',
         'status',
+        'batch_id',
         'path',
     ];
 
