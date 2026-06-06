@@ -128,9 +128,9 @@ interface DonatePageProps extends InertiaPageProps {
 }
 
 const amountConfig = [
-  { amount: 25, impact: "Helps fund supplies" },
-  { amount: 50, badge: "Most Popular", impact: "Provides meals for 10 children" },
-  { amount: 100, badge: "High Impact", impact: "Funds mental health support" },
+  { amount: 25 },
+  { amount: 50, badge: "Most Popular" },
+  { amount: 100, badge: "High Impact" },
   { amount: 250 },
   { amount: 500 },
   { amount: 1000 },
