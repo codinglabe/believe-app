@@ -18,7 +18,7 @@ export function LandingFilingButton({ className, variant = "compact" }: LandingF
   const buttonClass =
     variant === "hero"
       ? cn(
-          "inline-flex w-auto shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-2 border-purple-600/80 bg-white px-3 text-purple-700 shadow-sm transition hover:border-purple-600 hover:bg-purple-50 sm:gap-2 sm:px-5 dark:border-purple-500/40 dark:bg-white/5 dark:text-purple-200 dark:hover:bg-white/10",
+          "inline-flex w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-2 border-purple-600/80 bg-white px-3 text-purple-700 shadow-sm transition hover:border-purple-600 hover:bg-purple-50 sm:gap-2 sm:px-5 dark:border-purple-500/40 dark:bg-white/5 dark:text-purple-200 dark:hover:bg-white/10",
           landingTheme.heroBtnHeight,
           landingTheme.heroBtnText,
         )
