@@ -2,48 +2,19 @@
 import { Sidebar } from "./sidebar"
 import { ChatArea } from "./chat-area"
 import { ChatHeader } from "./chat-header"
-import { ChatSidebarHeader } from "./chat-sidebar-header"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/frontend/ui/resizable"
-import { Button } from "@/components/ui/button"
 import { Menu, MessageCircle, Sparkles } from "lucide-react"
-import { useState, useEffect } from "react"
 import { useChat } from "@/providers/chat-provider"
-import { usePage } from "@inertiajs/react"
 import { useChatInitialization } from "@/hooks/use-chat-initialization"
 import { motion } from "framer-motion"
 import { chatAmbientBg, chatGradientBg, chatGradientText } from "./chat-brand"
-import { cn } from "@/lib/utils"
 
 export function ChatLayout() {
-  const auth = usePage().props.auth
   const isMobile = useIsMobile()
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { activeRoom } = useChat()
+  const { activeRoom, setActiveRoom } = useChat()
 
   useChatInitialization()
-
-  useEffect(() => {
-    const fetchUnreadCount = async () => {
-      try {
-        const response = await fetch("/service-hub/chats/unreadcountget")
-        if (response.ok) {
-          const data = await response.json()
-          setUnreadCount(data.total_unread || 0)
-        }
-      } catch (error) {
-        console.error("Error fetching unread count:", error)
-      }
-    }
-
-    if (auth?.user?.id) {
-      fetchUnreadCount()
-      const interval = setInterval(fetchUnreadCount, 30000)
-      return () => clearInterval(interval)
-    }
-  }, [auth?.user?.id])
 
   const WelcomeScreen = () => (
     <div
@@ -108,52 +79,21 @@ export function ChatLayout() {
     </div>
   )
 
+  /* WhatsApp / Messenger mobile: full-screen list OR full-screen chat */
   if (isMobile) {
     return (
-      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <div className={`h-[100dvh] flex flex-col overflow-hidden bg-background ${chatAmbientBg}`}>
-          <ChatHeader
-            unreadCount={unreadCount}
-            mobileMenuButton={
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Open sidebar">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-            }
-          />
-
-          {/* Chat Content Area */}
-          {activeRoom ? (
-            <ChatArea
-              mobileMenuButton={
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Open sidebar">
-                    <Menu className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-              }
-            />
-          ) : (
-            <WelcomeScreen />
-          )}
-
-          {/* Mobile Sidebar Sheet */}
-          <SheetContent
-            side="left"
-            className={cn(
-              "flex h-full w-[min(20rem,calc(100vw-1rem))] max-w-[100vw] flex-col gap-0 overflow-hidden border-r border-purple-500/15 bg-background p-0",
-              /* ui/sheet always adds a default X; ChatSidebarHeader already has one on mobile */
-              "[&>button.absolute]:hidden",
-            )}
-          >
-            <ChatSidebarHeader onClose={() => setSidebarOpen(false)} />
+      <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
+        {activeRoom ? (
+          <ChatArea isMobile onBack={() => setActiveRoom(null)} />
+        ) : (
+          <>
+            <ChatHeader variant="mobile-list" />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <Sidebar />
+              <Sidebar mobileList />
             </div>
-          </SheetContent>
-        </div>
-      </Sheet>
+          </>
+        )}
+      </div>
     )
   }
 
@@ -163,7 +103,6 @@ export function ChatLayout() {
       autoSaveId="believe-wallet-chat-layout"
       className={`h-screen w-full max-w-full min-h-0 bg-background ${chatAmbientBg}`}
     >
-      {/* Sidebar Panel — min/max % keep list usable when resized; min-w-0 prevents flex overflow clipping */}
       <ResizablePanel
         defaultSize={30}
         minSize={22}
@@ -171,11 +110,7 @@ export function ChatLayout() {
         className="hidden min-w-0 md:block"
       >
         <div className="flex h-full min-w-0 w-full flex-col overflow-hidden border-r border-border/50">
-          <ChatSidebarHeader />
-          {/* Only the list scrolls inside Sidebar — avoid outer overflow-auto (scrollbar beside headers). */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Sidebar />
-          </div>
+          <Sidebar />
         </div>
       </ResizablePanel>
 
@@ -184,10 +119,9 @@ export function ChatLayout() {
         className="relative z-10 w-2 max-w-[12px] shrink-0 bg-border/80 transition-colors hover:bg-purple-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35 focus-visible:ring-offset-0"
       />
 
-      {/* Chat Panel */}
       <ResizablePanel defaultSize={70} minSize={54} maxSize={78} className="min-w-0">
         <div className="flex h-full min-w-0 flex-col">
-          <ChatHeader unreadCount={unreadCount} />
+          <ChatHeader />
           {activeRoom ? <ChatArea /> : <WelcomeScreen />}
         </div>
       </ResizablePanel>

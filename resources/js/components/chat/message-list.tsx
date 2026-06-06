@@ -4,11 +4,17 @@ import React, { useEffect, useRef, useCallback, useState } from "react"
 import { useChat } from "@/providers/chat-provider"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { ChatMessage } from "@/components/chat/chat-message"
-import { Loader2Icon, ChevronUpIcon } from 'lucide-react'
+import { Loader2Icon, ChevronUpIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { chatAmbientBg, chatGradientBg, chatGradientBgHover } from "./chat-brand"
+import { chatAmbientBg, chatGradientBg, chatGradientBgHover, chatSendButtonActive, chatWallpaperBg } from "./chat-brand"
+import { cn } from "@/lib/utils"
 
-export function MessageList() {
+type MessageListProps = {
+  isMobile?: boolean
+  isGroupChat?: boolean
+}
+
+export function MessageList({ isMobile = false, isGroupChat = false }: MessageListProps) {
   const { messages, loadingMessages, hasMoreMessages, loadMoreMessages, currentUser } = useChat()
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [isNearBottom, setIsNearBottom] = useState(true)
@@ -16,7 +22,6 @@ export function MessageList() {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const prevMessagesLength = useRef(messages.length)
 
-  // Normalize message structure
   const normalizeMessage = useCallback((message: any) => {
     const u = message.user || { id: 0, name: "Unknown" }
     return {
@@ -29,31 +34,27 @@ export function MessageList() {
     }
   }, [])
 
-  // Check for duplicate message IDs in development
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      const messageIds = messages.map(m => m.id)
+    if (process.env.NODE_ENV === "development") {
+      const messageIds = messages.map((m) => m.id)
       const uniqueIds = new Set(messageIds)
       if (messageIds.length !== uniqueIds.size) {
-        console.warn('Duplicate message IDs detected. Please ensure all messages have unique IDs.')
+        console.warn("Duplicate message IDs detected. Please ensure all messages have unique IDs.")
       }
     }
   }, [messages])
 
-  // Ensure messages have unique keys by adding index as fallback
   const getMessageKey = (message: { id: string | number }, index: number) => {
     return `${message.id}-${index}`
   }
 
-  // Determine if user is near the bottom of the scroll area
   const checkIfNearBottom = useCallback(() => {
     if (!scrollAreaRef.current) return true
     const { scrollTop, scrollHeight, clientHeight } = scrollAreaRef.current
-    const threshold = 100 // pixels from bottom
+    const threshold = 100
     return scrollHeight - (scrollTop + clientHeight) < threshold
   }, [])
 
-  // Handle scroll events
   const handleScroll = useCallback(() => {
     if (!scrollAreaRef.current) return
 
@@ -62,25 +63,23 @@ export function MessageList() {
     setShowLoadButton(!nearBottom && hasMoreMessages)
   }, [hasMoreMessages, checkIfNearBottom])
 
-  // Load more messages with smooth transition
-const handleLoadMore = useCallback(async () => {
-  if (!scrollAreaRef.current || loadingMessages) return;
+  const handleLoadMore = useCallback(async () => {
+    if (!scrollAreaRef.current || loadingMessages) return
 
-  const scrollHeightBefore = scrollAreaRef.current.scrollHeight;
+    const scrollHeightBefore = scrollAreaRef.current.scrollHeight
 
-  try {
-    await loadMoreMessages();
-    requestAnimationFrame(() => {
-      if (scrollAreaRef.current) {
-        scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight - scrollHeightBefore;
-      }
-    });
-  } catch (error) {
-    console.error('Failed to load more messages:', error);
-  }
-}, [loadingMessages, loadMoreMessages]);
+    try {
+      await loadMoreMessages()
+      requestAnimationFrame(() => {
+        if (scrollAreaRef.current) {
+          scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight - scrollHeightBefore
+        }
+      })
+    } catch (error) {
+      console.error("Failed to load more messages:", error)
+    }
+  }, [loadingMessages, loadMoreMessages])
 
-  // Scroll behavior for new messages
   useEffect(() => {
     if (!scrollAreaRef.current) return
 
@@ -88,48 +87,64 @@ const handleLoadMore = useCallback(async () => {
     prevMessagesLength.current = messages.length
 
     if (newMessagesAdded && (isNearBottom || isInitialLoad)) {
-      const behavior = isInitialLoad ? 'auto' : 'smooth'
+      const behavior = isInitialLoad ? "auto" : "smooth"
       scrollAreaRef.current.scrollTo({
         top: scrollAreaRef.current.scrollHeight,
-        behavior
+        behavior,
       })
       setIsInitialLoad(false)
     }
   }, [messages.length, isNearBottom, isInitialLoad])
 
-  // Initial scroll to bottom
   useEffect(() => {
     if (scrollAreaRef.current && messages.length > 0) {
       scrollAreaRef.current.scrollTo({
         top: scrollAreaRef.current.scrollHeight,
-        behavior: 'auto'
+        behavior: "auto",
       })
     }
   }, [])
 
-  // Set up scroll event listener
   useEffect(() => {
     const currentRef = scrollAreaRef.current
     if (currentRef) {
-      currentRef.addEventListener('scroll', handleScroll)
-      return () => currentRef.removeEventListener('scroll', handleScroll)
+      currentRef.addEventListener("scroll", handleScroll)
+      return () => currentRef.removeEventListener("scroll", handleScroll)
     }
   }, [handleScroll])
+
+  const normalizedMessages = messages.map(normalizeMessage)
+
+  const shouldShowAvatar = (index: number) => {
+    if (!isGroupChat) return false
+    const current = normalizedMessages[index]
+    const prev = normalizedMessages[index - 1]
+    if (!prev) return true
+    return prev.user?.id !== current.user?.id
+  }
 
   return (
     <>
       <ScrollArea
-        className={`h-full p-3 sm:p-5 md:p-6 overflow-y-auto ${chatAmbientBg}`}
+        className={cn(
+          "h-full overflow-y-auto",
+          isMobile ? cn("px-2 py-2", chatWallpaperBg) : cn("p-3 sm:p-5 md:p-6", chatAmbientBg),
+        )}
         viewportRef={scrollAreaRef}
       >
         {hasMoreMessages && (
-          <div className="flex justify-center py-3">
+          <div className="flex justify-center py-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleLoadMore}
               disabled={loadingMessages}
-              className="flex items-center gap-2 rounded-full border border-purple-500/20 bg-card/80 shadow-sm hover:bg-purple-500/10 hover:border-purple-500/30 transition-colors"
+              className={cn(
+                "flex items-center gap-2 rounded-full border bg-card/90 shadow-sm transition-colors",
+                isMobile
+                  ? "border-black/10 text-xs hover:bg-black/5 dark:border-white/10"
+                  : "border-purple-500/20 hover:border-purple-500/30 hover:bg-purple-500/10",
+              )}
             >
               {loadingMessages ? (
                 <>
@@ -147,28 +162,27 @@ const handleLoadMore = useCallback(async () => {
         )}
 
         {loadingMessages && messages.length === 0 ? (
-          <div className="flex justify-center items-center min-h-[200px] py-12">
+          <div className="flex min-h-[200px] items-center justify-center py-12">
             <Loader2Icon className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {messages.map((message, index) => {
-              const normalizedMessage = normalizeMessage(message)
-              return (
-                <ChatMessage
-                  key={getMessageKey(message, index)}
-                  message={normalizedMessage}
-                  isOwnMessage={normalizedMessage.user?.id === currentUser.id}
-                />
-              )
-            })}
+          <div className="flex flex-col">
+            {normalizedMessages.map((normalizedMessage, index) => (
+              <ChatMessage
+                key={getMessageKey(messages[index], index)}
+                message={normalizedMessage}
+                isOwnMessage={normalizedMessage.user?.id === currentUser.id}
+                isMobile={isMobile}
+                isGroupChat={isGroupChat}
+                showAvatar={shouldShowAvatar(index)}
+              />
+            ))}
           </div>
         )}
       </ScrollArea>
 
-      {/* Floating "New Messages" button */}
       {showLoadButton && (
-        <div className="absolute bottom-3 sm:bottom-4 left-1/2 z-10 -translate-x-1/2 px-2 max-w-[calc(100%-1rem)]">
+        <div className="absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-1rem)] -translate-x-1/2 px-2 sm:bottom-4">
           <Button
             variant="default"
             size="sm"
@@ -176,13 +190,16 @@ const handleLoadMore = useCallback(async () => {
               if (scrollAreaRef.current) {
                 scrollAreaRef.current.scrollTo({
                   top: scrollAreaRef.current.scrollHeight,
-                  behavior: 'smooth'
+                  behavior: "smooth",
                 })
               }
             }}
-            className={`shadow-lg text-white border-0 ${chatGradientBg} ${chatGradientBgHover}`}
+            className={cn(
+              "border-0 shadow-lg text-white",
+              isMobile ? chatSendButtonActive : cn(chatGradientBg, chatGradientBgHover),
+            )}
           >
-            <ChevronUpIcon className="h-4 w-4 mr-2 rotate-180" />
+            <ChevronUpIcon className="mr-2 h-4 w-4 rotate-180" />
             New messages
           </Button>
         </div>

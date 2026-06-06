@@ -4,9 +4,12 @@ namespace App\Console\Commands;
 
 use App\Jobs\ProcessIrsBmfSource;
 use App\Models\UploadedFile;
+use Illuminate\Bus\Batch;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class ImportIrsBmf extends Command
 {
@@ -25,17 +28,17 @@ class ImportIrsBmf extends Command
         'https://www.irs.gov/pub/irs-soi/eo4.csv',
     ];
 
-    private $uploadedFile;
+    private UploadedFile $uploadedFile;
 
     public function handle(): int
     {
-        // Check if another import is already running
         $runningImport = UploadedFile::where('original_name', 'IRS_BMF_Combined.csv')
             ->whereIn('status', ['queued', 'processing'])
             ->first();
 
-        if ($runningImport && !$this->option('force')) {
+        if ($runningImport && ! $this->option('force')) {
             $this->error("Another import is already running (ID: {$runningImport->id}, Status: {$runningImport->status}). Use --force to run anyway.");
+
             return self::FAILURE;
         }
 
@@ -45,35 +48,51 @@ class ImportIrsBmf extends Command
         $specificSource = $this->option('source');
         $chunkSize = (int) $this->option('chunk');
 
-        // Create uploaded file record
         $this->createUploadedFileRecord();
 
         $sourcesToProcess = $specificSource ? [$specificSource] : $this->sources;
+        $fileId = $this->uploadedFile->id;
 
-        $this->info("Dispatching " . count($sourcesToProcess) . " source processing jobs");
-
+        $jobs = [];
         foreach ($sourcesToProcess as $index => $url) {
-            ProcessIrsBmfSource::dispatch(
-                $url,
-                $this->uploadedFile->id,
-                $updateOnly,
-                $chunkSize,
-                $index
-            )->onQueue('irs-import');
-
-            $this->info("Dispatched job for source {$index}: {$url}");
+            $jobs[] = new ProcessIrsBmfSource($url, $fileId, $updateOnly, $chunkSize, $index);
         }
 
-        $this->info("All jobs dispatched. Run queue workers to process: php artisan queue:work --queue=irs-import");
-        $this->info("Upload ID: {$this->uploadedFile->id}");
-        $this->info("Monitor progress: php artisan irs:bmf:monitor {$this->uploadedFile->id}");
+        $this->info('Dispatching '.count($jobs).' source processing jobs as a batch');
+
+        $batch = Bus::batch($jobs)
+            ->name("IRS BMF Import #{$fileId}")
+            ->then(function (Batch $batch) use ($fileId) {
+                UploadedFile::where('id', $fileId)->update(['status' => 'completed']);
+                Log::info("IRS BMF import batch completed for upload ID: {$fileId}");
+            })
+            ->catch(function (Batch $batch, Throwable $e) use ($fileId) {
+                UploadedFile::where('id', $fileId)->update(['status' => 'failed']);
+                Log::error("IRS BMF import batch failed for upload ID: {$fileId}: ".$e->getMessage());
+            })
+            ->onQueue('irs-import')
+            ->dispatch();
+
+        $this->uploadedFile->update([
+            'batch_id' => $batch->id,
+            'status' => 'processing',
+        ]);
+
+        foreach ($sourcesToProcess as $index => $url) {
+            $this->info("Queued source {$index}: {$url}");
+        }
+
+        $this->info('Batch dispatched. Ensure a queue worker is running: php artisan queue:work --queue=irs-import');
+        $this->info("Upload ID: {$fileId}");
+        $this->info("Batch ID: {$batch->id}");
+        $this->info("Monitor progress: php artisan irs:bmf:monitor {$fileId}");
 
         return self::SUCCESS;
     }
 
     private function createUploadedFileRecord(): void
     {
-        $fileName = 'irs_bmf_' . now()->format('Y-m-d_His') . '.csv';
+        $fileName = 'irs_bmf_'.now()->format('Y-m-d_His').'.csv';
 
         $this->uploadedFile = UploadedFile::create([
             'upload_id' => Str::uuid(),
