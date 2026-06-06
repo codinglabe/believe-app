@@ -103,3 +103,8 @@ Schedule::command('organizations:process-invite-believe-point-schedule')
 Schedule::command('streaming:reconcile-lifecycle')
     ->everyMinute()
     ->withoutOverlapping();
+
+// Chat audio calls: expire unanswered ringing calls
+Schedule::command('unity-calls:expire-ringing')
+    ->everyMinute()
+    ->withoutOverlapping();

@@ -7,6 +7,7 @@ import toast from "react-hot-toast"
 import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { attachCsrfToAxios } from "@/lib/csrf"
+import { startAudioCall as initiateAudioCall } from "@/lib/unityCall"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 
 // Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
@@ -158,6 +159,7 @@ interface ChatContextType {
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>
   allTopics: ChatTopic[]
   loadingMessages: boolean
+  startAudioCall: (roomId: number) => Promise<string | null>
 }
 
 export interface ChatTopic {
@@ -289,6 +291,20 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setChatRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, unread_count: 0 } : room)))
     } catch (error) {
       console.error("Error marking room as read:", error)
+    }
+  }, [])
+
+  const startAudioCall = useCallback(async (roomId: number) => {
+    try {
+      const result = await initiateAudioCall(roomId)
+      if (!result?.join_url) {
+        toast.error("Could not start audio call")
+        return null
+      }
+      return result.join_url
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not start audio call")
+      return null
     }
   }, [])
 
@@ -984,6 +1000,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSearchQuery,
         allTopics,
         loadingMessages,
+        startAudioCall,
       }}
     >
       {children}

@@ -1,4 +1,4 @@
-// @version b0be8a03623c119f
+// @version adad759ba41dad52
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -17,6 +17,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation";
+const INCOMING_CALL_TYPE = "incoming_call";
 
 function notificationIconUrl() {
     return new URL("/favicon-96x96.png", self.location.origin).href;
@@ -49,7 +50,7 @@ function resolveClickUrl(data) {
 
 function buildNotificationOptions(title, body, data) {
     const clickUrl = resolveClickUrl(data);
-    const tag = (data.type || "push") + ":" + (data.livestream_id || data.source_id || title);
+    const tag = (data.type || "push") + ":" + (data.call_id || data.livestream_id || data.source_id || title);
     const icon = notificationIconUrl();
     const options = {
         body: body || undefined,
@@ -65,6 +66,13 @@ function buildNotificationOptions(title, body, data) {
 
     if (data.type === UNITY_MEET_INVITATION_TYPE) {
         options.actions = [{ action: "join", title: "Join" }];
+    }
+
+    if (data.type === INCOMING_CALL_TYPE) {
+        options.actions = [
+            { action: "accept", title: "Accept" },
+            { action: "decline", title: "Decline" },
+        ];
     }
 
     return options;
@@ -85,7 +93,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-b0be8a03623c119f";
+const CACHE_NAME = "pwa-cache-adad759ba41dad52";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -187,6 +195,27 @@ self.addEventListener("notificationclick", (event) => {
 
     if (event.action === "join") {
         urlToOpen = data.join_url || data.click_action || data.url || "/";
+    }
+
+    if (event.action === "accept") {
+        urlToOpen = data.join_url || data.click_action || data.url || "/";
+    }
+
+    if (event.action === "decline") {
+        const declineUrl = data.decline_url;
+        if (declineUrl) {
+            event.waitUntil(
+                fetch(declineUrl, {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                }).catch(function () {}),
+            );
+        }
+        return;
     }
 
     const absoluteUrl = new URL(urlToOpen, self.location.origin).href;

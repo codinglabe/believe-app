@@ -2,6 +2,7 @@ export const CARE_ALLIANCE_INVITATION_TYPE = "care_alliance_invitation"
 export const SUPPORTER_BIRTHDAY_TYPE = "supporter_birthday"
 export const BELIEVE_POINTS_GIFT_RECEIVED_TYPE = "gift_received"
 export const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation"
+export const INCOMING_CALL_TYPE = "incoming_call"
 
 export interface Notification {
   id: string

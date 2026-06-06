@@ -385,6 +385,7 @@ class FirebaseService
             'donation' => 'donations',
             'chat', 'chat_message' => 'chat',
             'unity_meet', 'unity_meet_invitation' => 'unity_meet',
+            'unity_call', 'incoming_call' => 'unity_call',
             'unity_live', 'livestream' => 'unity_live',
             'job_post' => 'volunteer',
             'newsletter', 'email' => 'email',
