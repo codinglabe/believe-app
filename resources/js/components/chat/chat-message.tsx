@@ -6,17 +6,27 @@ import { UserAvatar } from "@/components/chat/user-avatar"
 import { formatChatTime } from "@/lib/chat-timestamps"
 import { cn } from "@/lib/utils"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/chat/ui/dropdown-menu"
-import { MoreHorizontalIcon, ReplyIcon, Trash2Icon, DownloadIcon } from 'lucide-react'
+import { MoreHorizontalIcon, ReplyIcon, Trash2Icon, DownloadIcon } from "lucide-react"
 import { useChat } from "@/providers/chat-provider"
 import { ImageViewerModal } from "@/components/chat/image-viewer-modal"
 import { Button } from "./ui/button"
+import { chatAccentText, chatReceivedBubble, chatReplyBorder, chatSentBubble } from "./chat-brand"
 
 interface ChatMessageProps {
   message: ChatMessageType
   isOwnMessage: boolean
+  isMobile?: boolean
+  isGroupChat?: boolean
+  showAvatar?: boolean
 }
 
-export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  isOwnMessage,
+  isMobile = false,
+  isGroupChat = false,
+  showAvatar = true,
+}: ChatMessageProps) {
   const { setReplyingToMessage, deleteMessage } = useChat()
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
@@ -27,141 +37,136 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
     setIsImageViewerOpen(true)
   }
 
+  const showSenderAvatar = !isOwnMessage && showAvatar && (isGroupChat || !isMobile)
+
   return (
     <div
       className={cn(
-        "flex items-end gap-3 group mb-4",
+        "group flex items-end gap-1.5 sm:gap-2",
+        isMobile ? "mb-1" : "mb-3 sm:mb-4",
         isOwnMessage ? "justify-end" : "justify-start",
       )}
     >
-      {!isOwnMessage && (
+      {!isOwnMessage && !showSenderAvatar && <div className="w-7 shrink-0 sm:w-8" />}
+      {showSenderAvatar && (
         <UserAvatar
           user={message.user}
-          className="h-8 w-8 flex-shrink-0 ring-2 ring-background shadow-sm"
+          className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
         />
       )}
       <div
         className={cn(
-          "flex flex-col max-w-[min(85%,28rem)] sm:max-w-[65%]",
+          "flex max-w-[min(82%,28rem)] flex-col sm:max-w-[65%]",
           isOwnMessage ? "items-end" : "items-start",
         )}
       >
-        {!isOwnMessage && (
-          <span className="text-xs text-muted-foreground mb-1 px-1">
+        {!isOwnMessage && isGroupChat && (
+          <span className={cn("mb-0.5 px-1 text-[11px] font-medium", chatAccentText)}>
             {message.user.name}
           </span>
         )}
         {message.reply_to_message && (
           <div
             className={cn(
-              "mb-2 rounded-lg px-3 py-2 text-sm border-l-2 shadow-sm",
+              "mb-1 rounded-lg border-l-2 px-2.5 py-1.5 text-sm shadow-sm",
               isOwnMessage
-                ? "bg-primary/5 border-primary/30 text-foreground"
-                : "bg-muted/50 border-muted-foreground/30",
+                ? "border-white/50 bg-black/10 text-white/90"
+                : cn(chatReplyBorder, "bg-purple-500/5 dark:bg-purple-500/10"),
             )}
           >
-            <p className="font-semibold text-xs text-muted-foreground mb-0.5">
-              Replying to {message.reply_to_message.user.name}
+            <p className="mb-0.5 text-[11px] font-semibold text-muted-foreground">
+              {message.reply_to_message.user.name}
             </p>
-            <p className="text-xs line-clamp-1 text-muted-foreground">
+            <p className="line-clamp-1 text-xs text-muted-foreground">
               {message.reply_to_message.message || "[Attachment]"}
             </p>
           </div>
         )}
-        <div
-          className={cn(
-            "relative rounded-2xl px-3.5 sm:px-4 py-2.5 text-sm shadow-sm transition-all duration-200",
-            "hover:shadow-md",
-            isOwnMessage
-              ? "bg-gradient-to-br from-purple-600 to-blue-600 text-white rounded-br-md shadow-purple-500/15"
-              : "bg-card border border-border/50 rounded-bl-md",
-          )}
-        >
-          {message.message && (
-            <p className="leading-relaxed whitespace-pre-wrap break-words">
-              {message.message}
-            </p>
-          )}
-          {message.attachments && message.attachments.length > 0 && (
-            <div className={cn("mt-2 grid gap-2", message.attachments.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
-              {message.attachments.map((attachment, index) => (
-                <div key={index} className="relative group/attachment">
-                  {attachment.type.startsWith('image/') ? (
-                    <div
-                      className="relative overflow-hidden rounded-xl border border-border/50 shadow-sm cursor-pointer group/image"
-                      onClick={() => handleImageClick(attachment.url)}
-                    >
-                      <img
-                        src={attachment.url || "/placeholder.svg"}
-                        alt={attachment.name || "Image"}
-                        className="max-w-full h-auto object-cover max-h-64 w-full transition-transform duration-200 group-hover/image:scale-105"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = "/placeholder.svg"
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/5 transition-colors pointer-events-none" />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-opacity pointer-events-none">
-                        <div className="bg-black/50 text-white px-3 py-1.5 rounded-lg text-xs font-medium">
-                          Click to view
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3 p-3 border border-border/50 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <DownloadIcon className="h-4 w-4 text-primary" />
-                      </div>
-                      <a
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium hover:underline truncate flex-1"
+        <div className="relative flex items-end gap-1">
+          <div
+            className={cn(
+              "relative px-3 py-1.5 text-[15px] leading-[1.35] shadow-sm transition-shadow sm:px-3.5 sm:py-2 sm:text-sm",
+              isOwnMessage
+                ? cn(chatSentBubble, "rounded-2xl rounded-br-sm")
+                : cn(chatReceivedBubble, "rounded-2xl rounded-bl-sm"),
+            )}
+          >
+            {message.message && (
+              <p className="whitespace-pre-wrap break-words">{message.message}</p>
+            )}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className={cn("grid gap-2", message.attachments.length > 1 ? "grid-cols-2" : "grid-cols-1", message.message && "mt-1.5")}>
+                {message.attachments.map((attachment, index) => (
+                  <div key={index} className="relative">
+                    {attachment.type.startsWith("image/") ? (
+                      <div
+                        className="relative cursor-pointer overflow-hidden rounded-lg"
+                        onClick={() => handleImageClick(attachment.url)}
                       >
-                        {attachment.name}
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          <div className={cn(
-            "flex items-center gap-1.5 mt-1.5",
-            isOwnMessage ? "justify-end" : "justify-start"
-          )}>
+                        <img
+                          src={attachment.url || "/placeholder.svg"}
+                          alt={attachment.name || "Image"}
+                          className="h-auto max-h-64 w-full max-w-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement
+                            target.src = "/placeholder.svg"
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-lg bg-black/5 p-2 dark:bg-white/5">
+                        <DownloadIcon className="h-4 w-4 shrink-0" />
+                        <a
+                          href={attachment.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate text-sm font-medium hover:underline"
+                        >
+                          {attachment.name}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <span
               className={cn(
-                "text-[0.65rem]",
-                isOwnMessage ? "text-white/75" : "text-muted-foreground/70",
+                "mt-0.5 block text-right text-[10px] leading-none tabular-nums",
+                isOwnMessage ? "text-white/70" : "text-muted-foreground/80",
               )}
             >
               {formatChatTime(message.created_at)}
             </span>
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-7 w-7 shrink-0 rounded-full hover:bg-muted",
+                  isMobile ? "opacity-60" : "opacity-0 group-hover:opacity-100",
+                  "transition-opacity",
+                )}
+              >
+                <MoreHorizontalIcon className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align={isOwnMessage ? "end" : "start"}>
+              <DropdownMenuItem onClick={() => setReplyingToMessage(message)}>
+                <ReplyIcon className="mr-2 h-4 w-4" /> Reply
+              </DropdownMenuItem>
+              {isOwnMessage && (
+                <DropdownMenuItem onClick={() => deleteMessage(message.id)} className="text-red-600 focus:text-red-600">
+                  <Trash2Icon className="mr-2 h-4 w-4" /> Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted rounded-lg"
-          >
-            <MoreHorizontalIcon className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={isOwnMessage ? "end" : "start"}>
-          <DropdownMenuItem onClick={() => setReplyingToMessage(message)}>
-            <ReplyIcon className="mr-2 h-4 w-4" /> Reply
-          </DropdownMenuItem>
-          {isOwnMessage && (
-            <DropdownMenuItem onClick={() => deleteMessage(message.id)} className="text-red-600 focus:text-red-600">
-              <Trash2Icon className="mr-2 h-4 w-4" /> Delete
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
 
       <ImageViewerModal
         isOpen={isImageViewerOpen}

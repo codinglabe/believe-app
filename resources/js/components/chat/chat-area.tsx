@@ -7,24 +7,25 @@ import { MessageInput } from "@/components/chat/message-input"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { TypingIndicator } from "@/components/chat/typing-indicator"
 import { Button } from "@/components/chat/ui/button"
-import { InfoIcon, SettingsIcon } from "lucide-react"
+import { ChevronLeft, InfoIcon, SettingsIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/chat/ui/sheet"
 import { ChatDetailsPanel } from "@/components/chat/chat-details-panel"
 import { Link } from "@inertiajs/react"
 import { motion } from "framer-motion"
-import { chatGradientBg, chatGradientBgHover, chatGradientText } from "./chat-brand"
+import { chatAccentText, chatGradientBg, chatGradientBgHover, chatGradientText, chatInputBarBg, chatMobileDivider } from "./chat-brand"
 import { cn } from "@/lib/utils"
 
 type ChatAreaProps = {
   mobileMenuButton?: React.ReactNode
+  isMobile?: boolean
+  onBack?: () => void
 }
 
-export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
+export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAreaProps = {}) {
   const { activeRoom, currentUser, typingUsers, joinRoom } = useChat()
   const otherTypingUsers = typingUsers.filter((u) => u.id !== currentUser?.id)
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
 
-  // Calculate membership status reactively
   const isMember = activeRoom?.is_member || activeRoom?.members?.some((member) => member.id === currentUser?.id)
 
   if (!activeRoom) {
@@ -35,7 +36,6 @@ export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
     )
   }
 
-  // Determine chat header name for direct chats (other participant's name)
   const otherMember = activeRoom.type === "direct" ? activeRoom.members?.find((m) => m.id !== currentUser?.id) : null
   const chatHeaderName =
     activeRoom.type === "direct"
@@ -56,68 +56,104 @@ export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
     return "#"
   }
 
+  const subtitle =
+    activeRoom.type === "direct"
+      ? "tap here for contact info"
+      : activeRoom.type === "public"
+        ? `${activeRoom.members.length} ${activeRoom.members.length === 1 ? "member" : "members"}`
+        : `Private · ${activeRoom.members.length} ${activeRoom.members.length === 1 ? "member" : "members"}`
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <motion.div
         initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28 }}
-        className="relative flex items-center justify-between gap-2 border-b border-border/50 bg-card/60 p-3 backdrop-blur-md flex-shrink-0 shadow-sm sm:p-4"
+        className={cn(
+          "relative flex shrink-0 items-center gap-1 border-b bg-card/95 backdrop-blur-md",
+          isMobile
+            ? cn("min-h-[3.25rem] px-1 safe-area-inset-top", chatMobileDivider)
+            : "gap-2 border-border/50 p-3 shadow-sm sm:p-4",
+        )}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          {mobileMenuButton ? <div className="shrink-0 md:hidden">{mobileMenuButton}</div> : null}
+        {/* Back button — WhatsApp / Messenger style on mobile */}
+        {isMobile && onBack ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 shrink-0 rounded-full hover:bg-muted/80"
+            onClick={onBack}
+            aria-label="Back to chats"
+          >
+            <ChevronLeft className="h-6 w-6" strokeWidth={2} />
+          </Button>
+        ) : mobileMenuButton ? (
+          <div className="shrink-0 md:hidden">{mobileMenuButton}</div>
+        ) : null}
+
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-muted/40 sm:gap-3"
+          onClick={() => setIsDetailsPanelOpen(true)}
+        >
           <UserAvatar
             user={{ name: chatHeaderName, avatar: chatHeaderAvatar || "/placeholder.svg?height=32&width=32" }}
-            className="h-9 w-9 sm:h-10 sm:w-10 ring-2 ring-purple-500/20 shadow-md shrink-0"
+            className={cn(
+              "shrink-0 shadow-sm",
+              isMobile ? "h-9 w-9" : "h-9 w-9 ring-2 ring-purple-500/20 sm:h-10 sm:w-10",
+            )}
           />
           <div className="min-w-0">
-            <h3 className="font-semibold text-sm sm:text-base truncate">{chatHeaderName}</h3>
-            {activeRoom.type === "public" && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {activeRoom.members.length} {activeRoom.members.length === 1 ? 'member' : 'members'}
-              </p>
-            )}
-            {activeRoom.type === "private" && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Private Group • {activeRoom.members.length} {activeRoom.members.length === 1 ? 'member' : 'members'}
-              </p>
-            )}
-            {activeRoom.type === "direct" && (
-              <p className="text-xs text-muted-foreground mt-0.5">Direct Message</p>
-            )}
+            <h3 className="truncate text-[15px] font-semibold leading-tight sm:text-base">{chatHeaderName}</h3>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {otherTypingUsers.length > 0 ? (
+                <span className={chatAccentText}>typing…</span>
+              ) : (
+                subtitle
+              )}
+            </p>
           </div>
-        </div>
-        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-          {activeRoom.type !== "direct" && (
+        </button>
+
+        <div className="flex shrink-0 items-center gap-0.5 pr-1 sm:gap-1">
+          {activeRoom.type !== "direct" && !isMobile && (
             <Link href={getManageGroupsLink()}>
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-1.5 sm:gap-2 h-9 rounded-lg hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300"
+                className="flex h-9 items-center gap-1.5 rounded-lg hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 sm:gap-2"
                 title="Manage Groups"
               >
                 <SettingsIcon className="h-4 w-4" />
-                <span className="hidden sm:inline text-sm">Manage</span>
+                <span className="hidden text-sm sm:inline">Manage</span>
               </Button>
             </Link>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-lg hover:bg-blue-500/10 hover:text-blue-700 dark:hover:text-blue-300"
+            className="h-9 w-9 rounded-full hover:bg-muted/80"
             onClick={() => setIsDetailsPanelOpen(true)}
+            aria-label="Chat details"
           >
-            <InfoIcon className="h-4 w-4" />
+            <InfoIcon className="h-5 w-5" />
           </Button>
         </div>
       </motion.div>
 
-      <div className="flex-1 min-h-0 overflow-hidden relative">
-        <MessageList />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <MessageList isMobile={isMobile} isGroupChat={activeRoom.type !== "direct"} />
       </div>
 
-      <div className="p-3 sm:p-4 border-t border-border/50 bg-card/60 backdrop-blur-md flex-shrink-0 safe-area-inset-bottom shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.35)]">
-        {otherTypingUsers.length > 0 && (
+      <div
+        className={cn(
+          "shrink-0 border-t safe-area-inset-bottom",
+          isMobile
+            ? cn("px-2 py-2", chatMobileDivider, chatInputBarBg)
+            : "border-border/50 bg-card/60 p-3 shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.12)] backdrop-blur-md dark:shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.35)] sm:p-4",
+        )}
+      >
+        {otherTypingUsers.length > 0 && !isMobile && (
           <div className="mb-3 px-2">
             <TypingIndicator users={otherTypingUsers} />
           </div>
@@ -126,13 +162,13 @@ export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
           <div className="flex justify-center px-1">
             <Button
               onClick={() => joinRoom(activeRoom.id)}
-              className={`rounded-xl shadow-md text-white ${chatGradientBg} ${chatGradientBgHover} w-full sm:w-auto min-h-11`}
+              className={`min-h-11 w-full rounded-xl text-white shadow-md sm:w-auto ${chatGradientBg} ${chatGradientBgHover}`}
             >
               Join Public Room
             </Button>
           </div>
         ) : (
-          <MessageInput />
+          <MessageInput isMobile={isMobile} />
         )}
       </div>
 
@@ -141,7 +177,6 @@ export function ChatArea({ mobileMenuButton }: ChatAreaProps = {}) {
           side="right"
           className={cn(
             "flex min-h-0 min-w-0 flex-col gap-0 border-l border-purple-500/15 bg-background p-0",
-            /* Override chat/ui/sheet defaults (w-3/4 + sm:max-w-sm) so content isn’t clipped on large screens */
             "!w-[min(28rem,calc(100vw-1rem))] !max-w-[min(28rem,calc(100vw-1rem))] sm:!max-w-md",
             "overflow-hidden",
           )}

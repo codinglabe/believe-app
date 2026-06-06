@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\UploadedFile;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 
 class ProcessIrsBmfSource implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
     public $timeout = 10800; // 3 hours
@@ -41,15 +42,21 @@ class ProcessIrsBmfSource implements ShouldQueue
         ini_set('memory_limit', '1024M');
         set_time_limit(10800);
 
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
         try {
             $uploadedFile = UploadedFile::findOrFail($this->fileId);
 
-            if (in_array($uploadedFile->status, ['cancelled', 'failed', 'completed'])) {
-                Log::info("Upload {$uploadedFile->status}, skipping");
+            if (in_array($uploadedFile->status, ['cancelled', 'failed'])) {
+                Log::info("Upload {$uploadedFile->status}, skipping source {$this->sourceIndex}");
                 return;
             }
 
-            $uploadedFile->update(['status' => 'processing']);
+            UploadedFile::where('id', $this->fileId)
+                ->where('status', 'queued')
+                ->update(['status' => 'processing']);
 
             // Download the file
             $content = $this->downloadFile($this->url);
@@ -77,19 +84,16 @@ class ProcessIrsBmfSource implements ShouldQueue
             // Count total data rows (excluding header)
             $totalDataRows = count($lines);
 
-            // Update total rows in uploaded_files (data rows + header)
-            $uploadedFile->update([
-                'total_rows' => $totalDataRows + ($headerAdded ? 1 : 0),
-                'total_chunks' => ceil($totalDataRows / $this->chunkSize)
-            ]);
+            $rowsForSource = $totalDataRows + ($headerAdded ? 1 : 0);
+            $chunksForSource = (int) ceil($totalDataRows / $this->chunkSize);
+            UploadedFile::where('id', $this->fileId)->increment('total_rows', $rowsForSource);
+            UploadedFile::where('id', $this->fileId)->increment('total_chunks', $chunksForSource);
 
             Log::info("Processing source {$this->sourceIndex} with {$totalDataRows} data records");
 
             // Process in chunks
             $chunks = array_chunk($lines, $this->chunkSize);
-            $totalProcessed = 0;
-            $processedChunks = 0;
-            $totalRecordsProcessed = 0; // Total records that were processed (including already existing)
+            $totalRecordsProcessed = 0;
             $limitReached = false;
 
             foreach ($chunks as $chunkIndex => $chunkLines) {
@@ -105,18 +109,13 @@ class ProcessIrsBmfSource implements ShouldQueue
                 $recordsInChunk = $result['records_in_chunk'];
                 $insertedInChunk = $result['inserted'] ?? 0;
 
-                $totalProcessed += $processed;
                 $totalRecordsProcessed += $recordsInChunk;
                 $this->totalInsertedCount += $insertedInChunk;
-                $processedChunks++;
 
-                // Update progress in uploaded_files - count ALL records processed, even if no changes
-                $uploadedFile->update([
-                    'processed_rows' => $totalRecordsProcessed,
-                    'processed_chunks' => $processedChunks
-                ]);
+                UploadedFile::where('id', $this->fileId)->increment('processed_rows', $recordsInChunk);
+                UploadedFile::where('id', $this->fileId)->increment('processed_chunks');
 
-                Log::info("Processed chunk {$chunkIndex}, {$processed} updated/inserted out of {$recordsInChunk} records. Total: {$totalRecordsProcessed}/{$totalDataRows}. Inserted: {$this->totalInsertedCount}" . ($this->storeLimit ? "/{$this->storeLimit}" : ""));
+                Log::info("Source {$this->sourceIndex} chunk {$chunkIndex}: {$processed} updated/inserted out of {$recordsInChunk} records. Source progress: {$totalRecordsProcessed}/{$totalDataRows}. Inserted: {$this->totalInsertedCount}" . ($this->storeLimit ? "/{$this->storeLimit}" : ""));
 
                 // Check if limit reached after this chunk
                 if ($this->storeLimit !== null && $this->totalInsertedCount >= $this->storeLimit) {
@@ -130,38 +129,11 @@ class ProcessIrsBmfSource implements ShouldQueue
                 }
             }
 
-            // Check if all rows are processed and update status to completed
-            $this->checkAndUpdateCompletionStatus($uploadedFile, $totalDataRows, $totalRecordsProcessed);
-
             Log::info("Completed processing source {$this->sourceIndex}. Processed: {$totalRecordsProcessed}/{$totalDataRows} records");
 
         } catch (\Exception $e) {
-            Log::error("ProcessIrsBmfSource failed: " . $e->getMessage());
-
-            // Update status to failed
-            if (isset($uploadedFile)) {
-                $uploadedFile->update(['status' => 'failed']);
-            }
-
+            Log::error("ProcessIrsBmfSource failed (source {$this->sourceIndex}): " . $e->getMessage());
             throw $e;
-        }
-    }
-
-    private function checkAndUpdateCompletionStatus(UploadedFile $uploadedFile, int $totalDataRows, int $totalRecordsProcessed): void
-    {
-        // Refresh the model to get latest values
-        $uploadedFile->refresh();
-
-        // Check if all data rows are processed (even if no changes were made)
-        if ($totalRecordsProcessed >= $totalDataRows) {
-            $uploadedFile->update([
-                'status' => 'completed',
-                'processed_rows' => $totalRecordsProcessed,
-                'processed_chunks' => $uploadedFile->total_chunks
-            ]);
-            Log::info("All data rows processed for file ID: {$uploadedFile->id}. Status updated to completed.");
-        } else {
-            Log::warning("Processing incomplete for file ID: {$uploadedFile->id}. Processed: {$totalRecordsProcessed}, Expected: {$totalDataRows}");
         }
     }
 
@@ -304,15 +276,6 @@ class ProcessIrsBmfSource implements ShouldQueue
 
     public function failed(\Exception $exception): void
     {
-        Log::error("ProcessIrsBmfSource job failed: " . $exception->getMessage());
-
-        try {
-            $uploadedFile = UploadedFile::find($this->fileId);
-            if ($uploadedFile) {
-                $uploadedFile->update(['status' => 'failed']);
-            }
-        } catch (\Exception $e) {
-            Log::error("Failed to update uploaded file status: " . $e->getMessage());
-        }
+        Log::error("ProcessIrsBmfSource job failed (source {$this->sourceIndex}): " . $exception->getMessage());
     }
 }
