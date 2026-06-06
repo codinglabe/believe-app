@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion"
 import { Globe } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { LANDING_HUB_FEATURES } from "./landing-data"
 import { landingTheme } from "./landing-theme"
 
@@ -10,25 +10,37 @@ const HUB_MAX = 420
 const ORBIT_RATIO = 178 / HUB_MAX
 const FEATURE_RATIO = 52 / HUB_MAX
 
-function useHubDiameter() {
-  const [size, setSize] = useState(300)
+function useHubDiameter(containerRef: React.RefObject<HTMLDivElement | null>) {
+  const [size, setSize] = useState(280)
 
   useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
     const update = () => {
-      const vw = window.innerWidth
-      const padding = vw < 640 ? 32 : 48
-      setSize(Math.min(HUB_MAX, Math.max(260, vw - padding)))
+      const available = el.clientWidth
+      const viewportCap = window.innerWidth - (window.innerWidth < 640 ? 32 : 48)
+      const cap = Math.min(available, viewportCap, HUB_MAX)
+      setSize(Math.max(220, cap))
     }
-    update()
+
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
     window.addEventListener("resize", update)
-    return () => window.removeEventListener("resize", update)
-  }, [])
+    update()
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", update)
+    }
+  }, [containerRef])
 
   return size
 }
 
 export function LandingHeroHub() {
-  const diameter = useHubDiameter()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const diameter = useHubDiameter(containerRef)
   const orbitRadius = diameter * ORBIT_RATIO
   const featureSize = Math.max(40, diameter * FEATURE_RATIO)
 
@@ -38,7 +50,7 @@ export function LandingHeroHub() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-[420px] overflow-visible px-1">
+    <div ref={containerRef} className="mx-auto w-full max-w-[420px] overflow-visible px-1 sm:px-2">
       <div
         className="relative mx-auto aspect-square rounded-full"
         style={{ width: diameter, height: diameter }}
@@ -84,7 +96,7 @@ export function LandingHeroHub() {
           const angleRad = (angleDeg * Math.PI) / 180
           const x = Math.cos(angleRad) * orbitRadius
           const y = Math.sin(angleRad) * orbitRadius
-          const showLabel = diameter >= 300
+          const showLabel = diameter >= 260
 
           return (
             <div
