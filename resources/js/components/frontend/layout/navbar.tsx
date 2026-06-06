@@ -253,8 +253,6 @@ export default function Navbar() {
       ],
     },
     ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
-    ...(isLoggedIn ? [{ name: "Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
-    ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
   ]
 
   const communityNavItems: LandingNavItem[] = [
