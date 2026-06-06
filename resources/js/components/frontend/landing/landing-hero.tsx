@@ -24,7 +24,7 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
 
   return (
     <section
-      className={`relative overflow-x-hidden pb-12 pt-6 sm:pb-16 sm:pt-8 lg:pb-20 ${landingTheme.bandLight} ${landingTheme.bandDark}`}
+      className={`relative overflow-x-hidden pb-10 pt-5 sm:pb-16 sm:pt-8 lg:pb-20 ${landingTheme.bandLight} ${landingTheme.bandDark}`}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-40"
@@ -37,19 +37,22 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
       <div className={landingTheme.bandOverlayLight} aria-hidden />
       <div className={landingTheme.dotGrid} aria-hidden />
 
-      <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-8 px-4 sm:gap-10 sm:px-6 md:grid-cols-2 md:gap-12 lg:px-8">
+      <div className="relative z-10 mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-8 px-4 sm:gap-10 sm:px-6 md:grid-cols-2 md:gap-10 lg:gap-12 lg:px-8">
         <motion.div
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6 }}
+          className="min-w-0"
         >
-          <h1 className={`text-3xl font-bold leading-[1.1] tracking-tight min-[400px]:text-4xl sm:text-5xl lg:text-[3.25rem] ${landingTheme.heading}`}>
+          <h1 className={`text-[1.65rem] font-bold leading-[1.12] tracking-tight min-[360px]:text-3xl min-[400px]:text-4xl sm:text-5xl lg:text-[3.25rem] ${landingTheme.heading}`}>
             {title}{" "}
-            <LandingGradientText hero>{highlight}</LandingGradientText>
+            <LandingGradientText hero className="inline">
+              {highlight}
+            </LandingGradientText>
           </h1>
-          <p className={`mt-5 max-w-xl text-base leading-relaxed sm:text-lg ${landingTheme.bodyText}`}>{sub}</p>
+          <p className={`mt-4 max-w-xl text-sm leading-relaxed min-[360px]:mt-5 min-[360px]:text-base sm:text-lg ${landingTheme.bodyText}`}>{sub}</p>
 
-          <ul className="mt-6 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 min-[420px]:gap-3 sm:mt-8 sm:max-w-lg">
+          <ul className="mt-5 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 min-[360px]:gap-2.5 sm:mt-8 sm:max-w-lg sm:gap-3">
             {LANDING_HERO_BENEFITS.map(({ label, icon: Icon }) => (
               <li
                 key={label}
@@ -61,10 +64,10 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
             ))}
           </ul>
 
-          <div className="mt-6 flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:mt-8 sm:gap-3 [&::-webkit-scrollbar]:hidden">
-            <Link href={route("register")} className="shrink-0">
+          <div className="mt-5 grid w-full max-w-xl grid-cols-1 gap-2 min-[400px]:grid-cols-2 sm:mt-8 lg:max-w-none lg:grid-cols-3 lg:gap-3">
+            <Link href={route("register")} className="min-w-0">
               <GradientCtaButton
-                className={`${landingTheme.heroBtnHeight} ${landingTheme.heroBtnText} whitespace-nowrap px-4 py-0 sm:px-6`}
+                className={`w-full ${landingTheme.heroBtnHeight} ${landingTheme.heroBtnText} whitespace-nowrap px-4 py-0 sm:px-6`}
               >
                 Get Started
               </GradientCtaButton>
@@ -72,7 +75,7 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
             <button
               type="button"
               onClick={() => setVideoOpen(true)}
-              className={`inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-2 border-purple-600 bg-white px-3 text-purple-700 shadow-sm transition hover:bg-purple-50 sm:gap-2 sm:px-5 dark:border-white/25 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 ${landingTheme.heroBtnHeight} ${landingTheme.heroBtnText}`}
+              className={`inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-2 border-purple-600 bg-white px-3 text-purple-700 shadow-sm transition hover:bg-purple-50 sm:gap-2 sm:px-5 dark:border-white/25 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 ${landingTheme.heroBtnHeight} ${landingTheme.heroBtnText}`}
             >
               <span
                 className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white ${landingTheme.heroBtnIcon}`}
@@ -81,7 +84,10 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
               </span>
               Watch Our Impact
             </button>
-            <LandingFilingButton variant="hero" />
+            <LandingFilingButton
+              variant="hero"
+              className="w-full min-[400px]:col-span-2 lg:col-span-1"
+            />
           </div>
 
           <LandingHeroVideoModal open={videoOpen} onOpenChange={setVideoOpen} />
@@ -107,9 +113,11 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
           initial={{ opacity: 0, scale: 0.92 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.7, delay: 0.15 }}
-          className="flex justify-center md:justify-end"
+          className="flex w-full min-w-0 justify-center md:justify-end"
         >
-          <LandingHeroHub />
+          <div className="w-full max-w-[420px]">
+            <LandingHeroHub />
+          </div>
         </motion.div>
       </div>
     </section>
