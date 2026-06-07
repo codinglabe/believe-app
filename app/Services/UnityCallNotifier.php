@@ -122,11 +122,22 @@ class UnityCallNotifier
                 }
 
                 if (in_array($reason, ['accepted', 'incoming', 'participant_declined', 'participant_left'], true)) {
-                    return $p->role === UnityCallParticipant::ROLE_CALLER
-                        || in_array($p->status, [
-                            UnityCallParticipant::STATUS_ACCEPTED,
-                            UnityCallParticipant::STATUS_RINGING,
-                        ], true);
+                    if ($p->role === UnityCallParticipant::ROLE_CALLER) {
+                        return true;
+                    }
+
+                    $liveStatuses = [
+                        UnityCallParticipant::STATUS_ACCEPTED,
+                        UnityCallParticipant::STATUS_RINGING,
+                    ];
+
+                    if (in_array($reason, ['participant_declined', 'participant_left'], true)) {
+                        $liveStatuses[] = UnityCallParticipant::STATUS_DECLINED;
+                        $liveStatuses[] = UnityCallParticipant::STATUS_LEFT;
+                        $liveStatuses[] = UnityCallParticipant::STATUS_MISSED;
+                    }
+
+                    return in_array($p->status, $liveStatuses, true);
                 }
 
                 return $p->status === UnityCallParticipant::STATUS_ACCEPTED

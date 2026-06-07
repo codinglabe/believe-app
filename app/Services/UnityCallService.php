@@ -200,11 +200,9 @@ class UnityCallService
             $this->notifier->broadcastStatus($participant->user_id, $payload);
         }
 
-        if ($reason === 'declined') {
-            $fresh = $call->fresh(['participants.user', 'chatRoom']);
-            $this->notifier->broadcastRoomStatus($fresh, $caller, $reason);
-            $this->notifier->broadcastSessionStatus($fresh, $caller, $reason);
-        }
+        $fresh = $call->fresh(['participants.user', 'chatRoom']);
+        $this->notifier->broadcastSessionStatus($fresh, $caller, $reason);
+        $this->notifier->broadcastRoomStatus($fresh, $caller, $reason);
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
@@ -341,11 +339,9 @@ class UnityCallService
             $this->notifier->broadcastStatus($p->user_id, $payload);
         }
 
-        if ($reason === 'ended') {
-            $fresh = $call->fresh(['participants.user', 'chatRoom']);
-            $this->notifier->broadcastRoomStatus($fresh, $call->caller, $reason);
-            $this->notifier->broadcastSessionStatus($fresh, $call->caller, $reason);
-        }
+        $fresh = $call->fresh(['participants.user', 'chatRoom']);
+        $this->notifier->broadcastSessionStatus($fresh, $call->caller, $reason);
+        $this->notifier->broadcastRoomStatus($fresh, $call->caller, $reason);
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }

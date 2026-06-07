@@ -279,9 +279,9 @@ export default function UnityCallShow({
       setCall(payload.call)
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
-      if (payload.reason === "participant_left") {
+      if (payload.reason === "participant_left" || payload.reason === "participant_declined") {
         const self = payload.participants.find((p) => p.userId === authUserId)
-        if (self?.status === "left") {
+        if (self?.status === "left" || self?.status === "declined") {
           stopMedia()
           navigateAfterUnityCall(payload.call.id, payload.call.chatRoomId ?? call.chatRoomId)
         }
