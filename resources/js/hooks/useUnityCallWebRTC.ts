@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { echo } from "@laravel/echo-react"
 import type { UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
+import {
+  isPeerNegotiationSettled,
+  normalizeSessionDescription,
+  normalizeWebRtcSignal,
+  webRtcSignalKey,
+} from "@/lib/unityCallWebRTC"
 
 export type UnityCallRemoteStream = {
   peerId: string
@@ -104,6 +110,9 @@ export function useUnityCallWebRTC({
   const tryConnectRef = useRef<() => void>(() => {})
   const flushPendingSignalsRef = useRef<() => void>(() => {})
   const fetchPendingSignalsRef = useRef<() => Promise<void>>(async () => {})
+  const processedSignals = useRef<Set<string>>(new Set())
+  const offerRequestSent = useRef<Set<string>>(new Set())
+  const handleSignalChain = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     rtcConfiguration.current = buildRtcConfiguration(iceServers)
@@ -185,6 +194,7 @@ export function useUnityCallWebRTC({
 
   const sendSignal = useCallback(
     (signal: WebRTCSignal) => {
+      const payload = normalizeWebRtcSignal(signal)
       const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
       void fetch(route("unity-calls.signal", callId), {
         method: "POST",
@@ -195,13 +205,38 @@ export function useUnityCallWebRTC({
           "X-Requested-With": "XMLHttpRequest",
         },
         credentials: "same-origin",
-        body: JSON.stringify(signal),
+        body: JSON.stringify(payload),
       }).catch((error) => {
         console.error("[UnityCallWebRTC] Failed to send signal:", error)
       })
     },
     [callId],
   )
+
+  const resetPeerConnection = useCallback((peerId: string) => {
+    const pc = peerConnections.current.get(peerId)
+    if (pc) {
+      pc.close()
+      peerConnections.current.delete(peerId)
+    }
+    pendingCandidates.current.delete(peerId)
+    makingOffer.current.delete(peerId)
+    ignoreOffer.current.delete(peerId)
+    offerRequestSent.current.delete(peerId)
+    setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId))
+  }, [])
+
+  const ensureLocalTracksOnPeer = useCallback((peerId: string, pc: RTCPeerConnection) => {
+    const stream = localStreamRef.current
+    if (!stream) {
+      return
+    }
+    stream.getTracks().forEach((track) => {
+      if (!pc.getSenders().some((sender) => sender.track?.kind === track.kind)) {
+        pc.addTrack(track, stream)
+      }
+    })
+  }, [])
 
   const attachLocalTracks = useCallback((stream: MediaStream) => {
     peerConnections.current.forEach((pc) => {
@@ -224,8 +259,6 @@ export function useUnityCallWebRTC({
       const pc = new RTCPeerConnection(rtcConfiguration.current)
       makingOffer.current.set(peerId, false)
       ignoreOffer.current.set(peerId, false)
-
-      const stream = localStreamRef.current
 
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams
@@ -268,23 +301,16 @@ export function useUnityCallWebRTC({
       }
 
       peerConnections.current.set(peerId, pc)
-
-      if (stream) {
-        stream.getTracks().forEach((track) => {
-          if (!pc.getSenders().some((sender) => sender.track?.kind === track.kind)) {
-            pc.addTrack(track, stream)
-          }
-        })
-      }
+      ensureLocalTracksOnPeer(peerId, pc)
 
       return pc
     },
-    [sendSignal, updateMediaConnected, userIdStr],
+    [ensureLocalTracksOnPeer, sendSignal, updateMediaConnected, userIdStr],
   )
 
   const sendOfferToPeer = useCallback(
     (peerId: string, pc: RTCPeerConnection) => {
-      const description = pc.localDescription
+      const description = normalizeSessionDescription(pc.localDescription ?? undefined)
       if (!description) {
         return
       }
@@ -304,7 +330,25 @@ export function useUnityCallWebRTC({
         return
       }
 
-      const pc = createPeerConnection(peerId)
+      let pc = peerConnections.current.get(peerId)
+      if (pc && isPeerNegotiationSettled(pc)) {
+        return
+      }
+
+      if (pc && pc.signalingState !== "stable") {
+        if (pc.signalingState === "have-local-offer" && pc.localDescription) {
+          sendOfferToPeer(peerId, pc)
+        }
+        return
+      }
+
+      if (pc && pc.signalingState === "stable" && pc.currentRemoteDescription && !isPeerNegotiationSettled(pc)) {
+        resetPeerConnection(peerId)
+        pc = undefined
+      }
+
+      pc = pc ?? createPeerConnection(peerId)
+      ensureLocalTracksOnPeer(peerId, pc)
 
       if (pc.signalingState === "have-local-offer" && pc.localDescription) {
         sendOfferToPeer(peerId, pc)
@@ -317,16 +361,21 @@ export function useUnityCallWebRTC({
 
       try {
         makingOffer.current.set(peerId, true)
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
+        const offer = await pc.createOffer({ offerToReceiveAudio: true })
+        const normalized = normalizeSessionDescription(offer)
+        if (!normalized) {
+          return
+        }
+        await pc.setLocalDescription(normalized)
         sendOfferToPeer(peerId, pc)
       } catch (error) {
         console.error("[UnityCallWebRTC] Failed to create offer:", error)
+        resetPeerConnection(peerId)
       } finally {
         makingOffer.current.set(peerId, false)
       }
     },
-    [createPeerConnection, sendOfferToPeer, userIdStr],
+    [createPeerConnection, ensureLocalTracksOnPeer, resetPeerConnection, sendOfferToPeer, userIdStr],
   )
 
   const handleSignal = useCallback(
@@ -335,93 +384,131 @@ export function useUnityCallWebRTC({
         return
       }
 
-      if (signal.type === "offer-request") {
-        if (signal.to !== userIdStr) {
+      const normalized = normalizeWebRtcSignal(signal)
+      const dedupeKey = webRtcSignalKey(normalized)
+      if (processedSignals.current.has(dedupeKey)) {
+        return
+      }
+      processedSignals.current.add(dedupeKey)
+
+      if (normalized.type === "offer-request") {
+        if (normalized.to !== userIdStr) {
           return
         }
-        const from = signal.from
-        const pc = peerConnections.current.get(from) ?? createPeerConnection(from)
-        if (pc.localDescription && pc.signalingState === "have-local-offer") {
-          sendOfferToPeer(from, pc)
-        } else {
-          await createOfferForPeer(from)
+        const from = normalized.from
+        const existing = peerConnections.current.get(from)
+        if (existing && isPeerNegotiationSettled(existing)) {
+          return
         }
+        await createOfferForPeer(from)
         return
       }
 
-      if (signal.to !== userIdStr) {
+      if (normalized.to !== userIdStr) {
         return
       }
 
-      const from = signal.from
+      const from = normalized.from
       let pc = peerConnections.current.get(from)
       if (!pc) {
         pc = createPeerConnection(from)
       }
 
-      switch (signal.type) {
-        case "offer": {
-          const isPolite = Number(userIdStr) > Number(from)
-          const offerCollision = pc.signalingState !== "stable" || makingOffer.current.get(from)
-          ignoreOffer.current.set(from, !isPolite && Boolean(offerCollision))
-          if (ignoreOffer.current.get(from) || !signal.offer) {
-            return
-          }
+      if (isPeerNegotiationSettled(pc) && (normalized.type === "offer" || normalized.type === "answer")) {
+        return
+      }
 
-          if (pc.signalingState === "have-local-offer") {
-            await pc.setLocalDescription({ type: "rollback" })
-          }
+      try {
+        switch (normalized.type) {
+          case "offer": {
+            const isPolite = Number(userIdStr) > Number(from)
+            const offerCollision = pc.signalingState !== "stable" || makingOffer.current.get(from)
+            ignoreOffer.current.set(from, !isPolite && Boolean(offerCollision))
+            if (ignoreOffer.current.get(from)) {
+              return
+            }
 
-          await pc.setRemoteDescription(signal.offer)
-          const pending = pendingCandidates.current.get(from) ?? []
-          for (const candidate of pending) {
-            await pc.addIceCandidate(candidate).catch(() => {})
-          }
-          pendingCandidates.current.delete(from)
+            const remoteOffer = normalizeSessionDescription(normalized.offer)
+            if (!remoteOffer) {
+              return
+            }
 
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          sendSignal({
-            type: "answer",
-            answer: pc.localDescription ?? answer,
-            from: userIdStr,
-            to: from,
-          })
-          break
-        }
-        case "answer": {
-          if (!signal.answer) {
-            return
-          }
-          if (pc.signalingState !== "have-local-offer") {
-            return
-          }
-          await pc.setRemoteDescription(signal.answer)
-          const pending = pendingCandidates.current.get(from) ?? []
-          for (const candidate of pending) {
-            await pc.addIceCandidate(candidate).catch(() => {})
-          }
-          pendingCandidates.current.delete(from)
-          break
-        }
-        case "ice-candidate": {
-          if (!signal.candidate) {
-            return
-          }
-          if (pc.remoteDescription?.type) {
-            await pc.addIceCandidate(signal.candidate).catch(() => {})
-          } else {
+            ensureLocalTracksOnPeer(from, pc)
+
+            if (pc.signalingState === "have-local-offer") {
+              await pc.setLocalDescription({ type: "rollback" })
+            }
+
+            await pc.setRemoteDescription(remoteOffer)
             const pending = pendingCandidates.current.get(from) ?? []
-            pending.push(signal.candidate)
-            pendingCandidates.current.set(from, pending)
+            for (const candidate of pending) {
+              await pc.addIceCandidate(candidate).catch(() => {})
+            }
+            pendingCandidates.current.delete(from)
+
+            const answer = await pc.createAnswer()
+            const normalizedAnswer = normalizeSessionDescription(answer)
+            if (!normalizedAnswer) {
+              return
+            }
+            await pc.setLocalDescription(normalizedAnswer)
+            sendSignal({
+              type: "answer",
+              answer: normalizeSessionDescription(pc.localDescription ?? undefined) ?? normalizedAnswer,
+              from: userIdStr,
+              to: from,
+            })
+            break
           }
-          break
+          case "answer": {
+            const remoteAnswer = normalizeSessionDescription(normalized.answer)
+            if (!remoteAnswer) {
+              return
+            }
+            if (pc.signalingState !== "have-local-offer") {
+              return
+            }
+            await pc.setRemoteDescription(remoteAnswer)
+            const pending = pendingCandidates.current.get(from) ?? []
+            for (const candidate of pending) {
+              await pc.addIceCandidate(candidate).catch(() => {})
+            }
+            pendingCandidates.current.delete(from)
+            break
+          }
+          case "ice-candidate": {
+            if (!normalized.candidate) {
+              return
+            }
+            if (pc.remoteDescription?.type) {
+              await pc.addIceCandidate(normalized.candidate).catch(() => {})
+            } else {
+              const pending = pendingCandidates.current.get(from) ?? []
+              pending.push(normalized.candidate)
+              pendingCandidates.current.set(from, pending)
+            }
+            break
+          }
         }
+      } catch (error) {
+        console.error("[UnityCallWebRTC] Signal handling failed:", normalized.type, error)
+        if (normalized.type === "offer" || normalized.type === "answer") {
+          resetPeerConnection(from)
+        }
+        processedSignals.current.delete(dedupeKey)
       }
 
       updateMediaConnected()
     },
-    [createOfferForPeer, createPeerConnection, sendOfferToPeer, sendSignal, updateMediaConnected, userIdStr],
+    [
+      createOfferForPeer,
+      createPeerConnection,
+      ensureLocalTracksOnPeer,
+      resetPeerConnection,
+      sendSignal,
+      updateMediaConnected,
+      userIdStr,
+    ],
   )
 
   handleSignalRef.current = handleSignal
@@ -431,7 +518,11 @@ export function useUnityCallWebRTC({
       pendingSignals.current.push(signal)
       return
     }
-    void handleSignalRef.current(signal)
+    handleSignalChain.current = handleSignalChain.current
+      .then(() => handleSignalRef.current(normalizeWebRtcSignal(signal)))
+      .catch((error) => {
+        console.error("[UnityCallWebRTC] Queued signal failed:", error)
+      })
   }, [])
 
   const flushPendingSignals = useCallback(() => {
@@ -441,9 +532,9 @@ export function useUnityCallWebRTC({
     const queued = [...pendingSignals.current]
     pendingSignals.current = []
     queued.forEach((signal) => {
-      void handleSignalRef.current(signal)
+      enqueueOrHandleSignal(signal)
     })
-  }, [])
+  }, [enqueueOrHandleSignal])
 
   flushPendingSignalsRef.current = flushPendingSignals
 
@@ -488,13 +579,23 @@ export function useUnityCallWebRTC({
     }
 
     peers.forEach((peerId) => {
-      sendSignal({
-        type: "offer-request",
-        from: userIdStr,
-        to: peerId,
-      })
+      const pc = peerConnections.current.get(peerId)
+      if (pc && isPeerNegotiationSettled(pc)) {
+        return
+      }
+
       if (Number(userIdStr) < Number(peerId)) {
         void createOfferForPeer(peerId)
+        return
+      }
+
+      if (!offerRequestSent.current.has(peerId)) {
+        offerRequestSent.current.add(peerId)
+        sendSignal({
+          type: "offer-request",
+          from: userIdStr,
+          to: peerId,
+        })
       }
     })
 
@@ -508,6 +609,9 @@ export function useUnityCallWebRTC({
     mediaStarted.current = false
     channelReady.current = false
     pendingSignals.current = []
+    processedSignals.current.clear()
+    offerRequestSent.current.clear()
+    handleSignalChain.current = Promise.resolve()
 
     peerConnections.current.forEach((pc) => pc.close())
     peerConnections.current.clear()
@@ -641,9 +745,16 @@ export function useUnityCallWebRTC({
       if (mediaConnected || callEnded.current) {
         return
       }
-      void fetchPendingSignalsRef.current()
+      const peers = acceptedPeerIds()
+      const allSettled = peers.every((peerId) => {
+        const pc = peerConnections.current.get(peerId)
+        return pc ? isPeerNegotiationSettled(pc) : false
+      })
+      if (allSettled) {
+        return
+      }
       connectToAcceptedPeers()
-    }, 800)
+    }, 2500)
 
     return () => window.clearInterval(intervalId)
   }, [connectToAcceptedPeers, mediaActive, mediaConnected, callStatus])

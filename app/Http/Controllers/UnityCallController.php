@@ -123,6 +123,7 @@ class UnityCallController extends Controller
             return response()->json(['ok' => false], 409);
         }
 
+        $validated = $this->normalizeWebRtcSignal($validated);
         $this->cacheWebRtcSignal($call->id, $validated);
         UnityCallWebRTCSignal::dispatch($call->id, $validated);
 
@@ -143,6 +144,8 @@ class UnityCallController extends Controller
             $signals,
             fn (array $signal) => (string) ($signal['to'] ?? '') === $userId,
         ));
+
+        $forMe = array_map(fn (array $signal) => $this->normalizeWebRtcSignal($signal), $forMe);
 
         return response()->json(['signals' => $forMe]);
     }
@@ -225,13 +228,53 @@ class UnityCallController extends Controller
     {
         $key = "unity_call:{$callId}:webrtc_signals";
         $signals = Cache::get($key, []);
+        if (! is_array($signals)) {
+            $signals = [];
+        }
+
+        $type = (string) ($signal['type'] ?? '');
+        if (in_array($type, ['offer', 'answer', 'offer-request'], true)) {
+            $from = (string) ($signal['from'] ?? '');
+            $to = (string) ($signal['to'] ?? '');
+            $signals = array_values(array_filter(
+                $signals,
+                fn (array $existing) => ! (
+                    (string) ($existing['type'] ?? '') === $type
+                    && (string) ($existing['from'] ?? '') === $from
+                    && (string) ($existing['to'] ?? '') === $to
+                ),
+            ));
+        }
+
         $signals[] = $signal;
 
-        if (count($signals) > 150) {
-            $signals = array_slice($signals, -150);
+        if (count($signals) > 80) {
+            $signals = array_slice($signals, -80);
         }
 
         Cache::put($key, $signals, now()->addMinutes(15));
+    }
+
+    /**
+     * @param  array<string, mixed>  $signal
+     * @return array<string, mixed>
+     */
+    private function normalizeWebRtcSignal(array $signal): array
+    {
+        foreach (['offer', 'answer'] as $key) {
+            if (! isset($signal[$key]['sdp']) || ! is_string($signal[$key]['sdp'])) {
+                continue;
+            }
+
+            $sdp = $signal[$key]['sdp'];
+            $sdp = str_replace(['\\n', '\\r\\n'], "\n", $sdp);
+            $sdp = str_replace("\r\n", "\n", $sdp);
+            $sdp = str_replace("\r", "\n", $sdp);
+            $lines = array_values(array_filter(array_map('trim', explode("\n", $sdp)), fn ($line) => $line !== ''));
+            $signal[$key]['sdp'] = implode("\r\n", $lines)."\r\n";
+        }
+
+        return $signal;
     }
 
     /**
