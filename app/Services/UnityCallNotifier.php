@@ -20,12 +20,8 @@ class UnityCallNotifier
         $callerName = trim((string) $caller->name) ?: 'Someone';
         $joinPath = '/unity-call/'.$call->id;
         $joinUrl = url($joinPath);
-        $ringUrl = $joinPath.'?ring=1'
-            .'&caller_id='.urlencode((string) $caller->id)
-            .'&caller_name='.urlencode($callerName)
-            .'&caller_avatar='.urlencode((string) ($caller->avatar_url ?? ''))
-            .($call->chat_room_id ? '&chat_room_id='.urlencode((string) $call->chat_room_id) : '')
-            .($call->chatRoom?->name ? '&chat_room_name='.urlencode((string) $call->chatRoom->name) : '');
+        // Keep ring URLs short — long query strings (e.g. avatar URLs) can exceed server limits and 404.
+        $ringUrl = $joinPath.'?ring=1';
         $expiresAt = $call->ring_expires_at ?? now()->addMinutes(2);
         $declineUrl = URL::temporarySignedRoute(
             'unity-calls.decline-signed',

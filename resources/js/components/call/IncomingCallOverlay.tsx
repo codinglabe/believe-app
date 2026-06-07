@@ -73,20 +73,41 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
 
     const params = new URLSearchParams(window.location.search)
     const callMatch = window.location.pathname.match(/\/unity-call\/(\d+)/)
-    if (params.get("ring") === "1" && callMatch) {
+    if (params.get("ring") !== "1" || !callMatch) {
+      return
+    }
+
+    const callId = Number(callMatch[1])
+    const callerId = Number(params.get("caller_id"))
+
+    if (userId && Number.isFinite(callerId) && callerId === userId) {
+      router.visit(unityCallShowPath(callId), { replace: true })
+      return
+    }
+
+    void consumeAnyPendingIncomingCall().then((pending) => {
+      if (pending) {
+        handleSwIncomingCallPayload(pending)
+        return
+      }
+
+      if (!Number.isFinite(callId) || callId <= 0) {
+        return
+      }
+
       handleSwIncomingCallPayload({
         type: "incoming_call",
-        call_id: callMatch[1],
+        call_id: String(callId),
         caller_id: params.get("caller_id") ?? "",
         caller_name: params.get("caller_name") ?? "",
         caller_avatar: params.get("caller_avatar") ?? "",
         chat_room_id: params.get("chat_room_id") ?? "",
         chat_room_name: params.get("chat_room_name") ?? "",
-        join_url: `${window.location.pathname}${window.location.search}`,
-        ring_url: `${window.location.pathname}${window.location.search}`,
+        join_url: unityCallShowPath(callId),
+        ring_url: `${window.location.pathname}?ring=1`,
       })
-    }
-  }, [])
+    })
+  }, [userId])
 
   useEffect(() => {
     if (!incoming) {

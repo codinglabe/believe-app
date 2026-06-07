@@ -65,6 +65,11 @@ export function handleSwIncomingCallPayload(data: Record<string, string | undefi
     return
   }
 
+  const callerId = Number(data.caller_id)
+  if (Number.isFinite(callerId) && callerId === userId) {
+    return
+  }
+
   storePendingIncomingCall(data)
   void storePendingIncomingCallPersistent(data)
 

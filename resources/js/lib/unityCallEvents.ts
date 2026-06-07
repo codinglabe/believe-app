@@ -20,6 +20,9 @@ export function buildIncomingCallFromPush(data: Record<string, string | undefine
   }
 
   const callerId = Number(data.caller_id)
+  if (Number.isFinite(callerId) && callerId === userId) {
+    return null
+  }
   const callerName = data.caller_name?.trim() || "Someone"
   const joinUrl = data.join_url || data.click_action || data.url || `/unity-call/${callId}`
 
