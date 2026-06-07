@@ -72,7 +72,9 @@ class UnityCallChatMessageService
     {
         $durationSeconds = null;
 
-        if ($call->answered_at && $call->ended_at) {
+        if ($call->status === UnityCall::STATUS_ACCEPTED && $call->answered_at) {
+            $durationSeconds = now()->diffInSeconds($call->answered_at);
+        } elseif ($call->answered_at && $call->ended_at) {
             $durationSeconds = $call->ended_at->diffInSeconds($call->answered_at);
         }
 
@@ -90,6 +92,9 @@ class UnityCallChatMessageService
             'answered_at' => $call->answered_at?->utc()->toIso8601String(),
             'ended_at' => $call->ended_at?->utc()->toIso8601String(),
             'duration_seconds' => $durationSeconds,
+            'duration_label' => $durationSeconds !== null && $durationSeconds > 0
+                ? $this->formatDurationHuman($durationSeconds)
+                : null,
             'accepted_count' => $acceptedCount,
             'caller_id' => $call->caller_id,
             'caller_name' => trim((string) ($call->caller?->name ?? '')) ?: 'Someone',
@@ -98,15 +103,12 @@ class UnityCallChatMessageService
 
     private function buildPreviewText(UnityCall $call): string
     {
-        $caller = trim((string) ($call->caller?->name ?? '')) ?: 'Someone';
-
         return match ($call->status) {
-            UnityCall::STATUS_RINGING => "{$caller} started an audio call",
-            UnityCall::STATUS_ACCEPTED => 'Audio call in progress',
+            UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED => 'Voice call',
             UnityCall::STATUS_ENDED => $this->endedPreview($call),
-            UnityCall::STATUS_CANCELLED, UnityCall::STATUS_MISSED => 'Missed audio call',
-            UnityCall::STATUS_DECLINED => 'Audio call declined',
-            default => 'Audio call',
+            UnityCall::STATUS_CANCELLED, UnityCall::STATUS_MISSED => 'Missed voice call',
+            UnityCall::STATUS_DECLINED => 'Voice call declined',
+            default => 'Voice call',
         };
     }
 
@@ -115,24 +117,39 @@ class UnityCallChatMessageService
         if ($call->answered_at && $call->ended_at) {
             $seconds = $call->ended_at->diffInSeconds($call->answered_at);
 
-            return 'Audio call · '.$this->formatDuration($seconds);
+            if ($seconds > 0) {
+                return 'Voice call · '.$this->formatDurationHuman($seconds);
+            }
         }
 
-        return 'Audio call ended';
+        return 'Voice call';
     }
 
-    private function formatDuration(int $seconds): string
+    private function formatDurationHuman(int $seconds): string
     {
         $seconds = max(0, $seconds);
-        $hours = intdiv($seconds, 3600);
-        $minutes = intdiv($seconds % 3600, 60);
-        $remaining = $seconds % 60;
 
-        if ($hours > 0) {
-            return sprintf('%d:%02d:%02d', $hours, $minutes, $remaining);
+        if ($seconds < 60) {
+            return $seconds === 1 ? '1 second' : "{$seconds} seconds";
         }
 
-        return sprintf('%d:%02d', $minutes, $remaining);
+        $minutes = intdiv($seconds, 60);
+
+        if ($minutes < 60) {
+            return $minutes === 1 ? '1 minute' : "{$minutes} minutes";
+        }
+
+        $hours = intdiv($minutes, 60);
+        $remainingMinutes = $minutes % 60;
+
+        if ($remainingMinutes === 0) {
+            return $hours === 1 ? '1 hour' : "{$hours} hours";
+        }
+
+        $hourPart = $hours === 1 ? '1 hour' : "{$hours} hours";
+        $minutePart = $remainingMinutes === 1 ? '1 minute' : "{$remainingMinutes} minutes";
+
+        return "{$hourPart} {$minutePart}";
     }
 
     private function supportsCallMessages(): bool

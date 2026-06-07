@@ -1,11 +1,13 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { router } from "@inertiajs/react"
-import { Phone, PhoneIncoming, PhoneMissed, PhoneOff } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing } from "lucide-react"
 import type { ChatMessage, UnityCallChatMetadata } from "@/providers/chat-provider"
 import { cn } from "@/lib/utils"
 import { toInternalAppPath } from "@/lib/unityCall"
+import { chatReceivedBubble, chatSentBubble } from "./chat-brand"
+import { formatChatTime, parseChatTimestamp } from "@/lib/chat-timestamps"
 
 type Props = {
   message: ChatMessage
@@ -14,118 +16,179 @@ type Props = {
 
 const ACTIVE_CALL_STATUSES = new Set(["ringing", "accepted"])
 
-function formatDuration(seconds: number): string {
+function formatDurationHuman(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const remaining = total % 60
 
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
+  if (total < 60) {
+    return total === 1 ? "1 second" : `${total} seconds`
   }
 
-  return `${minutes}:${String(remaining).padStart(2, "0")}`
-}
-
-function callTitle(metadata: UnityCallChatMetadata, fallback: string): string {
-  const caller = metadata.caller_name?.trim() || "Someone"
-
-  switch (metadata.call_status) {
-    case "ringing":
-      return metadata.is_group_call ? `${caller} is calling the group` : `${caller} is calling`
-    case "accepted":
-      return metadata.is_group_call ? "Group audio call" : "Audio call in progress"
-    case "ended":
-      if (metadata.duration_seconds != null) {
-        return `Audio call · ${formatDuration(metadata.duration_seconds)}`
-      }
-      return "Audio call ended"
-    case "missed":
-    case "cancelled":
-      return "Missed audio call"
-    case "declined":
-      return "Audio call declined"
-    default:
-      return fallback
+  const minutes = Math.floor(total / 60)
+  if (minutes < 60) {
+    return minutes === 1 ? "1 minute" : `${minutes} minutes`
   }
+
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  if (remainingMinutes === 0) {
+    return hours === 1 ? "1 hour" : `${hours} hours`
+  }
+
+  const hourPart = hours === 1 ? "1 hour" : `${hours} hours`
+  const minutePart = remainingMinutes === 1 ? "1 minute" : `${remainingMinutes} minutes`
+
+  return `${hourPart} ${minutePart}`
 }
 
-function callSubtitle(metadata: UnityCallChatMetadata): string | null {
+function durationSubtext(metadata: UnityCallChatMetadata, liveSeconds: number | null): string | null {
+  if (metadata.duration_label?.trim()) {
+    return metadata.duration_label.trim()
+  }
+
+  if (metadata.call_status === "accepted" && liveSeconds != null) {
+    return formatDurationHuman(liveSeconds)
+  }
+
+  if (metadata.call_status === "ended" && metadata.duration_seconds != null && metadata.duration_seconds > 0) {
+    return formatDurationHuman(metadata.duration_seconds)
+  }
+
   if (metadata.call_status === "ringing") {
-    return "Tap join to answer"
-  }
-  if (metadata.call_status === "accepted") {
-    if (metadata.is_group_call && metadata.accepted_count > 0) {
-      return `${metadata.accepted_count} in call · Tap to join`
-    }
     return "Tap to join"
   }
-  if (metadata.call_status === "ended" && metadata.duration_seconds != null) {
-    return `Call duration ${formatDuration(metadata.duration_seconds)}`
+
+  if (metadata.call_status === "accepted") {
+    return "Tap to rejoin"
   }
+
+  if (metadata.call_status === "missed" || metadata.call_status === "cancelled") {
+    return "Missed"
+  }
+
+  if (metadata.call_status === "declined") {
+    return "Declined"
+  }
+
   return null
 }
 
-function CallIcon({ status }: { status: string }) {
+function CallDirectionIcon({
+  status,
+  outgoing,
+}: {
+  status: string
+  outgoing: boolean
+}) {
   if (status === "missed" || status === "cancelled") {
-    return <PhoneMissed className="h-5 w-5 text-rose-400" />
+    return <PhoneMissed className={cn("h-4 w-4", outgoing ? "text-white/90" : "text-rose-500")} />
   }
+
   if (status === "declined") {
-    return <PhoneOff className="h-5 w-5 text-muted-foreground" />
+    return <PhoneOff className={cn("h-4 w-4", outgoing ? "text-white/80" : "text-muted-foreground")} />
   }
+
+  if (outgoing) {
+    return <PhoneOutgoing className="h-4 w-4 text-white/90" />
+  }
+
   if (status === "ringing") {
-    return <PhoneIncoming className="h-5 w-5 text-emerald-400" />
+    return <PhoneIncoming className="h-4 w-4 text-purple-600 dark:text-purple-400" />
   }
-  return <Phone className="h-5 w-5 text-purple-400" />
+
+  return <Phone className={cn("h-4 w-4", outgoing ? "text-white/90" : "text-purple-600 dark:text-purple-400")} />
 }
 
 export function ChatCallMessage({ message, currentUserId }: Props) {
   const metadata = message.metadata
+  const [liveSeconds, setLiveSeconds] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!metadata || metadata.call_status !== "accepted" || !metadata.answered_at) {
+      setLiveSeconds(null)
+      return
+    }
+
+    const started = parseChatTimestamp(metadata.answered_at).getTime()
+    if (Number.isNaN(started)) {
+      return
+    }
+
+    const tick = () => setLiveSeconds(Math.max(0, Math.floor((Date.now() - started) / 1000)))
+    tick()
+    const id = window.setInterval(tick, 1000)
+
+    return () => window.clearInterval(id)
+  }, [metadata])
+
   if (!metadata) {
     return null
   }
 
+  const isOutgoing = metadata.caller_id === currentUserId
   const isActive = ACTIVE_CALL_STATUSES.has(metadata.call_status)
-  const isCaller = metadata.caller_id === currentUserId
-  const title = callTitle(metadata, message.message)
-  const subtitle = callSubtitle(metadata)
   const joinPath = toInternalAppPath(metadata.join_url)
+  const subtext = durationSubtext(metadata, liveSeconds)
 
-  const handleJoin = () => {
-    if (!joinPath) {
+  const handleOpen = () => {
+    if (!isActive || !joinPath) {
       return
     }
+
     const path =
-      !isCaller && metadata.call_status === "ringing" ? `${joinPath}${joinPath.includes("?") ? "&" : "?"}ring=1` : joinPath
+      !isOutgoing && metadata.call_status === "ringing"
+        ? `${joinPath}${joinPath.includes("?") ? "&" : "?"}ring=1`
+        : joinPath
+
     router.visit(path)
   }
 
   return (
-    <div className="my-3 flex justify-center px-2 sm:my-4">
-      <div
+    <div className={cn("mb-2 flex px-2 sm:mb-3", isOutgoing ? "justify-end" : "justify-start")}>
+      <button
+        type="button"
+        onClick={handleOpen}
+        disabled={!isActive}
         className={cn(
-          "w-full max-w-sm rounded-2xl border px-4 py-3 text-center shadow-sm",
-          isActive
-            ? "border-purple-500/30 bg-gradient-to-br from-purple-950/50 to-blue-950/40"
-            : "border-border/60 bg-muted/40",
+          "flex max-w-[min(85%,20rem)] items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left sm:max-w-[min(75%,18rem)]",
+          isOutgoing
+            ? cn(chatSentBubble, "rounded-br-sm", isActive && "cursor-pointer active:opacity-95")
+            : cn(chatReceivedBubble, "rounded-bl-sm", isActive && "cursor-pointer active:opacity-95"),
+          !isActive && "cursor-default",
         )}
       >
-        <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-black/20">
-          <CallIcon status={metadata.call_status} />
-        </div>
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        {subtitle ? <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p> : null}
-        {isActive ? (
-          <Button
-            type="button"
-            size="sm"
-            className="mt-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-500 hover:to-blue-500"
-            onClick={handleJoin}
-          >
-            {metadata.call_status === "ringing" && !isCaller ? "Join call" : "Open call"}
-          </Button>
-        ) : null}
-      </div>
+        <span
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+            isOutgoing ? "bg-white/15" : "bg-purple-500/10 dark:bg-purple-500/15",
+          )}
+        >
+          <CallDirectionIcon status={metadata.call_status} outgoing={isOutgoing} />
+        </span>
+
+        <span className="min-w-0 flex-1 pr-1">
+          <span className="block text-sm font-semibold leading-tight">Voice call</span>
+          {subtext ? (
+            <span
+              className={cn(
+                "mt-0.5 block text-xs leading-tight",
+                isOutgoing ? "text-white/75" : "text-muted-foreground",
+              )}
+            >
+              {subtext}
+            </span>
+          ) : null}
+        </span>
+
+        <span
+          className={cn(
+            "shrink-0 self-end text-[10px] tabular-nums leading-none",
+            isOutgoing ? "text-white/60" : "text-muted-foreground/80",
+          )}
+        >
+          {formatChatTime(message.created_at)}
+        </span>
+      </button>
     </div>
   )
 }

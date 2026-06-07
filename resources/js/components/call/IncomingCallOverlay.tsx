@@ -24,6 +24,7 @@ import {
 import { subscribeUnityCallIncoming, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload, rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 
 type Props = {
@@ -244,6 +245,14 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   useEffect(() => {
     return () => stopCallRingtone()
   }, [])
+
+  useUnityCallRingTimeout({
+    callId: incoming?.call.id ?? 0,
+    callStatus: incoming?.call.status ?? "",
+    ringExpiresAt: incoming?.call.ringExpiresAt,
+    enabled: Boolean(incoming),
+    onExpired: dismiss,
+  })
 
   const handleAccept = async () => {
     if (!incoming || busy) {

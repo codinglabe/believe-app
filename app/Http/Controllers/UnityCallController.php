@@ -102,6 +102,18 @@ class UnityCallController extends Controller
         ]);
     }
 
+    public function expireRinging(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
+    {
+        $this->authorizeCall($request, $call);
+
+        $call = $calls->expireCallIfRinging($call, $request->user());
+
+        return response()->json([
+            'call_id' => $call->id,
+            'status' => $call->status,
+        ]);
+    }
+
     public function signal(Request $request, UnityCall $call): JsonResponse
     {
         $this->authorizeCall($request, $call);
@@ -157,6 +169,7 @@ class UnityCallController extends Controller
             abort(403);
         }
 
+        $call = $calls->expireCallIfRinging($call, $user);
         $call->load(['caller', 'participants.user', 'chatRoom']);
         $participant = $call->participantForUser($user->id);
         $isCaller = (int) $call->caller_id === (int) $user->id;

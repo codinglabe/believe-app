@@ -86,6 +86,7 @@ export interface UnityCallChatMetadata {
   answered_at?: string | null
   ended_at?: string | null
   duration_seconds?: number | null
+  duration_label?: string | null
   accepted_count: number
   caller_id: number
   caller_name: string

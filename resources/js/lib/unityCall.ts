@@ -46,6 +46,9 @@ type UnityCallErrorResponse = {
   errors?: Record<string, string[]>
 }
 
+/** Must match `UnityCallService::RING_SECONDS`. */
+export const UNITY_CALL_RING_SECONDS = 60
+
 const acceptInFlight = new Set<number>()
 const leavingCallIds = new Set<number>()
 
@@ -169,6 +172,20 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
     throw new Error(message)
   }
   return ok && data ? data : null
+}
+
+export async function expireUnityCallRinging(
+  callId: number,
+): Promise<{ ok: boolean; status?: string; message?: string }> {
+  const { ok, data, message } = await postUnityCallJson<{ call_id: number; status: string }>(
+    route("unity-calls.expire-ringing", callId),
+  )
+
+  return {
+    ok,
+    status: data?.status,
+    message,
+  }
 }
 
 export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; data: UnityCallAcceptResponse | null; message?: string }> {

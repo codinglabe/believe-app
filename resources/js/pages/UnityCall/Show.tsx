@@ -16,11 +16,13 @@ import {
   unityCallChatChannelName,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
+import { parseChatTimestamp } from "@/lib/chat-timestamps"
 import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
+import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 
 type Props = {
   call: UnityCallPayload
@@ -49,7 +51,7 @@ function formatElapsed(totalSeconds: number): string {
 
 function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: boolean }) {
   const ref = useRef<HTMLAudioElement>(null)
-  const fallbackCleanup = useRef<(() => void) | null>(null)
+  const webAudioCleanup = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const audio = ref.current
@@ -61,26 +63,6 @@ function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: bo
     audio.autoplay = true
     ;(audio as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
 
-    fallbackCleanup.current?.()
-    fallbackCleanup.current = null
-
-    const playStream = async () => {
-      try {
-        if (supportsAudioOutputSelection()) {
-          await applyRemoteAudioOutput(audio, speakerOn)
-        } else if (speakerOn) {
-          fallbackCleanup.current = attachWebAudioFallback(stream)
-          await audio.play().catch(() => {})
-        } else {
-          await audio.play().catch(() => {})
-        }
-      } catch {
-        await audio.play().catch(() => {})
-      }
-    }
-
-    void playStream()
-
     const onTrackUnmute = () => {
       void audio.play().catch(() => {})
     }
@@ -89,12 +71,39 @@ function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: bo
     })
 
     return () => {
-      fallbackCleanup.current?.()
-      fallbackCleanup.current = null
       stream.getAudioTracks().forEach((track) => {
         track.removeEventListener("unmute", onTrackUnmute)
       })
       audio.srcObject = null
+    }
+  }, [stream])
+
+  useEffect(() => {
+    const audio = ref.current
+    if (!audio) {
+      return
+    }
+
+    webAudioCleanup.current?.()
+    webAudioCleanup.current = null
+
+    const applyOutput = async () => {
+      if (supportsAudioOutputSelection()) {
+        audio.muted = false
+        await applyRemoteAudioOutput(audio, speakerOn)
+        return
+      }
+
+      // Route through Web Audio only — avoid playing the same stream twice.
+      audio.muted = true
+      webAudioCleanup.current = attachWebAudioFallback(stream, speakerOn)
+    }
+
+    void applyOutput()
+
+    return () => {
+      webAudioCleanup.current?.()
+      webAudioCleanup.current = null
     }
   }, [stream, speakerOn])
 
@@ -136,6 +145,7 @@ export default function UnityCallShow({
   const [ending, setEnding] = useState(false)
   const [accepting, setAccepting] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(true)
+  const [ringRemainingSeconds, setRingRemainingSeconds] = useState<number | null>(null)
 
   const ringMode = useMemo(() => {
     if (typeof window === "undefined") {
@@ -234,6 +244,9 @@ export default function UnityCallShow({
         const ringing = ringingCallees.length
         return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : `${acceptedCallees.length} joined`
       }
+      if (ringRemainingSeconds != null && ringRemainingSeconds > 0) {
+        return `Calling… ${formatElapsed(ringRemainingSeconds)}`
+      }
       return "Calling…"
     }
     if (callConnected && mediaConnected) {
@@ -251,6 +264,7 @@ export default function UnityCallShow({
     mediaConnected,
     elapsed,
     connectionStatus,
+    ringRemainingSeconds,
   ])
 
   const statusHint = useMemo(() => {
@@ -267,13 +281,16 @@ export default function UnityCallShow({
       return mediaConnected ? "Connected" : `${acceptedCallees.length} in call · ${connectionStatus}`
     }
     if (isCaller && call.status === "ringing") {
+      if (ringRemainingSeconds != null && ringRemainingSeconds > 0) {
+        return `Waiting for answer · ${formatElapsed(ringRemainingSeconds)} left`
+      }
       return "Waiting for answer…"
     }
     if (callConnected) {
       return connectionStatus
     }
     return "Setting up call…"
-  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length])
+  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length, ringRemainingSeconds])
 
   const showMediaControls =
     Boolean(localStream) &&
@@ -342,6 +359,50 @@ export default function UnityCallShow({
     chatChannelName?.startsWith("public-chat.") ? "public" : "private",
   )
 
+  useUnityCallRingTimeout({
+    callId: call.id,
+    callStatus: call.status,
+    ringExpiresAt: call.ringExpiresAt,
+    enabled: call.status === "ringing",
+    onExpired: () => {
+      if (isLeavingUnityCall(call.id)) {
+        return
+      }
+      stopMedia()
+      navigateAfterUnityCall(call.id, call.chatRoomId)
+    },
+  })
+
+  useEffect(() => {
+    if (!["ended", "cancelled", "declined", "missed"].includes(call.status)) {
+      return
+    }
+
+    stopMedia()
+    const timer = window.setTimeout(() => {
+      navigateAfterUnityCall(call.id, call.chatRoomId)
+    }, 1500)
+
+    return () => window.clearTimeout(timer)
+  }, [call.status, call.id, call.chatRoomId, stopMedia])
+
+  useEffect(() => {
+    if (call.status !== "ringing" || !call.ringExpiresAt) {
+      setRingRemainingSeconds(null)
+      return
+    }
+
+    const expiresMs = parseChatTimestamp(call.ringExpiresAt).getTime()
+    if (Number.isNaN(expiresMs)) {
+      return
+    }
+
+    const tick = () => setRingRemainingSeconds(Math.max(0, Math.ceil((expiresMs - Date.now()) / 1000)))
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [call.status, call.ringExpiresAt])
+
   useEffect(() => {
     if (!callLive || !call.answeredAt) {
       return
@@ -353,8 +414,18 @@ export default function UnityCallShow({
     return () => window.clearInterval(id)
   }, [callLive, call.answeredAt])
 
+  const isRejoinCallee =
+    !isCaller &&
+    call.status === "accepted" &&
+    (selfStatus === "declined" || selfStatus === "left" || selfStatus === "missed")
+
   const handleAccept = async () => {
-    if (accepting || isCaller || selfStatus !== "ringing") {
+    if (accepting || isCaller) {
+      return
+    }
+
+    const canJoin = selfStatus === "ringing" || isRejoinCallee
+    if (!canJoin) {
       return
     }
 
@@ -433,6 +504,7 @@ export default function UnityCallShow({
     selfStatus === "ringing" &&
     (call.status === "ringing" || call.status === "accepted")
   const showRingingCalleeControls = isRingingCallee && !ringMode
+  const showRejoinControls = isRejoinCallee
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
@@ -571,6 +643,19 @@ export default function UnityCallShow({
                 </Button>
                 <span className="text-xs text-white/60">Accept</span>
               </div>
+            </div>
+          ) : showRejoinControls ? (
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                type="button"
+                className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 p-0 shadow-lg hover:from-purple-700 hover:to-blue-700"
+                disabled={ending || accepting}
+                aria-label="Rejoin call"
+                onClick={() => void handleAccept()}
+              >
+                {accepting ? <Loader2 className="h-7 w-7 animate-spin" /> : <Phone className="h-7 w-7" />}
+              </Button>
+              <span className="text-xs text-white/60">Rejoin call</span>
             </div>
           ) : !isRingingCallee || ringMode ? (
             <div className="flex flex-col items-center gap-2">
