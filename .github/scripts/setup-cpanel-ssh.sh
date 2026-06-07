@@ -1,34 +1,47 @@
 #!/usr/bin/env bash
 # Reliable cPanel SSH for GitHub Actions (IPv4-only, minimal noise).
-# Required env: SSH_PRIVATE_KEY, DEPLOY_USER, DEPLOY_HOST, SSH_DIR
-# Optional env: SSH_CONNECT_HOST, SSH_PORT (22), SSH_MAX_ATTEMPTS (6), SSH_RETRY_SLEEP (5),
+# Required env: SSH_PRIVATE_KEY, DEPLOY_USER, SSH_DIR
+# Optional env: DEPLOY_HOST, SSH_CONNECT_HOST, SSH_PORT (22), SSH_MAX_ATTEMPTS (6), SSH_RETRY_SLEEP (5),
 #   SSH_USE_TCP_PROBE (false), SSH_USE_DEPLOY_HOST (false)
 set -euo pipefail
+
+DEPLOY_USER="${DEPLOY_USER:-c3ers}"
+DEPLOY_HOST="${DEPLOY_HOST:-501c3ers.com}"
+SSH_PORT="${SSH_PORT:-22}"
+SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
+SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
+SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-10}"
+SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
+SSH_USE_TCP_PROBE="${SSH_USE_TCP_PROBE:-false}"
+SSH_USE_DEPLOY_HOST="${SSH_USE_DEPLOY_HOST:-true}"
+SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
 
 if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
   echo "::error::SSH_PRIVATE_KEY is empty (set CPANEL_SSH_KEY secret)."
   exit 1
 fi
 
-SSH_PORT="${SSH_PORT:-22}"
-SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
-SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
-SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-6}"
-SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-5}"
-SSH_USE_TCP_PROBE="${SSH_USE_TCP_PROBE:-false}"
-SSH_USE_DEPLOY_HOST="${SSH_USE_DEPLOY_HOST:-false}"
-SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
-
 mkdir -p "${SSH_DIR}"
 chmod 700 "${SSH_DIR}"
-printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
+
+# Normalize private key (strip CR; support literal \n in GitHub secret).
+if printf '%s' "${SSH_PRIVATE_KEY}" | grep -q '\\n'; then
+  printf '%b\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/cpanel_deploy"
+else
+  printf '%s\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/cpanel_deploy"
+fi
 chmod 600 "${SSH_DIR}/cpanel_deploy"
 
+if ! grep -q 'BEGIN.*PRIVATE KEY' "${SSH_DIR}/cpanel_deploy"; then
+  echo "::error::CPANEL_SSH_KEY does not look like an OpenSSH private key (missing BEGIN PRIVATE KEY)."
+  exit 1
+fi
+
 RUNNER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo unknown)"
-echo "Runner IPv4: ${RUNNER_IP} → ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
+echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
 
 ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST:-}" ] && [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
+if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST}" ] && [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
   ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
 fi
 
@@ -82,9 +95,8 @@ run_ssh_test() {
     cpanel-deploy "echo SSH_OK && whoami && hostname"
 }
 
-# Connect via VPS IPv4 only — do not SSH to DEPLOY_HOST when it is a public site (CDN/proxy).
 SSH_HOSTS=("${SSH_CONNECT_HOST}")
-if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST:-}" ]; then
+if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST}" ]; then
   if [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
     SSH_HOSTS+=("${DEPLOY_HOST}")
   fi
@@ -95,9 +107,10 @@ fi
 
 print_firewall_help() {
   echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts (${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT})."
-  echo "::error::Runner IP ${RUNNER_IP} was blocked or port ${SSH_PORT} is closed from GitHub Actions."
-  echo "::error::On the VPS (WHM/SSH), run once as root: bash scripts/allow-github-actions-csf.sh"
-  echo "::error::Or Hostinger hPanel → VPS → Firewall → allow TCP ${SSH_PORT} from source any (or GitHub Actions CIDRs from https://api.github.com/meta)."
+  echo "::error::Runner IP ${RUNNER_IP} is blocked by CSF/firewall or the deploy key is wrong."
+  echo "::error::ONE-TIME fix (WHM -> Terminal as root):"
+  echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/allow-github-actions-csf.sh | bash"
+  echo "::error::Optional: set GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN + server .env DEPLOY_RUNNER_ALLOW_TOKEN, then configure sudo for scripts/allow-runner-ip.sh (see script header)."
   if command -v curl >/dev/null 2>&1; then
     echo "GitHub Actions IPv4 ranges (first 8):"
     curl -fsS --max-time 15 https://api.github.com/meta 2>/dev/null \
@@ -136,13 +149,14 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
   last_err="${out}"
   if [ "${attempt}" -eq "${SSH_MAX_ATTEMPTS}" ] || [ "${attempt}" -eq 1 ]; then
     echo "Attempt ${attempt}/${SSH_MAX_ATTEMPTS} failed for ${host}"
+    echo "${out}" | tail -8
   fi
   sleep "${SSH_RETRY_SLEEP}"
 done
 
 if [ "${connected}" -ne 1 ]; then
   if [ -n "${last_err}" ]; then
-    echo "${last_err}" | tail -5
+    echo "${last_err}" | tail -8
   fi
   print_firewall_help
   exit 1

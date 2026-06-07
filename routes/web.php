@@ -172,6 +172,7 @@ use App\Http\Controllers\UnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
+use App\Http\Controllers\Internal\DeployRunnerAllowController;
 use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
@@ -199,6 +200,10 @@ Route::domain(config('merchant.domain'))->group(function () {
 Route::domain(config('livestock.domain'))->group(function () {
     require __DIR__.'/livestock.php';
 });
+
+Route::post('/internal/deploy/allow-runner-ip', DeployRunnerAllowController::class)
+    ->middleware('throttle:10,1')
+    ->name('internal.deploy.allow-runner-ip');
 
 // Route::get('/test-broadcast', function () {
 //     $message = App\Models\ChatMessage::first();
