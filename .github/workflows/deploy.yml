@@ -106,7 +106,7 @@ jobs:
             echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION (believeinunity jump SSH key)."
             exit 1
           fi
-          echo "Using SSH jump: believeinunity@${SSH_JUMP_HOST} -> c3ers@127.0.0.1 (CSF-safe for GitHub Actions)."
+          echo "Deploy target: c3ers@501c3ers.com via believeinunity@${SSH_JUMP_HOST} (server-side hop)."
 
       - name: Preflight — open SSH for this runner
         env:
@@ -137,7 +137,7 @@ jobs:
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
-          chmod +x .github/scripts/setup-cpanel-ssh.sh
+          chmod +x .github/scripts/setup-cpanel-ssh.sh .github/scripts/remote-c3ers.sh .github/scripts/rsync-to-c3ers.sh
           bash .github/scripts/setup-cpanel-ssh.sh
 
       - name: Cache Composer
@@ -174,7 +174,7 @@ jobs:
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
+          ${SSH_CMD} "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
           echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
           chmod +x .github/scripts/expand-vite-env.sh
@@ -199,7 +199,7 @@ jobs:
       - name: Verify server paths (storage, .env, .htaccess)
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          ${SSH_CMD} bash -s <<REMOTE
           set -e
           for f in storage .env .htaccess public/.htaccess; do
             test -e "${DEPLOY_PATH}/\$f" || { echo "::error::Missing ${DEPLOY_PATH}/\$f on server"; exit 1; }
@@ -210,16 +210,14 @@ jobs:
       - name: Deploy with rsync
         run: |
           set -euo pipefail
-          # App + assets (with --delete). Vendor synced separately without --delete for speed.
-          rsync -avz --delete \
-            -e "${RSYNC_RSH}" \
+          # App + assets (with --delete). Vendor synced separately for speed.
+          ${RSYNC_TO_C3ERS} -avz --delete \
             ${RSYNC_EXCLUDES} \
             --exclude=vendor/ \
-            ./ cpanel-deploy:${DEPLOY_PATH}/
-          rsync -avz --delete \
-            -e "${RSYNC_RSH}" \
-            ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
-          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+            ./ "${DEPLOY_PATH}/"
+          ${RSYNC_TO_C3ERS} -avz --delete \
+            ./vendor/ "${DEPLOY_PATH}/vendor/"
+          ${SSH_CMD} bash -s <<REMOTE
           set -euo pipefail
           test -f "${DEPLOY_PATH}/public/build/manifest.json"
           asset_count=\$(find "${DEPLOY_PATH}/public/build/assets" -type f 2>/dev/null | wc -l | tr -d ' ')
@@ -231,7 +229,7 @@ jobs:
       - name: Prune non-runtime files on server
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          ${SSH_CMD} bash -s <<REMOTE
           set -euo pipefail
           cd "${DEPLOY_PATH}"
           rm -rf docs tests node_modules deploy .ssh-deploy .ssh-deploy-prod .phpunit.cache bootstrap/ssr 2>/dev/null || true
@@ -244,7 +242,7 @@ jobs:
       - name: Post-deploy (artisan on server only)
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          ${SSH_CMD} bash -s <<REMOTE
           set -euo pipefail
           cd "${DEPLOY_PATH}"
           mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs

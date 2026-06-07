@@ -2,7 +2,7 @@
 # Reliable cPanel SSH for GitHub Actions (IPv4-only, minimal noise).
 # Required env: SSH_PRIVATE_KEY, DEPLOY_USER, SSH_DIR
 # Optional env: DEPLOY_HOST, SSH_CONNECT_HOST, SSH_PORT (22), SSH_MAX_ATTEMPTS (6), SSH_RETRY_SLEEP (5),
-#   SSH_USE_TCP_PROBE (false), SSH_USE_DEPLOY_HOST (false)
+#   SSH_USE_TCP_PROBE (false), SSH_USE_DEPLOY_HOST (false), SSH_USE_JUMP (false)
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-c3ers}"
@@ -12,7 +12,7 @@ SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
 SSH_USE_JUMP="${SSH_USE_JUMP:-false}"
 SSH_JUMP_USER="${SSH_JUMP_USER:-believeinunity}"
 SSH_JUMP_HOST="${SSH_JUMP_HOST:-72.60.226.88}"
-SSH_INNER_KEY_PATH="${SSH_INNER_KEY_PATH:-/home/believeinunity/.ssh/c3ers_deploy}"
+SERVER_INNER_KEY="/home/believeinunity/.local/share/.gconf/deploy_key"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
 SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-10}"
 SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
@@ -43,7 +43,7 @@ fi
 
 RUNNER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo unknown)"
 if [ "${SSH_USE_JUMP}" = "true" ]; then
-  echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_JUMP_USER}@${SSH_JUMP_HOST}:${SSH_PORT} -> ${DEPLOY_USER}@127.0.0.1"
+  echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_JUMP_USER}@${SSH_JUMP_HOST}:${SSH_PORT} -> ${DEPLOY_USER}@501c3ers.com (server-side hop)"
 else
   echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
 fi
@@ -79,16 +79,11 @@ request_runner_allow() {
 request_runner_allow || true
 
 ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+if [ "${SSH_USE_JUMP}" = "true" ]; then
+  ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_JUMP_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+fi
 if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST}" ] && [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
   ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
-fi
-
-if [ -n "${GITHUB_ENV:-}" ]; then
-  {
-    echo "SSH_DIR=${SSH_DIR}"
-    echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4"
-    echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4"
-  } >> "${GITHUB_ENV}"
 fi
 
 format_ssh_hostname() {
@@ -120,73 +115,12 @@ write_jump_only_config() {
   chmod 600 "${SSH_DIR}/config"
 }
 
-bootstrap_c3ers_on_jump() {
-  write_jump_only_config
-  if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
-    believeinunity-vps "echo JUMP_OK" >/dev/null 2>&1; then
-    echo "::error::Cannot SSH to jump host ${SSH_JUMP_USER}@${SSH_JUMP_HOST}"
-    return 1
-  fi
-
-  local server_key="/home/believeinunity/.local/share/.gconf/deploy_key"
-  local inner_key="/home/believeinunity/.ssh/c3ers_deploy"
-  local runner_inner_key="${SSH_DIR}/c3ers_inner"
-
-  ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps \
-    "test -f ${server_key} || { echo MISSING_KEY >&2; exit 1; }; mkdir -p .ssh && cp -f ${server_key} ${inner_key} && chmod 600 ${inner_key}"
-
-  if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps \
-    "ssh -i ${inner_key} -o BatchMode=yes -o StrictHostKeyChecking=no c3ers@127.0.0.1 whoami" 2>/dev/null | grep -qx c3ers; then
-    echo "::error::Inner hop failed on jump host (${inner_key} -> c3ers@127.0.0.1)."
-    return 1
-  fi
-  echo "Jump host inner SSH OK (believeinunity -> c3ers@127.0.0.1)."
-
-  # Runner must authenticate as c3ers through the tunnel — copy inner key from VPS.
-  scp -F "${SSH_DIR}/config" -o BatchMode=yes "believeinunity-vps:${server_key}" "${runner_inner_key}"
-  chmod 600 "${runner_inner_key}"
-  echo "Copied c3ers deploy key to runner for tunnel authentication."
-}
-
-write_jump_ssh_config() {
-  local jump_host
-  jump_host="$(format_ssh_hostname "${SSH_JUMP_HOST}")"
-  printf '%s\n' \
-    'Host believeinunity-vps' \
-    "  HostName ${jump_host}" \
-    "  User ${SSH_JUMP_USER}" \
-    "  Port ${SSH_PORT}" \
-    "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
-    '  IdentitiesOnly yes' \
-    '  StrictHostKeyChecking accept-new' \
-    '  ServerAliveInterval 15' \
-    '  ServerAliveCountMax 4' \
-    '  AddressFamily inet' \
-    '  IPQoS throughput' \
-    '  TCPKeepAlive yes' \
-    > "${SSH_DIR}/config"
-  printf '%s\n' \
-    'Host cpanel-deploy' \
-    '  HostName 127.0.0.1' \
-    "  User ${DEPLOY_USER}" \
-    "  Port ${SSH_PORT}" \
-    "  IdentityFile ${SSH_DIR}/c3ers_inner" \
-    '  IdentitiesOnly yes' \
-    "  ProxyCommand ssh -F ${SSH_DIR}/config -o BatchMode=yes believeinunity-vps nc %h %p" \
-    '  StrictHostKeyChecking accept-new' \
-    '  ServerAliveInterval 15' \
-    '  ServerAliveCountMax 4' \
-    '  AddressFamily inet' \
-    >> "${SSH_DIR}/config"
-  chmod 600 "${SSH_DIR}/config"
+write_wrapper_scripts() {
+  install -m 755 .github/scripts/remote-c3ers.sh "${SSH_DIR}/remote-c3ers.sh"
+  install -m 755 .github/scripts/rsync-to-c3ers.sh "${SSH_DIR}/rsync-to-c3ers.sh"
 }
 
 write_ssh_host() {
-  if [ "${SSH_USE_JUMP}" = "true" ]; then
-    write_jump_ssh_config
-    return
-  fi
-
   local host="$1"
   local formatted
   formatted="$(format_ssh_hostname "${host}")"
@@ -213,10 +147,41 @@ tcp_probe() {
 }
 
 run_ssh_test() {
-  ssh -4 -F "${SSH_DIR}/config" \
-    -o BatchMode=yes \
-    -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
-    cpanel-deploy "echo SSH_OK && whoami && hostname"
+  if [ "${SSH_USE_JUMP}" = "true" ]; then
+    SSH_DIR="${SSH_DIR}" DEPLOY_USER="${DEPLOY_USER}" SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT}" \
+      "${SSH_DIR}/remote-c3ers.sh" "echo SSH_OK && whoami && hostname"
+  else
+    ssh -4 -F "${SSH_DIR}/config" \
+      -o BatchMode=yes \
+      -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
+      cpanel-deploy "echo SSH_OK && whoami && hostname"
+  fi
+}
+
+verify_inner_hop() {
+  ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" believeinunity-vps \
+    "test -f ${SERVER_INNER_KEY} && ssh -i ${SERVER_INNER_KEY} -o BatchMode=yes -o StrictHostKeyChecking=no ${DEPLOY_USER}@127.0.0.1 whoami" 2>/dev/null \
+    | grep -qx "${DEPLOY_USER}"
+}
+
+export_jump_env() {
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    {
+      echo "SSH_DIR=${SSH_DIR}"
+      echo "SSH_CMD=${SSH_DIR}/remote-c3ers.sh"
+      echo "RSYNC_TO_C3ERS=${SSH_DIR}/rsync-to-c3ers.sh"
+    } >> "${GITHUB_ENV}"
+  fi
+}
+
+export_direct_env() {
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    {
+      echo "SSH_DIR=${SSH_DIR}"
+      echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4 cpanel-deploy"
+      echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4"
+    } >> "${GITHUB_ENV}"
+  fi
 }
 
 SSH_HOSTS=("${SSH_CONNECT_HOST}")
@@ -230,8 +195,13 @@ if [ "${SSH_ALLOW_IPV6}" = "true" ] && [ -n "${SSH_IPV6_HOST:-}" ]; then
 fi
 
 print_firewall_help() {
-  echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts (${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT})."
-  echo "::error::Runner IP ${RUNNER_IP} is blocked by CSF/firewall or the deploy key is wrong."
+  echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts."
+  if [ "${SSH_USE_JUMP}" = "true" ]; then
+    echo "::error::Could not reach ${SSH_JUMP_USER}@${SSH_JUMP_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
+  else
+    echo "::error::Could not reach ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
+  fi
+  echo "::error::Runner IP may be blocked by CSF/firewall or the deploy key is wrong."
   echo "::error::ONE-TIME fix (WHM -> Terminal as root):"
   echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
   echo "::error::Add DEPLOY_RUNNER_ALLOW_TOKEN to GitHub Secrets (printed by setup script)."
@@ -245,14 +215,11 @@ print_firewall_help() {
 
 connected=0
 last_err=""
-if [ "${SSH_USE_JUMP}" = "true" ]; then
-  bootstrap_c3ers_on_jump
-fi
 
 for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
   if [ "${SSH_USE_JUMP}" = "true" ]; then
     host="${SSH_JUMP_HOST}"
-    write_jump_ssh_config
+    write_jump_only_config
   else
     host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
     write_ssh_host "${host}"
@@ -264,7 +231,7 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
     probe_host="${probe_host%]}"
   fi
 
-  if [ "${attempt}" -eq 3 ] || [ "${attempt}" -eq 6 ]; then
+  if [ "${attempt}" -eq 3 ] || [ "${attempt}" -eq 6 ] || [ "${attempt}" -eq 9 ]; then
     request_runner_allow || true
   fi
 
@@ -275,6 +242,30 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
     fi
     sleep "${SSH_RETRY_SLEEP}"
     continue
+  fi
+
+  if [ "${SSH_USE_JUMP}" = "true" ]; then
+    if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
+      believeinunity-vps "echo JUMP_OK" >/dev/null 2>&1; then
+      last_err="jump_host_unreachable"
+      if [ "${attempt}" -eq "${SSH_MAX_ATTEMPTS}" ] || [ "${attempt}" -eq 1 ]; then
+        echo "Attempt ${attempt}/${SSH_MAX_ATTEMPTS}: jump host ${SSH_JUMP_USER}@${host} unreachable"
+      fi
+      sleep "${SSH_RETRY_SLEEP}"
+      continue
+    fi
+
+    if ! verify_inner_hop; then
+      last_err="inner_hop_failed"
+      echo "::error::Inner hop failed on jump host (${SERVER_INNER_KEY} -> ${DEPLOY_USER}@127.0.0.1)."
+      sleep "${SSH_RETRY_SLEEP}"
+      continue
+    fi
+
+    write_wrapper_scripts
+    export_jump_env
+  else
+    export_direct_env
   fi
 
   if out="$(run_ssh_test 2>&1)"; then
@@ -292,7 +283,7 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
 done
 
 if [ "${connected}" -ne 1 ]; then
-  if [ -n "${last_err}" ]; then
+  if [ -n "${last_err}" ] && [ "${last_err}" != "jump_host_unreachable" ] && [ "${last_err}" != "inner_hop_failed" ] && [ "${last_err}" != "tcp_unreachable" ]; then
     echo "${last_err}" | tail -8
   fi
   print_firewall_help
