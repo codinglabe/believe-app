@@ -6,11 +6,16 @@ use App\Events\MessageSent;
 use App\Models\ChatMessage;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
+use Illuminate\Support\Facades\Schema;
 
 class UnityCallChatMessageService
 {
     public function syncCallMessage(UnityCall $call): ?ChatMessage
     {
+        if (! $this->supportsCallMessages()) {
+            return null;
+        }
+
         $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
 
         if (! $call->chat_room_id) {
@@ -128,5 +133,12 @@ class UnityCallChatMessageService
         }
 
         return sprintf('%d:%02d', $minutes, $remaining);
+    }
+
+    private function supportsCallMessages(): bool
+    {
+        return Schema::hasColumn('chat_messages', 'message_type')
+            && Schema::hasColumn('chat_messages', 'metadata')
+            && Schema::hasColumn('unity_calls', 'chat_message_id');
     }
 }

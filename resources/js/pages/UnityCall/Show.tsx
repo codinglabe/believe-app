@@ -7,12 +7,12 @@ import toast from "react-hot-toast"
 import { Button } from "@/components/ui/button"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
-  declineUnityCall,
-  endUnityCall,
-  hangUpUnityCall,
   acceptUnityCall,
   isLeavingUnityCall,
+  markLeavingUnityCall,
+  clearLeavingUnityCall,
   navigateAfterUnityCall,
+  terminateUnityCall,
   unityCallChatChannelName,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
@@ -384,21 +384,20 @@ export default function UnityCallShow({
 
     setEnding(true)
     stopMedia()
+    markLeavingUnityCall(call.id)
 
     const wasRinging = call.status === "ringing"
-    let ok = false
-
-    if (isCaller) {
-      ok = await hangUpUnityCall(call.id)
-    } else if (wasRinging && selfStatus === "ringing") {
-      ok = await declineUnityCall(call.id)
-    } else {
-      ok = await endUnityCall(call.id)
-    }
+    const { ok, message } = await terminateUnityCall({
+      callId: call.id,
+      isCaller,
+      callStatus: call.status,
+      selfStatus,
+    })
 
     if (!ok) {
+      clearLeavingUnityCall(call.id)
       setEnding(false)
-      toast.error("Could not end the call. Please try again.")
+      toast.error(message?.trim() || "Could not end the call. Please try again.")
       return
     }
 

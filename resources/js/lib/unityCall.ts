@@ -206,6 +206,64 @@ export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; da
   }
 }
 
+function isRecoverableTerminateMessage(message?: string): boolean {
+  if (!message) {
+    return false
+  }
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes("no longer") ||
+    normalized.includes("not part of this call") ||
+    normalized.includes("already") ||
+    normalized.includes("can only leave an active call")
+  )
+}
+
+export type TerminateUnityCallOptions = {
+  callId: number
+  isCaller: boolean
+  callStatus: string
+  selfStatus: string | null
+}
+
+/** Decline, cancel, or end — picks the correct action for caller vs callee vs ringing. */
+export async function terminateUnityCall({
+  callId,
+  isCaller,
+  callStatus,
+  selfStatus,
+}: TerminateUnityCallOptions): Promise<{ ok: boolean; message?: string }> {
+  if (isCaller) {
+    const cancel = await postUnityCallJson(route("unity-calls.cancel", callId))
+    if (cancel.ok || isRecoverableTerminateMessage(cancel.message)) {
+      return { ok: true }
+    }
+
+    const end = await postUnityCallJson(route("unity-calls.end", callId))
+    if (end.ok || isRecoverableTerminateMessage(end.message)) {
+      return { ok: true }
+    }
+
+    return { ok: false, message: end.message ?? cancel.message }
+  }
+
+  if (selfStatus === "ringing") {
+    const decline = await postUnityCallJson(route("unity-calls.decline", callId))
+    if (decline.ok || isRecoverableTerminateMessage(decline.message)) {
+      return { ok: true }
+    }
+
+    return { ok: false, message: decline.message }
+  }
+
+  const end = await postUnityCallJson(route("unity-calls.end", callId))
+  if (end.ok || isRecoverableTerminateMessage(end.message)) {
+    return { ok: true }
+  }
+
+  return { ok: false, message: end.message }
+}
+
 export async function declineUnityCall(callId: number): Promise<boolean> {
   const { ok } = await postUnityCallJson(route("unity-calls.decline", callId))
   return ok

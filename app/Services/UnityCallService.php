@@ -9,6 +9,7 @@ use App\Models\UnityCallParticipant;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class UnityCallService
@@ -174,6 +175,13 @@ class UnityCallService
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         }
 
+        if (in_array($participant->status, [
+            UnityCallParticipant::STATUS_LEFT,
+            UnityCallParticipant::STATUS_MISSED,
+        ], true)) {
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        }
+
         $participant->update(['status' => UnityCallParticipant::STATUS_DECLINED]);
 
         $call->loadMissing(['caller', 'participants']);
@@ -272,15 +280,27 @@ class UnityCallService
 
     public function end(UnityCall $call, User $user): UnityCall
     {
-        $participant = $this->requireParticipant($call, $user);
+        $call->loadMissing(['caller', 'participants', 'chatRoom']);
+        $isCaller = (int) $call->caller_id === (int) $user->id;
+        $participant = $call->participantForUser($user->id);
+
+        if (! $participant) {
+            if ($isCaller) {
+                throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
+            }
+
+            return $this->decline($call, $user);
+        }
 
         if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         }
 
-        $call->loadMissing(['caller', 'participants', 'chatRoom']);
         $isDirect = $call->chatRoom?->type === 'direct';
-        $isCaller = (int) $call->caller_id === (int) $user->id;
+
+        if (! $isCaller && $participant->status === UnityCallParticipant::STATUS_RINGING) {
+            return $this->decline($call, $user);
+        }
 
         if ($call->status === UnityCall::STATUS_RINGING && ! $isCaller) {
             return $this->decline($call, $user);
@@ -542,7 +562,14 @@ class UnityCallService
 
     private function syncChatCallMessage(UnityCall $call): void
     {
-        $this->chatMessages->syncCallMessage($call);
+        try {
+            $this->chatMessages->syncCallMessage($call);
+        } catch (\Throwable $e) {
+            Log::warning('unity_call.chat_message_sync_failed', [
+                'call_id' => $call->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function forgetWebRtcSignalCache(UnityCall $call): void

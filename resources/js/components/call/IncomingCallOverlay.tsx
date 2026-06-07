@@ -5,8 +5,15 @@ import { router } from "@inertiajs/react"
 import { useEcho } from "@laravel/echo-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
+import toast from "react-hot-toast"
 import { Button } from "@/components/ui/button"
-import { acceptUnityCall, declineUnityCall, markUnityCallAcceptedLocally, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
+import {
+  acceptUnityCall,
+  markUnityCallAcceptedLocally,
+  terminateUnityCall,
+  toInternalAppPath,
+  unityCallShowPath,
+} from "@/lib/unityCall"
 import { startCallRingtone, stopCallRingtone } from "@/lib/callRingtone"
 import {
   clearCustomCallRingtone,
@@ -261,8 +268,17 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     }
     setBusy(true)
     stopCallRingtone()
-    await declineUnityCall(incoming.call.id)
+    const { ok, message } = await terminateUnityCall({
+      callId: incoming.call.id,
+      isCaller: false,
+      callStatus: incoming.call.status,
+      selfStatus: "ringing",
+    })
     setBusy(false)
+    if (!ok) {
+      toast.error(message?.trim() || "Could not decline the call. Please try again.")
+      return
+    }
     dismiss()
   }
 
