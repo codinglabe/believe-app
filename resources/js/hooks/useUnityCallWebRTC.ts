@@ -99,10 +99,6 @@ function peerHasLiveIncomingAudio(pc: RTCPeerConnection): boolean {
   )
 }
 
-function peerAudioIsFullyNegotiated(pc: RTCPeerConnection): boolean {
-  return peerHasLiveOutgoingAudio(pc) && peerHasLiveIncomingAudio(pc)
-}
-
 export function useUnityCallWebRTC({
   callId,
   userId,
@@ -138,6 +134,7 @@ export function useUnityCallWebRTC({
   const fetchPendingSignalsRef = useRef<() => Promise<void>>(async () => {})
   const processedSignals = useRef<Set<string>>(new Set())
   const offerRequestSent = useRef<Set<string>>(new Set())
+  const outboundTracksRef = useRef<Map<string, MediaStreamTrack>>(new Map())
   const handleSignalChain = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
@@ -245,6 +242,11 @@ export function useUnityCallWebRTC({
       pc.close()
       peerConnections.current.delete(peerId)
     }
+    const cloned = outboundTracksRef.current.get(peerId)
+    if (cloned) {
+      cloned.stop()
+      outboundTracksRef.current.delete(peerId)
+    }
     pendingCandidates.current.delete(peerId)
     makingOffer.current.delete(peerId)
     ignoreOffer.current.delete(peerId)
@@ -252,35 +254,60 @@ export function useUnityCallWebRTC({
     setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId))
   }, [])
 
-  const ensureLocalTracksOnPeer = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
-    const stream = localStreamRef.current
-    const track = stream?.getAudioTracks()[0] ?? null
+  const resolveOutgoingAudioTrack = useCallback(
+    (peerId: string): MediaStreamTrack | null => {
+      const source = localStreamRef.current?.getAudioTracks()[0] ?? null
+      if (!source) {
+        return null
+      }
 
-    if (track) {
-      track.enabled = true
-    }
+      source.enabled = true
 
-    let transceiver = pc.getTransceivers().find(
-      (item) =>
-        item.sender.track?.kind === "audio" ||
-        item.receiver.track?.kind === "audio" ||
-        item.mid !== null,
-    )
+      if (!isCaller) {
+        return source
+      }
 
-    if (!transceiver) {
-      transceiver = pc.addTransceiver("audio", { direction: "sendrecv" })
-    }
+      let cloned = outboundTracksRef.current.get(peerId)
+      if (!cloned || cloned.readyState !== "live") {
+        cloned?.stop()
+        cloned = source.clone()
+        outboundTracksRef.current.set(peerId, cloned)
+      }
 
-    try {
-      transceiver.direction = "sendrecv"
-    } catch {
-      // ignore read-only direction in some browsers
-    }
+      cloned.enabled = source.enabled
+      return cloned
+    },
+    [isCaller],
+  )
 
-    if (track && transceiver.sender.track?.id !== track.id) {
-      await transceiver.sender.replaceTrack(track)
-    }
-  }, [])
+  const ensureLocalTracksOnPeer = useCallback(
+    async (peerId: string, pc: RTCPeerConnection) => {
+      const track = resolveOutgoingAudioTrack(peerId)
+      if (!track) {
+        return
+      }
+
+      let transceiver = pc.getTransceivers().find(
+        (item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio",
+      )
+
+      if (!transceiver) {
+        transceiver = pc.addTransceiver(track, { direction: "sendrecv" })
+        return
+      }
+
+      try {
+        transceiver.direction = "sendrecv"
+      } catch {
+        // ignore read-only direction in some browsers
+      }
+
+      if (transceiver.sender.track?.id !== track.id) {
+        await transceiver.sender.replaceTrack(track)
+      }
+    },
+    [resolveOutgoingAudioTrack],
+  )
 
   const attachLocalTracks = useCallback(
     (stream: MediaStream) => {
@@ -295,23 +322,13 @@ export function useUnityCallWebRTC({
   )
 
   const hostInitiatesWebRtc = useCallback(
-    (peerId: string): boolean => {
-      if (isGroupCall) {
-        return isCaller
-      }
-      return Number(userIdStr) < Number(peerId)
-    },
-    [isCaller, isGroupCall, userIdStr],
+    (_peerId: string): boolean => isCaller,
+    [isCaller],
   )
 
   const shouldRequestOfferFromPeer = useCallback(
-    (peerId: string): boolean => {
-      if (isGroupCall) {
-        return !isCaller
-      }
-      return Number(userIdStr) > Number(peerId)
-    },
-    [isCaller, isGroupCall, userIdStr],
+    (_peerId: string): boolean => !isCaller,
+    [isCaller],
   )
 
   const pushRemoteStreamFromPeer = useCallback(
@@ -466,7 +483,7 @@ export function useUnityCallWebRTC({
         return
       }
 
-      if (isGroupCall && !isCaller) {
+      if (!isCaller) {
         return
       }
 
@@ -554,7 +571,7 @@ export function useUnityCallWebRTC({
         if (normalized.to !== userIdStr) {
           return
         }
-        if (isGroupCall && !isCaller) {
+        if (!isCaller) {
           return
         }
         const from = normalized.from
@@ -574,7 +591,7 @@ export function useUnityCallWebRTC({
       }
 
       const from = normalized.from
-      if (isGroupCall && !isCaller && from !== String(callerId)) {
+      if (!isCaller && from !== String(callerId)) {
         return
       }
       let pc = peerConnections.current.get(from)
@@ -589,7 +606,7 @@ export function useUnityCallWebRTC({
       if (
         normalized.type === "offer" &&
         isPeerNegotiationSettled(pc) &&
-        peerAudioIsFullyNegotiated(pc)
+        peerHasLiveIncomingAudio(pc)
       ) {
         return
       }
@@ -696,17 +713,28 @@ export function useUnityCallWebRTC({
 
   handleSignalRef.current = handleSignal
 
-  const enqueueOrHandleSignal = useCallback((signal: WebRTCSignal) => {
-    if (!mediaStarted.current || !localStreamRef.current) {
-      pendingSignals.current.push(signal)
-      return
-    }
-    handleSignalChain.current = handleSignalChain.current
-      .then(() => handleSignalRef.current(normalizeWebRtcSignal(signal)))
-      .catch((error) => {
-        console.error("[UnityCallWebRTC] Queued signal failed:", error)
-      })
-  }, [])
+  const enqueueOrHandleSignal = useCallback(
+    (signal: WebRTCSignal) => {
+      const normalized = normalizeWebRtcSignal(signal)
+      const isHostOffer =
+        !isCaller &&
+        normalized.type === "offer" &&
+        normalized.to === userIdStr &&
+        normalized.from === String(callerId)
+
+      if (!isHostOffer && (!mediaStarted.current || !localStreamRef.current)) {
+        pendingSignals.current.push(signal)
+        return
+      }
+
+      handleSignalChain.current = handleSignalChain.current
+        .then(() => handleSignalRef.current(normalized))
+        .catch((error) => {
+          console.error("[UnityCallWebRTC] Queued signal failed:", error)
+        })
+    },
+    [callerId, isCaller, userIdStr],
+  )
 
   const flushPendingSignals = useCallback(() => {
     if (!mediaStarted.current || !localStreamRef.current) {
@@ -828,6 +856,9 @@ export function useUnityCallWebRTC({
     makingOffer.current.clear()
     ignoreOffer.current.clear()
 
+    outboundTracksRef.current.forEach((track) => track.stop())
+    outboundTracksRef.current.clear()
+
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
       localStreamRef.current = null
@@ -879,13 +910,24 @@ export function useUnityCallWebRTC({
       flushPendingSignalsRef.current()
       void fetchPendingSignalsRef.current()
       connectToAcceptedPeers()
+
+      if (!isCaller) {
+        acceptedPeerIds().forEach((peerId) => {
+          offerRequestSent.current.delete(peerId)
+          sendSignal({
+            type: "offer-request",
+            from: userIdStr,
+            to: peerId,
+          })
+        })
+      }
     } catch (error) {
       mediaStarted.current = false
       const denied = error instanceof DOMException && error.name === "NotAllowedError"
       setPermissionStatus(denied ? "denied" : "prompt")
       setConnectionStatus(denied ? "Microphone access blocked" : "Could not access microphone")
     }
-  }, [attachLocalTracks, connectToAcceptedPeers, mediaActive, renegotiateAudioWithPeer])
+  }, [acceptedPeerIds, attachLocalTracks, connectToAcceptedPeers, isCaller, mediaActive, renegotiateAudioWithPeer, sendSignal, userIdStr])
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current
@@ -899,6 +941,9 @@ export function useUnityCallWebRTC({
     const nextEnabled = !track.enabled
     stream.getAudioTracks().forEach((audioTrack) => {
       audioTrack.enabled = nextEnabled
+    })
+    outboundTracksRef.current.forEach((clonedTrack) => {
+      clonedTrack.enabled = nextEnabled
     })
     setIsAudioEnabled(nextEnabled)
   }, [])
