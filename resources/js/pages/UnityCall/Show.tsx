@@ -68,15 +68,31 @@ function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: bo
 
     ensurePlayback()
     audio.addEventListener("loadedmetadata", ensurePlayback)
+    audio.addEventListener("canplay", ensurePlayback)
+
+    const onTrackChange = () => ensurePlayback()
     stream.getAudioTracks().forEach((track) => {
-      track.addEventListener("unmute", ensurePlayback)
+      track.enabled = true
+      track.addEventListener("unmute", onTrackChange)
+      track.addEventListener("mute", onTrackChange)
+      track.addEventListener("ended", onTrackChange)
     })
+    stream.addEventListener("addtrack", onTrackChange)
+    stream.addEventListener("removetrack", onTrackChange)
+
+    const retryTimers = [300, 1000, 2500].map((delay) => window.setTimeout(ensurePlayback, delay))
 
     return () => {
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
       audio.removeEventListener("loadedmetadata", ensurePlayback)
+      audio.removeEventListener("canplay", ensurePlayback)
       stream.getAudioTracks().forEach((track) => {
-        track.removeEventListener("unmute", ensurePlayback)
+        track.removeEventListener("unmute", onTrackChange)
+        track.removeEventListener("mute", onTrackChange)
+        track.removeEventListener("ended", onTrackChange)
       })
+      stream.removeEventListener("addtrack", onTrackChange)
+      stream.removeEventListener("removetrack", onTrackChange)
       audio.srcObject = null
     }
   }, [stream, speakerOn])
