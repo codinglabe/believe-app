@@ -225,8 +225,6 @@ jobs:
           test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
 
       - name: Verify server paths (storage, .env, .htaccess)
-
-      - name: Verify server paths (storage, .env, .htaccess)
         run: |
           set -euo pipefail
           ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
