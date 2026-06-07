@@ -28,10 +28,14 @@ type ChannelWithListen = {
   stopListening?: (event: string) => void
 }
 
+const MAX_GROUP_HOST_PEERS = 32
+
 type UseUnityCallWebRTCOptions = {
   callId: number
   userId: number
   isCaller: boolean
+  isGroupCall: boolean
+  callerId: number
   participants: UnityCallParticipantRow[]
   mediaActive: boolean
   iceServers: RTCIceServer[]
@@ -61,14 +65,18 @@ const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   autoGainControl: true,
 }
 
-function isPeerIceConnected(pc: RTCPeerConnection): boolean {
-  return pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed"
+function isPeerConnected(pc: RTCPeerConnection): boolean {
+  const ice = pc.iceConnectionState
+  const conn = pc.connectionState
+  return ice === "connected" || ice === "completed" || conn === "connected"
 }
 
 export function useUnityCallWebRTC({
   callId,
   userId,
   isCaller,
+  isGroupCall,
+  callerId,
   participants,
   mediaActive,
   iceServers,
@@ -99,27 +107,51 @@ export function useUnityCallWebRTC({
     rtcConfiguration.current = buildRtcConfiguration(iceServers)
   }, [iceServers])
 
+  const remoteStreamsRef = useRef<UnityCallRemoteStream[]>([])
+
+  useEffect(() => {
+    remoteStreamsRef.current = remoteStreams
+  }, [remoteStreams])
+
   const acceptedPeerIds = useCallback((): string[] => {
+    if (isGroupCall) {
+      const hubId = String(callerId)
+      if (!isCaller) {
+        return hubId !== userIdStr ? [hubId] : []
+      }
+
+      return participants
+        .filter((p) => p.userId !== userId && p.role === "callee" && p.status === "accepted")
+        .map((p) => String(p.userId))
+        .slice(0, MAX_GROUP_HOST_PEERS)
+    }
+
     return participants
       .filter((p) => p.userId !== userId && p.status === "accepted")
       .map((p) => String(p.userId))
-  }, [participants, userId])
+  }, [participants, userId, userIdStr, isGroupCall, isCaller, callerId])
 
   const updateMediaConnected = useCallback(() => {
-    const connectedCount = Array.from(peerConnections.current.values()).filter(isPeerIceConnected).length
-    const expectedPeers = acceptedPeerIds().length
+    const expectedPeers = acceptedPeerIds()
+    const connectedCount = Array.from(peerConnections.current.entries()).filter(
+      ([peerId, pc]) => expectedPeers.includes(peerId) && isPeerConnected(pc),
+    ).length
+    const remoteReadyCount = expectedPeers.filter((peerId) =>
+      remoteStreamsRef.current.some((item) => item.peerId === peerId && item.stream.getAudioTracks().some((t) => t.readyState === "live")),
+    ).length
 
-    if (expectedPeers === 0) {
+    if (expectedPeers.length === 0) {
       setMediaConnected(false)
       setConnectionStatus(isCaller ? "Waiting for someone to answer…" : "Waiting for caller…")
       return
     }
 
-    setMediaConnected(expectedPeers > 0 && connectedCount >= expectedPeers)
-    if (connectedCount >= expectedPeers) {
+    const readyCount = Math.max(connectedCount, remoteReadyCount)
+    setMediaConnected(readyCount >= expectedPeers.length)
+    if (readyCount >= expectedPeers.length) {
       setConnectionStatus("Connected")
-    } else if (connectedCount > 0) {
-      setConnectionStatus(`Connected to ${connectedCount}/${expectedPeers}`)
+    } else if (readyCount > 0) {
+      setConnectionStatus(`Connected to ${readyCount}/${expectedPeers.length}`)
     } else {
       setConnectionStatus("Connecting audio…")
     }
@@ -194,9 +226,13 @@ export function useUnityCallWebRTC({
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "failed") {
-          pc.close()
-          peerConnections.current.delete(peerId)
-          setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId))
+          try {
+            pc.restartIce?.()
+          } catch {
+            pc.close()
+            peerConnections.current.delete(peerId)
+            setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId))
+          }
         }
         updateMediaConnected()
       }
@@ -304,6 +340,10 @@ export function useUnityCallWebRTC({
           ignoreOffer.current.set(from, !isPolite && Boolean(offerCollision))
           if (ignoreOffer.current.get(from) || !signal.offer) {
             return
+          }
+
+          if (pc.signalingState === "have-local-offer") {
+            await pc.setLocalDescription({ type: "rollback" })
           }
 
           await pc.setRemoteDescription(signal.offer)

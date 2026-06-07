@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\NotifyUnityCallRoomMembersJob;
 use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
@@ -13,17 +14,18 @@ class UnityCallService
 {
     private const RING_SECONDS = 60;
 
+    private const MAX_HOST_AUDIO_PEERS = 32;
+
     public function __construct(
         private readonly UnityCallNotifier $notifier,
     ) {}
 
     public function initiate(User $caller, int $chatRoomId): UnityCall
     {
-        $chatRoom = ChatRoom::query()
-            ->with(['members'])
-            ->findOrFail($chatRoomId);
+        $chatRoom = ChatRoom::query()->findOrFail($chatRoomId);
+        $isDirect = $chatRoom->type === 'direct';
 
-        if (! $chatRoom->members->contains('id', $caller->id)) {
+        if (! $chatRoom->members()->where('users.id', $caller->id)->exists()) {
             throw ValidationException::withMessages([
                 'chat_room_id' => __('You are not a member of this chat.'),
             ]);
@@ -31,14 +33,20 @@ class UnityCallService
 
         $this->releaseActiveCallsForUser($caller->id);
 
-        $callees = $chatRoom->members->where('id', '!=', $caller->id)->values();
-        if ($callees->isEmpty()) {
+        if ($isDirect) {
+            $callee = $chatRoom->members()->where('users.id', '!=', $caller->id)->first();
+            if (! $callee) {
+                throw ValidationException::withMessages([
+                    'chat_room_id' => __('No one else is in this chat to call.'),
+                ]);
+            }
+        } elseif (! $chatRoom->members()->where('users.id', '!=', $caller->id)->exists()) {
             throw ValidationException::withMessages([
                 'chat_room_id' => __('No one else is in this chat to call.'),
             ]);
         }
 
-        return DB::transaction(function () use ($caller, $chatRoom, $callees) {
+        $call = DB::transaction(function () use ($caller, $chatRoom, $isDirect) {
             $call = UnityCall::create([
                 'caller_id' => $caller->id,
                 'chat_room_id' => $chatRoom->id,
@@ -55,14 +63,14 @@ class UnityCallService
                 'status' => UnityCallParticipant::STATUS_ACCEPTED,
             ]);
 
-            foreach ($callees as $callee) {
+            if ($isDirect) {
+                $callee = $chatRoom->members()->where('users.id', '!=', $caller->id)->first();
                 UnityCallParticipant::create([
                     'unity_call_id' => $call->id,
                     'user_id' => $callee->id,
                     'role' => UnityCallParticipant::ROLE_CALLEE,
                     'status' => UnityCallParticipant::STATUS_RINGING,
                 ]);
-
                 $this->notifier->notifyIncoming($call, $caller, $callee);
             }
 
@@ -73,21 +81,24 @@ class UnityCallService
 
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
+
+        if (! $isDirect) {
+            $this->notifier->broadcastRoomIncoming($call, $caller, $chatRoom);
+            NotifyUnityCallRoomMembersJob::dispatch($call->id, $caller->id);
+        }
+
+        return $call;
     }
 
     public function accept(UnityCall $call, User $user): UnityCall
     {
         return DB::transaction(function () use ($call, $user) {
             $call = UnityCall::query()->whereKey($call->id)->lockForUpdate()->firstOrFail();
+            $participant = $this->ensureCalleeParticipant($call, $user);
             $participant = UnityCallParticipant::query()
-                ->where('unity_call_id', $call->id)
-                ->where('user_id', $user->id)
+                ->whereKey($participant->id)
                 ->lockForUpdate()
-                ->first();
-
-            if (! $participant) {
-                throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
-            }
+                ->firstOrFail();
 
             if ($participant->role !== UnityCallParticipant::ROLE_CALLEE) {
                 throw ValidationException::withMessages(['call' => __('Only callees can accept this call.')]);
@@ -141,7 +152,7 @@ class UnityCallService
 
     public function decline(UnityCall $call, User $user): UnityCall
     {
-        $participant = $this->requireParticipant($call, $user);
+        $participant = $this->ensureCalleeParticipant($call, $user);
         if ($participant->role !== UnityCallParticipant::ROLE_CALLEE) {
             throw ValidationException::withMessages(['call' => __('Only callees can decline this call.')]);
         }
@@ -353,7 +364,41 @@ class UnityCallService
 
     public function userCanAccess(UnityCall $call, User $user): bool
     {
-        return $call->participants()->where('user_id', $user->id)->exists();
+        if ($call->participants()->where('user_id', $user->id)->exists()) {
+            return true;
+        }
+
+        if (! $call->isActive() || $call->chatRoom?->type === 'direct') {
+            return false;
+        }
+
+        return ChatRoom::query()
+            ->whereKey($call->chat_room_id)
+            ->whereHas('members', fn ($q) => $q->where('users.id', $user->id))
+            ->exists();
+    }
+
+    private function ensureCalleeParticipant(UnityCall $call, User $user): UnityCallParticipant
+    {
+        $participant = $call->participantForUser($user->id);
+        if ($participant) {
+            return $participant;
+        }
+
+        if ((int) $call->caller_id === (int) $user->id) {
+            throw ValidationException::withMessages(['call' => __('Only callees can join this way.')]);
+        }
+
+        if (! $this->userCanAccess($call, $user)) {
+            throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
+        }
+
+        return UnityCallParticipant::create([
+            'unity_call_id' => $call->id,
+            'user_id' => $user->id,
+            'role' => UnityCallParticipant::ROLE_CALLEE,
+            'status' => UnityCallParticipant::STATUS_RINGING,
+        ]);
     }
 
     private function requireParticipant(UnityCall $call, User $user): UnityCallParticipant

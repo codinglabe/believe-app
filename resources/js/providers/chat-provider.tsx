@@ -8,7 +8,8 @@ import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { attachCsrfToAxios } from "@/lib/csrf"
 import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
-import { getBrowserTimezone } from "@/lib/timezone-detection"
+import { dispatchUnityCallIncoming } from "@/lib/unityCallEvents"
+import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 // Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
 const api = axios.create({
@@ -515,6 +516,27 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })
 
+    channel.listen(".call.incoming", (payload: UnityCallStatusEvent) => {
+      if (payload.caller?.id === currentUser.id || payload.call.status !== "ringing") {
+        return
+      }
+
+      const participants = payload.participants.some((p) => p.userId === currentUser.id)
+        ? payload.participants
+        : [
+            ...payload.participants,
+            {
+              userId: currentUser.id,
+              name: currentUser.name,
+              avatar: currentUser.avatar_url,
+              role: "callee" as const,
+              status: "ringing" as const,
+            },
+          ]
+
+      dispatchUnityCallIncoming({ ...payload, participants })
+    })
+
     const normalizeTypingUser = (payload: {
       id: number
       name: string
@@ -629,6 +651,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       channel.stopListening(".MessageSent")
+      channel.stopListening(".call.incoming")
       channel.stopListening(".user.typing")
       channel.stopListening(".member.joined")
       channel.stopListening(".member.left")

@@ -49,10 +49,20 @@ Broadcast::channel('user.{id}', function ($user, $userId) {
 });
 
 Broadcast::channel('unity-call.{callId}', function (User $user, $callId) {
-    return UnityCall::query()
-        ->whereKey($callId)
-        ->whereHas('participants', fn ($q) => $q->where('user_id', $user->id))
-        ->exists();
+    $call = UnityCall::query()->whereKey($callId)->first();
+    if (! $call) {
+        return false;
+    }
+
+    if ($call->participants()->where('user_id', $user->id)->exists()) {
+        return true;
+    }
+
+    if (! $call->isActive() || $call->chatRoom?->type === 'direct') {
+        return false;
+    }
+
+    return $user->chatRooms()->where('chat_rooms.id', $call->chat_room_id)->exists();
 });
 
 Broadcast::channel('meeting.{meetingId}.participants', function (User $user, $meetingId) {

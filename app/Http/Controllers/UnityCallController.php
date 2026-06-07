@@ -137,6 +137,18 @@ class UnityCallController extends Controller
         $call->load(['caller', 'participants.user', 'chatRoom']);
         $participant = $call->participantForUser($user->id);
         $isCaller = (int) $call->caller_id === (int) $user->id;
+        $isGroupCall = $call->chatRoom?->type !== 'direct';
+
+        $participantsQuery = $call->participants()->with('user');
+        if ($isGroupCall) {
+            $participantsQuery->where(function ($query) use ($call, $user) {
+                $query->where('status', 'accepted')
+                    ->orWhere('user_id', $call->caller_id)
+                    ->orWhere('user_id', $user->id);
+            });
+        }
+
+        $participantRows = $participantsQuery->limit(100)->get();
 
         return Inertia::render('UnityCall/Show', [
             'call' => [
@@ -155,7 +167,7 @@ class UnityCallController extends Controller
                 'name' => trim((string) $call->caller->name) ?: 'Unknown',
                 'avatar' => $call->caller->avatar_url,
             ],
-            'participants' => $call->participants->map(fn ($p) => [
+            'participants' => $participantRows->map(fn ($p) => [
                 'userId' => $p->user_id,
                 'name' => trim((string) ($p->user?->name ?? '')) ?: 'Participant',
                 'avatar' => $p->user?->avatar_url,
@@ -163,7 +175,7 @@ class UnityCallController extends Controller
                 'status' => $p->status,
             ])->values(),
             'isCaller' => $isCaller,
-            'isGroupCall' => $call->chatRoom?->type !== 'direct',
+            'isGroupCall' => $isGroupCall,
             'participantStatus' => $participant?->status,
             'iceServers' => config('webrtc.ice_servers', []),
             'endCallUrl' => route('unity-calls.end', $call->id),

@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use App\Events\UnityCallRoomIncoming;
 use App\Events\UnityCallStatusChanged;
+use App\Models\ChatRoom;
 use App\Models\UnityCall;
+use App\Models\UnityCallParticipant;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
@@ -73,6 +76,13 @@ class UnityCallNotifier
         $this->broadcastStatus($callee->id, $this->payloadForUser($call, $caller, 'incoming'));
     }
 
+    public function broadcastRoomIncoming(UnityCall $call, User $caller, ChatRoom $room): void
+    {
+        $call->loadMissing(['chatRoom', 'participants.user']);
+        $payload = $this->payloadForUser($call, $caller, 'incoming');
+        UnityCallRoomIncoming::dispatch($room, $payload);
+    }
+
     public function broadcastStatus(int $userId, array $payload): void
     {
         UnityCallStatusChanged::dispatch($userId, $payload);
@@ -84,6 +94,18 @@ class UnityCallNotifier
     public function payloadForUser(UnityCall $call, User $caller, string $reason): array
     {
         $call->loadMissing(['participants.user', 'chatRoom', 'livestream']);
+
+        $participants = $call->participants
+            ->filter(function ($p) use ($call) {
+                if ($call->chatRoom?->type === 'direct') {
+                    return true;
+                }
+
+                return $p->status === UnityCallParticipant::STATUS_ACCEPTED
+                    || $p->role === UnityCallParticipant::ROLE_CALLER;
+            })
+            ->take(100)
+            ->values();
 
         return [
             'reason' => $reason,
@@ -103,7 +125,7 @@ class UnityCallNotifier
                 'name' => trim((string) $caller->name) ?: 'Unknown',
                 'avatar' => $caller->avatar_url ?? null,
             ],
-            'participants' => $call->participants->map(fn ($p) => [
+            'participants' => $participants->map(fn ($p) => [
                 'userId' => $p->user_id,
                 'name' => trim((string) ($p->user?->name ?? '')) ?: 'Participant',
                 'avatar' => $p->user?->avatar_url,

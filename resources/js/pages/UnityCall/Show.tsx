@@ -125,6 +125,8 @@ export default function UnityCallShow({
     callId: call.id,
     userId: authUserId,
     isCaller,
+    isGroupCall,
+    callerId: caller.id,
     participants,
     mediaActive,
     iceServers,

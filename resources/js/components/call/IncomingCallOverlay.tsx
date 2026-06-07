@@ -53,7 +53,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       router.visit(joinUrl)
       return
     }
-    setIncoming(payload)
+    setIncoming((current) => (current?.call.id === payload.call.id ? current : payload))
     void startCallRingtone()
   }, [userId])
 
@@ -146,8 +146,11 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
 
   useEffect(() => {
     return subscribeUnityCallIncoming((payload) => {
+      if (payload.caller?.id === userId || payload.call.status !== "ringing") {
+        return
+      }
       const self = payload.participants.find((p) => p.userId === userId)
-      if (self?.role === "callee" && self.status === "ringing") {
+      if (!self || (self.role === "callee" && self.status === "ringing")) {
         showIncoming(payload)
       }
     })
@@ -162,9 +165,9 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       const self = payload.participants.find((p) => p.userId === userId)
       const isIncomingCallee =
         payload.reason === "incoming" &&
-        self?.role === "callee" &&
-        self.status === "ringing" &&
-        payload.call.status === "ringing"
+        payload.caller?.id !== userId &&
+        payload.call.status === "ringing" &&
+        (!self || (self.role === "callee" && self.status === "ringing"))
 
       if (isIncomingCallee) {
         showIncoming(payload)
