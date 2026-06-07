@@ -1,3 +1,4 @@
+import { router } from "@inertiajs/react"
 import { buildIncomingCallFromPush, dispatchUnityCallIncoming } from "@/lib/unityCallEvents"
 
 export const SW_INCOMING_CALL_MESSAGE = "unity-call-incoming-push"
@@ -16,15 +17,60 @@ function readAuthUserId(): number | null {
   return Number.isFinite(id) && id > 0 ? id : null
 }
 
+function resolveRingVisitPath(data: Record<string, string | undefined>): string | null {
+  const ringUrl = data.ring_url || data.join_url || data.click_action || data.url
+  if (!ringUrl || typeof window === "undefined") {
+    return null
+  }
+
+  try {
+    const target = new URL(ringUrl, window.location.origin)
+    return `${target.pathname}${target.search}`
+  } catch {
+    return null
+  }
+}
+
+function isOnIncomingCallRingScreen(data: Record<string, string | undefined>): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  const visitPath = resolveRingVisitPath(data)
+  if (!visitPath) {
+    return false
+  }
+
+  const currentPath = `${window.location.pathname}${window.location.search}`
+  return currentPath === visitPath
+}
+
+function navigateToIncomingCallRingScreen(data: Record<string, string | undefined>): void {
+  const visitPath = resolveRingVisitPath(data)
+  if (!visitPath || isOnIncomingCallRingScreen(data)) {
+    return
+  }
+
+  router.visit(visitPath)
+}
+
 export function handleSwIncomingCallPayload(data: Record<string, string | undefined>): void {
   const userId = readAuthUserId()
   if (!userId || data.type !== "incoming_call") {
     return
   }
 
+  storePendingIncomingCall(data)
+
   const incoming = buildIncomingCallFromPush(data, userId)
-  if (incoming) {
-    dispatchUnityCallIncoming(incoming)
+  if (!incoming) {
+    return
+  }
+
+  dispatchUnityCallIncoming(incoming)
+
+  if (document.visibilityState !== "visible") {
+    navigateToIncomingCallRingScreen(data)
   }
 }
 

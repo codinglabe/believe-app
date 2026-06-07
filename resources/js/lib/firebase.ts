@@ -145,22 +145,8 @@ function attachForegroundMessageListener(instance: Messaging) {
         const detail = { title, body, data };
 
         if (data.type === "incoming_call") {
-            void import("@/lib/unityCallEvents").then(({ buildIncomingCallFromPush, dispatchUnityCallIncoming }) => {
-                void import("@/lib/swIncomingCallBridge").then(({ storePendingIncomingCall }) => {
-                    storePendingIncomingCall(data)
-                })
-                const metaUserId = document.querySelector('meta[name="user-id"]')?.getAttribute("content");
-                const userId = metaUserId ? Number(metaUserId) : NaN;
-                if (Number.isFinite(userId) && userId > 0) {
-                    const incoming = buildIncomingCallFromPush(data, userId);
-                    if (incoming) {
-                        dispatchUnityCallIncoming(incoming);
-                        return;
-                    }
-                }
-                void import("@/lib/firebase-push-toast").then(({ showNativePushNotification }) => {
-                    void showNativePushNotification(detail);
-                });
+            void import("@/lib/swIncomingCallBridge").then(({ handleSwIncomingCallPayload }) => {
+                handleSwIncomingCallPayload(data);
             });
             return;
         }

@@ -1,4 +1,4 @@
-// @version 282d9735c36b25f3
+// @version 220e05880e8b93ad
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -91,17 +91,60 @@ function buildNotificationOptions(title, body, data) {
     return options;
 }
 
-function notifyOpenClientsIncomingCall(data) {
-    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-        clientList.forEach(function (client) {
-            client.postMessage({
-                type: "unity-call-incoming-push",
-                data: data,
-            });
+function resolveIncomingCallRingUrl(data) {
+    const ringUrl = data.ring_url || data.join_url || data.click_action || data.url || "/";
+    return new URL(ringUrl, self.location.origin).href;
+}
+
+function postIncomingCallToClients(clientList, data) {
+    clientList.forEach(function (client) {
+        client.postMessage({
+            type: "unity-call-incoming-push",
+            data: data,
         });
-        if (clientList.length > 0 && clientList[0].focus) {
-            return clientList[0].focus();
+    });
+}
+
+function focusAndShowIncomingCall(client, absoluteRingUrl, data) {
+    postIncomingCallToClients([client], data);
+    if (!("focus" in client)) {
+        return Promise.resolve(false);
+    }
+    return client.focus().then(function (focusedClient) {
+        if (!focusedClient) {
+            return false;
         }
+        if ("navigate" in focusedClient) {
+            return focusedClient.navigate(absoluteRingUrl).then(function () {
+                return true;
+            }).catch(function () {
+                return true;
+            });
+        }
+        return true;
+    });
+}
+
+/** Bring the in-app incoming call screen to the foreground without a notification tap. */
+function notifyOpenClientsIncomingCall(data) {
+    const absoluteRingUrl = resolveIncomingCallRingUrl(data);
+
+    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+        postIncomingCallToClients(clientList, data);
+
+        if (clientList.length > 0) {
+            return focusAndShowIncomingCall(clientList[0], absoluteRingUrl, data).then(function (focused) {
+                return { opened: Boolean(focused), absoluteRingUrl: absoluteRingUrl };
+            });
+        }
+
+        if (self.clients.openWindow) {
+            return self.clients.openWindow(absoluteRingUrl).then(function (windowClient) {
+                return { opened: Boolean(windowClient), absoluteRingUrl: absoluteRingUrl };
+            });
+        }
+
+        return { opened: false, absoluteRingUrl: absoluteRingUrl };
     });
 }
 
@@ -114,7 +157,15 @@ messaging.onBackgroundMessage((payload) => {
         payload.notification?.body || data.body || data.message || "";
 
     if (data.type === INCOMING_CALL_TYPE) {
-        notifyOpenClientsIncomingCall(data);
+        return notifyOpenClientsIncomingCall(data).then(function (result) {
+            if (result.opened) {
+                return;
+            }
+            return self.registration.showNotification(
+                title,
+                buildNotificationOptions(title, body, data),
+            );
+        });
     }
 
     return self.registration.showNotification(
@@ -124,7 +175,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-282d9735c36b25f3";
+const CACHE_NAME = "pwa-cache-220e05880e8b93ad";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
