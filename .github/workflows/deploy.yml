@@ -6,8 +6,9 @@
 #
 # Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
 # Required secrets:
-#   CPANEL_SSH_KEY — private SSH key for DEPLOY_USER
-#   DEPLOY_RUNNER_ALLOW_TOKEN — same value as server .env (from setup-cpanel-deploy-ssh-access.sh)
+#   CPANEL_SSH_KEY_PRODUCTION — SSH key for believeinunity@VPS (jump host; CSF allows GitHub Actions)
+# Optional:
+#   DEPLOY_RUNNER_ALLOW_TOKEN — only if direct c3ers SSH is used (legacy; not needed with jump)
 #
 # Optional repository variables (Settings → Secrets and variables → Actions → Variables):
 name: Deploy development (501c3ers.com)
@@ -41,6 +42,9 @@ jobs:
       SSH_RETRY_SLEEP: 8
       SSH_USE_TCP_PROBE: false
       SSH_USE_DEPLOY_HOST: true
+      SSH_USE_JUMP: true
+      SSH_JUMP_USER: believeinunity
+      SSH_JUMP_HOST: ${{ vars.SSH_HOST != '' && vars.SSH_HOST || '72.60.226.88' }}
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -98,37 +102,26 @@ jobs:
 
       - name: Verify deploy secrets
         run: |
-          missing=0
-          if [ -z "${{ secrets.CPANEL_SSH_KEY }}" ]; then
-            echo "::error::Missing GitHub secret CPANEL_SSH_KEY (SSH private key for c3ers@501c3ers.com)."
-            missing=1
-          fi
-          if [ -z "${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}" ]; then
-            echo "::error::Missing GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN."
-            echo "CSF blocks GitHub Actions SSH until this is configured."
-            missing=1
-          fi
-          if [ "${missing}" -eq 1 ]; then
-            echo ""
-            echo "ONE-TIME VPS fix (WHM -> Terminal as root):"
-            echo "  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
-            echo "Add the printed token as GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN, then re-run deploy."
+          if [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ] && [ -z "${{ secrets.CPANEL_SSH_KEY }}" ]; then
+            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION (believeinunity jump SSH key)."
             exit 1
           fi
+          echo "Using SSH jump: believeinunity@${SSH_JUMP_HOST} -> c3ers@127.0.0.1 (CSF-safe for GitHub Actions)."
 
       - name: Preflight — open SSH for this runner
         env:
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
-          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_CONNECT_HOST: ${{ env.SSH_JUMP_HOST }}
           SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_USE_JUMP: ${{ env.SSH_USE_JUMP }}
         run: |
           chmod +x .github/scripts/preflight-open-runner-ssh.sh
           bash .github/scripts/preflight-open-runner-ssh.sh
 
       - name: Setup SSH
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION != '' && secrets.CPANEL_SSH_KEY_PRODUCTION || secrets.CPANEL_SSH_KEY }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy
           DEPLOY_USER: ${{ env.DEPLOY_USER }}
           DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
@@ -138,6 +131,9 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          SSH_USE_JUMP: ${{ env.SSH_USE_JUMP }}
+          SSH_JUMP_USER: ${{ env.SSH_JUMP_USER }}
+          SSH_JUMP_HOST: ${{ env.SSH_JUMP_HOST }}
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |

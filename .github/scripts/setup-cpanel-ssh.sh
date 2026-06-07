@@ -9,6 +9,10 @@ DEPLOY_USER="${DEPLOY_USER:-c3ers}"
 DEPLOY_HOST="${DEPLOY_HOST:-501c3ers.com}"
 SSH_PORT="${SSH_PORT:-22}"
 SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
+SSH_USE_JUMP="${SSH_USE_JUMP:-false}"
+SSH_JUMP_USER="${SSH_JUMP_USER:-believeinunity}"
+SSH_JUMP_HOST="${SSH_JUMP_HOST:-72.60.226.88}"
+SSH_INNER_KEY_PATH="${SSH_INNER_KEY_PATH:-/home/believeinunity/.local/share/.gconf/deploy_key}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
 SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-10}"
 SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
@@ -38,7 +42,11 @@ if ! grep -q 'BEGIN.*PRIVATE KEY' "${SSH_DIR}/cpanel_deploy"; then
 fi
 
 RUNNER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo unknown)"
-echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
+if [ "${SSH_USE_JUMP}" = "true" ]; then
+  echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_JUMP_USER}@${SSH_JUMP_HOST}:${SSH_PORT} -> ${DEPLOY_USER}@127.0.0.1"
+else
+  echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
+fi
 
 request_runner_allow() {
   local token="${DEPLOY_RUNNER_ALLOW_TOKEN:-}"
@@ -92,7 +100,43 @@ format_ssh_hostname() {
   fi
 }
 
+write_jump_ssh_config() {
+  local jump_host
+  jump_host="$(format_ssh_hostname "${SSH_JUMP_HOST}")"
+  printf '%s\n' \
+    'Host believeinunity-vps' \
+    "  HostName ${jump_host}" \
+    "  User ${SSH_JUMP_USER}" \
+    "  Port ${SSH_PORT}" \
+    "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
+    '  IdentitiesOnly yes' \
+    '  StrictHostKeyChecking accept-new' \
+    '  ServerAliveInterval 15' \
+    '  ServerAliveCountMax 4' \
+    '  AddressFamily inet' \
+    '  IPQoS throughput' \
+    '  TCPKeepAlive yes' \
+    > "${SSH_DIR}/config"
+  printf '%s\n' \
+    'Host cpanel-deploy' \
+    '  HostName 127.0.0.1' \
+    "  User ${DEPLOY_USER}" \
+    "  Port ${SSH_PORT}" \
+    "  ProxyCommand ssh -F ${SSH_DIR}/config -o BatchMode=yes believeinunity-vps \"ssh -i ${SSH_INNER_KEY_PATH} -o BatchMode=yes -o StrictHostKeyChecking=no -W %h:%p ${DEPLOY_USER}@127.0.0.1\"" \
+    '  StrictHostKeyChecking accept-new' \
+    '  ServerAliveInterval 15' \
+    '  ServerAliveCountMax 4' \
+    '  AddressFamily inet' \
+    >> "${SSH_DIR}/config"
+  chmod 600 "${SSH_DIR}/config"
+}
+
 write_ssh_host() {
+  if [ "${SSH_USE_JUMP}" = "true" ]; then
+    write_jump_ssh_config
+    return
+  fi
+
   local host="$1"
   local formatted
   formatted="$(format_ssh_hostname "${host}")"
@@ -152,8 +196,13 @@ print_firewall_help() {
 connected=0
 last_err=""
 for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
-  host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
-  write_ssh_host "${host}"
+  if [ "${SSH_USE_JUMP}" = "true" ]; then
+    host="${SSH_JUMP_HOST}"
+    write_ssh_host "${host}"
+  else
+    host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
+    write_ssh_host "${host}"
+  fi
 
   probe_host="${host}"
   if [[ "${host}" == \[*\] ]]; then
