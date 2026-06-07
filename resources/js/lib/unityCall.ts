@@ -89,11 +89,18 @@ export function isLeavingUnityCall(callId: number): boolean {
   return leavingCallIds.has(callId)
 }
 
-export function navigateAfterUnityCall(callId: number, chatRoomId: number | null | undefined): void {
+export function navigateAfterUnityCall(
+  callId: number,
+  chatRoomId: number | null | undefined,
+  options?: { onFinish?: () => void },
+): void {
   markLeavingUnityCall(callId)
   router.visit(unityCallChatUrl(chatRoomId), {
     preserveScroll: true,
-    onFinish: () => clearLeavingUnityCall(callId),
+    onFinish: () => {
+      clearLeavingUnityCall(callId)
+      options?.onFinish?.()
+    },
   })
 }
 
