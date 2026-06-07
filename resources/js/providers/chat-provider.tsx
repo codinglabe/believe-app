@@ -10,6 +10,7 @@ import { attachCsrfToAxios } from "@/lib/csrf"
 import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
 import { dispatchUnityCallIncoming } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { getBrowserTimezone } from "@/lib/timezone-detection"
 
 // Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
 const api = axios.create({
