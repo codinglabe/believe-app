@@ -58,7 +58,7 @@ Broadcast::channel('unity-call.{callId}', function (User $user, $callId) {
         return true;
     }
 
-    if (! $call->isActive() || $call->chatRoom?->type === 'direct') {
+    if (! $call->isActive()) {
         return false;
     }
 

@@ -36,6 +36,7 @@ type UseUnityCallWebRTCOptions = {
   isCaller: boolean
   isGroupCall: boolean
   callerId: number
+  callStatus: string
   participants: UnityCallParticipantRow[]
   mediaActive: boolean
   iceServers: RTCIceServer[]
@@ -54,7 +55,6 @@ function buildRtcConfiguration(iceServers: RTCIceServer[]): RTCConfiguration {
   return {
     iceServers: servers,
     iceCandidatePoolSize: 10,
-    bundlePolicy: "max-bundle",
     rtcpMuxPolicy: "require",
   }
 }
@@ -77,6 +77,7 @@ export function useUnityCallWebRTC({
   isCaller,
   isGroupCall,
   callerId,
+  callStatus,
   participants,
   mediaActive,
   iceServers,
@@ -102,6 +103,7 @@ export function useUnityCallWebRTC({
   const handleSignalRef = useRef<(signal: WebRTCSignal) => Promise<void>>(async () => {})
   const tryConnectRef = useRef<() => void>(() => {})
   const flushPendingSignalsRef = useRef<() => void>(() => {})
+  const fetchPendingSignalsRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     rtcConfiguration.current = buildRtcConfiguration(iceServers)
@@ -114,22 +116,38 @@ export function useUnityCallWebRTC({
   }, [remoteStreams])
 
   const acceptedPeerIds = useCallback((): string[] => {
-    if (isGroupCall) {
-      const hubId = String(callerId)
+    const hubId = String(callerId)
+
+    if (!isGroupCall) {
       if (!isCaller) {
         return hubId !== userIdStr ? [hubId] : []
       }
 
-      return participants
-        .filter((p) => p.userId !== userId && p.role === "callee" && p.status === "accepted")
+      const accepted = participants
+        .filter((p) => p.userId !== userId && p.status === "accepted")
         .map((p) => String(p.userId))
-        .slice(0, MAX_GROUP_HOST_PEERS)
+      if (accepted.length > 0) {
+        return accepted
+      }
+
+      if (callStatus === "accepted") {
+        return participants
+          .filter((p) => p.userId !== userId && p.role === "callee")
+          .map((p) => String(p.userId))
+      }
+
+      return []
+    }
+
+    if (!isCaller) {
+      return hubId !== userIdStr ? [hubId] : []
     }
 
     return participants
-      .filter((p) => p.userId !== userId && p.status === "accepted")
+      .filter((p) => p.userId !== userId && p.role === "callee" && p.status === "accepted")
       .map((p) => String(p.userId))
-  }, [participants, userId, userIdStr, isGroupCall, isCaller, callerId])
+      .slice(0, MAX_GROUP_HOST_PEERS)
+  }, [participants, userId, userIdStr, isGroupCall, isCaller, callerId, callStatus])
 
   const updateMediaConnected = useCallback(() => {
     const expectedPeers = acceptedPeerIds()
@@ -375,6 +393,9 @@ export function useUnityCallWebRTC({
           if (!signal.answer) {
             return
           }
+          if (pc.signalingState !== "have-local-offer") {
+            return
+          }
           await pc.setRemoteDescription(signal.answer)
           const pending = pendingCandidates.current.get(from) ?? []
           for (const candidate of pending) {
@@ -426,6 +447,35 @@ export function useUnityCallWebRTC({
 
   flushPendingSignalsRef.current = flushPendingSignals
 
+  const fetchPendingSignals = useCallback(async () => {
+    if (callEnded.current) {
+      return
+    }
+
+    try {
+      const res = await fetch(route("unity-calls.pending-signals", callId), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+      })
+      if (!res.ok) {
+        return
+      }
+      const body = (await res.json()) as { signals?: WebRTCSignal[] }
+      const signals = body.signals ?? []
+      for (const signal of signals) {
+        enqueueOrHandleSignal(signal)
+      }
+    } catch (error) {
+      console.error("[UnityCallWebRTC] Failed to fetch pending signals:", error)
+    }
+  }, [callId, enqueueOrHandleSignal])
+
+  fetchPendingSignalsRef.current = fetchPendingSignals
+
   const connectToAcceptedPeers = useCallback(() => {
     if (callEnded.current || !channelReady.current || !mediaStarted.current || !localStreamRef.current) {
       return
@@ -438,14 +488,13 @@ export function useUnityCallWebRTC({
     }
 
     peers.forEach((peerId) => {
+      sendSignal({
+        type: "offer-request",
+        from: userIdStr,
+        to: peerId,
+      })
       if (Number(userIdStr) < Number(peerId)) {
         void createOfferForPeer(peerId)
-      } else {
-        sendSignal({
-          type: "offer-request",
-          from: userIdStr,
-          to: peerId,
-        })
       }
     })
 
@@ -508,6 +557,7 @@ export function useUnityCallWebRTC({
       setConnectionStatus(channelReady.current ? "Connecting audio…" : "Joining call channel…")
 
       flushPendingSignalsRef.current()
+      void fetchPendingSignalsRef.current()
       connectToAcceptedPeers()
     } catch (error) {
       mediaStarted.current = false
@@ -552,7 +602,9 @@ export function useUnityCallWebRTC({
         setConnectionStatus((prev) =>
           prev === "Joining call channel…" || prev === "idle" ? "Connecting audio…" : prev,
         )
-        tryConnectRef.current()
+        void fetchPendingSignalsRef.current().finally(() => {
+          tryConnectRef.current()
+        })
       })
       .error((error) => {
         console.error("[UnityCallWebRTC] Channel subscription failed:", error)
@@ -578,7 +630,7 @@ export function useUnityCallWebRTC({
       return
     }
     connectToAcceptedPeers()
-  }, [connectToAcceptedPeers, mediaActive, participants])
+  }, [connectToAcceptedPeers, mediaActive, participants, callStatus])
 
   useEffect(() => {
     if (!mediaActive || !mediaStarted.current || mediaConnected) {
@@ -589,11 +641,12 @@ export function useUnityCallWebRTC({
       if (mediaConnected || callEnded.current) {
         return
       }
+      void fetchPendingSignalsRef.current()
       connectToAcceptedPeers()
-    }, 1500)
+    }, 800)
 
     return () => window.clearInterval(intervalId)
-  }, [connectToAcceptedPeers, mediaActive, mediaConnected])
+  }, [connectToAcceptedPeers, mediaActive, mediaConnected, callStatus])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {
@@ -607,7 +660,8 @@ export function useUnityCallWebRTC({
     return () => {
       stopMedia()
     }
-  }, [stopMedia])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tear down only when leaving this call
+  }, [callId])
 
   return {
     localStream,

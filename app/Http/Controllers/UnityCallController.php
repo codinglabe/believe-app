@@ -7,6 +7,7 @@ use App\Services\UnityCallService;
 use App\Events\UnityCallWebRTCSignal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -122,9 +123,28 @@ class UnityCallController extends Controller
             return response()->json(['ok' => false], 409);
         }
 
+        $this->cacheWebRtcSignal($call->id, $validated);
         UnityCallWebRTCSignal::dispatch($call->id, $validated);
 
         return response()->json(['ok' => true]);
+    }
+
+    public function pendingSignals(Request $request, UnityCall $call): JsonResponse
+    {
+        $this->authorizeCall($request, $call);
+
+        if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
+            return response()->json(['signals' => []]);
+        }
+
+        $userId = (string) $request->user()->id;
+        $signals = $this->getCachedWebRtcSignals($call->id);
+        $forMe = array_values(array_filter(
+            $signals,
+            fn (array $signal) => (string) ($signal['to'] ?? '') === $userId,
+        ));
+
+        return response()->json(['signals' => $forMe]);
     }
 
     public function show(Request $request, UnityCall $call, UnityCallService $calls): Response
@@ -196,6 +216,32 @@ class UnityCallController extends Controller
         if (! app(UnityCallService::class)->userCanAccess($call, $request->user())) {
             abort(403);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $signal
+     */
+    private function cacheWebRtcSignal(int $callId, array $signal): void
+    {
+        $key = "unity_call:{$callId}:webrtc_signals";
+        $signals = Cache::get($key, []);
+        $signals[] = $signal;
+
+        if (count($signals) > 150) {
+            $signals = array_slice($signals, -150);
+        }
+
+        Cache::put($key, $signals, now()->addMinutes(15));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function getCachedWebRtcSignals(int $callId): array
+    {
+        $signals = Cache::get("unity_call:{$callId}:webrtc_signals", []);
+
+        return is_array($signals) ? $signals : [];
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -181,6 +182,7 @@ class UnityCallService
                 'status' => UnityCall::STATUS_DECLINED,
                 'ended_at' => now(),
             ]);
+            $this->forgetWebRtcSignalCache($call);
             $reason = 'declined';
         } else {
             $reason = 'participant_declined';
@@ -222,6 +224,7 @@ class UnityCallService
             'status' => UnityCall::STATUS_CANCELLED,
             'ended_at' => now(),
         ]);
+        $this->forgetWebRtcSignalCache($call);
 
         $call->participants()
             ->where('status', UnityCallParticipant::STATUS_RINGING)
@@ -268,6 +271,7 @@ class UnityCallService
             'status' => UnityCall::STATUS_ENDED,
             'ended_at' => now(),
         ]);
+        $this->forgetWebRtcSignalCache($call);
 
         $call->participants()
             ->where('status', UnityCallParticipant::STATUS_RINGING)
@@ -311,6 +315,7 @@ class UnityCallService
                 'status' => UnityCall::STATUS_ENDED,
                 'ended_at' => now(),
             ]);
+            $this->forgetWebRtcSignalCache($call);
             $reason = 'ended';
         } else {
             $reason = 'participant_left';
@@ -341,6 +346,7 @@ class UnityCallService
                 'status' => UnityCall::STATUS_MISSED,
                 'ended_at' => now(),
             ]);
+            $this->forgetWebRtcSignalCache($call);
 
             $call->participants()
                 ->where('status', UnityCallParticipant::STATUS_RINGING)
@@ -478,6 +484,7 @@ class UnityCallService
             'status' => $status,
             'ended_at' => now(),
         ]);
+        $this->forgetWebRtcSignalCache($call);
 
         $call->participants()
             ->where('status', UnityCallParticipant::STATUS_RINGING)
@@ -493,5 +500,10 @@ class UnityCallService
         foreach ($call->participants as $participant) {
             $this->notifier->broadcastStatus($participant->user_id, $payload);
         }
+    }
+
+    private function forgetWebRtcSignalCache(UnityCall $call): void
+    {
+        Cache::forget("unity_call:{$call->id}:webrtc_signals");
     }
 }
