@@ -147,6 +147,12 @@ class UnityCallService
                 $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
             }
 
+            $this->notifier->broadcastStatus($call->caller_id, $acceptedPayload);
+
+            $freshCall = $call->fresh(['participants.user', 'chatRoom']);
+            $this->notifier->broadcastSessionStatus($freshCall, $caller, 'accepted');
+            $this->notifier->broadcastRoomStatus($freshCall, $caller, 'accepted');
+
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
     }

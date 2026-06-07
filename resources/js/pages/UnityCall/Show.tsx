@@ -109,6 +109,17 @@ function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: bo
   )
 }
 
+function mergeCallParticipants(
+  previous: UnityCallParticipantRow[],
+  incoming: UnityCallParticipantRow[],
+): UnityCallParticipantRow[] {
+  const map = new Map(previous.map((row) => [row.userId, row]))
+  for (const row of incoming) {
+    map.set(row.userId, { ...(map.get(row.userId) ?? row), ...row })
+  }
+  return Array.from(map.values())
+}
+
 export default function UnityCallShow({
   call: initialCall,
   caller,
@@ -138,7 +149,18 @@ export default function UnityCallShow({
     [participants, authUserId, participantStatus],
   )
 
-  const callConnected = call.status === "accepted" && (isCaller || selfStatus === "accepted")
+  const acceptedCallees = useMemo(
+    () => participants.filter((p) => p.role === "callee" && p.status === "accepted"),
+    [participants],
+  )
+
+  const ringingCallees = useMemo(
+    () => participants.filter((p) => p.role === "callee" && p.status === "ringing"),
+    [participants],
+  )
+
+  const callLive = call.status === "accepted" || acceptedCallees.length > 0
+  const callConnected = callLive && (isCaller || selfStatus === "accepted")
   const mediaActive = isCaller
     ? call.status === "ringing" || call.status === "accepted"
     : callConnected
@@ -159,7 +181,7 @@ export default function UnityCallShow({
     isCaller,
     isGroupCall,
     callerId: caller.id,
-    callStatus: call.status,
+    callStatus: callLive ? "accepted" : call.status,
     participants,
     mediaActive,
     iceServers,
@@ -188,19 +210,32 @@ export default function UnityCallShow({
     if (call.status === "ended" || call.status === "cancelled" || call.status === "declined" || call.status === "missed") {
       return "Call ended"
     }
-    if (callConnected && mediaConnected) {
+    if (callLive && call.answeredAt) {
       return formatElapsed(elapsed)
     }
     if (isCaller) {
-      const accepted = participants.filter((p) => p.role === "callee" && p.status === "accepted").length
-      const ringing = participants.filter((p) => p.role === "callee" && p.status === "ringing").length
-      if (accepted > 0) {
-        return `${accepted} joined${ringing > 0 ? ` · ${ringing} ringing` : ""}`
+      if (acceptedCallees.length > 0) {
+        const ringing = ringingCallees.length
+        return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : `${acceptedCallees.length} joined`
       }
       return "Calling…"
     }
+    if (callConnected && mediaConnected) {
+      return formatElapsed(elapsed)
+    }
     return connectionStatus === "idle" ? "Connecting…" : connectionStatus
-  }, [call.status, isCaller, participants, callConnected, mediaConnected, elapsed, connectionStatus])
+  }, [
+    call.status,
+    call.answeredAt,
+    isCaller,
+    acceptedCallees.length,
+    ringingCallees.length,
+    callLive,
+    callConnected,
+    mediaConnected,
+    elapsed,
+    connectionStatus,
+  ])
 
   const statusHint = useMemo(() => {
     if (permissionStatus === "denied") {
@@ -212,6 +247,9 @@ export default function UnityCallShow({
     if (callConnected && mediaConnected) {
       return speakerOn ? (isAudioEnabled ? "Speaker on" : "Speaker on · mic muted") : "Earpiece"
     }
+    if (isCaller && acceptedCallees.length > 0) {
+      return mediaConnected ? "Connected" : `${acceptedCallees.length} in call · ${connectionStatus}`
+    }
     if (isCaller && call.status === "ringing") {
       return "Waiting for answer…"
     }
@@ -219,7 +257,7 @@ export default function UnityCallShow({
       return connectionStatus
     }
     return "Setting up call…"
-  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus])
+  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length])
 
   const showMediaControls =
     Boolean(localStream) &&
@@ -239,7 +277,7 @@ export default function UnityCallShow({
       }
 
       setCall(payload.call)
-      setParticipants(payload.participants)
+      setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
       if (payload.reason === "participant_left") {
         const self = payload.participants.find((p) => p.userId === authUserId)
@@ -289,7 +327,7 @@ export default function UnityCallShow({
   )
 
   useEffect(() => {
-    if (!callConnected || !call.answeredAt) {
+    if (!callLive || !call.answeredAt) {
       return
     }
     const started = new Date(call.answeredAt).getTime()
@@ -297,7 +335,7 @@ export default function UnityCallShow({
     tick()
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
-  }, [callConnected, call.answeredAt])
+  }, [callLive, call.answeredAt])
 
   const handleAccept = async () => {
     if (accepting || isCaller || selfStatus !== "ringing") {
@@ -395,24 +433,39 @@ export default function UnityCallShow({
             name={displayName}
             avatar={displayAvatar}
             subtitle={statusHint}
-            pulse={!callConnected || !mediaConnected}
+            pulse={!callLive || !mediaConnected}
           />
 
           <p className="mt-8 font-mono text-3xl tabular-nums tracking-wide">{statusLabel}</p>
 
-          {isCaller && call.status === "ringing" ? (
-            <div className="mt-6 w-full max-w-sm space-y-2 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Ringing</p>
-              <ul className="space-y-2">
-                {participants
-                  .filter((p) => p.role === "callee")
-                  .map((p) => (
-                    <li key={p.userId} className="flex items-center justify-between text-sm">
-                      <span>{p.name}</span>
-                      <span className="capitalize text-white/60">{p.status}</span>
-                    </li>
-                  ))}
-              </ul>
+          {isCaller && (call.status === "ringing" || call.status === "accepted") ? (
+            <div className="mt-6 w-full max-w-sm space-y-3">
+              {acceptedCallees.length > 0 ? (
+                <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/80">Joined</p>
+                  <ul className="space-y-2">
+                    {acceptedCallees.map((p) => (
+                      <li key={p.userId} className="flex items-center justify-between text-sm">
+                        <span>{p.name}</span>
+                        <span className="text-emerald-300/90">In call</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {ringingCallees.length > 0 ? (
+                <div className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Ringing</p>
+                  <ul className="space-y-2">
+                    {ringingCallees.map((p) => (
+                      <li key={p.userId} className="flex items-center justify-between text-sm">
+                        <span>{p.name}</span>
+                        <span className="capitalize text-white/60">{p.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
