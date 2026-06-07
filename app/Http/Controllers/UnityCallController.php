@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\UnityCall;
 use App\Services\UnityCallService;
+use App\Events\UnityCallWebRTCSignal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -98,6 +99,32 @@ class UnityCallController extends Controller
             'call_id' => $call->id,
             'status' => $call->status,
         ]);
+    }
+
+    public function signal(Request $request, UnityCall $call): JsonResponse
+    {
+        $this->authorizeCall($request, $call);
+
+        $validated = $request->validate([
+            'type' => ['required', 'string', 'in:offer,answer,ice-candidate,offer-request'],
+            'from' => ['required', 'string'],
+            'to' => ['required', 'string'],
+            'offer' => ['nullable', 'array'],
+            'answer' => ['nullable', 'array'],
+            'candidate' => ['nullable', 'array'],
+        ]);
+
+        if ((int) $validated['from'] !== (int) $request->user()->id) {
+            abort(403);
+        }
+
+        if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
+            return response()->json(['ok' => false], 409);
+        }
+
+        UnityCallWebRTCSignal::dispatch($call->id, $validated);
+
+        return response()->json(['ok' => true]);
     }
 
     public function show(Request $request, UnityCall $call, UnityCallService $calls): Response

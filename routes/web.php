@@ -1022,6 +1022,7 @@ Route::prefix('unity-calls')->middleware(['auth', 'EnsureEmailIsVerified', 'topi
     Route::post('/{call}/decline', [UnityCallController::class, 'decline'])->name('decline')->where('call', '[0-9]+');
     Route::post('/{call}/cancel', [UnityCallController::class, 'cancel'])->name('cancel')->where('call', '[0-9]+');
     Route::post('/{call}/end', [UnityCallController::class, 'end'])->name('end')->where('call', '[0-9]+');
+    Route::post('/{call}/signal', [UnityCallController::class, 'signal'])->name('signal')->where('call', '[0-9]+');
 });
 
 Route::get('/unity-call/{call}', [UnityCallController::class, 'show'])
