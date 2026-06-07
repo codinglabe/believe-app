@@ -134,7 +134,6 @@ jobs:
           SSH_USE_JUMP: ${{ env.SSH_USE_JUMP }}
           SSH_JUMP_USER: ${{ env.SSH_JUMP_USER }}
           SSH_JUMP_HOST: ${{ env.SSH_JUMP_HOST }}
-          SSH_C3ERS_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |

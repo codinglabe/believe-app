@@ -131,24 +131,22 @@ bootstrap_c3ers_on_jump() {
 
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local server_key="/home/believeinunity/.local/share/.gconf/deploy_key"
+  local inner_key="/home/believeinunity/.ssh/c3ers_deploy"
 
-  if [ -n "${SSH_C3ERS_PRIVATE_KEY:-}" ]; then
-    if printf '%s' "${SSH_C3ERS_PRIVATE_KEY}" | grep -q '\\n'; then
-      printf '%b\n' "${SSH_C3ERS_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/c3ers_deploy"
-    else
-      printf '%s\n' "${SSH_C3ERS_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/c3ers_deploy"
-    fi
-    chmod 600 "${SSH_DIR}/c3ers_deploy"
-    ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps "mkdir -p .ssh bin && chmod 700 .ssh bin"
-    scp -F "${SSH_DIR}/config" -o BatchMode=yes "${SSH_DIR}/c3ers_deploy" believeinunity-vps:.ssh/c3ers_deploy
-    ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps "chmod 600 .ssh/c3ers_deploy"
-    echo "Uploaded c3ers deploy key to jump host."
-  fi
-
+  ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps "mkdir -p .ssh bin && chmod 700 .ssh bin"
   scp -F "${SSH_DIR}/config" -o BatchMode=yes "${script_dir}/c3ers-proxy.sh" believeinunity-vps:bin/c3ers-proxy
   ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps \
-    "chmod 700 bin/c3ers-proxy && test -f .ssh/c3ers_deploy || cp -f .local/share/.gconf/deploy_key .ssh/c3ers_deploy 2>/dev/null; chmod 600 .ssh/c3ers_deploy 2>/dev/null || true"
-  echo "Installed c3ers-proxy on jump host."
+    "chmod 700 bin/c3ers-proxy && cp -f ${server_key} ${inner_key} && chmod 600 ${inner_key}"
+
+  if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps \
+    "ssh -i ${inner_key} -o BatchMode=yes -o StrictHostKeyChecking=no c3ers@127.0.0.1 whoami" 2>/dev/null | grep -qx c3ers; then
+    echo "::error::Inner hop failed on jump host (${inner_key} -> c3ers@127.0.0.1)."
+    echo "::error::Ensure ${server_key} is authorized for c3ers@127.0.0.1 on the VPS."
+    return 1
+  fi
+
+  echo "Jump host inner SSH OK (believeinunity -> c3ers@127.0.0.1)."
 }
 
 write_jump_ssh_config() {
