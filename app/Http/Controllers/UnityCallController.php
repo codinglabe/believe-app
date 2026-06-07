@@ -107,10 +107,13 @@ class UnityCallController extends Controller
         $this->authorizeCall($request, $call);
 
         $call = $calls->expireCallIfRinging($call, $request->user());
+        $call->loadMissing(['participants']);
+        $participant = $call->participantForUser($request->user()->id);
 
         return response()->json([
             'call_id' => $call->id,
             'status' => $call->status,
+            'participant_status' => $participant?->status,
         ]);
     }
 

@@ -176,14 +176,17 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
 
 export async function expireUnityCallRinging(
   callId: number,
-): Promise<{ ok: boolean; status?: string; message?: string }> {
-  const { ok, data, message } = await postUnityCallJson<{ call_id: number; status: string }>(
-    route("unity-calls.expire-ringing", callId),
-  )
+): Promise<{ ok: boolean; status?: string; participant_status?: string; message?: string }> {
+  const { ok, data, message } = await postUnityCallJson<{
+    call_id: number
+    status: string
+    participant_status?: string
+  }>(route("unity-calls.expire-ringing", callId))
 
   return {
     ok,
     status: data?.status,
+    participant_status: data?.participant_status,
     message,
   }
 }

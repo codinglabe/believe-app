@@ -127,7 +127,11 @@ class UnityCallService
                 throw ValidationException::withMessages(['call' => __('This call is no longer available.')]);
             }
 
-            if ($rejoinable && $call->status !== UnityCall::STATUS_ACCEPTED) {
+            if ($rejoinable && $call->status === UnityCall::STATUS_ACCEPTED) {
+                // Rejoin an active call.
+            } elseif ($rejoinable && $call->status === UnityCall::STATUS_RINGING && $participant->status === UnityCallParticipant::STATUS_MISSED) {
+                // Callee answering while the host is still calling.
+            } elseif ($rejoinable) {
                 throw ValidationException::withMessages(['call' => __('This call is no longer available.')]);
             }
 
@@ -416,8 +420,14 @@ class UnityCallService
         $count = 0;
 
         foreach ($expired as $call) {
-            $this->finalizeMissedRingingCall($call);
-            $count++;
+            $ringingCallees = $call->participants
+                ->where('role', UnityCallParticipant::ROLE_CALLEE)
+                ->where('status', UnityCallParticipant::STATUS_RINGING);
+
+            foreach ($ringingCallees as $participant) {
+                $this->expireRingingParticipant($call, $participant);
+                $count++;
+            }
         }
 
         return $count;
@@ -429,14 +439,23 @@ class UnityCallService
             throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
         }
 
-        return DB::transaction(function () use ($call) {
+        return DB::transaction(function () use ($call, $user) {
             $call = UnityCall::query()->whereKey($call->id)->lockForUpdate()->firstOrFail();
+            $participant = $call->participantForUser($user->id);
+
+            if (! $participant || $participant->role !== UnityCallParticipant::ROLE_CALLEE) {
+                return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+            }
+
+            if ($participant->status !== UnityCallParticipant::STATUS_RINGING) {
+                return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+            }
 
             if (! $this->isRingExpired($call)) {
                 return $call->fresh(['participants.user', 'chatRoom', 'caller']);
             }
 
-            $this->finalizeMissedRingingCall($call);
+            $this->expireRingingParticipant($call, $participant);
 
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
@@ -460,33 +479,25 @@ class UnityCallService
         return $call->created_at->lte(now()->subSeconds(self::RING_SECONDS));
     }
 
-    private function finalizeMissedRingingCall(UnityCall $call): void
+    private function expireRingingParticipant(UnityCall $call, UnityCallParticipant $participant): void
     {
-        if ($call->status !== UnityCall::STATUS_RINGING) {
+        if ($participant->status !== UnityCallParticipant::STATUS_RINGING) {
             return;
         }
 
-        $call->update([
-            'status' => UnityCall::STATUS_MISSED,
-            'ended_at' => now(),
-        ]);
-        $this->forgetWebRtcSignalCache($call);
-
-        $call->participants()
-            ->where('status', UnityCallParticipant::STATUS_RINGING)
-            ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
+        $participant->update(['status' => UnityCallParticipant::STATUS_MISSED]);
 
         $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
         $caller = $call->caller;
         $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
-        $payload = $this->notifier->payloadForUser($fresh, $caller, 'missed');
+        $payload = $this->notifier->payloadForUser($fresh, $caller, 'participant_missed');
 
-        foreach ($fresh->participants as $participant) {
-            $this->notifier->broadcastStatus($participant->user_id, $payload);
+        foreach ($fresh->participants as $row) {
+            $this->notifier->broadcastStatus($row->user_id, $payload);
         }
 
-        $this->notifier->broadcastSessionStatus($fresh, $caller, 'missed');
-        $this->notifier->broadcastRoomStatus($fresh, $caller, 'missed');
+        $this->notifier->broadcastSessionStatus($fresh, $caller, 'participant_missed');
+        $this->notifier->broadcastRoomStatus($fresh, $caller, 'participant_missed');
 
         $this->syncChatCallMessage($fresh);
     }
@@ -570,6 +581,20 @@ class UnityCallService
             ->get();
 
         foreach ($staleRinging as $call) {
+            $participant = $call->participantForUser($userId);
+
+            if ($participant
+                && $participant->role === UnityCallParticipant::ROLE_CALLEE
+                && $participant->status === UnityCallParticipant::STATUS_RINGING) {
+                $this->expireRingingParticipant($call, $participant);
+
+                continue;
+            }
+
+            if ($participant && $participant->role === UnityCallParticipant::ROLE_CALLER) {
+                continue;
+            }
+
             $this->terminateOrphanedCall($call);
         }
     }

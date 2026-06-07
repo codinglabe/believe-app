@@ -16,7 +16,6 @@ import {
   unityCallChatChannelName,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
-import { parseChatTimestamp } from "@/lib/chat-timestamps"
 import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
@@ -145,7 +144,6 @@ export default function UnityCallShow({
   const [ending, setEnding] = useState(false)
   const [accepting, setAccepting] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(true)
-  const [ringRemainingSeconds, setRingRemainingSeconds] = useState<number | null>(null)
 
   const ringMode = useMemo(() => {
     if (typeof window === "undefined") {
@@ -244,9 +242,6 @@ export default function UnityCallShow({
         const ringing = ringingCallees.length
         return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : `${acceptedCallees.length} joined`
       }
-      if (ringRemainingSeconds != null && ringRemainingSeconds > 0) {
-        return `Calling… ${formatElapsed(ringRemainingSeconds)}`
-      }
       return "Calling…"
     }
     if (callConnected && mediaConnected) {
@@ -264,7 +259,6 @@ export default function UnityCallShow({
     mediaConnected,
     elapsed,
     connectionStatus,
-    ringRemainingSeconds,
   ])
 
   const statusHint = useMemo(() => {
@@ -281,16 +275,13 @@ export default function UnityCallShow({
       return mediaConnected ? "Connected" : `${acceptedCallees.length} in call · ${connectionStatus}`
     }
     if (isCaller && call.status === "ringing") {
-      if (ringRemainingSeconds != null && ringRemainingSeconds > 0) {
-        return `Waiting for answer · ${formatElapsed(ringRemainingSeconds)} left`
-      }
       return "Waiting for answer…"
     }
     if (callConnected) {
       return connectionStatus
     }
     return "Setting up call…"
-  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length, ringRemainingSeconds])
+  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length])
 
   const showMediaControls =
     Boolean(localStream) &&
@@ -321,6 +312,15 @@ export default function UnityCallShow({
         return
       }
 
+      if (payload.reason === "participant_missed") {
+        const self = payload.participants.find((p) => p.userId === authUserId)
+        if (!isCaller && self?.status === "missed") {
+          stopMedia()
+          navigateAfterUnityCall(payload.call.id, payload.call.chatRoomId ?? call.chatRoomId)
+        }
+        return
+      }
+
       if (isUnityCallTerminated(payload)) {
         stopMedia()
         dispatchUnityCallTerminated(payload)
@@ -329,7 +329,7 @@ export default function UnityCallShow({
         }
       }
     },
-    [authUserId, call.chatRoomId, call.id, stopMedia],
+    [authUserId, call.chatRoomId, call.id, isCaller, stopMedia],
   )
 
   const onStatus = handleCallTerminated
@@ -363,7 +363,7 @@ export default function UnityCallShow({
     callId: call.id,
     callStatus: call.status,
     ringExpiresAt: call.ringExpiresAt,
-    enabled: call.status === "ringing",
+    enabled: !isCaller && selfStatus === "ringing" && call.status === "ringing",
     onExpired: () => {
       if (isLeavingUnityCall(call.id)) {
         return
@@ -387,23 +387,6 @@ export default function UnityCallShow({
   }, [call.status, call.id, call.chatRoomId, stopMedia])
 
   useEffect(() => {
-    if (call.status !== "ringing" || !call.ringExpiresAt) {
-      setRingRemainingSeconds(null)
-      return
-    }
-
-    const expiresMs = parseChatTimestamp(call.ringExpiresAt).getTime()
-    if (Number.isNaN(expiresMs)) {
-      return
-    }
-
-    const tick = () => setRingRemainingSeconds(Math.max(0, Math.ceil((expiresMs - Date.now()) / 1000)))
-    tick()
-    const id = window.setInterval(tick, 1000)
-    return () => window.clearInterval(id)
-  }, [call.status, call.ringExpiresAt])
-
-  useEffect(() => {
     if (!callLive || !call.answeredAt) {
       return
     }
@@ -419,12 +402,15 @@ export default function UnityCallShow({
     call.status === "accepted" &&
     (selfStatus === "declined" || selfStatus === "left" || selfStatus === "missed")
 
+  const canAnswerLate =
+    !isCaller && call.status === "ringing" && selfStatus === "missed"
+
   const handleAccept = async () => {
     if (accepting || isCaller) {
       return
     }
 
-    const canJoin = selfStatus === "ringing" || isRejoinCallee
+    const canJoin = selfStatus === "ringing" || isRejoinCallee || canAnswerLate
     if (!canJoin) {
       return
     }
@@ -504,7 +490,7 @@ export default function UnityCallShow({
     selfStatus === "ringing" &&
     (call.status === "ringing" || call.status === "accepted")
   const showRingingCalleeControls = isRingingCallee && !ringMode
-  const showRejoinControls = isRejoinCallee
+  const showRejoinControls = isRejoinCallee || canAnswerLate
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
@@ -655,7 +641,7 @@ export default function UnityCallShow({
               >
                 {accepting ? <Loader2 className="h-7 w-7 animate-spin" /> : <Phone className="h-7 w-7" />}
               </Button>
-              <span className="text-xs text-white/60">Rejoin call</span>
+              <span className="text-xs text-white/60">{isRejoinCallee ? "Rejoin call" : "Accept"}</span>
             </div>
           ) : !isRingingCallee || ringMode ? (
             <div className="flex flex-col items-center gap-2">

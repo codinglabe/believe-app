@@ -214,6 +214,14 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         }
       }
 
+      if (incoming?.call.id === payload.call.id && payload.reason === "participant_missed") {
+        const self = payload.participants.find((p) => p.userId === userId)
+        if (self?.status === "missed") {
+          dismiss()
+        }
+        return
+      }
+
       if (incoming?.call.id === payload.call.id && isUnityCallTerminated(payload)) {
         dismiss()
       }

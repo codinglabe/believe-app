@@ -10,6 +10,18 @@ type Options = {
   onExpired?: () => void
 }
 
+function shouldDismissAfterExpire(result: {
+  ok: boolean
+  status?: string
+  participant_status?: string
+}): boolean {
+  if (result.participant_status === "missed") {
+    return true
+  }
+
+  return Boolean(result.ok && result.status && !["ringing", "accepted"].includes(result.status))
+}
+
 export function useUnityCallRingTimeout({
   callId,
   callStatus,
@@ -51,14 +63,14 @@ export function useUnityCallRingTimeout({
 
       void (async () => {
         let result = await expireUnityCallRinging(callId)
-        if (result.ok && result.status && result.status !== "ringing") {
+        if (shouldDismissAfterExpire(result)) {
           onExpiredRef.current?.()
           return
         }
 
         await new Promise((resolve) => window.setTimeout(resolve, 2000))
         result = await expireUnityCallRinging(callId)
-        if (result.ok && result.status !== "ringing") {
+        if (shouldDismissAfterExpire(result)) {
           onExpiredRef.current?.()
         }
       })()
