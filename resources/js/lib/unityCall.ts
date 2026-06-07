@@ -79,6 +79,7 @@ export function unityCallChatChannelName(
 export function markLeavingUnityCall(callId: number): void {
   leavingCallIds.add(callId)
   clearUnityCallAcceptedLocally(callId)
+  clearUnityCallLiveOnPage(callId)
 }
 
 export function clearLeavingUnityCall(callId: number): void {
@@ -87,6 +88,65 @@ export function clearLeavingUnityCall(callId: number): void {
 
 export function isLeavingUnityCall(callId: number): boolean {
   return leavingCallIds.has(callId)
+}
+
+export function getActiveUnityCallIdFromPage(): number | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  const match = window.location.pathname.match(/^\/unity-call\/(\d+)$/)
+  if (!match) {
+    return null
+  }
+
+  const callId = Number(match[1])
+  return Number.isFinite(callId) && callId > 0 ? callId : null
+}
+
+export function markUnityCallLiveOnPage(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+
+  try {
+    sessionStorage.setItem(`unity_call_live_${callId}`, "1")
+  } catch {
+    // ignore
+  }
+}
+
+export function clearUnityCallLiveOnPage(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+
+  try {
+    sessionStorage.removeItem(`unity_call_live_${callId}`)
+  } catch {
+    // ignore
+  }
+}
+
+export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  const pageCallId = getActiveUnityCallIdFromPage()
+  if (!pageCallId || isLeavingUnityCall(pageCallId)) {
+    return false
+  }
+
+  if (excludeCallId && pageCallId === excludeCallId) {
+    return false
+  }
+
+  try {
+    return sessionStorage.getItem(`unity_call_live_${pageCallId}`) === "1"
+  } catch {
+    return false
+  }
 }
 
 export function navigateAfterUnityCall(

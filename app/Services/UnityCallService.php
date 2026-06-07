@@ -97,6 +97,13 @@ class UnityCallService
 
     public function accept(UnityCall $call, User $user): UnityCall
     {
+        $activeCall = $this->activeCallForUser($user->id);
+        if ($activeCall && (int) $activeCall->id !== (int) $call->id) {
+            throw ValidationException::withMessages([
+                'call' => __('You are already in another call. End it before joining this one.'),
+            ]);
+        }
+
         return DB::transaction(function () use ($call, $user) {
             $call = UnityCall::query()->whereKey($call->id)->lockForUpdate()->firstOrFail();
             $participant = $this->ensureCalleeParticipant($call, $user);
@@ -435,8 +442,8 @@ class UnityCallService
 
     public function expireCallIfRinging(UnityCall $call, User $user): UnityCall
     {
-        if (! $this->userCanAccess($call, $user)) {
-            throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
+        if (! $this->userCanExpireRinging($call, $user)) {
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         }
 
         return DB::transaction(function () use ($call, $user) {
@@ -542,6 +549,20 @@ class UnityCallService
 
         if ($chatRoom->type === 'public') {
             return $this->ensurePublicChatRoomMember($chatRoom, $user);
+        }
+
+        return false;
+    }
+
+    public function userCanExpireRinging(UnityCall $call, User $user): bool
+    {
+        if ($this->userCanAccess($call, $user)) {
+            return true;
+        }
+
+        $participant = $call->participantForUser($user->id);
+        if ($participant && $participant->role === UnityCallParticipant::ROLE_CALLEE) {
+            return true;
         }
 
         return false;

@@ -9,6 +9,8 @@ import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
   acceptUnityCall,
   isLeavingUnityCall,
+  markUnityCallLiveOnPage,
+  clearUnityCallLiveOnPage,
   navigateAfterUnityCall,
   terminateUnityCall,
   unityCallChatChannelName,
@@ -381,6 +383,18 @@ export default function UnityCallShow({
 
     exitCallScreen(call.status)
   }, [call.status, call.id, ending, exitCallScreen, isTerminalCallStatus])
+
+  useEffect(() => {
+    if (!callLive || !callConnected || ending || isTerminalCallStatus) {
+      clearUnityCallLiveOnPage(call.id)
+      return
+    }
+
+    markUnityCallLiveOnPage(call.id)
+    return () => {
+      clearUnityCallLiveOnPage(call.id)
+    }
+  }, [call.id, callConnected, callLive, ending, isTerminalCallStatus])
 
   useEffect(() => {
     if (!callLive || !call.answeredAt) {

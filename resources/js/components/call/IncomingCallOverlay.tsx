@@ -9,6 +9,7 @@ import toast from "react-hot-toast"
 import { Button } from "@/components/ui/button"
 import {
   acceptUnityCall,
+  isUserOnLiveUnityCall,
   markUnityCallAcceptedLocally,
   terminateUnityCall,
   toInternalAppPath,
@@ -42,6 +43,7 @@ function readAuthUserId(): number | null {
 
 export default function IncomingCallOverlay({ authUserId }: Props) {
   const [incoming, setIncoming] = useState<UnityCallStatusEvent | null>(null)
+  const [blockedByActiveCall, setBlockedByActiveCall] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showRingtoneSettings, setShowRingtoneSettings] = useState(false)
   const [ringtoneMode, setRingtoneMode] = useState<"default" | "custom">("default")
@@ -53,6 +55,14 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     setRingtoneMode(getCallRingtoneMode())
   }, [])
 
+  const dismiss = useCallback(() => {
+    stopCallRingtone()
+    setIncoming(null)
+    setBlockedByActiveCall(false)
+    setShowRingtoneSettings(false)
+    void clearAnyPendingIncomingCall()
+  }, [])
+
   const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
     const self = payload.participants.find((p) => p.userId === userId)
     if (self?.role === "callee" && self.status === "accepted") {
@@ -61,16 +71,17 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       router.visit(joinUrl)
       return
     }
+
+    if (isUserOnLiveUnityCall(payload.call.id)) {
+      setBlockedByActiveCall(true)
+      setIncoming(payload)
+      return
+    }
+
+    setBlockedByActiveCall(false)
     setIncoming((current) => (current?.call.id === payload.call.id ? current : payload))
     void startCallRingtone()
   }, [userId])
-
-  const dismiss = useCallback(() => {
-    stopCallRingtone()
-    setIncoming(null)
-    setShowRingtoneSettings(false)
-    void clearAnyPendingIncomingCall()
-  }, [])
 
   useEffect(() => {
     if (!userId) {
@@ -258,19 +269,20 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     callId: incoming?.call.id ?? 0,
     callStatus: incoming?.call.status ?? "",
     ringExpiresAt: incoming?.call.ringExpiresAt,
-    enabled: Boolean(incoming),
+    enabled: Boolean(incoming) && !blockedByActiveCall,
     onExpired: dismiss,
   })
 
   const handleAccept = async () => {
-    if (!incoming || busy) {
+    if (!incoming || busy || blockedByActiveCall) {
       return
     }
     setBusy(true)
     stopCallRingtone()
-    const { ok } = await acceptUnityCall(incoming.call.id)
+    const { ok, message } = await acceptUnityCall(incoming.call.id)
     setBusy(false)
     if (!ok) {
+      toast.error(message?.trim() || "Could not join this call.")
       return
     }
     markUnityCallAcceptedLocally(incoming.call.id)
@@ -362,6 +374,15 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
               pulse
             />
 
+            {blockedByActiveCall ? (
+              <div className="mt-8 max-w-sm rounded-2xl border border-amber-500/30 bg-amber-950/40 px-4 py-3 text-center">
+                <p className="text-sm font-medium text-amber-100">You are already in a call</p>
+                <p className="mt-1 text-xs text-amber-100/80">
+                  End your current call first, then you can answer this one.
+                </p>
+              </div>
+            ) : null}
+
             {showRingtoneSettings ? (
               <div className="mt-8 w-full max-w-sm rounded-2xl border border-white/10 bg-black/30 p-4 text-left">
                 <p className="text-sm font-semibold text-white">Ringtone</p>
@@ -418,13 +439,13 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
               <Button
                 type="button"
                 className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 p-0 shadow-lg hover:from-purple-700 hover:to-blue-700"
-                disabled={busy}
+                disabled={busy || blockedByActiveCall}
                 aria-label="Accept call"
                 onClick={() => void handleAccept()}
               >
                 <Phone className="h-7 w-7" />
               </Button>
-              <span className="text-xs text-white/60">Accept</span>
+              <span className="text-xs text-white/60">{blockedByActiveCall ? "Busy" : "Accept"}</span>
             </div>
           </div>
         </motion.div>

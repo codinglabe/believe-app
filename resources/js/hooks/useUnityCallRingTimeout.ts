@@ -22,6 +22,22 @@ function shouldDismissAfterExpire(result: {
   return Boolean(result.ok && result.status && !["ringing", "accepted"].includes(result.status))
 }
 
+function shouldDismissAfterFailedExpire(result: {
+  ok: boolean
+  status?: string
+  participant_status?: string
+}): boolean {
+  if (shouldDismissAfterExpire(result)) {
+    return true
+  }
+
+  if (!result.ok) {
+    return true
+  }
+
+  return false
+}
+
 export function useUnityCallRingTimeout({
   callId,
   callStatus,
@@ -63,6 +79,10 @@ export function useUnityCallRingTimeout({
 
       void (async () => {
         let result = await expireUnityCallRinging(callId)
+        if (shouldDismissAfterFailedExpire(result)) {
+          onExpiredRef.current?.()
+          return
+        }
         if (shouldDismissAfterExpire(result)) {
           onExpiredRef.current?.()
           return
@@ -70,7 +90,7 @@ export function useUnityCallRingTimeout({
 
         await new Promise((resolve) => window.setTimeout(resolve, 2000))
         result = await expireUnityCallRinging(callId)
-        if (shouldDismissAfterExpire(result)) {
+        if (shouldDismissAfterFailedExpire(result) || shouldDismissAfterExpire(result)) {
           onExpiredRef.current?.()
         }
       })()

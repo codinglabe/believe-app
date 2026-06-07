@@ -104,11 +104,20 @@ class UnityCallController extends Controller
 
     public function expireRinging(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
     {
-        $this->authorizeCall($request, $call);
+        $user = $request->user();
+        $call->loadMissing(['chatRoom', 'participants']);
 
-        $call = $calls->expireCallIfRinging($call, $request->user());
+        if (! $calls->userCanExpireRinging($call, $user)) {
+            return response()->json([
+                'call_id' => $call->id,
+                'status' => $call->status,
+                'participant_status' => 'missed',
+            ]);
+        }
+
+        $call = $calls->expireCallIfRinging($call, $user);
         $call->loadMissing(['participants']);
-        $participant = $call->participantForUser($request->user()->id);
+        $participant = $call->participantForUser($user->id);
 
         return response()->json([
             'call_id' => $call->id,
