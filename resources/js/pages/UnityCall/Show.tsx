@@ -9,8 +9,6 @@ import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
   acceptUnityCall,
   isLeavingUnityCall,
-  markLeavingUnityCall,
-  clearLeavingUnityCall,
   navigateAfterUnityCall,
   terminateUnityCall,
   unityCallChatChannelName,
@@ -231,6 +229,9 @@ export default function UnityCallShow({
   }, [isGroupCall, isCaller, participants, caller.avatar])
 
   const statusLabel = useMemo(() => {
+    if (ending) {
+      return "Leaving…"
+    }
     if (call.status === "ended" || call.status === "cancelled" || call.status === "declined" || call.status === "missed") {
       return "Call ended"
     }
@@ -259,6 +260,7 @@ export default function UnityCallShow({
     mediaConnected,
     elapsed,
     connectionStatus,
+    ending,
   ])
 
   const statusHint = useMemo(() => {
@@ -441,7 +443,6 @@ export default function UnityCallShow({
 
     setEnding(true)
     stopMedia()
-    markLeavingUnityCall(call.id)
 
     const wasRinging = call.status === "ringing"
     const { ok, message } = await terminateUnityCall({
@@ -452,7 +453,6 @@ export default function UnityCallShow({
     })
 
     if (!ok) {
-      clearLeavingUnityCall(call.id)
       setEnding(false)
       toast.error(message?.trim() || "Could not end the call. Please try again.")
       return
