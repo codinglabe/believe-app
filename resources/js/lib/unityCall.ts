@@ -266,21 +266,9 @@ export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; da
   acceptInFlight.add(callId)
   try {
     const { ok, data, message } = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
-    if (ok && data) {
+    if (ok) {
       markUnityCallAcceptedLocally(callId)
-      return { ok, data, message }
-    }
-
-    const retryable =
-      message?.toLowerCase().includes("no longer ringing") ||
-      message?.toLowerCase().includes("no longer available")
-
-    if (retryable) {
-      const retry = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
-      if (retry.ok && retry.data) {
-        markUnityCallAcceptedLocally(callId)
-        return { ok: true, data: retry.data, message: retry.message }
-      }
+      return { ok: true, data, message }
     }
 
     return { ok: false, data: null, message }

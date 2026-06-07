@@ -97,8 +97,7 @@ class UnityCallService
 
     public function accept(UnityCall $call, User $user): UnityCall
     {
-        $activeCall = $this->activeCallForUser($user->id);
-        if ($activeCall && (int) $activeCall->id !== (int) $call->id) {
+        if ($this->userHasConflictingAcceptedCall($user->id, $call->id)) {
             throw ValidationException::withMessages([
                 'call' => __('You are already in another call. End it before joining this one.'),
             ]);
@@ -134,19 +133,10 @@ class UnityCallService
                 throw ValidationException::withMessages(['call' => __('This call is no longer available.')]);
             }
 
-            if ($rejoinable && $call->status === UnityCall::STATUS_ACCEPTED) {
-                // Rejoin an active call.
-            } elseif ($rejoinable && $call->status === UnityCall::STATUS_RINGING && $participant->status === UnityCallParticipant::STATUS_MISSED) {
-                // Callee answering while the host is still calling.
+            if ($rejoinable && in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
+                // Rejoin, answer late, or change mind while the call is still live.
             } elseif ($rejoinable) {
                 throw ValidationException::withMessages(['call' => __('This call is no longer available.')]);
-            }
-
-            if ($participant->status === UnityCallParticipant::STATUS_RINGING
-                && $call->status === UnityCall::STATUS_RINGING
-                && $call->ring_expires_at
-                && $call->ring_expires_at->isPast()) {
-                throw ValidationException::withMessages(['call' => __('This call has expired.')]);
             }
 
             $participant->update(['status' => UnityCallParticipant::STATUS_ACCEPTED]);
@@ -521,6 +511,24 @@ class UnityCallService
             ->first();
     }
 
+    /**
+     * True when the user is already connected to a different live call.
+     * Ringing-only rows on other calls do not block answering a new incoming call.
+     */
+    public function userHasConflictingAcceptedCall(int $userId, int $exceptCallId): bool
+    {
+        $this->finalizeStaleCallsForUser($userId, $exceptCallId);
+
+        return UnityCall::query()
+            ->whereIn('status', [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED])
+            ->whereNull('ended_at')
+            ->whereKeyNot($exceptCallId)
+            ->whereHas('participants', fn ($q) => $q
+                ->where('user_id', $userId)
+                ->where('status', UnityCallParticipant::STATUS_ACCEPTED))
+            ->exists();
+    }
+
     public function userCanAccess(UnityCall $call, User $user): bool
     {
         if ($call->participants()->where('user_id', $user->id)->exists()) {
@@ -661,10 +669,11 @@ class UnityCallService
         return $participant;
     }
 
-    private function finalizeStaleCallsForUser(int $userId): void
+    private function finalizeStaleCallsForUser(int $userId, ?int $exceptCallId = null): void
     {
         $staleRinging = UnityCall::query()
             ->where('status', UnityCall::STATUS_RINGING)
+            ->when($exceptCallId, fn ($query) => $query->whereKeyNot($exceptCallId))
             ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
             ->where(function ($query) {
                 $query->where(function ($inner) {
