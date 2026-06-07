@@ -40,6 +40,36 @@ fi
 RUNNER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo unknown)"
 echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
 
+request_runner_allow() {
+  local token="${DEPLOY_RUNNER_ALLOW_TOKEN:-}"
+  local app_url="${APP_URL:-https://501c3ers.com}"
+  if [ -z "${token}" ] || [ "${RUNNER_IP}" = "unknown" ]; then
+    return 1
+  fi
+  echo "Requesting CSF allow for ${RUNNER_IP} before SSH..."
+  local http_code
+  http_code="$(
+    curl -4 -sS --max-time 30 -o /tmp/deploy-allow-response.txt -w '%{http_code}' \
+      -X POST "${app_url%/}/internal/deploy/allow-runner-ip" \
+      -H "Authorization: Bearer ${token}" \
+      -H "Content-Type: application/json" \
+      -H "Accept: application/json" \
+      -d "{\"ip\":\"${RUNNER_IP}\"}" || echo "000"
+  )"
+  if [ "${http_code}" = "200" ]; then
+    cat /tmp/deploy-allow-response.txt 2>/dev/null || true
+    echo ""
+    sleep 3
+    return 0
+  fi
+  echo "::warning::Runner allow request returned HTTP ${http_code}"
+  cat /tmp/deploy-allow-response.txt 2>/dev/null || true
+  echo ""
+  return 1
+}
+
+request_runner_allow || true
+
 ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
 if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST}" ] && [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
   ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
@@ -109,8 +139,8 @@ print_firewall_help() {
   echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts (${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT})."
   echo "::error::Runner IP ${RUNNER_IP} is blocked by CSF/firewall or the deploy key is wrong."
   echo "::error::ONE-TIME fix (WHM -> Terminal as root):"
-  echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/allow-github-actions-csf.sh | bash"
-  echo "::error::Optional: set GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN + server .env DEPLOY_RUNNER_ALLOW_TOKEN, then configure sudo for scripts/allow-runner-ip.sh (see script header)."
+  echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
+  echo "::error::Add DEPLOY_RUNNER_ALLOW_TOKEN to GitHub Secrets (printed by setup script)."
   if command -v curl >/dev/null 2>&1; then
     echo "GitHub Actions IPv4 ranges (first 8):"
     curl -fsS --max-time 15 https://api.github.com/meta 2>/dev/null \
@@ -129,6 +159,10 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
   if [[ "${host}" == \[*\] ]]; then
     probe_host="${host#[}"
     probe_host="${probe_host%]}"
+  fi
+
+  if [ "${attempt}" -eq 3 ] || [ "${attempt}" -eq 6 ]; then
+    request_runner_allow || true
   fi
 
   if [ "${SSH_USE_TCP_PROBE}" = "true" ] && ! tcp_probe "${probe_host}"; then

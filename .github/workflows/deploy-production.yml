@@ -115,6 +115,8 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
+          APP_URL: ${{ env.APP_URL }}
         run: |
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
