@@ -185,6 +185,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     // Intentional: re-sync on navigation (url) or when the server’s room list set changes; avoid depending on the whole Inertia `props` object.
   }, [url, roomsSyncKey])
+
   const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
@@ -195,6 +196,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [allTopics, setAllTopics] = useState<ChatTopic[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const roomId = Number(new URLSearchParams(window.location.search).get("room"))
+    if (!Number.isFinite(roomId) || roomId <= 0) {
+      return
+    }
+
+    setActiveRoom((prev) => {
+      if (prev?.id === roomId) {
+        return prev
+      }
+      const room = chatRooms.find((entry) => entry.id === roomId)
+      return room ?? prev
+    })
+  }, [url, chatRooms])
 
   const allUsers = (props.allUsers as User[]) || []
   const currentUser = props.currentUser as User

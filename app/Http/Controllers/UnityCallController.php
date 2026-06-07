@@ -169,7 +169,7 @@ class UnityCallController extends Controller
             'endCallUrl' => route('unity-calls.end', $call->id),
             'cancelCallUrl' => route('unity-calls.cancel', $call->id),
             'acceptCallUrl' => route('unity-calls.accept', $call->id),
-            'chatUrl' => '/chat',
+            'chatUrl' => route('chat.index').'?room='.$call->chat_room_id,
             'authUserId' => $user->id,
         ]);
     }

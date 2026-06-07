@@ -1,4 +1,5 @@
 import type { UnityCallPayload, UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
+import { router } from "@inertiajs/react"
 
 function getCsrfToken(): string {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
@@ -46,6 +47,39 @@ type UnityCallErrorResponse = {
 }
 
 const acceptInFlight = new Set<number>()
+const leavingCallIds = new Set<number>()
+
+export function unityCallChatUrl(chatRoomId: number | null | undefined): string {
+  if (!chatRoomId) {
+    return route("chat.index")
+  }
+  return `${route("chat.index")}?room=${chatRoomId}`
+}
+
+export function markLeavingUnityCall(callId: number): void {
+  leavingCallIds.add(callId)
+  clearUnityCallAcceptedLocally(callId)
+}
+
+export function clearLeavingUnityCall(callId: number): void {
+  leavingCallIds.delete(callId)
+}
+
+export function isLeavingUnityCall(callId: number): boolean {
+  return leavingCallIds.has(callId)
+}
+
+export function navigateAfterUnityCall(callId: number, chatRoomId: number | null | undefined): void {
+  if (isLeavingUnityCall(callId)) {
+    return
+  }
+
+  markLeavingUnityCall(callId)
+  router.visit(unityCallChatUrl(chatRoomId), {
+    preserveScroll: true,
+    onFinish: () => clearLeavingUnityCall(callId),
+  })
+}
 
 export function markUnityCallAcceptedLocally(callId: number): void {
   if (typeof sessionStorage === "undefined") {
@@ -66,6 +100,17 @@ export function hasUnityCallAcceptedLocally(callId: number): boolean {
     return sessionStorage.getItem(`unity_call_accepted_${callId}`) !== null
   } catch {
     return false
+  }
+}
+
+export function clearUnityCallAcceptedLocally(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+  try {
+    sessionStorage.removeItem(`unity_call_accepted_${callId}`)
+  } catch {
+    // ignore
   }
 }
 

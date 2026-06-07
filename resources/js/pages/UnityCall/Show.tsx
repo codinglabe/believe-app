@@ -1,11 +1,19 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Head, router } from "@inertiajs/react"
+import { Head } from "@inertiajs/react"
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from "lucide-react"
+import toast from "react-hot-toast"
 import { Button } from "@/components/ui/button"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
-import { cancelUnityCall, declineUnityCall, endUnityCall, acceptUnityCall, toInternalAppPath } from "@/lib/unityCall"
+import {
+  cancelUnityCall,
+  declineUnityCall,
+  endUnityCall,
+  acceptUnityCall,
+  isLeavingUnityCall,
+  navigateAfterUnityCall,
+} from "@/lib/unityCall"
 import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
 import { dispatchUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
@@ -80,7 +88,6 @@ export default function UnityCallShow({
   isGroupCall,
   participantStatus,
   iceServers,
-  chatUrl,
   authUserId,
 }: Props) {
   const [call, setCall] = useState(initialCall)
@@ -188,17 +195,19 @@ export default function UnityCallShow({
         const self = payload.participants.find((p) => p.userId === authUserId)
         if (self?.status === "left") {
           stopMedia()
-          router.visit(chatUrl)
+          navigateAfterUnityCall(payload.call.id, payload.call.chatRoomId ?? call.chatRoomId)
         }
         return
       }
 
       if (["ended", "cancelled", "declined", "missed"].includes(payload.reason)) {
         stopMedia()
-        router.visit(chatUrl)
+        if (!isLeavingUnityCall(payload.call.id)) {
+          navigateAfterUnityCall(payload.call.id, payload.call.chatRoomId ?? call.chatRoomId)
+        }
       }
     },
-    [authUserId, chatUrl, stopMedia],
+    [authUserId, call.chatRoomId, stopMedia],
   )
 
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
@@ -230,12 +239,32 @@ export default function UnityCallShow({
   }
 
   const handleEnd = async () => {
+    if (ending || isLeavingUnityCall(call.id)) {
+      return
+    }
+
     setEnding(true)
     stopMedia()
 
+    let ok = false
     if (call.status === "ringing") {
       if (isCaller) {
-        await cancelUnityCall(call.id)
+        ok = await cancelUnityCall(call.id)
+      } else {
+        ok = await declineUnityCall(call.id)
+      }
+    } else {
+      ok = await endUnityCall(call.id)
+    }
+
+    if (!ok) {
+      setEnding(false)
+      toast.error("Could not end the call. Please try again.")
+      return
+    }
+
+    if (call.status === "ringing") {
+      if (isCaller) {
         dispatchUnityCallTerminated({
           reason: "cancelled",
           call: { ...call, status: "cancelled" },
@@ -243,7 +272,6 @@ export default function UnityCallShow({
           participants,
         })
       } else {
-        await declineUnityCall(call.id)
         dispatchUnityCallTerminated({
           reason: "declined",
           call: { ...call, status: "declined" },
@@ -251,20 +279,17 @@ export default function UnityCallShow({
           participants,
         })
       }
-    } else {
-      await endUnityCall(call.id)
-      if (!isGroupCall || isCaller) {
-        dispatchUnityCallTerminated({
-          reason: "ended",
-          call: { ...call, status: "ended" },
-          caller,
-          participants,
-        })
-      }
+    } else if (!isGroupCall || isCaller) {
+      dispatchUnityCallTerminated({
+        reason: "ended",
+        call: { ...call, status: "ended" },
+        caller,
+        participants,
+      })
     }
 
+    navigateAfterUnityCall(call.id, call.chatRoomId)
     setEnding(false)
-    router.visit(chatUrl)
   }
 
   const isRingingCallee = !isCaller && call.status === "ringing" && selfStatus === "ringing"

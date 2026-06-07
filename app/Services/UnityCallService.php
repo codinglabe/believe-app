@@ -29,6 +29,8 @@ class UnityCallService
             ]);
         }
 
+        $this->finalizeStaleCallsForUser($caller->id);
+
         if ($this->activeCallForUser($caller->id)) {
             throw ValidationException::withMessages([
                 'chat_room_id' => __('You are already in a call.'),
@@ -131,6 +133,10 @@ class UnityCallService
             throw ValidationException::withMessages(['call' => __('Only callees can decline this call.')]);
         }
 
+        if ($participant->status === UnityCallParticipant::STATUS_DECLINED) {
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        }
+
         $participant->update(['status' => UnityCallParticipant::STATUS_DECLINED]);
 
         $call->loadMissing(['caller', 'participants']);
@@ -170,6 +176,16 @@ class UnityCallService
         if ((int) $call->caller_id !== (int) $user->id) {
             throw ValidationException::withMessages(['call' => __('Only the caller can cancel this call.')]);
         }
+
+        if (in_array($call->status, [
+            UnityCall::STATUS_CANCELLED,
+            UnityCall::STATUS_ENDED,
+            UnityCall::STATUS_DECLINED,
+            UnityCall::STATUS_MISSED,
+        ], true)) {
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        }
+
         if ($call->status !== UnityCall::STATUS_RINGING) {
             throw ValidationException::withMessages(['call' => __('This call can no longer be cancelled.')]);
         }
@@ -203,7 +219,7 @@ class UnityCallService
         $participant = $this->requireParticipant($call, $user);
 
         if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
-            throw ValidationException::withMessages(['call' => __('This call has already ended.')]);
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         }
 
         $call->loadMissing(['caller', 'participants', 'chatRoom']);
@@ -312,8 +328,11 @@ class UnityCallService
 
     public function activeCallForUser(int $userId): ?UnityCall
     {
+        $this->finalizeStaleCallsForUser($userId);
+
         return UnityCall::query()
             ->whereIn('status', [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED])
+            ->whereNull('ended_at')
             ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
             ->latest('id')
             ->first();
@@ -332,5 +351,37 @@ class UnityCallService
         }
 
         return $participant;
+    }
+
+    private function finalizeStaleCallsForUser(int $userId): void
+    {
+        $staleRinging = UnityCall::query()
+            ->where('status', UnityCall::STATUS_RINGING)
+            ->whereNotNull('ring_expires_at')
+            ->where('ring_expires_at', '<=', now())
+            ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
+            ->with(['caller', 'participants.user', 'chatRoom'])
+            ->get();
+
+        foreach ($staleRinging as $call) {
+            $call->update([
+                'status' => UnityCall::STATUS_MISSED,
+                'ended_at' => now(),
+            ]);
+
+            $call->participants()
+                ->where('status', UnityCallParticipant::STATUS_RINGING)
+                ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
+
+            $payload = $this->notifier->payloadForUser(
+                $call->fresh(['participants.user', 'chatRoom']),
+                $call->caller,
+                'missed',
+            );
+
+            foreach ($call->participants as $participant) {
+                $this->notifier->broadcastStatus($participant->user_id, $payload);
+            }
+        }
     }
 }
