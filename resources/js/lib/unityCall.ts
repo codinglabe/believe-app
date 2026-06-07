@@ -203,3 +203,13 @@ export async function cancelUnityCall(callId: number): Promise<boolean> {
   const { ok } = await postUnityCallJson(route("unity-calls.cancel", callId))
   return ok
 }
+
+/** Caller hang-up: cancel while ringing, end once the call is live. */
+export async function hangUpUnityCall(callId: number): Promise<boolean> {
+  const cancelled = await cancelUnityCall(callId)
+  if (cancelled) {
+    return true
+  }
+  const { ok } = await postUnityCallJson(route("unity-calls.end", callId))
+  return ok
+}

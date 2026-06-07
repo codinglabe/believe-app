@@ -7,9 +7,9 @@ import toast from "react-hot-toast"
 import { Button } from "@/components/ui/button"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
-  cancelUnityCall,
   declineUnityCall,
   endUnityCall,
+  hangUpUnityCall,
   acceptUnityCall,
   isLeavingUnityCall,
   navigateAfterUnityCall,
@@ -110,7 +110,9 @@ export default function UnityCallShow({
   )
 
   const callConnected = call.status === "accepted" && (isCaller || selfStatus === "accepted")
-  const mediaActive = callConnected
+  const mediaActive = isCaller
+    ? call.status === "ringing" || call.status === "accepted"
+    : callConnected
 
   const {
     remoteStreams,
@@ -257,13 +259,13 @@ export default function UnityCallShow({
     setEnding(true)
     stopMedia()
 
+    const wasRinging = call.status === "ringing"
     let ok = false
-    if (call.status === "ringing") {
-      if (isCaller) {
-        ok = await cancelUnityCall(call.id)
-      } else {
-        ok = await declineUnityCall(call.id)
-      }
+
+    if (isCaller) {
+      ok = await hangUpUnityCall(call.id)
+    } else if (wasRinging && selfStatus === "ringing") {
+      ok = await declineUnityCall(call.id)
     } else {
       ok = await endUnityCall(call.id)
     }
@@ -274,22 +276,20 @@ export default function UnityCallShow({
       return
     }
 
-    if (call.status === "ringing") {
-      if (isCaller) {
-        dispatchUnityCallTerminated({
-          reason: "cancelled",
-          call: { ...call, status: "cancelled" },
-          caller,
-          participants,
-        })
-      } else {
-        dispatchUnityCallTerminated({
-          reason: "declined",
-          call: { ...call, status: "declined" },
-          caller,
-          participants,
-        })
-      }
+    if (isCaller && wasRinging) {
+      dispatchUnityCallTerminated({
+        reason: "cancelled",
+        call: { ...call, status: "cancelled" },
+        caller,
+        participants,
+      })
+    } else if (!isCaller && wasRinging) {
+      dispatchUnityCallTerminated({
+        reason: "declined",
+        call: { ...call, status: "declined" },
+        caller,
+        participants,
+      })
     } else if (!isGroupCall || isCaller) {
       dispatchUnityCallTerminated({
         reason: "ended",

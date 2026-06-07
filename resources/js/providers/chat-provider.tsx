@@ -8,7 +8,7 @@ import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { attachCsrfToAxios } from "@/lib/csrf"
 import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
-import { dispatchUnityCallIncoming } from "@/lib/unityCallEvents"
+import { dispatchUnityCallIncoming, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 
@@ -538,6 +538,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dispatchUnityCallIncoming({ ...payload, participants })
     })
 
+    channel.listen(".call.status", (payload: UnityCallStatusEvent) => {
+      if (isUnityCallTerminated(payload)) {
+        dispatchUnityCallTerminated(payload)
+      }
+    })
+
     const normalizeTypingUser = (payload: {
       id: number
       name: string
@@ -653,6 +659,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       channel.stopListening(".MessageSent")
       channel.stopListening(".call.incoming")
+      channel.stopListening(".call.status")
       channel.stopListening(".user.typing")
       channel.stopListening(".member.joined")
       channel.stopListening(".member.left")

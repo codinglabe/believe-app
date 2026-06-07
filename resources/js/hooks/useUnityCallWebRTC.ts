@@ -147,7 +147,15 @@ export function useUnityCallWebRTC({
     }
 
     const readyCount = Math.max(connectedCount, remoteReadyCount)
-    setMediaConnected(readyCount >= expectedPeers.length)
+    const hasLiveRemote = remoteStreamsRef.current.some((item) =>
+      item.stream.getAudioTracks().some((track) => track.readyState === "live"),
+    )
+    const isDirectPair = !isGroupCall && expectedPeers.length === 1
+
+    setMediaConnected(
+      expectedPeers.length > 0 &&
+        (readyCount >= expectedPeers.length || (isDirectPair && hasLiveRemote)),
+    )
     if (readyCount >= expectedPeers.length) {
       setConnectionStatus("Connected")
     } else if (readyCount > 0) {
@@ -155,7 +163,7 @@ export function useUnityCallWebRTC({
     } else {
       setConnectionStatus("Connecting audio…")
     }
-  }, [acceptedPeerIds, isCaller])
+  }, [acceptedPeerIds, isCaller, isGroupCall])
 
   const sendSignal = useCallback(
     (signal: WebRTCSignal) => {
@@ -582,7 +590,7 @@ export function useUnityCallWebRTC({
         return
       }
       connectToAcceptedPeers()
-    }, 2500)
+    }, 1500)
 
     return () => window.clearInterval(intervalId)
   }, [connectToAcceptedPeers, mediaActive, mediaConnected])

@@ -210,6 +210,10 @@ class UnityCallService
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         }
 
+        if ($call->status === UnityCall::STATUS_ACCEPTED) {
+            return $this->end($call, $user);
+        }
+
         if ($call->status !== UnityCall::STATUS_RINGING) {
             throw ValidationException::withMessages(['call' => __('This call can no longer be cancelled.')]);
         }
@@ -234,6 +238,8 @@ class UnityCallService
         }
 
         $this->notifier->broadcastStatus($call->caller_id, $payload);
+
+        $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'cancelled');
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
@@ -274,10 +280,9 @@ class UnityCallService
             $this->notifier->broadcastStatus($p->user_id, $payload);
         }
 
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
-    }
+        $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'ended');
 
-    public function leave(UnityCall $call, User $user): UnityCall
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     {
         $participant = $this->requireParticipant($call, $user);
 
