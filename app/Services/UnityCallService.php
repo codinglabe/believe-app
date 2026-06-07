@@ -29,13 +29,7 @@ class UnityCallService
             ]);
         }
 
-        $this->finalizeStaleCallsForUser($caller->id);
-
-        if ($this->activeCallForUser($caller->id)) {
-            throw ValidationException::withMessages([
-                'chat_room_id' => __('You are already in a call.'),
-            ]);
-        }
+        $this->releaseActiveCallsForUser($caller->id);
 
         $callees = $chatRoom->members->where('id', '!=', $caller->id)->values();
         if ($callees->isEmpty()) {
@@ -357,31 +351,75 @@ class UnityCallService
     {
         $staleRinging = UnityCall::query()
             ->where('status', UnityCall::STATUS_RINGING)
-            ->whereNotNull('ring_expires_at')
-            ->where('ring_expires_at', '<=', now())
             ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
+            ->where(function ($query) {
+                $query->where(function ($inner) {
+                    $inner->whereNotNull('ring_expires_at')
+                        ->where('ring_expires_at', '<=', now());
+                })->orWhere(function ($inner) {
+                    $inner->whereNull('ring_expires_at')
+                        ->where('created_at', '<=', now()->subSeconds(self::RING_SECONDS));
+                });
+            })
             ->with(['caller', 'participants.user', 'chatRoom'])
             ->get();
 
         foreach ($staleRinging as $call) {
-            $call->update([
-                'status' => UnityCall::STATUS_MISSED,
-                'ended_at' => now(),
-            ]);
+            $this->terminateOrphanedCall($call);
+        }
+    }
 
-            $call->participants()
-                ->where('status', UnityCallParticipant::STATUS_RINGING)
-                ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
+    /**
+     * Close any stuck ringing/accepted calls before the user starts a new one.
+     */
+    private function releaseActiveCallsForUser(int $userId): void
+    {
+        $this->finalizeStaleCallsForUser($userId);
 
-            $payload = $this->notifier->payloadForUser(
-                $call->fresh(['participants.user', 'chatRoom']),
-                $call->caller,
-                'missed',
-            );
+        $activeCalls = UnityCall::query()
+            ->whereIn('status', [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED])
+            ->whereNull('ended_at')
+            ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
+            ->with(['caller', 'participants.user', 'chatRoom'])
+            ->get();
 
-            foreach ($call->participants as $participant) {
-                $this->notifier->broadcastStatus($participant->user_id, $payload);
-            }
+        foreach ($activeCalls as $call) {
+            $this->terminateOrphanedCall($call);
+        }
+    }
+
+    private function terminateOrphanedCall(UnityCall $call): void
+    {
+        if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
+            return;
+        }
+
+        if ($call->status === UnityCall::STATUS_RINGING) {
+            $status = UnityCall::STATUS_MISSED;
+            $reason = 'missed';
+        } else {
+            $status = UnityCall::STATUS_ENDED;
+            $reason = 'ended';
+        }
+
+        $call->update([
+            'status' => $status,
+            'ended_at' => now(),
+        ]);
+
+        $call->participants()
+            ->where('status', UnityCallParticipant::STATUS_RINGING)
+            ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
+
+        $call->loadMissing(['participants.user', 'chatRoom']);
+        $payload = $this->notifier->payloadForUser(
+            $call->fresh(['participants.user', 'chatRoom']),
+            $call->caller,
+            $reason,
+        );
+
+        foreach ($call->participants as $participant) {
+            $this->notifier->broadcastStatus($participant->user_id, $payload);
         }
     }
 }
