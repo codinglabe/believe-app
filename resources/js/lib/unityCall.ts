@@ -45,6 +45,30 @@ type UnityCallErrorResponse = {
   errors?: Record<string, string[]>
 }
 
+const acceptInFlight = new Set<number>()
+
+export function markUnityCallAcceptedLocally(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+  try {
+    sessionStorage.setItem(`unity_call_accepted_${callId}`, String(Date.now()))
+  } catch {
+    // ignore
+  }
+}
+
+export function hasUnityCallAcceptedLocally(callId: number): boolean {
+  if (typeof sessionStorage === "undefined") {
+    return false
+  }
+  try {
+    return sessionStorage.getItem(`unity_call_accepted_${callId}`) !== null
+  } catch {
+    return false
+  }
+}
+
 export async function postUnityCallJson<T = unknown>(
   url: string,
   body?: Record<string, unknown>,
@@ -85,9 +109,21 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
   return ok && data ? data : null
 }
 
-export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; data: UnityCallAcceptResponse | null }> {
-  const { ok, data } = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
-  return { ok, data: ok && data ? data : null }
+export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; data: UnityCallAcceptResponse | null; message?: string }> {
+  if (acceptInFlight.has(callId)) {
+    return { ok: false, data: null, message: "Accept already in progress" }
+  }
+
+  acceptInFlight.add(callId)
+  try {
+    const { ok, data, message } = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
+    if (ok && data) {
+      markUnityCallAcceptedLocally(callId)
+    }
+    return { ok, data: ok && data ? data : null, message }
+  } finally {
+    acceptInFlight.delete(callId)
+  }
 }
 
 export async function declineUnityCall(callId: number): Promise<boolean> {

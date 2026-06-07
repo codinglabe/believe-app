@@ -6,7 +6,7 @@ import { useEcho } from "@laravel/echo-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { acceptUnityCall, declineUnityCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
+import { acceptUnityCall, declineUnityCall, markUnityCallAcceptedLocally, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
 import { startCallRingtone, stopCallRingtone } from "@/lib/callRingtone"
 import {
   clearCustomCallRingtone,
@@ -46,9 +46,16 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   }, [])
 
   const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
+    const self = payload.participants.find((p) => p.userId === userId)
+    if (self?.role === "callee" && self.status === "accepted") {
+      stopCallRingtone()
+      const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(payload.call.id))
+      router.visit(joinUrl)
+      return
+    }
     setIncoming(payload)
     void startCallRingtone()
-  }, [])
+  }, [userId])
 
   const dismiss = useCallback(() => {
     stopCallRingtone()
@@ -143,6 +150,20 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         return
       }
 
+      if (incoming?.call.id === payload.call.id && payload.reason === "accepted") {
+        const self = payload.participants.find((p) => p.userId === userId)
+        if (self?.role === "callee" && self.status === "accepted") {
+          markUnityCallAcceptedLocally(payload.call.id)
+          const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(payload.call.id))
+          dismiss()
+          const onCallPage = window.location.pathname === unityCallShowPath(payload.call.id)
+          if (!onCallPage || new URLSearchParams(window.location.search).get("ring") === "1") {
+            router.visit(joinUrl)
+          }
+          return
+        }
+      }
+
       if (incoming?.call.id === payload.call.id && isUnityCallTerminated(payload)) {
         dismiss()
       }
@@ -176,15 +197,18 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   }, [])
 
   const handleAccept = async () => {
-    if (!incoming) {
+    if (!incoming || busy) {
       return
     }
     setBusy(true)
     stopCallRingtone()
-    const { ok } = await acceptUnityCall(incoming.call.id)
+    const { ok, data } = await acceptUnityCall(incoming.call.id)
     setBusy(false)
     if (!ok) {
       return
+    }
+    if (data) {
+      markUnityCallAcceptedLocally(incoming.call.id)
     }
     const joinUrl = toInternalAppPath(incoming.call.joinUrl || unityCallShowPath(incoming.call.id))
     dismiss()
@@ -233,6 +257,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[9999] flex flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white touch-none"
+          data-incoming-call-overlay=""
         >
           <div className="flex items-center justify-between px-4 pt-4 safe-area-inset-top">
             <p className="text-sm font-medium text-purple-200/80">Incoming call</p>

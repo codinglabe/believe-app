@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Head, router } from "@inertiajs/react"
-import { Loader2, Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react"
+import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import { cancelUnityCall, declineUnityCall, endUnityCall, acceptUnityCall, toInternalAppPath } from "@/lib/unityCall"
@@ -87,8 +87,8 @@ export default function UnityCallShow({
   const [participants, setParticipants] = useState(initialParticipants)
   const [elapsed, setElapsed] = useState(0)
   const [ending, setEnding] = useState(false)
+  const [accepting, setAccepting] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(true)
-  const acceptAttempted = useRef(false)
 
   const ringMode = useMemo(() => {
     if (typeof window === "undefined") {
@@ -204,20 +204,6 @@ export default function UnityCallShow({
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
 
   useEffect(() => {
-    if (acceptAttempted.current || isCaller || selfStatus !== "ringing" || call.status !== "ringing" || ringMode) {
-      return
-    }
-
-    acceptAttempted.current = true
-    void acceptUnityCall(call.id).then(({ ok, data }) => {
-      if (ok && data) {
-        setCall({ ...data.call, joinUrl: data.join_url })
-        setParticipants(data.participants)
-      }
-    })
-  }, [isCaller, selfStatus, call.id, call.status, ringMode])
-
-  useEffect(() => {
     if (!callConnected || !call.answeredAt) {
       return
     }
@@ -227,6 +213,21 @@ export default function UnityCallShow({
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
   }, [callConnected, call.answeredAt])
+
+  const handleAccept = async () => {
+    if (accepting || isCaller || call.status !== "ringing" || selfStatus !== "ringing") {
+      return
+    }
+
+    setAccepting(true)
+    const { ok, data } = await acceptUnityCall(call.id)
+    setAccepting(false)
+
+    if (ok && data) {
+      setCall({ ...data.call, joinUrl: data.join_url })
+      setParticipants(data.participants)
+    }
+  }
 
   const handleEnd = async () => {
     setEnding(true)
@@ -265,6 +266,9 @@ export default function UnityCallShow({
     setEnding(false)
     router.visit(chatUrl)
   }
+
+  const isRingingCallee = !isCaller && call.status === "ringing" && selfStatus === "ringing"
+  const showRingingCalleeControls = isRingingCallee && !ringMode
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
@@ -354,28 +358,58 @@ export default function UnityCallShow({
             </div>
           ) : null}
 
-          <div className="flex flex-col items-center gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              size="lg"
-              className="h-16 w-16 rounded-full p-0 shadow-lg"
-              disabled={ending}
-              aria-label="End call"
-              onClick={() => void handleEnd()}
-            >
-              <PhoneOff className="h-7 w-7" />
-            </Button>
-            <span className="text-sm text-white/60">
-              {call.status === "ringing"
-                ? isCaller
-                  ? "Cancel call"
-                  : "Decline"
-                : isGroupCall && !isCaller
-                  ? "Leave call"
-                  : "End call"}
-            </span>
-          </div>
+          {showRingingCalleeControls ? (
+            <div className="flex items-center justify-center gap-10">
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-16 w-16 rounded-full p-0 shadow-lg"
+                  disabled={ending || accepting}
+                  aria-label="Decline call"
+                  onClick={() => void handleEnd()}
+                >
+                  <PhoneOff className="h-7 w-7" />
+                </Button>
+                <span className="text-xs text-white/60">Decline</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  type="button"
+                  className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 p-0 shadow-lg hover:from-purple-700 hover:to-blue-700"
+                  disabled={ending || accepting}
+                  aria-label="Accept call"
+                  onClick={() => void handleAccept()}
+                >
+                  {accepting ? <Loader2 className="h-7 w-7 animate-spin" /> : <Phone className="h-7 w-7" />}
+                </Button>
+                <span className="text-xs text-white/60">Accept</span>
+              </div>
+            </div>
+          ) : !isRingingCallee || ringMode ? (
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="lg"
+                className="h-16 w-16 rounded-full p-0 shadow-lg"
+                disabled={ending || accepting}
+                aria-label="End call"
+                onClick={() => void handleEnd()}
+              >
+                <PhoneOff className="h-7 w-7" />
+              </Button>
+              <span className="text-sm text-white/60">
+                {call.status === "ringing"
+                  ? isCaller
+                    ? "Cancel call"
+                    : "Decline"
+                  : isGroupCall && !isCaller
+                    ? "Leave call"
+                    : "End call"}
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

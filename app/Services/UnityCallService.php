@@ -85,6 +85,11 @@ class UnityCallService
         if ($participant->role !== UnityCallParticipant::ROLE_CALLEE) {
             throw ValidationException::withMessages(['call' => __('Only callees can accept this call.')]);
         }
+
+        if ($participant->status === UnityCallParticipant::STATUS_ACCEPTED) {
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        }
+
         if ($participant->status !== UnityCallParticipant::STATUS_RINGING) {
             throw ValidationException::withMessages(['call' => __('This call is no longer ringing.')]);
         }
