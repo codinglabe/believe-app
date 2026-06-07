@@ -60,6 +60,17 @@ export function buildNativeNotificationOptions(
             { action: "accept", title: "Accept" },
             { action: "decline", title: "Decline" },
         ]
+        options.requireInteraction = true
+        options.renotify = true
+        options.silent = false
+        options.vibrate = [500, 250, 500, 250, 500, 250, 500]
+        const ringUrl = data.ring_url || data.join_url || clickUrl
+        options.data = {
+            ...options.data,
+            ring_url: ringUrl,
+            click_action: ringUrl,
+            url: ringUrl,
+        }
     }
 
     return options

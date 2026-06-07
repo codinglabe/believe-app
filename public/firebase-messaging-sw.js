@@ -1,4 +1,4 @@
-// @version 79dca5a8d89b7af2
+// @version 282d9735c36b25f3
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -69,13 +69,40 @@ function buildNotificationOptions(title, body, data) {
     }
 
     if (data.type === INCOMING_CALL_TYPE) {
+        const ringUrl = data.ring_url || data.join_url || clickUrl;
         options.actions = [
             { action: "accept", title: "Accept" },
             { action: "decline", title: "Decline" },
         ];
+        options.requireInteraction = true;
+        options.renotify = true;
+        options.silent = false;
+        options.vibrate = [500, 250, 500, 250, 500, 250, 500];
+        options.data = Object.assign({}, options.data, {
+            ring_url: ringUrl,
+            click_action: ringUrl,
+            url: ringUrl,
+        });
+        if (data.caller_avatar) {
+            options.image = data.caller_avatar;
+        }
     }
 
     return options;
+}
+
+function notifyOpenClientsIncomingCall(data) {
+    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+        clientList.forEach(function (client) {
+            client.postMessage({
+                type: "unity-call-incoming-push",
+                data: data,
+            });
+        });
+        if (clientList.length > 0 && clientList[0].focus) {
+            return clientList[0].focus();
+        }
+    });
 }
 
 /** Native OS notification (Windows/macOS/Android) when the app is in the background. */
@@ -86,6 +113,10 @@ messaging.onBackgroundMessage((payload) => {
     const body =
         payload.notification?.body || data.body || data.message || "";
 
+    if (data.type === INCOMING_CALL_TYPE) {
+        notifyOpenClientsIncomingCall(data);
+    }
+
     return self.registration.showNotification(
         title,
         buildNotificationOptions(title, body, data),
@@ -93,7 +124,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-79dca5a8d89b7af2";
+const CACHE_NAME = "pwa-cache-282d9735c36b25f3";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -241,26 +272,14 @@ self.addEventListener("notificationclick", (event) => {
 
     if (
         (!event.action || event.action === "") &&
-        data.type === INCOMING_CALL_TYPE &&
-        data.accept_url
+        data.type === INCOMING_CALL_TYPE
     ) {
-        const acceptUrl = data.accept_url;
-        const joinUrl = data.join_url || data.click_action || data.url || "/";
+        const ringUrl = data.ring_url || data.join_url || data.click_action || data.url || "/";
+        const absoluteRingUrl = new URL(ringUrl, self.location.origin).href;
         event.waitUntil(
-            fetch(acceptUrl, {
-                method: "GET",
-                credentials: "include",
-                headers: {
-                    Accept: "application/json",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-            })
-                .catch(function () {})
-                .then(function () {
-                    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-                        return openNotificationUrl(clientList, new URL(joinUrl, self.location.origin).href);
-                    });
-                }),
+            self.clients
+                .matchAll({ type: "window", includeUncontrolled: true })
+                .then((clientList) => openNotificationUrl(clientList, absoluteRingUrl)),
         );
         return;
     }

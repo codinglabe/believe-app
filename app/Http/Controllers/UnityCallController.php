@@ -107,15 +107,9 @@ class UnityCallController extends Controller
             abort(403);
         }
 
-        $call->load(['caller', 'participants.user', 'chatRoom', 'livestream']);
-        $livestream = $call->livestream;
+        $call->load(['caller', 'participants.user', 'chatRoom']);
         $participant = $call->participantForUser($user->id);
         $isCaller = (int) $call->caller_id === (int) $user->id;
-
-        $displayLabel = trim((string) $user->name) ?: 'Guest';
-        $vdoUrl = $isCaller
-            ? $livestream->getAudioCallHostUrl()
-            : $livestream->getAudioCallParticipantUrl($displayLabel);
 
         return Inertia::render('UnityCall/Show', [
             'call' => [
@@ -143,7 +137,7 @@ class UnityCallController extends Controller
             ])->values(),
             'isCaller' => $isCaller,
             'participantStatus' => $participant?->status,
-            'vdoUrl' => $vdoUrl,
+            'iceServers' => config('webrtc.ice_servers', []),
             'endCallUrl' => route('unity-calls.end', $call->id),
             'cancelCallUrl' => route('unity-calls.cancel', $call->id),
             'acceptCallUrl' => route('unity-calls.accept', $call->id),

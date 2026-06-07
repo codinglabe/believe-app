@@ -6,9 +6,6 @@ use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
 use App\Models\User;
-use App\Models\UserLivestream;
-use App\Support\LivestreamMeetingPresence;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -46,36 +43,10 @@ class UnityCallService
         }
 
         return DB::transaction(function () use ($caller, $chatRoom, $callees) {
-            $displayName = trim((string) $caller->name) ?: 'Host';
-            $roomLabel = $chatRoom->type === 'direct'
-                ? ($callees->first()?->name ?? 'Chat call')
-                : ($chatRoom->name ?: 'Group call');
-
-            $settings = [
-                'source' => 'chat_call',
-                'audio_only' => true,
-                'chat_room_id' => $chatRoom->id,
-                'display_name' => $displayName,
-                'record_meeting' => false,
-                'require_passcode' => false,
-                'canvas_mode' => false,
-                'meeting_session' => 1,
-            ];
-
-            $livestream = UserLivestream::create([
-                'user_id' => $caller->id,
-                'room_name' => UserLivestream::generateRoomName(),
-                'room_password' => Crypt::encryptString(''),
-                'status' => 'meeting_live',
-                'is_public' => false,
-                'title' => 'Audio call: '.$roomLabel,
-                'settings' => $settings,
-            ]);
-
             $call = UnityCall::create([
                 'caller_id' => $caller->id,
                 'chat_room_id' => $chatRoom->id,
-                'user_livestream_id' => $livestream->id,
+                'user_livestream_id' => null,
                 'type' => UnityCall::TYPE_AUDIO,
                 'status' => UnityCall::STATUS_RINGING,
                 'ring_expires_at' => now()->addSeconds(self::RING_SECONDS),
@@ -104,7 +75,7 @@ class UnityCallService
                 $this->notifier->payloadForUser($call->fresh(['participants.user', 'chatRoom']), $caller, 'ringing'),
             );
 
-            return $call->fresh(['participants.user', 'chatRoom', 'livestream', 'caller']);
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
     }
 
@@ -145,7 +116,7 @@ class UnityCallService
             $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
         }
 
-        return $call->fresh(['participants.user', 'chatRoom', 'livestream', 'caller']);
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
 
     public function decline(UnityCall $call, User $user): UnityCall
@@ -175,18 +146,18 @@ class UnityCallService
                 'status' => UnityCall::STATUS_DECLINED,
                 'ended_at' => now(),
             ]);
-            $this->endLivestream($call);
             $reason = 'declined';
         } else {
             $reason = 'participant_declined';
         }
 
-        $this->notifier->broadcastStatus(
-            $caller->id,
-            $this->notifier->payloadForUser($call->fresh(['participants.user', 'chatRoom']), $caller, $reason),
-        );
+        $payload = $this->notifier->payloadForUser($call->fresh(['participants.user', 'chatRoom']), $caller, $reason);
 
-        return $call->fresh(['participants.user', 'chatRoom', 'livestream', 'caller']);
+        foreach ($call->participants as $participant) {
+            $this->notifier->broadcastStatus($participant->user_id, $payload);
+        }
+
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
 
     public function cancel(UnityCall $call, User $user): UnityCall
@@ -207,8 +178,6 @@ class UnityCallService
             ->where('status', UnityCallParticipant::STATUS_RINGING)
             ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
 
-        $this->endLivestream($call);
-
         $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
         $payload = $this->notifier->payloadForUser($call, $call->caller, 'cancelled');
 
@@ -221,7 +190,7 @@ class UnityCallService
 
         $this->notifier->broadcastStatus($call->caller_id, $payload);
 
-        return $call->fresh(['participants.user', 'chatRoom', 'livestream', 'caller']);
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
 
     public function end(UnityCall $call, User $user): UnityCall
@@ -241,8 +210,6 @@ class UnityCallService
             ->where('status', UnityCallParticipant::STATUS_RINGING)
             ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
 
-        $this->endLivestream($call);
-
         $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
         $payload = $this->notifier->payloadForUser($call, $call->caller, 'ended');
 
@@ -250,7 +217,7 @@ class UnityCallService
             $this->notifier->broadcastStatus($participant->user_id, $payload);
         }
 
-        return $call->fresh(['participants.user', 'chatRoom', 'livestream', 'caller']);
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
 
     public function expireRingingCalls(): int
@@ -259,7 +226,7 @@ class UnityCallService
             ->where('status', UnityCall::STATUS_RINGING)
             ->whereNotNull('ring_expires_at')
             ->where('ring_expires_at', '<=', now())
-            ->with(['caller', 'participants.user', 'chatRoom', 'livestream'])
+            ->with(['caller', 'participants.user', 'chatRoom'])
             ->get();
 
         $count = 0;
@@ -273,8 +240,6 @@ class UnityCallService
             $call->participants()
                 ->where('status', UnityCallParticipant::STATUS_RINGING)
                 ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
-
-            $this->endLivestream($call);
 
             $payload = $this->notifier->payloadForUser($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'missed');
 
@@ -310,25 +275,5 @@ class UnityCallService
         }
 
         return $participant;
-    }
-
-    private function endLivestream(UnityCall $call): void
-    {
-        $livestream = $call->livestream;
-        if (! $livestream) {
-            return;
-        }
-
-        $settings = is_array($livestream->settings) ? $livestream->settings : [];
-        $settings['meeting_session'] = (int) ($settings['meeting_session'] ?? 0) + 1;
-        unset($settings['stream_stop_requested'], $settings['host_abandoned_at']);
-
-        $livestream->update([
-            'status' => 'draft',
-            'settings' => $settings !== [] ? $settings : null,
-            'ended_at' => $livestream->ended_at ?? now(),
-        ]);
-
-        LivestreamMeetingPresence::clear('user', $livestream->id);
     }
 }

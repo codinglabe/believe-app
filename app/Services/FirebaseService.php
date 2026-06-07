@@ -186,15 +186,24 @@ class FirebaseService
         ];
 
         // Web: data payload + webpush link; SW / foreground client calls showNotification for OS banner.
+        $isIncomingCall = ($data['type'] ?? '') === 'incoming_call';
+
         if ($deviceType === 'web') {
             $message['message']['webpush'] = [
                 'fcm_options' => [
                     'link' => $notificationUrl,
                 ],
                 'headers' => [
-                    'TTL' => '86400',
+                    'TTL' => $isIncomingCall ? '60' : '86400',
+                    'Urgency' => $isIncomingCall ? 'high' : 'normal',
                 ],
             ];
+
+            if ($isIncomingCall) {
+                $message['message']['android'] = [
+                    'priority' => 'HIGH',
+                ];
+            }
         } else {
             $message['message']['notification'] = [
                 'title' => $title,

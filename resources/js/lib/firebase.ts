@@ -146,6 +146,9 @@ function attachForegroundMessageListener(instance: Messaging) {
 
         if (data.type === "incoming_call") {
             void import("@/lib/unityCallEvents").then(({ buildIncomingCallFromPush, dispatchUnityCallIncoming }) => {
+                void import("@/lib/swIncomingCallBridge").then(({ storePendingIncomingCall }) => {
+                    storePendingIncomingCall(data)
+                })
                 const metaUserId = document.querySelector('meta[name="user-id"]')?.getAttribute("content");
                 const userId = metaUserId ? Number(metaUserId) : NaN;
                 if (Number.isFinite(userId) && userId > 0) {

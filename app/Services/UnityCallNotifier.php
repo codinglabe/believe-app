@@ -17,7 +17,14 @@ class UnityCallNotifier
     public function notifyIncoming(UnityCall $call, User $caller, User $callee): void
     {
         $call->loadMissing(['chatRoom', 'livestream']);
+        $callerName = trim((string) $caller->name) ?: 'Someone';
         $joinUrl = url('/unity-call/'.$call->id);
+        $ringUrl = url('/unity-call/'.$call->id).'?ring=1'
+            .'&caller_id='.urlencode((string) $caller->id)
+            .'&caller_name='.urlencode($callerName)
+            .'&caller_avatar='.urlencode((string) ($caller->avatar_url ?? ''))
+            .($call->chat_room_id ? '&chat_room_id='.urlencode((string) $call->chat_room_id) : '')
+            .($call->chatRoom?->name ? '&chat_room_name='.urlencode((string) $call->chatRoom->name) : '');
         $expiresAt = $call->ring_expires_at ?? now()->addMinutes(2);
         $declineUrl = URL::temporarySignedRoute(
             'unity-calls.decline-signed',
@@ -29,7 +36,6 @@ class UnityCallNotifier
             $expiresAt,
             ['call' => $call->id, 'user' => $callee->id],
         );
-        $callerName = trim((string) $caller->name) ?: 'Someone';
         $title = 'Incoming audio call';
         $body = "{$callerName} is calling you";
 
@@ -42,11 +48,13 @@ class UnityCallNotifier
             'caller_name' => $callerName,
             'caller_avatar' => (string) ($caller->avatar_url ?? ''),
             'chat_room_id' => $call->chat_room_id ? (string) $call->chat_room_id : '',
+            'chat_room_name' => (string) ($call->chatRoom?->name ?? ''),
             'join_url' => $joinUrl,
+            'ring_url' => $ringUrl,
             'accept_url' => $acceptUrl,
             'decline_url' => $declineUrl,
-            'url' => $joinUrl,
-            'click_action' => $joinUrl,
+            'url' => $ringUrl,
+            'click_action' => $ringUrl,
             'source_type' => 'unity_call',
             'source_id' => (string) $call->id,
             'module_name' => 'unity_call',

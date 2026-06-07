@@ -14,7 +14,8 @@ import {
   saveCustomCallRingtone,
   setCallRingtoneMode,
 } from "@/lib/callRingtoneSettings"
-import { subscribeUnityCallIncoming } from "@/lib/unityCallEvents"
+import { subscribeUnityCallIncoming, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { consumePendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 
@@ -55,6 +56,71 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     setShowRingtoneSettings(false)
   }, [])
 
+  useEffect(() => {
+    const pending = consumePendingIncomingCall()
+    if (pending) {
+      handleSwIncomingCallPayload(pending)
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const callMatch = window.location.pathname.match(/\/unity-call\/(\d+)/)
+    if (params.get("ring") === "1" && callMatch) {
+      handleSwIncomingCallPayload({
+        type: "incoming_call",
+        call_id: callMatch[1],
+        caller_id: params.get("caller_id") ?? "",
+        caller_name: params.get("caller_name") ?? "",
+        caller_avatar: params.get("caller_avatar") ?? "",
+        chat_room_id: params.get("chat_room_id") ?? "",
+        chat_room_name: params.get("chat_room_name") ?? "",
+        join_url: window.location.pathname,
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!incoming) {
+      return
+    }
+
+    document.body.style.overflow = "hidden"
+
+    let wakeLock: WakeLockSentinel | null = null
+    if (typeof navigator !== "undefined" && "wakeLock" in navigator) {
+      void navigator.wakeLock.request("screen").then((lock) => {
+        wakeLock = lock
+      }).catch(() => {})
+    }
+
+    return () => {
+      document.body.style.overflow = ""
+      void wakeLock?.release().catch(() => {})
+    }
+  }, [incoming])
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        return
+      }
+      const pending = consumePendingIncomingCall()
+      if (pending) {
+        handleSwIncomingCallPayload(pending)
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [])
+
+  useEffect(() => {
+    return subscribeUnityCallIncoming((payload) => {
+      const self = payload.participants.find((p) => p.userId === userId)
+      if (self?.role === "callee" && self.status === "ringing") {
+        showIncoming(payload)
+      }
+    })
+  }, [userId, showIncoming])
+
   const onStatus = useCallback(
     (payload: UnityCallStatusEvent) => {
       if (!userId) {
@@ -73,10 +139,8 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         return
       }
 
-      if (incoming?.call.id === payload.call.id) {
-        if (["declined", "cancelled", "missed", "ended", "accepted"].includes(payload.reason)) {
-          dismiss()
-        }
+      if (incoming?.call.id === payload.call.id && isUnityCallTerminated(payload)) {
+        dismiss()
       }
     },
     [userId, incoming?.call.id, showIncoming, dismiss],
@@ -91,16 +155,17 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   )
 
   useEffect(() => {
-    if (!userId) {
-      return
-    }
-    return subscribeUnityCallIncoming((payload) => {
+    return subscribeUnityCallTerminated((payload) => {
+      if (incoming?.call.id === payload.call.id) {
+        dismiss()
+        return
+      }
       const self = payload.participants.find((p) => p.userId === userId)
-      if (self?.role === "callee" && self.status === "ringing") {
-        showIncoming(payload)
+      if (self && isUnityCallTerminated(payload)) {
+        stopCallRingtone()
       }
     })
-  }, [userId, showIncoming])
+  }, [incoming?.call.id, dismiss, userId])
 
   useEffect(() => {
     return () => stopCallRingtone()
@@ -163,7 +228,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[250] flex flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white"
+          className="fixed inset-0 z-[9999] flex flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white touch-none"
         >
           <div className="flex items-center justify-between px-4 pt-4 safe-area-inset-top">
             <p className="text-sm font-medium text-purple-200/80">Incoming call</p>
