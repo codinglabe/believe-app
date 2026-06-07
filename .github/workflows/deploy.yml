@@ -173,7 +173,9 @@ jobs:
           php --version | grep -E '^PHP 8\.(3|4)\.' || { echo "::error::PHP 8.3+ required on VPS"; exit 1; }
           mkdir -p "${HOME}/bin"
           if ! command -v composer >/dev/null 2>&1; then
-            curl -fsSL https://getcomposer.org/installer | php -- --install-dir="${HOME}/bin" --filename=composer
+            curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "${HOME}/bin/composer.phar"
+            printf '%s\n' '#!/usr/bin/env bash' 'exec php "${HOME}/bin/composer.phar" "$@"' > "${HOME}/bin/composer"
+            chmod +x "${HOME}/bin/composer"
           fi
           echo "${HOME}/bin" >> "${GITHUB_PATH}"
           export NVM_DIR="${HOME}/.nvm"
