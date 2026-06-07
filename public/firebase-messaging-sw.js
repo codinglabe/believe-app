@@ -1,4 +1,4 @@
-// @version 8225157a6d21b2c7
+// @version 353e73a334d22083
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -18,6 +18,43 @@ const messaging = firebase.messaging();
 
 const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation";
 const INCOMING_CALL_TYPE = "incoming_call";
+const PENDING_CALL_DB = "unity-call";
+const PENDING_CALL_STORE = "pending";
+const PENDING_CALL_KEY = "incoming";
+const PENDING_CALL_TTL_MS = 120000;
+
+function openPendingCallDb() {
+    return new Promise(function (resolve, reject) {
+        const request = indexedDB.open(PENDING_CALL_DB, 1);
+        request.onerror = function () {
+            reject(request.error);
+        };
+        request.onupgradeneeded = function () {
+            request.result.createObjectStore(PENDING_CALL_STORE);
+        };
+        request.onsuccess = function () {
+            resolve(request.result);
+        };
+    });
+}
+
+function storePendingCallInDb(data) {
+    return openPendingCallDb()
+        .then(function (db) {
+            return new Promise(function (resolve, reject) {
+                const tx = db.transaction(PENDING_CALL_STORE, "readwrite");
+                const store = tx.objectStore(PENDING_CALL_STORE);
+                store.put({ data: data, storedAt: Date.now() }, PENDING_CALL_KEY);
+                tx.oncomplete = function () {
+                    resolve();
+                };
+                tx.onerror = function () {
+                    reject(tx.error);
+                };
+            });
+        })
+        .catch(function () {});
+}
 
 function notificationIconUrl() {
     return new URL("/favicon-96x96.png", self.location.origin).href;
@@ -125,26 +162,42 @@ function focusAndShowIncomingCall(client, absoluteRingUrl, data) {
     });
 }
 
+function openFreshIncomingCallWindow(absoluteRingUrl) {
+    if (!self.clients.openWindow) {
+        return Promise.resolve(false);
+    }
+
+    return self.clients.openWindow(absoluteRingUrl).then(function (windowClient) {
+        return Boolean(windowClient);
+    }).catch(function () {
+        return false;
+    });
+}
+
 /** Bring the in-app incoming call screen to the foreground without a notification tap. */
 function notifyOpenClientsIncomingCall(data) {
     const absoluteRingUrl = resolveIncomingCallRingUrl(data);
 
-    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-        postIncomingCallToClients(clientList, data);
+    return storePendingCallInDb(data).then(function () {
+        return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+            postIncomingCallToClients(clientList, data);
 
-        if (clientList.length > 0) {
+            if (clientList.length === 0) {
+                return openFreshIncomingCallWindow(absoluteRingUrl).then(function (opened) {
+                    return { opened: opened, absoluteRingUrl: absoluteRingUrl };
+                });
+            }
+
             return focusAndShowIncomingCall(clientList[0], absoluteRingUrl, data).then(function (focused) {
-                return { opened: Boolean(focused), absoluteRingUrl: absoluteRingUrl };
-            });
-        }
+                if (focused) {
+                    return { opened: true, absoluteRingUrl: absoluteRingUrl };
+                }
 
-        if (self.clients.openWindow) {
-            return self.clients.openWindow(absoluteRingUrl).then(function (windowClient) {
-                return { opened: Boolean(windowClient), absoluteRingUrl: absoluteRingUrl };
+                return openFreshIncomingCallWindow(absoluteRingUrl).then(function (opened) {
+                    return { opened: opened, absoluteRingUrl: absoluteRingUrl };
+                });
             });
-        }
-
-        return { opened: false, absoluteRingUrl: absoluteRingUrl };
+        });
     });
 }
 
@@ -157,10 +210,7 @@ messaging.onBackgroundMessage((payload) => {
         payload.notification?.body || data.body || data.message || "";
 
     if (data.type === INCOMING_CALL_TYPE) {
-        return notifyOpenClientsIncomingCall(data).then(function (result) {
-            if (result.opened) {
-                return;
-            }
+        return notifyOpenClientsIncomingCall(data).then(function () {
             return self.registration.showNotification(
                 title,
                 buildNotificationOptions(title, body, data),
@@ -175,7 +225,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-8225157a6d21b2c7";
+const CACHE_NAME = "pwa-cache-353e73a334d22083";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 

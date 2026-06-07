@@ -1,5 +1,10 @@
 import { router } from "@inertiajs/react"
 import { buildIncomingCallFromPush, dispatchUnityCallIncoming } from "@/lib/unityCallEvents"
+import {
+  clearPendingIncomingCallPersistent,
+  consumePendingIncomingCallPersistent,
+  storePendingIncomingCallPersistent,
+} from "@/lib/unityCallPendingStorage"
 
 export const SW_INCOMING_CALL_MESSAGE = "unity-call-incoming-push"
 
@@ -61,6 +66,7 @@ export function handleSwIncomingCallPayload(data: Record<string, string | undefi
   }
 
   storePendingIncomingCall(data)
+  void storePendingIncomingCallPersistent(data)
 
   const incoming = buildIncomingCallFromPush(data, userId)
   if (!incoming) {
@@ -69,9 +75,29 @@ export function handleSwIncomingCallPayload(data: Record<string, string | undefi
 
   dispatchUnityCallIncoming(incoming)
 
-  if (document.visibilityState !== "visible") {
+  if (!isOnIncomingCallRingScreen(data)) {
     navigateToIncomingCallRingScreen(data)
   }
+}
+
+export async function consumeAnyPendingIncomingCall(): Promise<Record<string, string | undefined> | null> {
+  const sessionPending = consumePendingIncomingCall()
+  if (sessionPending) {
+    return sessionPending
+  }
+
+  return consumePendingIncomingCallPersistent()
+}
+
+export async function clearAnyPendingIncomingCall(): Promise<void> {
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem("unity_pending_incoming_call")
+    } catch {
+      // ignore
+    }
+  }
+  await clearPendingIncomingCallPersistent()
 }
 
 export function setupSwIncomingCallBridge(): () => void {

@@ -15,7 +15,7 @@ import {
   setCallRingtoneMode,
 } from "@/lib/callRingtoneSettings"
 import { subscribeUnityCallIncoming, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
-import { consumePendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
+import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 
@@ -54,13 +54,15 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     stopCallRingtone()
     setIncoming(null)
     setShowRingtoneSettings(false)
+    void clearAnyPendingIncomingCall()
   }, [])
 
   useEffect(() => {
-    const pending = consumePendingIncomingCall()
-    if (pending) {
-      handleSwIncomingCallPayload(pending)
-    }
+    void consumeAnyPendingIncomingCall().then((pending) => {
+      if (pending) {
+        handleSwIncomingCallPayload(pending)
+      }
+    })
 
     const params = new URLSearchParams(window.location.search)
     const callMatch = window.location.pathname.match(/\/unity-call\/(\d+)/)
@@ -73,7 +75,8 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         caller_avatar: params.get("caller_avatar") ?? "",
         chat_room_id: params.get("chat_room_id") ?? "",
         chat_room_name: params.get("chat_room_name") ?? "",
-        join_url: window.location.pathname,
+        join_url: `${window.location.pathname}${window.location.search}`,
+        ring_url: `${window.location.pathname}${window.location.search}`,
       })
     }
   }, [])
@@ -103,10 +106,11 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       if (document.visibilityState !== "visible") {
         return
       }
-      const pending = consumePendingIncomingCall()
-      if (pending) {
-        handleSwIncomingCallPayload(pending)
-      }
+      void consumeAnyPendingIncomingCall().then((pending) => {
+        if (pending) {
+          handleSwIncomingCallPayload(pending)
+        }
+      })
     }
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
