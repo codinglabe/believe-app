@@ -41,6 +41,16 @@ function readAuthUserId(): number | null {
   return Number.isFinite(id) && id > 0 ? id : null
 }
 
+function replaceRingUrlWithChat(chatRoomId: string | null): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  const chatPath = chatRoomId ? `/chat?room=${encodeURIComponent(chatRoomId)}` : "/chat"
+  if (`${window.location.pathname}${window.location.search}` !== chatPath) {
+    window.history.replaceState({}, "", chatPath)
+  }
+}
+
 export default function IncomingCallOverlay({ authUserId }: Props) {
   const [incoming, setIncoming] = useState<UnityCallStatusEvent | null>(null)
   const [blockedByActiveCall, setBlockedByActiveCall] = useState(false)
@@ -107,6 +117,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     void consumeAnyPendingIncomingCall().then((pending) => {
       if (pending) {
         handleSwIncomingCallPayload(pending)
+        replaceRingUrlWithChat(params.get("chat_room_id"))
         return
       }
 
@@ -126,6 +137,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         join_url: unityCallShowPath(callId),
         ring_url: `${window.location.pathname}${window.location.search}`,
       })
+      replaceRingUrlWithChat(params.get("chat_room_id"))
     })
   }, [userId])
 

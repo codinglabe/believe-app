@@ -252,67 +252,66 @@ export function useUnityCallWebRTC({
     setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId))
   }, [])
 
-  const ensureLocalTracksOnPeer = useCallback((peerId: string, pc: RTCPeerConnection) => {
+  const ensureLocalTracksOnPeer = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const stream = localStreamRef.current
+    const track = stream?.getAudioTracks()[0] ?? null
+
+    if (track) {
+      track.enabled = true
+    }
 
     let transceiver = pc.getTransceivers().find(
-      (item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio",
+      (item) =>
+        item.sender.track?.kind === "audio" ||
+        item.receiver.track?.kind === "audio" ||
+        item.mid !== null,
     )
 
-    if (!transceiver && !pc.getSenders().some((sender) => sender.track?.kind === "audio")) {
+    if (!transceiver) {
       transceiver = pc.addTransceiver("audio", { direction: "sendrecv" })
     }
 
-    if (transceiver) {
-      try {
-        transceiver.direction = "sendrecv"
-      } catch {
-        // ignore read-only direction in some browsers
-      }
+    try {
+      transceiver.direction = "sendrecv"
+    } catch {
+      // ignore read-only direction in some browsers
     }
 
-    if (!stream) {
-      return
+    if (track && transceiver.sender.track?.id !== track.id) {
+      await transceiver.sender.replaceTrack(track)
     }
-
-    const track = stream.getAudioTracks()[0]
-    if (!track) {
-      return
-    }
-
-    track.enabled = true
-
-    if (transceiver) {
-      if (transceiver.sender.track?.id !== track.id) {
-        void transceiver.sender.replaceTrack(track)
-      }
-      return
-    }
-
-    const senderWithTrack = pc.getSenders().find((sender) => sender.track?.kind === track.kind)
-    if (senderWithTrack) {
-      if (senderWithTrack.track?.id !== track.id) {
-        void senderWithTrack.replaceTrack(track)
-      }
-      return
-    }
-
-    const emptySender = pc.getSenders().find((sender) => !sender.track)
-    if (emptySender) {
-      void emptySender.replaceTrack(track)
-      return
-    }
-
-    pc.addTrack(track, stream)
   }, [])
 
   const attachLocalTracks = useCallback(
     (stream: MediaStream) => {
-      peerConnections.current.forEach((pc, peerId) => {
-        ensureLocalTracksOnPeer(peerId, pc)
-      })
+      void (async () => {
+        for (const [peerId, pc] of peerConnections.current.entries()) {
+          await ensureLocalTracksOnPeer(peerId, pc)
+        }
+        void stream
+      })()
     },
     [ensureLocalTracksOnPeer],
+  )
+
+  const hostInitiatesWebRtc = useCallback(
+    (peerId: string): boolean => {
+      if (isGroupCall) {
+        return isCaller
+      }
+      return Number(userIdStr) < Number(peerId)
+    },
+    [isCaller, isGroupCall, userIdStr],
+  )
+
+  const shouldRequestOfferFromPeer = useCallback(
+    (peerId: string): boolean => {
+      if (isGroupCall) {
+        return !isCaller
+      }
+      return Number(userIdStr) > Number(peerId)
+    },
+    [isCaller, isGroupCall, userIdStr],
   )
 
   const pushRemoteStreamFromPeer = useCallback(
@@ -403,7 +402,7 @@ export function useUnityCallWebRTC({
       }
 
       peerConnections.current.set(peerId, pc)
-      ensureLocalTracksOnPeer(peerId, pc)
+      void ensureLocalTracksOnPeer(peerId, pc)
 
       return pc
     },
@@ -437,10 +436,7 @@ export function useUnityCallWebRTC({
         pc = createPeerConnection(peerId)
       }
 
-      ensureLocalTracksOnPeer(peerId, pc)
-      if (!peerHasLiveOutgoingAudio(pc)) {
-        return
-      }
+      await ensureLocalTracksOnPeer(peerId, pc)
 
       if (pc.signalingState !== "stable") {
         return
@@ -470,6 +466,10 @@ export function useUnityCallWebRTC({
         return
       }
 
+      if (isGroupCall && !isCaller) {
+        return
+      }
+
       let pc = peerConnections.current.get(peerId)
       if (pc && isPeerNegotiationSettled(pc)) {
         if (!peerHasLiveOutgoingAudio(pc)) {
@@ -483,7 +483,7 @@ export function useUnityCallWebRTC({
           if (peerHasLiveOutgoingAudio(pc)) {
             sendOfferToPeer(peerId, pc)
           } else {
-            ensureLocalTracksOnPeer(peerId, pc)
+            await ensureLocalTracksOnPeer(peerId, pc)
             if (peerHasLiveOutgoingAudio(pc)) {
               await renegotiateAudioWithPeer(peerId)
             }
@@ -498,7 +498,7 @@ export function useUnityCallWebRTC({
       }
 
       pc = pc ?? createPeerConnection(peerId)
-      ensureLocalTracksOnPeer(peerId, pc)
+      await ensureLocalTracksOnPeer(peerId, pc)
 
       if (pc.signalingState === "have-local-offer" && pc.localDescription) {
         sendOfferToPeer(peerId, pc)
@@ -528,6 +528,8 @@ export function useUnityCallWebRTC({
     [
       createPeerConnection,
       ensureLocalTracksOnPeer,
+      isCaller,
+      isGroupCall,
       renegotiateAudioWithPeer,
       resetPeerConnection,
       sendOfferToPeer,
@@ -552,10 +554,13 @@ export function useUnityCallWebRTC({
         if (normalized.to !== userIdStr) {
           return
         }
+        if (isGroupCall && !isCaller) {
+          return
+        }
         const from = normalized.from
         const existing = peerConnections.current.get(from)
         if (existing && isPeerNegotiationSettled(existing)) {
-          if (!peerHasLiveOutgoingAudio(existing)) {
+          if (!peerHasLiveOutgoingAudio(existing) || !peerHasLiveIncomingAudio(existing)) {
             await renegotiateAudioWithPeer(from)
           }
           return
@@ -569,6 +574,9 @@ export function useUnityCallWebRTC({
       }
 
       const from = normalized.from
+      if (isGroupCall && !isCaller && from !== String(callerId)) {
+        return
+      }
       let pc = peerConnections.current.get(from)
       if (!pc) {
         pc = createPeerConnection(from)
@@ -601,7 +609,7 @@ export function useUnityCallWebRTC({
               return
             }
 
-            ensureLocalTracksOnPeer(from, pc)
+            await ensureLocalTracksOnPeer(from, pc)
 
             if (pc.signalingState === "have-local-offer") {
               await pc.setLocalDescription({ type: "rollback" })
@@ -671,9 +679,12 @@ export function useUnityCallWebRTC({
       updateMediaConnected()
     },
     [
+      callerId,
       createOfferForPeer,
       createPeerConnection,
       ensureLocalTracksOnPeer,
+      isCaller,
+      isGroupCall,
       pushRemoteStreamFromPeer,
       renegotiateAudioWithPeer,
       resetPeerConnection,
@@ -752,11 +763,24 @@ export function useUnityCallWebRTC({
 
     peers.forEach((peerId) => {
       const pc = peerConnections.current.get(peerId)
+
       if (pc && isPeerNegotiationSettled(pc)) {
+        if (hostInitiatesWebRtc(peerId) && !peerHasLiveOutgoingAudio(pc)) {
+          void renegotiateAudioWithPeer(peerId)
+        } else if (!peerHasLiveIncomingAudio(pc) && shouldRequestOfferFromPeer(peerId)) {
+          if (!offerRequestSent.current.has(peerId)) {
+            offerRequestSent.current.add(peerId)
+            sendSignal({
+              type: "offer-request",
+              from: userIdStr,
+              to: peerId,
+            })
+          }
+        }
         return
       }
 
-      if (Number(userIdStr) < Number(peerId)) {
+      if (hostInitiatesWebRtc(peerId)) {
         void createOfferForPeer(peerId)
         return
       }
@@ -765,7 +789,7 @@ export function useUnityCallWebRTC({
         offerRequestSent.current.delete(peerId)
       }
 
-      if (!offerRequestSent.current.has(peerId)) {
+      if (shouldRequestOfferFromPeer(peerId) && !offerRequestSent.current.has(peerId)) {
         offerRequestSent.current.add(peerId)
         sendSignal({
           type: "offer-request",
@@ -776,7 +800,16 @@ export function useUnityCallWebRTC({
     })
 
     updateMediaConnected()
-  }, [acceptedPeerIds, createOfferForPeer, sendSignal, updateMediaConnected, userIdStr])
+  }, [
+    acceptedPeerIds,
+    createOfferForPeer,
+    hostInitiatesWebRtc,
+    renegotiateAudioWithPeer,
+    sendSignal,
+    shouldRequestOfferFromPeer,
+    updateMediaConnected,
+    userIdStr,
+  ])
 
   tryConnectRef.current = connectToAcceptedPeers
 
@@ -956,6 +989,37 @@ export function useUnityCallWebRTC({
 
     return () => window.clearInterval(intervalId)
   }, [connectToAcceptedPeers, mediaActive, mediaConnected, callStatus])
+
+  useEffect(() => {
+    if (!mediaActive || !mediaStarted.current || callEnded.current) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      const peers = acceptedPeerIds()
+      peers.forEach((peerId) => {
+        const pc = peerConnections.current.get(peerId)
+        if (!pc || !isPeerConnected(pc)) {
+          return
+        }
+        if (hostInitiatesWebRtc(peerId) && !peerHasLiveOutgoingAudio(pc)) {
+          void renegotiateAudioWithPeer(peerId)
+        } else if (!peerHasLiveIncomingAudio(pc) && shouldRequestOfferFromPeer(peerId)) {
+          offerRequestSent.current.delete(peerId)
+          connectToAcceptedPeers()
+        }
+      })
+    }, 4000)
+
+    return () => window.clearInterval(intervalId)
+  }, [
+    acceptedPeerIds,
+    connectToAcceptedPeers,
+    hostInitiatesWebRtc,
+    mediaActive,
+    renegotiateAudioWithPeer,
+    shouldRequestOfferFromPeer,
+  ])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {

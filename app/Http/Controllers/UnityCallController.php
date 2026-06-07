@@ -177,6 +177,11 @@ class UnityCallController extends Controller
     public function show(Request $request, UnityCall $call, UnityCallService $calls): Response
     {
         $user = $request->user();
+
+        if ($request->query('ring') === '1') {
+            $call = $calls->prepareCalleeForIncomingRing($call, $user);
+        }
+
         if (! $calls->userCanAccess($call, $user)) {
             abort(403);
         }

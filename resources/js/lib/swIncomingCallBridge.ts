@@ -1,4 +1,3 @@
-import { router } from "@inertiajs/react"
 import { buildIncomingCallFromPush, dispatchUnityCallIncoming } from "@/lib/unityCallEvents"
 import {
   clearPendingIncomingCallPersistent,
@@ -51,12 +50,9 @@ function isOnIncomingCallRingScreen(data: Record<string, string | undefined>): b
 }
 
 function navigateToIncomingCallRingScreen(data: Record<string, string | undefined>): void {
-  const visitPath = resolveRingVisitPath(data)
-  if (!visitPath || isOnIncomingCallRingScreen(data)) {
-    return
-  }
-
-  router.visit(visitPath)
+  // Foreground calls use IncomingCallOverlay only — do not Inertia-navigate to
+  // /unity-call/{id}?ring=1 (that flash-loads the call page and can show 404/403).
+  void data
 }
 
 export function rehydratePendingIncomingCall(): void {

@@ -142,32 +142,23 @@ function postIncomingCallToClients(clientList, data) {
     });
 }
 
-function focusAndShowIncomingCall(client, absoluteRingUrl, data) {
+function focusAndShowIncomingCall(client, data) {
     postIncomingCallToClients([client], data);
     if (!("focus" in client)) {
         return Promise.resolve(false);
     }
-    return client.focus().then(function (focusedClient) {
-        if (!focusedClient) {
-            return false;
-        }
-        if ("navigate" in focusedClient) {
-            return focusedClient.navigate(absoluteRingUrl).then(function () {
-                return true;
-            }).catch(function () {
-                return true;
-            });
-        }
+    return client.focus().then(function () {
         return true;
     });
 }
 
-function openFreshIncomingCallWindow(absoluteRingUrl) {
+function openFreshIncomingCallWindow() {
     if (!self.clients.openWindow) {
         return Promise.resolve(false);
     }
 
-    return self.clients.openWindow(absoluteRingUrl).then(function (windowClient) {
+    const chatUrl = new URL("/chat", self.location.origin).href;
+    return self.clients.openWindow(chatUrl).then(function (windowClient) {
         return Boolean(windowClient);
     }).catch(function () {
         return false;
@@ -183,17 +174,17 @@ function notifyOpenClientsIncomingCall(data) {
             postIncomingCallToClients(clientList, data);
 
             if (clientList.length === 0) {
-                return openFreshIncomingCallWindow(absoluteRingUrl).then(function (opened) {
+                return openFreshIncomingCallWindow().then(function (opened) {
                     return { opened: opened, absoluteRingUrl: absoluteRingUrl };
                 });
             }
 
-            return focusAndShowIncomingCall(clientList[0], absoluteRingUrl, data).then(function (focused) {
+            return focusAndShowIncomingCall(clientList[0], data).then(function (focused) {
                 if (focused) {
                     return { opened: true, absoluteRingUrl: absoluteRingUrl };
                 }
 
-                return openFreshIncomingCallWindow(absoluteRingUrl).then(function (opened) {
+                return openFreshIncomingCallWindow().then(function (opened) {
                     return { opened: opened, absoluteRingUrl: absoluteRingUrl };
                 });
             });

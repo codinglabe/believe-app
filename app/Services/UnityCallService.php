@@ -554,6 +554,21 @@ class UnityCallService
         return false;
     }
 
+    public function prepareCalleeForIncomingRing(UnityCall $call, User $user): UnityCall
+    {
+        if ((int) $call->caller_id === (int) $user->id || ! $call->isActive()) {
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        }
+
+        try {
+            $this->ensureCalleeParticipant($call, $user);
+        } catch (ValidationException) {
+            // Access may still be denied below; do not fail the page load.
+        }
+
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+    }
+
     public function userCanExpireRinging(UnityCall $call, User $user): bool
     {
         if ($this->userCanAccess($call, $user)) {
