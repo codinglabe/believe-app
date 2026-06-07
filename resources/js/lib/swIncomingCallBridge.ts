@@ -59,6 +59,14 @@ function navigateToIncomingCallRingScreen(data: Record<string, string | undefine
   router.visit(visitPath)
 }
 
+export function rehydratePendingIncomingCall(): void {
+  void consumeAnyPendingIncomingCall().then((pending) => {
+    if (pending) {
+      handleSwIncomingCallPayload(pending)
+    }
+  })
+}
+
 export function handleSwIncomingCallPayload(data: Record<string, string | undefined>): void {
   const userId = readAuthUserId()
   if (!userId || data.type !== "incoming_call") {

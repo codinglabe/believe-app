@@ -19,6 +19,7 @@ class UnityCallService
 
     public function __construct(
         private readonly UnityCallNotifier $notifier,
+        private readonly UnityCallChatMessageService $chatMessages,
     ) {}
 
     public function initiate(User $caller, int $chatRoomId): UnityCall
@@ -88,6 +89,8 @@ class UnityCallService
             NotifyUnityCallRoomMembersJob::dispatch($call->id, $caller->id);
         }
 
+        $this->syncChatCallMessage($call->fresh(['participants.user', 'chatRoom', 'caller']));
+
         return $call;
     }
 
@@ -153,7 +156,10 @@ class UnityCallService
             $this->notifier->broadcastSessionStatus($freshCall, $caller, 'accepted');
             $this->notifier->broadcastRoomStatus($freshCall, $caller, 'accepted');
 
-            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+            $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
+            $this->syncChatCallMessage($fresh);
+
+            return $fresh;
         });
     }
 
@@ -204,7 +210,10 @@ class UnityCallService
         $this->notifier->broadcastSessionStatus($fresh, $caller, $reason);
         $this->notifier->broadcastRoomStatus($fresh, $caller, $reason);
 
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $this->syncChatCallMessage($fresh);
+
+        return $fresh;
     }
 
     public function cancel(UnityCall $call, User $user): UnityCall
@@ -255,7 +264,10 @@ class UnityCallService
         $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'cancelled');
         $this->notifier->broadcastSessionStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'cancelled');
 
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $this->syncChatCallMessage($fresh);
+
+        return $fresh;
     }
 
     public function end(UnityCall $call, User $user): UnityCall
@@ -298,7 +310,10 @@ class UnityCallService
         $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'ended');
         $this->notifier->broadcastSessionStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'ended');
 
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $this->syncChatCallMessage($fresh);
+
+        return $fresh;
     }
 
     public function leave(UnityCall $call, User $user): UnityCall
@@ -343,7 +358,10 @@ class UnityCallService
         $this->notifier->broadcastSessionStatus($fresh, $call->caller, $reason);
         $this->notifier->broadcastRoomStatus($fresh, $call->caller, $reason);
 
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        $this->syncChatCallMessage($fresh);
+
+        return $fresh;
     }
 
     public function expireRingingCalls(): int
@@ -373,6 +391,8 @@ class UnityCallService
             foreach ($call->participants as $participant) {
                 $this->notifier->broadcastStatus($participant->user_id, $payload);
             }
+
+            $this->syncChatCallMessage($call->fresh(['participants.user', 'chatRoom', 'caller']));
 
             $count++;
         }
@@ -516,6 +536,13 @@ class UnityCallService
         foreach ($call->participants as $participant) {
             $this->notifier->broadcastStatus($participant->user_id, $payload);
         }
+
+        $this->syncChatCallMessage($call->fresh(['participants.user', 'chatRoom', 'caller']));
+    }
+
+    private function syncChatCallMessage(UnityCall $call): void
+    {
+        $this->chatMessages->syncCallMessage($call);
     }
 
     private function forgetWebRtcSignalCache(UnityCall $call): void

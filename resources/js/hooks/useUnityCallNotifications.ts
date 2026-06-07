@@ -12,6 +12,7 @@ export type UnityCallPayload = {
   type: string
   chatRoomId?: number | null
   chatRoomName?: string | null
+  isGroupCall?: boolean
   joinUrl: string
   ringExpiresAt?: string | null
   answeredAt?: string | null

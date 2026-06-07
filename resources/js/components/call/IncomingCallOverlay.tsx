@@ -15,7 +15,7 @@ import {
   setCallRingtoneMode,
 } from "@/lib/callRingtoneSettings"
 import { subscribeUnityCallIncoming, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
-import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
+import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload, rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 
@@ -65,11 +65,11 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   }, [])
 
   useEffect(() => {
-    void consumeAnyPendingIncomingCall().then((pending) => {
-      if (pending) {
-        handleSwIncomingCallPayload(pending)
-      }
-    })
+    if (!userId) {
+      return
+    }
+
+    rehydratePendingIncomingCall()
 
     const params = new URLSearchParams(window.location.search)
     const callMatch = window.location.pathname.match(/\/unity-call\/(\d+)/)
@@ -80,7 +80,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     const callId = Number(callMatch[1])
     const callerId = Number(params.get("caller_id"))
 
-    if (userId && Number.isFinite(callerId) && callerId === userId) {
+    if (Number.isFinite(callerId) && callerId === userId) {
       router.visit(unityCallShowPath(callId), { replace: true })
       return
     }
@@ -103,10 +103,32 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         caller_avatar: params.get("caller_avatar") ?? "",
         chat_room_id: params.get("chat_room_id") ?? "",
         chat_room_name: params.get("chat_room_name") ?? "",
+        is_group_call: params.get("is_group_call") ?? "",
         join_url: unityCallShowPath(callId),
-        ring_url: `${window.location.pathname}?ring=1`,
+        ring_url: `${window.location.pathname}${window.location.search}`,
       })
     })
+  }, [userId])
+
+  useEffect(() => {
+    if (!userId) {
+      return
+    }
+
+    const retryDelays = [400, 1500, 3500]
+    const timers = retryDelays.map((delay) => window.setTimeout(rehydratePendingIncomingCall, delay))
+
+    const onPageShow = () => rehydratePendingIncomingCall()
+    const onFocus = () => rehydratePendingIncomingCall()
+
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("focus", onFocus)
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [userId])
 
   useEffect(() => {
@@ -134,11 +156,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       if (document.visibilityState !== "visible") {
         return
       }
-      void consumeAnyPendingIncomingCall().then((pending) => {
-        if (pending) {
-          handleSwIncomingCallPayload(pending)
-        }
-      })
+      rehydratePendingIncomingCall()
     }
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
@@ -297,9 +315,17 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
 
           <div className="flex flex-1 flex-col items-center justify-center px-6 pb-8">
             <PhoneCallAvatar
-              name={incoming.caller.name}
+              name={
+                incoming.call.isGroupCall
+                  ? incoming.call.chatRoomName?.trim() || "Group call"
+                  : incoming.caller.name
+              }
               avatar={incoming.caller.avatar}
-              subtitle={incoming.call.chatRoomName ?? "Audio call"}
+              subtitle={
+                incoming.call.isGroupCall
+                  ? `${incoming.caller.name} is calling`
+                  : incoming.call.chatRoomName ?? "Audio call"
+              }
               pulse
             />
 

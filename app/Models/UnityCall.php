@@ -26,6 +26,7 @@ class UnityCall extends Model
         'caller_id',
         'chat_room_id',
         'user_livestream_id',
+        'chat_message_id',
         'type',
         'status',
         'ring_expires_at',
@@ -47,6 +48,11 @@ class UnityCall extends Model
     public function chatRoom(): BelongsTo
     {
         return $this->belongsTo(ChatRoom::class, 'chat_room_id');
+    }
+
+    public function chatMessage(): BelongsTo
+    {
+        return $this->belongsTo(ChatMessage::class);
     }
 
     public function livestream(): BelongsTo

@@ -204,10 +204,14 @@ function notifyOpenClientsIncomingCall(data) {
 /** Native OS notification (Windows/macOS/Android) when the app is in the background. */
 messaging.onBackgroundMessage((payload) => {
     const data = payload.data || {};
-    const title =
-        payload.notification?.title || data.title || "Believe In Unity";
-    const body =
-        payload.notification?.body || data.body || data.message || "";
+    const isIncomingCall = data.type === INCOMING_CALL_TYPE;
+    const isGroupCall = data.is_group_call === "1" || data.is_group_call === "true";
+    const title = isIncomingCall && isGroupCall && data.chat_room_name
+        ? data.chat_room_name
+        : payload.notification?.title || data.title || "Believe In Unity";
+    const body = isIncomingCall && isGroupCall && data.caller_name
+        ? data.caller_name + " is calling"
+        : payload.notification?.body || data.body || data.message || "";
 
     if (data.type === INCOMING_CALL_TYPE) {
         return notifyOpenClientsIncomingCall(data).then(function () {

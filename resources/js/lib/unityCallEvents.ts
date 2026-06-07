@@ -34,6 +34,7 @@ export function buildIncomingCallFromPush(data: Record<string, string | undefine
       type: "audio",
       chatRoomId: data.chat_room_id ? Number(data.chat_room_id) : null,
       chatRoomName: data.chat_room_name || null,
+      isGroupCall: data.is_group_call === "1" || data.is_group_call === "true",
       joinUrl,
     },
     caller: {

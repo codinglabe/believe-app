@@ -77,9 +77,25 @@ interface Attachment {
   size: number
 }
 
+export interface UnityCallChatMetadata {
+  unity_call_id: number
+  call_status: string
+  call_type: string
+  join_url: string
+  is_group_call: boolean
+  answered_at?: string | null
+  ended_at?: string | null
+  duration_seconds?: number | null
+  accepted_count: number
+  caller_id: number
+  caller_name: string
+}
+
 export interface ChatMessage {
   id: number
   message: string
+  message_type?: "text" | "unity_call"
+  metadata?: UnityCallChatMetadata | null
   attachments: Attachment[]
   created_at: string
   is_edited: boolean
@@ -363,6 +379,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return sortMessagesByTime(unique)
   }, [])
 
+  const mergeIncomingChatMessage = useCallback(
+    (previous: ChatMessage[], incoming: ChatMessage) => {
+      const existing = previous.find((msg) => msg.id === incoming.id)
+      if (existing) {
+        return deduplicateMessages(previous.map((msg) => (msg.id === incoming.id ? { ...existing, ...incoming } : msg)))
+      }
+
+      const optimisticMatch = previous.find(
+        (msg) =>
+          typeof msg.id === "number" &&
+          msg.id > 1_000_000_000_000 &&
+          msg.user?.id === incoming.user.id &&
+          msg.message === incoming.message,
+      )
+
+      if (optimisticMatch) {
+        return deduplicateMessages(previous.filter((msg) => msg.id !== optimisticMatch.id).concat(incoming))
+      }
+
+      return deduplicateMessages([...previous, incoming])
+    },
+    [deduplicateMessages],
+  )
+
   /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
   useEffect(() => {
     if (!activeRoom?.id) {
@@ -431,12 +471,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (e.message && ar?.id === e.message?.chat_room_id && (ar?.type === "direct" || ar?.type === "private")) {
-        setMessages((prev) => {
-          const existingMessage = prev.find((msg) => msg.id === e.message.id)
-          if (existingMessage) return prev
-
-          return deduplicateMessages([...prev, e.message])
-        })
+        setMessages((prev) => mergeIncomingChatMessage(prev, e.message))
 
         // Mark as read if message is from another user
         if (e.message.user.id !== currentUser.id) {
@@ -455,7 +490,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       privateChannel.stopListening(".MessageSent")
       echoInstance.leave(`user.${currentUser.id}`)
     }
-  }, [currentUser?.id, markRoomAsRead, deduplicateMessages])
+  }, [currentUser?.id, markRoomAsRead, mergeIncomingChatMessage])
 
   // Real-time event handling (subscriptions only — messages load via HTTP above)
   useEffect(() => {
@@ -493,24 +528,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Message listener (merge with optimistic sends)
     channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
-        setMessages((prev) => {
-          const existingMessage = prev.find((msg) => msg.id === e.message.id)
-          if (existingMessage) return prev
-
-          const optimisticMatch = prev.find(
-            (msg) =>
-              typeof msg.id === "number" &&
-              msg.id > 1_000_000_000_000 &&
-              msg.user?.id === e.message.user.id &&
-              msg.message === e.message.message,
-          )
-
-          if (optimisticMatch) {
-            return deduplicateMessages([...prev.filter((msg) => msg.id !== optimisticMatch.id), e.message])
-          }
-
-          return deduplicateMessages([...prev, e.message])
-        })
+        setMessages((prev) => mergeIncomingChatMessage(prev, e.message))
 
         if (e.message.user.id !== currentUser.id) {
           markRoomAsRead(roomId)
@@ -542,6 +560,41 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isUnityCallTerminated(payload)) {
         dispatchUnityCallTerminated(payload)
       }
+
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.message_type !== "unity_call" || msg.metadata?.unity_call_id !== payload.call.id) {
+            return msg
+          }
+
+          const endedAt = payload.call.endedAt ?? msg.metadata?.ended_at ?? null
+          const answeredAt = payload.call.answeredAt ?? msg.metadata?.answered_at ?? null
+          let durationSeconds = msg.metadata?.duration_seconds ?? null
+          if (answeredAt && endedAt) {
+            durationSeconds = Math.max(
+              0,
+              Math.floor((new Date(endedAt).getTime() - new Date(answeredAt).getTime()) / 1000),
+            )
+          }
+
+          const acceptedCount = payload.participants.filter(
+            (p) => p.role === "callee" && p.status === "accepted",
+          ).length
+
+          return {
+            ...msg,
+            message: payload.call.status === "accepted" ? "Audio call in progress" : msg.message,
+            metadata: {
+              ...msg.metadata,
+              call_status: payload.call.status,
+              answered_at: answeredAt,
+              ended_at: endedAt,
+              duration_seconds: durationSeconds,
+              accepted_count: acceptedCount,
+            },
+          }
+        }),
+      )
     })
 
     const normalizeTypingUser = (payload: {

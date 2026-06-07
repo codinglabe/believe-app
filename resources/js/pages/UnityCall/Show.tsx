@@ -188,23 +188,39 @@ export default function UnityCallShow({
   })
 
   const displayName = useMemo(() => {
+    if (isGroupCall) {
+      return call.chatRoomName?.trim() || "Group call"
+    }
     if (isCaller) {
-      if (call.chatRoomName) {
-        return call.chatRoomName
-      }
       const callee = participants.find((p) => p.role === "callee")
       return callee?.name ?? caller.name
     }
     return caller.name
-  }, [isCaller, call.chatRoomName, participants, caller.name])
+  }, [isGroupCall, isCaller, call.chatRoomName, participants, caller.name])
+
+  const groupCallerLine = useMemo(() => {
+    if (!isGroupCall) {
+      return null
+    }
+    if (isCaller) {
+      return "You started this call"
+    }
+    if (callLive) {
+      return `Started by ${caller.name}`
+    }
+    return `${caller.name} is calling`
+  }, [isGroupCall, isCaller, caller.name, callLive])
 
   const displayAvatar = useMemo(() => {
+    if (isGroupCall) {
+      return caller.avatar
+    }
     if (isCaller) {
       const callee = participants.find((p) => p.role === "callee")
       return callee?.avatar ?? caller.avatar
     }
     return caller.avatar
-  }, [isCaller, participants, caller.avatar])
+  }, [isGroupCall, isCaller, participants, caller.avatar])
 
   const statusLabel = useMemo(() => {
     if (call.status === "ended" || call.status === "cancelled" || call.status === "declined" || call.status === "missed") {
@@ -432,9 +448,10 @@ export default function UnityCallShow({
           <PhoneCallAvatar
             name={displayName}
             avatar={displayAvatar}
-            subtitle={statusHint}
+            subtitle={isGroupCall ? (groupCallerLine ?? undefined) : statusHint}
             pulse={!callLive || !mediaConnected}
           />
+          {isGroupCall ? <p className="mt-2 text-center text-sm text-white/60">{statusHint}</p> : null}
 
           <p className="mt-8 font-mono text-3xl tabular-nums tracking-wide">{statusLabel}</p>
 

@@ -12,6 +12,7 @@ use App\Models\UnityCallParticipant;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 class UnityCallNotifier
 {
@@ -25,8 +26,16 @@ class UnityCallNotifier
         $callerName = trim((string) $caller->name) ?: 'Someone';
         $joinPath = '/unity-call/'.$call->id;
         $joinUrl = url($joinPath);
-        // Keep ring URLs short — long query strings (e.g. avatar URLs) can exceed server limits and 404.
-        $ringUrl = $joinPath.'?ring=1';
+        $isGroupCall = $call->chatRoom?->type !== 'direct';
+        // Include caller + group hints so cold start after notification tap can rebuild the overlay.
+        $ringUrl = $joinPath.'?'.http_build_query([
+            'ring' => '1',
+            'caller_id' => (string) $caller->id,
+            'caller_name' => Str::limit($callerName, 48, ''),
+            'chat_room_id' => $call->chat_room_id ? (string) $call->chat_room_id : '',
+            'chat_room_name' => $isGroupCall ? Str::limit((string) ($call->chatRoom?->name ?? ''), 64, '') : '',
+            'is_group_call' => $isGroupCall ? '1' : '0',
+        ], '', '&', PHP_QUERY_RFC3986);
         $expiresAt = $call->ring_expires_at ?? now()->addMinutes(2);
         $declineUrl = URL::temporarySignedRoute(
             'unity-calls.decline-signed',
@@ -38,8 +47,12 @@ class UnityCallNotifier
             $expiresAt,
             ['call' => $call->id, 'user' => $callee->id],
         );
-        $title = 'Incoming audio call';
-        $body = "{$callerName} is calling you";
+        $title = $isGroupCall
+            ? (trim((string) ($call->chatRoom?->name ?? '')) ?: 'Group audio call')
+            : 'Incoming audio call';
+        $body = $isGroupCall
+            ? "{$callerName} is calling"
+            : "{$callerName} is calling you";
 
         $pushData = $this->firebaseService->stringifyFcmData([
             'type' => 'incoming_call',
@@ -51,6 +64,7 @@ class UnityCallNotifier
             'caller_avatar' => (string) ($caller->avatar_url ?? ''),
             'chat_room_id' => $call->chat_room_id ? (string) $call->chat_room_id : '',
             'chat_room_name' => (string) ($call->chatRoom?->name ?? ''),
+            'is_group_call' => $isGroupCall ? '1' : '0',
             'join_url' => $joinUrl,
             'ring_url' => $ringUrl,
             'accept_url' => $acceptUrl,
@@ -154,6 +168,7 @@ class UnityCallNotifier
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
+                'isGroupCall' => $call->chatRoom?->type !== 'direct',
                 'joinUrl' => '/unity-call/'.$call->id,
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
                 'answeredAt' => $call->answered_at?->toIso8601String(),

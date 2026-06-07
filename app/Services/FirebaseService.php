@@ -166,9 +166,12 @@ class FirebaseService
         // Extract content_item_id from data or use default
         $contentItemId = $data['content_item_id'] ?? null;
         $clickAction = $data['click_action'] ?? null;
+        $isIncomingCall = ($data['type'] ?? '') === 'incoming_call';
+        $ringUrl = $data['ring_url'] ?? null;
 
         // Build the notification URL
         $notificationUrl = $clickAction
+            ?? ($isIncomingCall && is_string($ringUrl) && $ringUrl !== '' ? $ringUrl : null)
             ?? url('/');
 
         $fcmData = $this->stringifyFcmData(array_merge($data, [
@@ -185,16 +188,13 @@ class FirebaseService
             ],
         ];
 
-        // Web: data payload + webpush link; SW / foreground client calls showNotification for OS banner.
-        $isIncomingCall = ($data['type'] ?? '') === 'incoming_call';
-
         if ($deviceType === 'web') {
             $message['message']['webpush'] = [
                 'fcm_options' => [
                     'link' => $notificationUrl,
                 ],
                 'headers' => [
-                    'TTL' => $isIncomingCall ? '60' : '86400',
+                    'TTL' => $isIncomingCall ? '120' : '86400',
                     'Urgency' => $isIncomingCall ? 'high' : 'normal',
                 ],
             ];
