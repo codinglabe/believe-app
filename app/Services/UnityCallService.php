@@ -201,6 +201,9 @@ class UnityCallService
         }
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+    }
+
+    public function cancel(UnityCall $call, User $user): UnityCall
     {
         if ((int) $call->caller_id !== (int) $user->id) {
             throw ValidationException::withMessages(['call' => __('Only the caller can cancel this call.')]);
