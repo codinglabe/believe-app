@@ -223,14 +223,12 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     }
     setBusy(true)
     stopCallRingtone()
-    const { ok, data } = await acceptUnityCall(incoming.call.id)
+    const { ok } = await acceptUnityCall(incoming.call.id)
     setBusy(false)
     if (!ok) {
       return
     }
-    if (data) {
-      markUnityCallAcceptedLocally(incoming.call.id)
-    }
+    markUnityCallAcceptedLocally(incoming.call.id)
     const joinUrl = toInternalAppPath(incoming.call.joinUrl || unityCallShowPath(incoming.call.id))
     dismiss()
     router.visit(joinUrl)

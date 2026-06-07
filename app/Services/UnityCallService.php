@@ -77,47 +77,66 @@ class UnityCallService
 
     public function accept(UnityCall $call, User $user): UnityCall
     {
-        $participant = $this->requireParticipant($call, $user);
-        if ($participant->role !== UnityCallParticipant::ROLE_CALLEE) {
-            throw ValidationException::withMessages(['call' => __('Only callees can accept this call.')]);
-        }
+        return DB::transaction(function () use ($call, $user) {
+            $call = UnityCall::query()->whereKey($call->id)->lockForUpdate()->firstOrFail();
+            $participant = UnityCallParticipant::query()
+                ->where('unity_call_id', $call->id)
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
 
-        if ($participant->status === UnityCallParticipant::STATUS_ACCEPTED) {
+            if (! $participant) {
+                throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
+            }
+
+            if ($participant->role !== UnityCallParticipant::ROLE_CALLEE) {
+                throw ValidationException::withMessages(['call' => __('Only callees can accept this call.')]);
+            }
+
+            if ($participant->status === UnityCallParticipant::STATUS_ACCEPTED) {
+                return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+            }
+
+            if ($participant->status !== UnityCallParticipant::STATUS_RINGING) {
+                throw ValidationException::withMessages(['call' => __('This call is no longer ringing.')]);
+            }
+
+            if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
+                throw ValidationException::withMessages(['call' => __('This call is no longer available.')]);
+            }
+
+            if ($call->status === UnityCall::STATUS_RINGING && $call->ring_expires_at && $call->ring_expires_at->isPast()) {
+                throw ValidationException::withMessages(['call' => __('This call has expired.')]);
+            }
+
+            $participant->update(['status' => UnityCallParticipant::STATUS_ACCEPTED]);
+
+            $updates = [];
+            if ($call->status === UnityCall::STATUS_RINGING) {
+                $updates['status'] = UnityCall::STATUS_ACCEPTED;
+            }
+            if ($call->answered_at === null) {
+                $updates['answered_at'] = now();
+            }
+            if ($updates !== []) {
+                $call->update($updates);
+            }
+
+            $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+            $caller = $call->caller;
+
+            $acceptedPayload = $this->notifier->payloadForUser(
+                $call->fresh(['participants.user', 'chatRoom']),
+                $caller,
+                'accepted',
+            );
+
+            foreach ($call->participants as $p) {
+                $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
+            }
+
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
-        }
-
-        if ($participant->status !== UnityCallParticipant::STATUS_RINGING) {
-            throw ValidationException::withMessages(['call' => __('This call is no longer ringing.')]);
-        }
-        if (! $call->isActive() || $call->status !== UnityCall::STATUS_RINGING) {
-            throw ValidationException::withMessages(['call' => __('This call is no longer available.')]);
-        }
-        if ($call->ring_expires_at && $call->ring_expires_at->isPast()) {
-            throw ValidationException::withMessages(['call' => __('This call has expired.')]);
-        }
-
-        $participant->update(['status' => UnityCallParticipant::STATUS_ACCEPTED]);
-
-        $updates = ['status' => UnityCall::STATUS_ACCEPTED];
-        if ($call->answered_at === null) {
-            $updates['answered_at'] = now();
-        }
-        $call->update($updates);
-
-        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
-        $caller = $call->caller;
-
-        $acceptedPayload = $this->notifier->payloadForUser(
-            $call->fresh(['participants.user', 'chatRoom']),
-            $caller,
-            'accepted',
-        );
-
-        foreach ($call->participants as $p) {
-            $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
-        }
-
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+        });
     }
 
     public function decline(UnityCall $call, User $user): UnityCall

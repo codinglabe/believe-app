@@ -224,7 +224,11 @@ export default function UnityCallShow({
   }, [callConnected, call.answeredAt])
 
   const handleAccept = async () => {
-    if (accepting || isCaller || call.status !== "ringing" || selfStatus !== "ringing") {
+    if (accepting || isCaller || selfStatus !== "ringing") {
+      return
+    }
+
+    if (call.status !== "ringing" && call.status !== "accepted") {
       return
     }
 
@@ -235,6 +239,11 @@ export default function UnityCallShow({
     if (ok && data) {
       setCall({ ...data.call, joinUrl: data.join_url })
       setParticipants(data.participants)
+    } else if (ok) {
+      setCall((current) => ({ ...current, status: "accepted" }))
+      setParticipants((current) =>
+        current.map((p) => (p.userId === authUserId ? { ...p, status: "accepted" } : p)),
+      )
     }
   }
 
@@ -292,7 +301,10 @@ export default function UnityCallShow({
     setEnding(false)
   }
 
-  const isRingingCallee = !isCaller && call.status === "ringing" && selfStatus === "ringing"
+  const isRingingCallee =
+    !isCaller &&
+    selfStatus === "ringing" &&
+    (call.status === "ringing" || call.status === "accepted")
   const showRingingCalleeControls = isRingingCallee && !ringMode
 
   return (

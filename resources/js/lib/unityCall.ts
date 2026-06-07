@@ -155,6 +155,10 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
 }
 
 export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; data: UnityCallAcceptResponse | null; message?: string }> {
+  if (hasUnityCallAcceptedLocally(callId)) {
+    return { ok: true, data: null, message: "Already accepted" }
+  }
+
   if (acceptInFlight.has(callId)) {
     return { ok: false, data: null, message: "Accept already in progress" }
   }
@@ -164,8 +168,22 @@ export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; da
     const { ok, data, message } = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
     if (ok && data) {
       markUnityCallAcceptedLocally(callId)
+      return { ok, data, message }
     }
-    return { ok, data: ok && data ? data : null, message }
+
+    const retryable =
+      message?.toLowerCase().includes("no longer ringing") ||
+      message?.toLowerCase().includes("no longer available")
+
+    if (retryable) {
+      const retry = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
+      if (retry.ok && retry.data) {
+        markUnityCallAcceptedLocally(callId)
+        return { ok: true, data: retry.data, message: retry.message }
+      }
+    }
+
+    return { ok: false, data: null, message }
   } finally {
     acceptInFlight.delete(callId)
   }
