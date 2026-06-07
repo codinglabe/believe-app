@@ -148,6 +148,7 @@ interface ChatContextType {
   setChatRooms: React.Dispatch<React.SetStateAction<ChatRoom[]>>
   activeRoom: ChatRoom | null
   setActiveRoom: (room: ChatRoom | null) => void
+  selectChatRoom: (room: ChatRoom | null) => void
   messages: ChatMessage[]
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   hasMoreMessages: boolean
@@ -190,6 +191,18 @@ export interface ChatTopic {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
+function syncChatRoomUrl(roomId: number | null): void {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  const target = roomId && roomId > 0 ? `/chat?room=${roomId}` : "/chat"
+  const current = `${window.location.pathname}${window.location.search}`
+  if (current !== target) {
+    window.history.replaceState(window.history.state, "", target)
+  }
+}
+
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { props, url } = usePage()
   const p = props as { chatRooms?: ChatRoom[] }
@@ -205,16 +218,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Intentional: re-sync on navigation (url) or when the server’s room list set changes; avoid depending on the whole Inertia `props` object.
   }, [url, roomsSyncKey])
 
-  const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [hasMoreMessages, setHasMoreMessages] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [typingUsers, setTypingUsers] = useState<User[]>([])
-  const [activeUsers, setActiveUsers] = useState<User[]>([])
-  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null)
-  const [searchQuery, setSearchQuery] = useState<string>("")
-  const [allTopics, setAllTopics] = useState<ChatTopic[]>([])
-  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [activeRoom, setActiveRoomState] = useState<ChatRoom | null>(null)
+
+  const setActiveRoom = useCallback((room: ChatRoom | null) => {
+    setActiveRoomState(room)
+    syncChatRoomUrl(room?.id ?? null)
+  }, [])
+
+  const selectChatRoom = setActiveRoom
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -226,7 +237,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return
     }
 
-    setActiveRoom((prev) => {
+    setActiveRoomState((prev) => {
       if (prev?.id === roomId) {
         return prev
       }
@@ -234,6 +245,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return room ?? prev
     })
   }, [url, chatRooms])
+
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [typingUsers, setTypingUsers] = useState<User[]>([])
+  const [activeUsers, setActiveUsers] = useState<User[]>([])
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>("")
+  const [allTopics, setAllTopics] = useState<ChatTopic[]>([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
 
   const allUsers = (props.allUsers as User[]) || []
   const currentUser = props.currentUser as User
@@ -1082,6 +1103,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setChatRooms,
         activeRoom,
         setActiveRoom,
+        selectChatRoom,
         messages,
         setMessages,
         hasMoreMessages,

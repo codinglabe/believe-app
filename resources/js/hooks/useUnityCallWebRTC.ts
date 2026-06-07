@@ -83,6 +83,13 @@ function isPeerConnected(pc: RTCPeerConnection): boolean {
   return ice === "connected" || ice === "completed" || conn === "connected"
 }
 
+function peerHasLiveOutgoingAudio(pc: RTCPeerConnection): boolean {
+  return pc.getSenders().some(
+    (sender) =>
+      sender.track?.kind === "audio" && sender.track.enabled && sender.track.readyState === "live",
+  )
+}
+
 export function useUnityCallWebRTC({
   callId,
   userId,
@@ -237,23 +244,37 @@ export function useUnityCallWebRTC({
     if (!stream) {
       return
     }
+
     stream.getTracks().forEach((track) => {
+      track.enabled = true
+      const senderWithTrack = pc.getSenders().find((sender) => sender.track?.kind === track.kind)
+      if (senderWithTrack) {
+        if (senderWithTrack.track?.id !== track.id) {
+          void senderWithTrack.replaceTrack(track)
+        }
+        return
+      }
+
+      const emptySender = pc.getSenders().find((sender) => !sender.track)
+      if (track.kind === "audio" && emptySender) {
+        void emptySender.replaceTrack(track)
+        return
+      }
+
       if (!pc.getSenders().some((sender) => sender.track?.kind === track.kind)) {
         pc.addTrack(track, stream)
       }
     })
   }, [])
 
-  const attachLocalTracks = useCallback((stream: MediaStream) => {
-    peerConnections.current.forEach((pc) => {
-      stream.getTracks().forEach((track) => {
-        const hasTrack = pc.getSenders().some((sender) => sender.track?.kind === track.kind)
-        if (!hasTrack) {
-          pc.addTrack(track, stream)
-        }
+  const attachLocalTracks = useCallback(
+    (stream: MediaStream) => {
+      peerConnections.current.forEach((pc, peerId) => {
+        ensureLocalTracksOnPeer(peerId, pc)
       })
-    })
-  }, [])
+    },
+    [ensureLocalTracksOnPeer],
+  )
 
   const createPeerConnection = useCallback(
     (peerId: string): RTCPeerConnection => {
@@ -339,6 +360,44 @@ export function useUnityCallWebRTC({
     [sendSignal, userIdStr],
   )
 
+  const renegotiateAudioWithPeer = useCallback(
+    async (peerId: string) => {
+      if (callEnded.current || peerId === userIdStr || !localStreamRef.current) {
+        return
+      }
+
+      let pc = peerConnections.current.get(peerId)
+      if (!pc) {
+        pc = createPeerConnection(peerId)
+      }
+
+      ensureLocalTracksOnPeer(peerId, pc)
+      if (!peerHasLiveOutgoingAudio(pc)) {
+        return
+      }
+
+      if (pc.signalingState !== "stable") {
+        return
+      }
+
+      try {
+        makingOffer.current.set(peerId, true)
+        const offer = await pc.createOffer({ offerToReceiveAudio: true })
+        const normalized = normalizeSessionDescription(offer)
+        if (!normalized) {
+          return
+        }
+        await pc.setLocalDescription(normalized)
+        sendOfferToPeer(peerId, pc)
+      } catch (error) {
+        console.error("[UnityCallWebRTC] Failed to renegotiate audio:", error)
+      } finally {
+        makingOffer.current.set(peerId, false)
+      }
+    },
+    [createPeerConnection, ensureLocalTracksOnPeer, sendOfferToPeer, userIdStr],
+  )
+
   const createOfferForPeer = useCallback(
     async (peerId: string) => {
       if (callEnded.current || peerId === userIdStr || !localStreamRef.current) {
@@ -347,12 +406,22 @@ export function useUnityCallWebRTC({
 
       let pc = peerConnections.current.get(peerId)
       if (pc && isPeerNegotiationSettled(pc)) {
+        if (!peerHasLiveOutgoingAudio(pc)) {
+          await renegotiateAudioWithPeer(peerId)
+        }
         return
       }
 
       if (pc && pc.signalingState !== "stable") {
         if (pc.signalingState === "have-local-offer" && pc.localDescription) {
-          sendOfferToPeer(peerId, pc)
+          if (peerHasLiveOutgoingAudio(pc)) {
+            sendOfferToPeer(peerId, pc)
+          } else {
+            ensureLocalTracksOnPeer(peerId, pc)
+            if (peerHasLiveOutgoingAudio(pc)) {
+              await renegotiateAudioWithPeer(peerId)
+            }
+          }
         }
         return
       }
@@ -390,7 +459,14 @@ export function useUnityCallWebRTC({
         makingOffer.current.set(peerId, false)
       }
     },
-    [createPeerConnection, ensureLocalTracksOnPeer, resetPeerConnection, sendOfferToPeer, userIdStr],
+    [
+      createPeerConnection,
+      ensureLocalTracksOnPeer,
+      renegotiateAudioWithPeer,
+      resetPeerConnection,
+      sendOfferToPeer,
+      userIdStr,
+    ],
   )
 
   const handleSignal = useCallback(
@@ -413,6 +489,9 @@ export function useUnityCallWebRTC({
         const from = normalized.from
         const existing = peerConnections.current.get(from)
         if (existing && isPeerNegotiationSettled(existing)) {
+          if (!peerHasLiveOutgoingAudio(existing)) {
+            await renegotiateAudioWithPeer(from)
+          }
           return
         }
         await createOfferForPeer(from)
@@ -519,6 +598,7 @@ export function useUnityCallWebRTC({
       createOfferForPeer,
       createPeerConnection,
       ensureLocalTracksOnPeer,
+      renegotiateAudioWithPeer,
       resetPeerConnection,
       sendSignal,
       updateMediaConnected,
@@ -680,6 +760,12 @@ export function useUnityCallWebRTC({
       setPermissionStatus("granted")
       setConnectionStatus(channelReady.current ? "Connecting audio…" : "Joining call channel…")
 
+      peerConnections.current.forEach((pc, peerId) => {
+        if (isPeerNegotiationSettled(pc) && !peerHasLiveOutgoingAudio(pc)) {
+          void renegotiateAudioWithPeer(peerId)
+        }
+      })
+
       flushPendingSignalsRef.current()
       void fetchPendingSignalsRef.current()
       connectToAcceptedPeers()
@@ -689,7 +775,7 @@ export function useUnityCallWebRTC({
       setPermissionStatus(denied ? "denied" : "prompt")
       setConnectionStatus(denied ? "Microphone access blocked" : "Could not access microphone")
     }
-  }, [attachLocalTracks, connectToAcceptedPeers, mediaActive])
+  }, [attachLocalTracks, connectToAcceptedPeers, mediaActive, renegotiateAudioWithPeer])
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current

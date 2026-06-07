@@ -12,7 +12,7 @@ interface ChatInitiation {
 }
 
 export function useChatInitialization() {
-    const { createDirectChat, setActiveRoom, chatRooms } = useChat()
+    const { createDirectChat, selectChatRoom, chatRooms } = useChat()
 
     useEffect(() => {
         const initializeChat = async () => {
@@ -30,7 +30,7 @@ export function useChatInitialization() {
 
                 if (room) {
                     console.log("[v0] Chat room created/retrieved:", room.id)
-                    setActiveRoom(room)
+                    selectChatRoom(room)
 
                     sessionStorage.removeItem("chat_initiation")
                 }
@@ -45,5 +45,5 @@ export function useChatInitialization() {
         }, 500)
 
         return () => clearTimeout(timer)
-    }, [createDirectChat, setActiveRoom])
+    }, [createDirectChat, selectChatRoom])
 }
