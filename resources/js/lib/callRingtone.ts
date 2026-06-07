@@ -94,13 +94,21 @@ export async function startCallRingtone(): Promise<void> {
   activeController = controller
 
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-    navigator.vibrate([500, 250, 500, 250, 500])
+    try {
+      navigator.vibrate([500, 250, 500, 250, 500])
+    } catch {
+      // Chrome may block vibration until the user interacts with the page.
+    }
   }
 }
 
 export function stopCallRingtone(): void {
   stopActiveRingtone()
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-    navigator.vibrate(0)
+    try {
+      navigator.vibrate(0)
+    } catch {
+      // ignore blocked vibration API
+    }
   }
 }

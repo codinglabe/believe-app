@@ -520,14 +520,76 @@ class UnityCallService
             return true;
         }
 
-        if (! $call->isActive() || $call->chatRoom?->type === 'direct') {
+        if (! $call->isActive()) {
             return false;
         }
 
-        return ChatRoom::query()
-            ->whereKey($call->chat_room_id)
-            ->whereHas('members', fn ($q) => $q->where('users.id', $user->id))
+        $chatRoom = $call->relationLoaded('chatRoom')
+            ? $call->chatRoom
+            : ChatRoom::query()->find($call->chat_room_id);
+
+        if (! $chatRoom) {
+            return false;
+        }
+
+        if ($chatRoom->type === 'direct') {
+            return false;
+        }
+
+        if ($chatRoom->members()->where('users.id', $user->id)->exists()) {
+            return true;
+        }
+
+        if ($chatRoom->type === 'public') {
+            return $this->ensurePublicChatRoomMember($chatRoom, $user);
+        }
+
+        return false;
+    }
+
+    /**
+     * Public group chats appear in the sidebar before explicit join — mirror chat message access.
+     */
+    private function ensurePublicChatRoomMember(ChatRoom $chatRoom, User $user): bool
+    {
+        if (! $chatRoom->is_active) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            $this->attachChatRoomMember($chatRoom, $user);
+
+            return true;
+        }
+
+        if (! in_array($user->role, ['organization', 'user'], true)) {
+            return false;
+        }
+
+        $interestedTopicIds = $user->interestedTopics()->pluck('chat_topics.id')->all();
+        $matchesTopic = $chatRoom->topics()
+            ->whereIn('chat_topics.id', $interestedTopicIds)
             ->exists();
+
+        if (! $matchesTopic) {
+            return false;
+        }
+
+        $this->attachChatRoomMember($chatRoom, $user);
+
+        return true;
+    }
+
+    private function attachChatRoomMember(ChatRoom $chatRoom, User $user): void
+    {
+        if ($chatRoom->members()->where('users.id', $user->id)->exists()) {
+            return;
+        }
+
+        $chatRoom->members()->attach($user->id, [
+            'role' => 'member',
+            'joined_at' => now(),
+        ]);
     }
 
     private function ensureCalleeParticipant(UnityCall $call, User $user): UnityCallParticipant
