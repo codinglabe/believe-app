@@ -283,6 +283,9 @@ class UnityCallService
         $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'ended');
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+    }
+
+    public function leave(UnityCall $call, User $user): UnityCall
     {
         $participant = $this->requireParticipant($call, $user);
 
