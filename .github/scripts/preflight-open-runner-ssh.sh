@@ -14,6 +14,12 @@ PROBE_SLEEP="${PROBE_SLEEP:-2}"
 RUNNER_IP="$(curl -4 -fsS --max-time 10 https://api.ipify.org 2>/dev/null || echo unknown)"
 echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_CONNECT_HOST}:${SSH_PORT}"
 
+# Development deploy relays through believeinunity (production SSH key) to reach c3ers.
+if [ "${SSH_RELAY_TO_C3ERS:-false}" = "true" ]; then
+  echo "Relay mode — skipping CSF preflight (uses ${SSH_RELAY_USER:-believeinunity} SSH entry)."
+  exit 0
+fi
+
 print_fix_instructions() {
   echo "::error::GitHub Actions cannot reach SSH on ${SSH_CONNECT_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
   echo "::error::CSF/firewall is blocking deploy SSH."

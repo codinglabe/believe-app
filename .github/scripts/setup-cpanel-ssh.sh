@@ -2,13 +2,17 @@
 # Reliable cPanel SSH for GitHub Actions (IPv4-only, minimal noise).
 # Required env: SSH_PRIVATE_KEY, DEPLOY_USER, SSH_DIR
 # Optional env: DEPLOY_HOST, SSH_CONNECT_HOST, SSH_PORT (22), SSH_MAX_ATTEMPTS (6), SSH_RETRY_SLEEP (5),
-#   SSH_USE_TCP_PROBE (false), SSH_USE_DEPLOY_HOST (false)
+#   SSH_USE_TCP_PROBE (false), SSH_USE_DEPLOY_HOST (false), SSH_RELAY_TO_C3ERS (false)
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-c3ers}"
 DEPLOY_HOST="${DEPLOY_HOST:-501c3ers.com}"
 SSH_PORT="${SSH_PORT:-22}"
 SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
+SSH_RELAY_TO_C3ERS="${SSH_RELAY_TO_C3ERS:-false}"
+SSH_RELAY_USER="${SSH_RELAY_USER:-believeinunity}"
+SSH_RELAY_HOST="${SSH_RELAY_HOST:-72.60.226.88}"
+SERVER_INNER_KEY="${SERVER_INNER_KEY:-/home/believeinunity/.local/share/.gconf/deploy_key}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
 SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-10}"
 SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
@@ -38,7 +42,11 @@ if ! grep -q 'BEGIN.*PRIVATE KEY' "${SSH_DIR}/cpanel_deploy"; then
 fi
 
 RUNNER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo unknown)"
-echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
+if [ "${SSH_RELAY_TO_C3ERS}" = "true" ]; then
+  echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_RELAY_USER}@${SSH_RELAY_HOST}:${SSH_PORT} -> ${DEPLOY_USER}@127.0.0.1 (c3ers deploy)"
+else
+  echo "Runner IPv4: ${RUNNER_IP} -> ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT}"
+fi
 
 request_runner_allow() {
   local token="${DEPLOY_RUNNER_ALLOW_TOKEN:-}"
@@ -68,9 +76,14 @@ request_runner_allow() {
   return 1
 }
 
-request_runner_allow || true
+if [ "${SSH_RELAY_TO_C3ERS}" != "true" ]; then
+  request_runner_allow || true
+fi
 
 ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+if [ "${SSH_RELAY_TO_C3ERS}" = "true" ]; then
+  ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${SSH_RELAY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+fi
 if [ "${SSH_USE_DEPLOY_HOST}" = "true" ] && [ -n "${DEPLOY_HOST}" ] && [ "${DEPLOY_HOST}" != "${SSH_CONNECT_HOST}" ]; then
   ssh-keyscan -T 8 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
 fi
@@ -90,6 +103,64 @@ format_ssh_hostname() {
   else
     printf '%s' "${host}"
   fi
+}
+
+write_relay_ssh_config() {
+  local relay_host inner_key runner_inner_key
+  relay_host="$(format_ssh_hostname "${SSH_RELAY_HOST}")"
+  runner_inner_key="${SSH_DIR}/c3ers_inner"
+
+  printf '%s\n' \
+    'Host believeinunity-vps' \
+    "  HostName ${relay_host}" \
+    "  User ${SSH_RELAY_USER}" \
+    "  Port ${SSH_PORT}" \
+    "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
+    '  IdentitiesOnly yes' \
+    '  StrictHostKeyChecking accept-new' \
+    '  ServerAliveInterval 15' \
+    '  ServerAliveCountMax 4' \
+    '  AddressFamily inet' \
+    '  IPQoS throughput' \
+    '  TCPKeepAlive yes' \
+    > "${SSH_DIR}/config"
+
+  printf '%s\n' \
+    'Host cpanel-deploy' \
+    '  HostName 127.0.0.1' \
+    "  User ${DEPLOY_USER}" \
+    "  Port ${SSH_PORT}" \
+    "  IdentityFile ${runner_inner_key}" \
+    '  IdentitiesOnly yes' \
+    "  ProxyCommand ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} believeinunity-vps -W 127.0.0.1:${SSH_PORT}" \
+    '  StrictHostKeyChecking accept-new' \
+    '  ServerAliveInterval 15' \
+    '  ServerAliveCountMax 4' \
+    '  AddressFamily inet' \
+    >> "${SSH_DIR}/config"
+  chmod 600 "${SSH_DIR}/config"
+}
+
+bootstrap_c3ers_relay() {
+  write_relay_ssh_config
+
+  if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
+    believeinunity-vps "echo RELAY_OK" >/dev/null 2>&1; then
+    echo "::error::Cannot SSH to relay host ${SSH_RELAY_USER}@${SSH_RELAY_HOST}"
+    return 1
+  fi
+
+  if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps \
+    "test -f ${SERVER_INNER_KEY} && ssh -i ${SERVER_INNER_KEY} -o BatchMode=yes -o StrictHostKeyChecking=no ${DEPLOY_USER}@127.0.0.1 whoami" 2>/dev/null \
+    | grep -qx "${DEPLOY_USER}"; then
+    echo "::error::Inner hop failed (${SERVER_INNER_KEY} -> ${DEPLOY_USER}@127.0.0.1)."
+    return 1
+  fi
+
+  scp -F "${SSH_DIR}/config" -o BatchMode=yes "believeinunity-vps:${SERVER_INNER_KEY}" "${SSH_DIR}/c3ers_inner"
+  chmod 600 "${SSH_DIR}/c3ers_inner"
+  write_relay_ssh_config
+  echo "Relay SSH ready (${SSH_RELAY_USER} -> ${DEPLOY_USER}@127.0.0.1)."
 }
 
 write_ssh_host() {
@@ -136,24 +207,35 @@ if [ "${SSH_ALLOW_IPV6}" = "true" ] && [ -n "${SSH_IPV6_HOST:-}" ]; then
 fi
 
 print_firewall_help() {
-  echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts (${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT})."
-  echo "::error::Runner IP ${RUNNER_IP} is blocked by CSF/firewall or the deploy key is wrong."
+  echo "::error::SSH failed after ${SSH_MAX_ATTEMPTS} attempts."
+  if [ "${SSH_RELAY_TO_C3ERS}" = "true" ]; then
+    echo "::error::Could not reach ${DEPLOY_USER} via ${SSH_RELAY_USER}@${SSH_RELAY_HOST} (runner ${RUNNER_IP})."
+  else
+    echo "::error::Could not reach ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
+  fi
   echo "::error::ONE-TIME fix (WHM -> Terminal as root):"
   echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
   echo "::error::Add DEPLOY_RUNNER_ALLOW_TOKEN to GitHub Secrets (printed by setup script)."
-  if command -v curl >/dev/null 2>&1; then
-    echo "GitHub Actions IPv4 ranges (first 8):"
-    curl -fsS --max-time 15 https://api.github.com/meta 2>/dev/null \
-      | python3 -c "import json,sys; d=json.load(sys.stdin); [print(x) for x in d.get('actions',[]) if ':' not in x][:8]" 2>/dev/null \
-      || true
-  fi
 }
 
 connected=0
 last_err=""
+
 for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
-  host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
-  write_ssh_host "${host}"
+  if [ "${SSH_RELAY_TO_C3ERS}" = "true" ]; then
+    host="${SSH_RELAY_HOST}"
+    if ! bootstrap_c3ers_relay; then
+      last_err="relay_bootstrap_failed"
+      if [ "${attempt}" -eq "${SSH_MAX_ATTEMPTS}" ] || [ "${attempt}" -eq 1 ]; then
+        echo "Attempt ${attempt}/${SSH_MAX_ATTEMPTS}: relay bootstrap failed"
+      fi
+      sleep "${SSH_RETRY_SLEEP}"
+      continue
+    fi
+  else
+    host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
+    write_ssh_host "${host}"
+  fi
 
   probe_host="${host}"
   if [[ "${host}" == \[*\] ]]; then
@@ -161,7 +243,7 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
     probe_host="${probe_host%]}"
   fi
 
-  if [ "${attempt}" -eq 3 ] || [ "${attempt}" -eq 6 ]; then
+  if [ "${SSH_RELAY_TO_C3ERS}" != "true" ] && { [ "${attempt}" -eq 3 ] || [ "${attempt}" -eq 6 ]; }; then
     request_runner_allow || true
   fi
 
@@ -189,7 +271,7 @@ for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
 done
 
 if [ "${connected}" -ne 1 ]; then
-  if [ -n "${last_err}" ]; then
+  if [ -n "${last_err}" ] && [ "${last_err}" != "relay_bootstrap_failed" ] && [ "${last_err}" != "tcp_unreachable" ]; then
     echo "${last_err}" | tail -8
   fi
   print_firewall_help

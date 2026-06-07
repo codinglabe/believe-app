@@ -1,9 +1,9 @@
 # Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
 # Production uses deploy-production.yml → believeinunity.org on branch `production`.
 #
-# Required secret: CPANEL_SSH_KEY (private key for DEPLOY_USER@host)
+# Required secret: CPANEL_SSH_KEY_PRODUCTION (same VPS entry as production deploy)
 # Required variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL
-# Required secret: DEPLOY_RUNNER_ALLOW_TOKEN (same value as server .env)
+# Deploys to c3ers@501c3ers.com via believeinunity relay (CSF-safe for GitHub Actions).
 name: Deploy development (501c3ers.com)
 
 on:
@@ -35,6 +35,9 @@ jobs:
       SSH_RETRY_SLEEP: 8
       SSH_USE_TCP_PROBE: false
       SSH_USE_DEPLOY_HOST: true
+      SSH_RELAY_TO_C3ERS: true
+      SSH_RELAY_USER: believeinunity
+      SSH_RELAY_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -98,12 +101,8 @@ jobs:
       - name: Verify deploy secrets
         run: |
           missing=0
-          if [ -z "${{ secrets.CPANEL_SSH_KEY }}" ]; then
-            echo "::error::Missing GitHub secret CPANEL_SSH_KEY."
-            missing=1
-          fi
-          if [ -z "${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}" ]; then
-            echo "::error::Missing GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN."
+          if [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
+            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
             missing=1
           fi
           if [ "${missing}" -eq 1 ]; then
@@ -115,15 +114,17 @@ jobs:
         env:
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
-          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_CONNECT_HOST: ${{ env.SSH_RELAY_HOST }}
           SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
+          SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
         run: |
           chmod +x .github/scripts/preflight-open-runner-ssh.sh
           bash .github/scripts/preflight-open-runner-ssh.sh
 
       - name: Setup SSH
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy
           DEPLOY_USER: ${{ env.DEPLOY_USER }}
           DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
@@ -133,11 +134,14 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
+          SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
+          SSH_RELAY_HOST: ${{ env.SSH_RELAY_HOST }}
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "::error::Add repository secret CPANEL_SSH_KEY for ${DEPLOY_USER}@${DEPLOY_HOST}."
+            echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
           fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
