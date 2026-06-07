@@ -136,6 +136,7 @@ class UnityCallController extends Controller
                 'status' => $p->status,
             ])->values(),
             'isCaller' => $isCaller,
+            'isGroupCall' => $call->chatRoom?->type !== 'direct',
             'participantStatus' => $participant?->status,
             'iceServers' => config('webrtc.ice_servers', []),
             'endCallUrl' => route('unity-calls.end', $call->id),

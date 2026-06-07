@@ -19,6 +19,8 @@ class UnityCallParticipant extends Model
 
     public const STATUS_MISSED = 'missed';
 
+    public const STATUS_LEFT = 'left';
+
     protected $fillable = [
         'unity_call_id',
         'user_id',

@@ -5,7 +5,7 @@ import { Head, router } from "@inertiajs/react"
 import { Loader2, Mic, MicOff, PhoneOff, Volume2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
-import { cancelUnityCall, endUnityCall, acceptUnityCall } from "@/lib/unityCall"
+import { cancelUnityCall, declineUnityCall, endUnityCall, acceptUnityCall } from "@/lib/unityCall"
 import { dispatchUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
@@ -17,6 +17,7 @@ type Props = {
   caller: { id: number; name: string; avatar?: string | null }
   participants: UnityCallParticipantRow[]
   isCaller: boolean
+  isGroupCall: boolean
   participantStatus: string | null
   iceServers: RTCIceServer[]
   endCallUrl: string
@@ -59,6 +60,7 @@ export default function UnityCallShow({
   caller,
   participants: initialParticipants,
   isCaller,
+  isGroupCall,
   participantStatus,
   iceServers,
   chatUrl,
@@ -164,12 +166,21 @@ export default function UnityCallShow({
       setCall(payload.call)
       setParticipants(payload.participants)
 
+      if (payload.reason === "participant_left") {
+        const self = payload.participants.find((p) => p.userId === authUserId)
+        if (self?.status === "left") {
+          stopMedia()
+          router.visit(chatUrl)
+        }
+        return
+      }
+
       if (["ended", "cancelled", "declined", "missed"].includes(payload.reason)) {
         stopMedia()
         router.visit(chatUrl)
       }
     },
-    [chatUrl, stopMedia],
+    [authUserId, chatUrl, stopMedia],
   )
 
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
@@ -202,17 +213,37 @@ export default function UnityCallShow({
   const handleEnd = async () => {
     setEnding(true)
     stopMedia()
-    if (call.status === "ringing" && isCaller) {
-      await cancelUnityCall(call.id)
+
+    if (call.status === "ringing") {
+      if (isCaller) {
+        await cancelUnityCall(call.id)
+        dispatchUnityCallTerminated({
+          reason: "cancelled",
+          call: { ...call, status: "cancelled" },
+          caller,
+          participants,
+        })
+      } else {
+        await declineUnityCall(call.id)
+        dispatchUnityCallTerminated({
+          reason: "declined",
+          call: { ...call, status: "declined" },
+          caller,
+          participants,
+        })
+      }
     } else {
       await endUnityCall(call.id)
+      if (!isGroupCall || isCaller) {
+        dispatchUnityCallTerminated({
+          reason: "ended",
+          call: { ...call, status: "ended" },
+          caller,
+          participants,
+        })
+      }
     }
-    dispatchUnityCallTerminated({
-      reason: call.status === "ringing" && isCaller ? "cancelled" : "ended",
-      call: { ...call, status: call.status === "ringing" && isCaller ? "cancelled" : "ended" },
-      caller,
-      participants,
-    })
+
     setEnding(false)
     router.visit(chatUrl)
   }
@@ -309,7 +340,13 @@ export default function UnityCallShow({
               <PhoneOff className="h-7 w-7" />
             </Button>
             <span className="text-sm text-white/60">
-              {call.status === "ringing" && isCaller ? "Cancel call" : "End call"}
+              {call.status === "ringing"
+                ? isCaller
+                  ? "Cancel call"
+                  : "Decline"
+                : isGroupCall && !isCaller
+                  ? "Leave call"
+                  : "End call"}
             </span>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { callNotificationsEnabled, requestCallPermissionsPrompt } from "@/lib/call-permissions"
 import { useChat } from "@/providers/chat-provider"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
@@ -126,6 +127,9 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
             onClick={() => {
               if (!activeRoom) {
                 return
+              }
+              if (!callNotificationsEnabled()) {
+                requestCallPermissionsPrompt()
               }
               setStartingCall(true)
               void startAudioCall(activeRoom.id).then((joinUrl) => {

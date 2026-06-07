@@ -2,6 +2,7 @@
 import { ChatLayout } from "@/components/chat/chat-layout"
 import { CsrfTokenSync } from "@/components/CsrfTokenSync"
 import { syncPushTokenWithServer } from "@/lib/push-token-sync";
+import { callNotificationsEnabled, requestCallPermissionsPrompt } from "@/lib/call-permissions";
 import { registerServiceWorker } from "@/pwa/register-service-worker";
 import { ChatProvider } from "@/providers/chat-provider"
 import { usePage } from "@inertiajs/react";
@@ -20,6 +21,10 @@ export default function ChatPage() {
         const saveFCMTokenAfterLogin = async () => {
             if (!auth?.user?.id) return
             try {
+                if (!callNotificationsEnabled()) {
+                    requestCallPermissionsPrompt()
+                    return
+                }
                 await syncPushTokenWithServer()
             } catch (err) {
                 console.error("[ChatPage] FCM token sync error:", err)

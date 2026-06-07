@@ -195,10 +195,22 @@ class UnityCallService
 
     public function end(UnityCall $call, User $user): UnityCall
     {
-        $this->requireParticipant($call, $user);
+        $participant = $this->requireParticipant($call, $user);
 
         if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
             throw ValidationException::withMessages(['call' => __('This call has already ended.')]);
+        }
+
+        $call->loadMissing(['caller', 'participants', 'chatRoom']);
+        $isDirect = $call->chatRoom?->type === 'direct';
+        $isCaller = (int) $call->caller_id === (int) $user->id;
+
+        if ($call->status === UnityCall::STATUS_RINGING && ! $isCaller) {
+            return $this->decline($call, $user);
+        }
+
+        if (! $isDirect && ! $isCaller && $call->status === UnityCall::STATUS_ACCEPTED) {
+            return $this->leave($call, $user);
         }
 
         $call->update([
@@ -210,11 +222,51 @@ class UnityCallService
             ->where('status', UnityCallParticipant::STATUS_RINGING)
             ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
 
-        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+        $call->loadMissing(['participants.user', 'chatRoom']);
         $payload = $this->notifier->payloadForUser($call, $call->caller, 'ended');
 
-        foreach ($call->participants as $participant) {
-            $this->notifier->broadcastStatus($participant->user_id, $payload);
+        foreach ($call->participants as $p) {
+            $this->notifier->broadcastStatus($p->user_id, $payload);
+        }
+
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
+    }
+
+    public function leave(UnityCall $call, User $user): UnityCall
+    {
+        $participant = $this->requireParticipant($call, $user);
+
+        if ($participant->role === UnityCallParticipant::ROLE_CALLER) {
+            throw ValidationException::withMessages(['call' => __('The host cannot leave — end the call for everyone instead.')]);
+        }
+
+        if ($call->status !== UnityCall::STATUS_ACCEPTED) {
+            throw ValidationException::withMessages(['call' => __('You can only leave an active call.')]);
+        }
+
+        $participant->update(['status' => UnityCallParticipant::STATUS_LEFT]);
+
+        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+
+        $remainingAcceptedCallees = $call->participants
+            ->where('role', UnityCallParticipant::ROLE_CALLEE)
+            ->where('status', UnityCallParticipant::STATUS_ACCEPTED)
+            ->count();
+
+        if ($remainingAcceptedCallees === 0) {
+            $call->update([
+                'status' => UnityCall::STATUS_ENDED,
+                'ended_at' => now(),
+            ]);
+            $reason = 'ended';
+        } else {
+            $reason = 'participant_left';
+        }
+
+        $payload = $this->notifier->payloadForUser($call->fresh(['participants.user', 'chatRoom']), $call->caller, $reason);
+
+        foreach ($call->participants as $p) {
+            $this->notifier->broadcastStatus($p->user_id, $payload);
         }
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
