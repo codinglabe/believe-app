@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\UnityCallRoomIncoming;
 use App\Events\UnityCallRoomStatus;
+use App\Events\UnityCallSessionStatusChanged;
 use App\Events\UnityCallStatusChanged;
 use App\Models\ChatRoom;
 use App\Models\UnityCall;
@@ -87,12 +88,19 @@ class UnityCallNotifier
     public function broadcastRoomStatus(UnityCall $call, User $caller, string $reason): void
     {
         $call->loadMissing(['chatRoom', 'participants.user']);
-        if (! $call->chatRoom || $call->chatRoom->type === 'direct') {
+        if (! $call->chatRoom) {
             return;
         }
 
         $payload = $this->payloadForUser($call, $caller, $reason);
         UnityCallRoomStatus::dispatch($call->chatRoom, $payload);
+    }
+
+    public function broadcastSessionStatus(UnityCall $call, User $caller, string $reason): void
+    {
+        $call->loadMissing(['participants.user', 'chatRoom']);
+        $payload = $this->payloadForUser($call, $caller, $reason);
+        UnityCallSessionStatusChanged::dispatch($call->id, $payload);
     }
 
     public function broadcastStatus(int $userId, array $payload): void

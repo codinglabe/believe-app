@@ -13,9 +13,10 @@ import {
   acceptUnityCall,
   isLeavingUnityCall,
   navigateAfterUnityCall,
+  unityCallChatChannelName,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
-import { dispatchUnityCallTerminated } from "@/lib/unityCallEvents"
+import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
@@ -48,36 +49,64 @@ function formatElapsed(totalSeconds: number): string {
 
 function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: boolean }) {
   const ref = useRef<HTMLAudioElement>(null)
-  const canSelectOutput = supportsAudioOutputSelection()
+  const fallbackCleanup = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    if (!canSelectOutput) {
-      if (speakerOn) {
-        return attachWebAudioFallback(stream)
-      }
-      const audio = ref.current
-      if (!audio) {
-        return
-      }
-      audio.srcObject = stream
-      void audio.play().catch(() => {})
-      return () => {
-        audio.srcObject = null
-      }
-    }
-
     const audio = ref.current
     if (!audio) {
       return
     }
+
     audio.srcObject = stream
-    void applyRemoteAudioOutput(audio, speakerOn)
+    audio.autoplay = true
+    ;(audio as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
+
+    fallbackCleanup.current?.()
+    fallbackCleanup.current = null
+
+    const playStream = async () => {
+      try {
+        if (supportsAudioOutputSelection()) {
+          await applyRemoteAudioOutput(audio, speakerOn)
+        } else if (speakerOn) {
+          fallbackCleanup.current = attachWebAudioFallback(stream)
+          await audio.play().catch(() => {})
+        } else {
+          await audio.play().catch(() => {})
+        }
+      } catch {
+        await audio.play().catch(() => {})
+      }
+    }
+
+    void playStream()
+
+    const onTrackUnmute = () => {
+      void audio.play().catch(() => {})
+    }
+    stream.getAudioTracks().forEach((track) => {
+      track.addEventListener("unmute", onTrackUnmute)
+    })
+
     return () => {
+      fallbackCleanup.current?.()
+      fallbackCleanup.current = null
+      stream.getAudioTracks().forEach((track) => {
+        track.removeEventListener("unmute", onTrackUnmute)
+      })
       audio.srcObject = null
     }
-  }, [stream, speakerOn, canSelectOutput])
+  }, [stream, speakerOn])
 
-  return <audio ref={ref} autoPlay playsInline={!speakerOn || !canSelectOutput} className="hidden" />
+  return (
+    <audio
+      ref={ref}
+      data-unity-call-remote="1"
+      autoPlay
+      playsInline
+      className="hidden"
+    />
+  )
 }
 
 export default function UnityCallShow({
@@ -115,6 +144,7 @@ export default function UnityCallShow({
     : callConnected
 
   const {
+    localStream,
     remoteStreams,
     mediaConnected,
     isAudioEnabled,
@@ -191,8 +221,23 @@ export default function UnityCallShow({
     return "Setting up call…"
   }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus])
 
-  const onStatus = useCallback(
+  const showMediaControls =
+    Boolean(localStream) &&
+    permissionStatus === "granted" &&
+    !["ended", "cancelled", "declined", "missed"].includes(call.status)
+
+  const unlockRemotePlayback = useCallback(() => {
+    document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+      void (node as HTMLAudioElement).play().catch(() => {})
+    })
+  }, [])
+
+  const handleCallTerminated = useCallback(
     (payload: UnityCallStatusEvent) => {
+      if (payload.call.id !== call.id) {
+        return
+      }
+
       setCall(payload.call)
       setParticipants(payload.participants)
 
@@ -205,17 +250,43 @@ export default function UnityCallShow({
         return
       }
 
-      if (["ended", "cancelled", "declined", "missed"].includes(payload.reason)) {
+      if (isUnityCallTerminated(payload)) {
         stopMedia()
+        dispatchUnityCallTerminated(payload)
         if (!isLeavingUnityCall(payload.call.id)) {
           navigateAfterUnityCall(payload.call.id, payload.call.chatRoomId ?? call.chatRoomId)
         }
       }
     },
-    [authUserId, call.chatRoomId, stopMedia],
+    [authUserId, call.chatRoomId, call.id, stopMedia],
   )
 
+  const onStatus = handleCallTerminated
+
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
+
+  useEcho<UnityCallStatusEvent>(
+    `unity-call.${call.id}`,
+    ".call.session.status",
+    handleCallTerminated,
+    [call.id, handleCallTerminated],
+    "private",
+  )
+
+  const chatChannelName = useMemo(() => {
+    if (!call.chatRoomId) {
+      return null
+    }
+    return unityCallChatChannelName(call.chatRoomId, isGroupCall)
+  }, [call.chatRoomId, isGroupCall])
+
+  useEcho<UnityCallStatusEvent>(
+    chatChannelName ?? "chat.disabled",
+    ".call.status",
+    handleCallTerminated,
+    [chatChannelName, handleCallTerminated],
+    chatChannelName?.startsWith("public-chat.") ? "public" : "private",
+  )
 
   useEffect(() => {
     if (!callConnected || !call.answeredAt) {
@@ -291,10 +362,10 @@ export default function UnityCallShow({
         caller,
         participants,
       })
-    } else if (!isGroupCall || isCaller) {
+    } else {
       dispatchUnityCallTerminated({
-        reason: "ended",
-        call: { ...call, status: "ended" },
+        reason: wasRinging ? "cancelled" : "ended",
+        call: { ...call, status: wasRinging ? "cancelled" : "ended" },
         caller,
         participants,
       })
@@ -368,12 +439,15 @@ export default function UnityCallShow({
         </div>
 
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-6 pb-8 pt-6 safe-area-inset-bottom">
-          {callConnected && mediaConnected ? (
+          {showMediaControls ? (
             <div className="flex items-center gap-8">
               <button
                 type="button"
                 className="flex flex-col items-center gap-2 text-white/70"
-                onClick={() => toggleMute()}
+                onClick={() => {
+                  toggleMute()
+                  unlockRemotePlayback()
+                }}
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
                   {!isAudioEnabled ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -384,7 +458,10 @@ export default function UnityCallShow({
                 type="button"
                 className="flex flex-col items-center gap-2 text-white/70"
                 aria-label={speakerOn ? "Switch to earpiece" : "Switch to speaker"}
-                onClick={() => setSpeakerOn((current) => !current)}
+                onClick={() => {
+                  setSpeakerOn((current) => !current)
+                  unlockRemotePlayback()
+                }}
               >
                 <span
                   className={`flex h-12 w-12 items-center justify-center rounded-full ${

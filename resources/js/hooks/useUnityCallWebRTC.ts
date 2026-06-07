@@ -28,10 +28,15 @@ type WebRTCSignal = {
 }
 
 type ChannelWithListen = {
-  listen: (event: string, callback: (payload: WebRTCSignal) => void) => ChannelWithListen
+  listen: (event: string, callback: (payload: WebRTCSignal | UnityCallStatusPayload) => void) => ChannelWithListen
   subscribed: (callback: () => void) => ChannelWithListen
   error: (callback: (error: unknown) => void) => ChannelWithListen
   stopListening?: (event: string) => void
+}
+
+type UnityCallStatusPayload = {
+  reason: string
+  call: { id: number; status: string; chatRoomId?: number | null }
 }
 
 const MAX_GROUP_HOST_PEERS = 32
@@ -261,10 +266,16 @@ export function useUnityCallWebRTC({
       ignoreOffer.current.set(peerId, false)
 
       pc.ontrack = (event) => {
-        const [remoteStream] = event.streams
+        const remoteStream =
+          event.streams[0] ?? (event.track ? new MediaStream([event.track]) : null)
         if (!remoteStream) {
           return
         }
+
+        if (event.track && !remoteStream.getTracks().includes(event.track)) {
+          remoteStream.addTrack(event.track)
+        }
+
         setRemoteStreams((prev) => {
           const filtered = prev.filter((item) => item.peerId !== peerId)
           return [...filtered, { peerId, stream: remoteStream }]
@@ -589,6 +600,10 @@ export function useUnityCallWebRTC({
         return
       }
 
+      if (!pc || (pc.signalingState === "stable" && !pc.currentRemoteDescription)) {
+        offerRequestSent.current.delete(peerId)
+      }
+
       if (!offerRequestSent.current.has(peerId)) {
         offerRequestSent.current.add(peerId)
         sendSignal({
@@ -676,11 +691,15 @@ export function useUnityCallWebRTC({
     if (!stream) {
       return
     }
-    const enabled = !stream.getAudioTracks()[0]?.enabled
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = enabled
+    const track = stream.getAudioTracks()[0]
+    if (!track) {
+      return
+    }
+    const nextEnabled = !track.enabled
+    stream.getAudioTracks().forEach((audioTrack) => {
+      audioTrack.enabled = nextEnabled
     })
-    setIsAudioEnabled(enabled)
+    setIsAudioEnabled(nextEnabled)
   }, [])
 
   const retryPermission = useCallback(() => {
@@ -697,7 +716,17 @@ export function useUnityCallWebRTC({
     const channel = echo().private(`unity-call.${callId}`) as unknown as ChannelWithListen
 
     channel.listen(".webrtc.signal", (payload) => {
-      enqueueOrHandleSignal(payload)
+      enqueueOrHandleSignal(payload as WebRTCSignal)
+    })
+
+    channel.listen(".call.session.status", (payload) => {
+      const statusPayload = payload as UnityCallStatusPayload
+      if (
+        statusPayload.call?.id === callId &&
+        ["cancelled", "ended", "declined", "missed"].includes(statusPayload.reason)
+      ) {
+        stopMedia()
+      }
     })
 
     channel
@@ -717,10 +746,11 @@ export function useUnityCallWebRTC({
 
     return () => {
       channel.stopListening?.(".webrtc.signal")
+      channel.stopListening?.(".call.session.status")
       echo().leave(`unity-call.${callId}`)
       channelReady.current = false
     }
-  }, [callId, enqueueOrHandleSignal])
+  }, [callId, enqueueOrHandleSignal, stopMedia])
 
   useEffect(() => {
     if (!mediaActive) {

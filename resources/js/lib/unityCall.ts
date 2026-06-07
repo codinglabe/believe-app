@@ -56,6 +56,23 @@ export function unityCallChatUrl(chatRoomId: number | null | undefined): string 
   return `${route("chat.index")}?room=${chatRoomId}`
 }
 
+export function unityCallChatChannelName(
+  chatRoomId: number,
+  isGroupCall: boolean,
+  roomType?: "direct" | "private" | "public" | null,
+): string {
+  if (roomType === "public") {
+    return `public-chat.${chatRoomId}`
+  }
+  if (roomType === "private") {
+    return `private-chat.${chatRoomId}`
+  }
+  if (roomType === "direct") {
+    return `direct-chat.${chatRoomId}`
+  }
+  return isGroupCall ? `private-chat.${chatRoomId}` : `direct-chat.${chatRoomId}`
+}
+
 export function markLeavingUnityCall(callId: number): void {
   leavingCallIds.add(callId)
   clearUnityCallAcceptedLocally(callId)

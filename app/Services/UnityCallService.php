@@ -194,10 +194,13 @@ class UnityCallService
             $this->notifier->broadcastStatus($participant->user_id, $payload);
         }
 
-        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
-    }
+        if ($reason === 'declined') {
+            $fresh = $call->fresh(['participants.user', 'chatRoom']);
+            $this->notifier->broadcastRoomStatus($fresh, $caller, $reason);
+            $this->notifier->broadcastSessionStatus($fresh, $caller, $reason);
+        }
 
-    public function cancel(UnityCall $call, User $user): UnityCall
+        return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     {
         if ((int) $call->caller_id !== (int) $user->id) {
             throw ValidationException::withMessages(['call' => __('Only the caller can cancel this call.')]);
@@ -243,6 +246,7 @@ class UnityCallService
         $this->notifier->broadcastStatus($call->caller_id, $payload);
 
         $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'cancelled');
+        $this->notifier->broadcastSessionStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'cancelled');
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
@@ -285,6 +289,7 @@ class UnityCallService
         }
 
         $this->notifier->broadcastRoomStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'ended');
+        $this->notifier->broadcastSessionStatus($call->fresh(['participants.user', 'chatRoom']), $call->caller, 'ended');
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
     }
@@ -325,6 +330,12 @@ class UnityCallService
 
         foreach ($call->participants as $p) {
             $this->notifier->broadcastStatus($p->user_id, $payload);
+        }
+
+        if ($reason === 'ended') {
+            $fresh = $call->fresh(['participants.user', 'chatRoom']);
+            $this->notifier->broadcastRoomStatus($fresh, $call->caller, $reason);
+            $this->notifier->broadcastSessionStatus($fresh, $call->caller, $reason);
         }
 
         return $call->fresh(['participants.user', 'chatRoom', 'caller']);
