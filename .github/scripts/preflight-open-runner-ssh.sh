@@ -14,17 +14,6 @@ PROBE_SLEEP="${PROBE_SLEEP:-2}"
 RUNNER_IP="$(curl -4 -fsS --max-time 10 https://api.ipify.org 2>/dev/null || echo unknown)"
 echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_CONNECT_HOST}:${SSH_PORT}"
 
-# Development deploy uses believeinunity SSH jump (production key). CSF often blocks
-# raw TCP probes from GitHub runners even when SSH auth would succeed — do not fail here.
-if [ "${SSH_USE_JUMP:-false}" = "true" ]; then
-  if tcp_reachable; then
-    echo "Jump host SSH port reachable."
-  else
-    echo "::warning::Preflight TCP probe blocked on ${SSH_CONNECT_HOST} — continuing with SSH jump setup."
-  fi
-  exit 0
-fi
-
 print_fix_instructions() {
   echo "::error::GitHub Actions cannot reach SSH on ${SSH_CONNECT_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
   echo "::error::CSF/firewall is blocking deploy SSH."
