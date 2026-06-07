@@ -5,8 +5,11 @@
 # Post-deploy always syncs PRODUCTION_APP_URL + DEVELOPMENT_HOSTS into server .env — do not remove.
 #
 # Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
-# Optional repository variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL, SSH_PORT,
-#   SSH_HOST (IPv4 for SSH — default 72.60.226.88), SSH_IPV6_HOST, PRODUCTION_APP_URL, DEVELOPMENT_HOSTS
+# Required secrets:
+#   CPANEL_SSH_KEY — private SSH key for DEPLOY_USER
+#   DEPLOY_RUNNER_ALLOW_TOKEN — same value as server .env (from setup-cpanel-deploy-ssh-access.sh)
+#
+# Optional repository variables (Settings → Secrets and variables → Actions → Variables):
 name: Deploy development (501c3ers.com)
 
 on:
@@ -90,6 +93,26 @@ jobs:
           echo "DEVELOPMENT_HOSTS (server .env): ${DEVELOPMENT_HOSTS}"
           if echo "${DEPLOY_HOST}" | grep -qi 'believeinunity'; then
             echo "::error::Refusing to deploy to production host. Use 501c3ers.com for development only."
+            exit 1
+          fi
+
+      - name: Verify deploy secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.CPANEL_SSH_KEY }}" ]; then
+            echo "::error::Missing GitHub secret CPANEL_SSH_KEY (SSH private key for c3ers@501c3ers.com)."
+            missing=1
+          fi
+          if [ -z "${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}" ]; then
+            echo "::error::Missing GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN."
+            echo "CSF blocks GitHub Actions SSH until this is configured."
+            missing=1
+          fi
+          if [ "${missing}" -eq 1 ]; then
+            echo ""
+            echo "ONE-TIME VPS fix (WHM -> Terminal as root):"
+            echo "  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
+            echo "Add the printed token as GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN, then re-run deploy."
             exit 1
           fi
 

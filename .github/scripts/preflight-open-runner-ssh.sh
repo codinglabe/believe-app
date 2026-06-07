@@ -1,17 +1,36 @@
 #!/usr/bin/env bash
-# Ask the live site to whitelist this GitHub Actions runner for SSH (CSF), then verify port 22.
-# Requires repository secret DEPLOY_RUNNER_ALLOW_TOKEN matching server .env DEPLOY_RUNNER_ALLOW_TOKEN.
+# Open SSH for this GitHub Actions runner (CSF allow via HTTPS), then verify port 22.
+# Requires repository secret DEPLOY_RUNNER_ALLOW_TOKEN matching server .env DEPLOY_RUNNER_ALLOW_TOKEN
+# after one-time: bash scripts/setup-cpanel-deploy-ssh-access.sh (as root on VPS).
 set -euo pipefail
 
 APP_URL="${APP_URL:-https://501c3ers.com}"
 SSH_PORT="${SSH_PORT:-22}"
 SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
 TOKEN="${DEPLOY_RUNNER_ALLOW_TOKEN:-}"
-PROBE_RETRIES="${PROBE_RETRIES:-8}"
-PROBE_SLEEP="${PROBE_SLEEP:-3}"
+PROBE_RETRIES="${PROBE_RETRIES:-12}"
+PROBE_SLEEP="${PROBE_SLEEP:-2}"
 
 RUNNER_IP="$(curl -4 -fsS --max-time 10 https://api.ipify.org 2>/dev/null || echo unknown)"
 echo "Runner IPv4: ${RUNNER_IP} -> ${SSH_CONNECT_HOST}:${SSH_PORT}"
+
+print_fix_instructions() {
+  echo "::error::GitHub Actions cannot reach SSH on ${SSH_CONNECT_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
+  echo "::error::CSF/firewall is blocking deploy SSH."
+  echo ""
+  echo "::error::ONE-TIME fix — WHM -> Terminal as root:"
+  echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
+  echo ""
+  echo "::error::Then add GitHub repo secret (Settings -> Secrets -> Actions):"
+  echo "::error::  Name:  DEPLOY_RUNNER_ALLOW_TOKEN"
+  echo "::error::  Value: (token printed by the setup script — same as server .env)"
+  echo ""
+  echo "::error::Re-run the deploy workflow."
+}
+
+tcp_reachable() {
+  timeout 8 bash -c "cat < /dev/null > /dev/tcp/${SSH_CONNECT_HOST}/${SSH_PORT}" 2>/dev/null
+}
 
 request_server_allow() {
   if [ "${RUNNER_IP}" = "unknown" ]; then
@@ -19,14 +38,13 @@ request_server_allow() {
     return 1
   fi
   if [ -z "${TOKEN}" ]; then
-    echo "::warning::DEPLOY_RUNNER_ALLOW_TOKEN not set — skipping automatic CSF allow."
     return 1
   fi
 
-  echo "Requesting server CSF allow for ${RUNNER_IP} via ${APP_URL} ..."
+  echo "Requesting CSF allow for ${RUNNER_IP} via ${APP_URL} ..."
   local http_code
   http_code="$(
-    curl -4 -sS --max-time 30 -o /tmp/deploy-allow-response.txt -w '%{http_code}' \
+    curl -4 -sS --max-time 45 -o /tmp/deploy-allow-response.txt -w '%{http_code}' \
       -X POST "${APP_URL%/}/internal/deploy/allow-runner-ip" \
       -H "Authorization: Bearer ${TOKEN}" \
       -H "Content-Type: application/json" \
@@ -44,7 +62,7 @@ request_server_allow() {
   if [ "${http_code}" = "404" ]; then
     echo "::error::Deploy allow endpoint returned 404 (not_configured). Run setup-cpanel-deploy-ssh-access.sh on the VPS as root once."
   elif [ "${http_code}" = "401" ]; then
-    echo "::error::Deploy allow endpoint unauthorized — DEPLOY_RUNNER_ALLOW_TOKEN mismatch between GitHub secret and server .env."
+    echo "::error::Deploy allow endpoint unauthorized — DEPLOY_RUNNER_ALLOW_TOKEN must match server .env exactly."
   elif [ "${http_code}" = "500" ]; then
     echo "::error::Deploy allow endpoint failed (sudo/csf). Run setup-cpanel-deploy-ssh-access.sh on the VPS as root."
     cat /tmp/deploy-allow-response.txt 2>/dev/null || true
@@ -55,10 +73,6 @@ request_server_allow() {
     echo ""
   fi
   return 1
-}
-
-tcp_reachable() {
-  timeout 8 bash -c "cat < /dev/null > /dev/tcp/${SSH_CONNECT_HOST}/${SSH_PORT}" 2>/dev/null
 }
 
 wait_for_ssh_port() {
@@ -76,18 +90,28 @@ wait_for_ssh_port() {
   return 1
 }
 
-request_server_allow || true
+# Already open (permanent GitHub Actions CSF allow on VPS) — no token needed.
+if tcp_reachable; then
+  echo "SSH port already reachable — skipping CSF allow."
+  exit 0
+fi
+
+if [ -z "${TOKEN}" ]; then
+  echo "::error::DEPLOY_RUNNER_ALLOW_TOKEN is not set in GitHub Secrets."
+  print_fix_instructions
+  exit 1
+fi
+
+if ! request_server_allow; then
+  print_fix_instructions
+  exit 1
+fi
+
+sleep 2
 
 if wait_for_ssh_port; then
   exit 0
 fi
 
-echo "::error::TCP ${SSH_PORT} not reachable on ${SSH_CONNECT_HOST} from runner ${RUNNER_IP}."
-echo "::error::CSF/firewall is blocking GitHub Actions SSH."
-echo "::error::ONE-TIME fix (WHM -> Terminal as root):"
-echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
-echo "::error::Then add the printed DEPLOY_RUNNER_ALLOW_TOKEN to GitHub -> Settings -> Secrets -> Actions."
-if [ -z "${TOKEN}" ]; then
-  echo "::error::Also create GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN (same value as server .env after setup)."
-fi
+print_fix_instructions
 exit 1

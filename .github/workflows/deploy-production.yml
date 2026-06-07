@@ -93,6 +93,22 @@ jobs:
             exit 1
           fi
 
+      - name: Verify deploy secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
+            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
+            missing=1
+          fi
+          if [ -z "${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}" ]; then
+            echo "::error::Missing GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN."
+            missing=1
+          fi
+          if [ "${missing}" -eq 1 ]; then
+            echo "ONE-TIME VPS fix (root): curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
+            exit 1
+          fi
+
       - name: Preflight — open SSH for this runner
         env:
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}

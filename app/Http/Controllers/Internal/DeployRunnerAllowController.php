@@ -31,17 +31,28 @@ class DeployRunnerAllowController extends Controller
         ]);
 
         $ip = $validated['ip'];
-        $script = base_path('scripts/allow-runner-ip.sh');
+        $installed = '/usr/local/bin/allow-runner-ip.sh';
+        $script = is_file($installed) ? $installed : base_path('scripts/allow-runner-ip.sh');
         if (! is_file($script)) {
             return response()->json(['ok' => false, 'error' => 'script_missing'], Response::HTTP_NOT_FOUND);
         }
 
-        $cmd = 'bash '.escapeshellarg($script).' '.escapeshellarg($ip).' 2>&1';
-        $output = [];
-        $exitCode = 0;
-        exec($cmd, $output, $exitCode);
+        $commands = [
+            'sudo -n '.escapeshellarg($script).' '.escapeshellarg($ip).' 2>&1',
+            'bash '.escapeshellarg($script).' '.escapeshellarg($ip).' 2>&1',
+        ];
 
-        $joined = trim(implode("\n", $output));
+        $joined = '';
+        $exitCode = 1;
+        foreach ($commands as $cmd) {
+            $output = [];
+            $exitCode = 0;
+            exec($cmd, $output, $exitCode);
+            $joined = trim(implode("\n", $output));
+            if ($exitCode === 0) {
+                break;
+            }
+        }
         Log::info('deploy.runner_allow', ['ip' => $ip, 'exit' => $exitCode, 'output' => $joined]);
 
         if ($exitCode !== 0) {
