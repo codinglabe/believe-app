@@ -46,8 +46,17 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
       return
     }
     audio.srcObject = stream
-    void audio.play().catch(() => {})
+    audio.muted = false
+
+    const tryPlay = () => {
+      void audio.play().catch(() => {})
+    }
+
+    tryPlay()
+    audio.addEventListener("loadedmetadata", tryPlay)
+
     return () => {
+      audio.removeEventListener("loadedmetadata", tryPlay)
       audio.srcObject = null
     }
   }, [stream])
