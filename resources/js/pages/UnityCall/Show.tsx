@@ -13,7 +13,7 @@ import {
   terminateUnityCall,
   unityCallChatChannelName,
 } from "@/lib/unityCall"
-import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
+import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
 import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
@@ -48,7 +48,6 @@ function formatElapsed(totalSeconds: number): string {
 
 function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: boolean }) {
   const ref = useRef<HTMLAudioElement>(null)
-  const webAudioCleanup = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const audio = ref.current
@@ -59,48 +58,24 @@ function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: bo
     audio.srcObject = stream
     audio.autoplay = true
     ;(audio as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
+    audio.muted = false
 
-    const onTrackUnmute = () => {
-      void audio.play().catch(() => {})
+    const ensurePlayback = () => {
+      void applyRemoteAudioOutput(audio, speakerOn)
     }
+
+    ensurePlayback()
+    audio.addEventListener("loadedmetadata", ensurePlayback)
     stream.getAudioTracks().forEach((track) => {
-      track.addEventListener("unmute", onTrackUnmute)
+      track.addEventListener("unmute", ensurePlayback)
     })
 
     return () => {
+      audio.removeEventListener("loadedmetadata", ensurePlayback)
       stream.getAudioTracks().forEach((track) => {
-        track.removeEventListener("unmute", onTrackUnmute)
+        track.removeEventListener("unmute", ensurePlayback)
       })
       audio.srcObject = null
-    }
-  }, [stream])
-
-  useEffect(() => {
-    const audio = ref.current
-    if (!audio) {
-      return
-    }
-
-    webAudioCleanup.current?.()
-    webAudioCleanup.current = null
-
-    const applyOutput = async () => {
-      if (supportsAudioOutputSelection()) {
-        audio.muted = false
-        await applyRemoteAudioOutput(audio, speakerOn)
-        return
-      }
-
-      // Route through Web Audio only — avoid playing the same stream twice.
-      audio.muted = true
-      webAudioCleanup.current = attachWebAudioFallback(stream, speakerOn)
-    }
-
-    void applyOutput()
-
-    return () => {
-      webAudioCleanup.current?.()
-      webAudioCleanup.current = null
     }
   }, [stream, speakerOn])
 
@@ -322,6 +297,13 @@ export default function UnityCallShow({
     })
   }, [])
 
+  useEffect(() => {
+    if (remoteStreams.length === 0) {
+      return
+    }
+    unlockRemotePlayback()
+  }, [remoteStreams, unlockRemotePlayback])
+
   const handleCallTerminated = useCallback(
     (payload: UnityCallStatusEvent) => {
       if (payload.call.id !== call.id) {
@@ -440,11 +422,13 @@ export default function UnityCallShow({
     if (ok && data) {
       setCall({ ...data.call, joinUrl: data.join_url })
       setParticipants(data.participants)
+      unlockRemotePlayback()
     } else if (ok) {
       setCall((current) => ({ ...current, status: "accepted" }))
       setParticipants((current) =>
         current.map((p) => (p.userId === authUserId ? { ...p, status: "accepted" } : p)),
       )
+      unlockRemotePlayback()
     }
   }
 

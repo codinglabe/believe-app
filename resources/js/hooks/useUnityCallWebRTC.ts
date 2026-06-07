@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { echo } from "@laravel/echo-react"
 import type { UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
+import { invalidateAudioOutputCache } from "@/lib/callAudioOutput"
 import {
   isPeerNegotiationSettled,
   normalizeSessionDescription,
@@ -272,8 +273,11 @@ export function useUnityCallWebRTC({
           return
         }
 
-        if (event.track && !remoteStream.getTracks().includes(event.track)) {
-          remoteStream.addTrack(event.track)
+        if (event.track) {
+          event.track.enabled = true
+          if (!remoteStream.getTracks().includes(event.track)) {
+            remoteStream.addTrack(event.track)
+          }
         }
 
         setRemoteStreams((prev) => {
@@ -669,6 +673,7 @@ export function useUnityCallWebRTC({
         audio: AUDIO_CONSTRAINTS,
         video: false,
       })
+      invalidateAudioOutputCache()
       localStreamRef.current = stream
       setLocalStream(stream)
       attachLocalTracks(stream)

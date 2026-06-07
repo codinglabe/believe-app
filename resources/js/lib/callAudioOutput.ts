@@ -3,10 +3,6 @@ type AudioElementWithSink = HTMLAudioElement & {
   sinkId?: string
 }
 
-type AudioContextWithSink = AudioContext & {
-  setSinkId?: (sinkId: string) => Promise<void>
-}
-
 type ResolvedOutputs = {
   speakerId: string
   earpieceId: string | null
@@ -31,6 +27,10 @@ function listenForAudioDeviceChanges(): void {
 
 if (typeof navigator !== "undefined") {
   listenForAudioDeviceChanges()
+}
+
+export function invalidateAudioOutputCache(): void {
+  outputCache = null
 }
 
 export function supportsAudioOutputSelection(): boolean {
@@ -81,7 +81,6 @@ async function resolveOutputDevices(): Promise<ResolvedOutputs> {
   let earpieceId = labelEarpiece?.deviceId ?? null
   let speakerId = labelSpeaker?.deviceId ?? null
 
-  // Android Chrome often mislabels outputs — fall back to first = earpiece, last = speaker.
   if (!earpieceId || !speakerId || earpieceId === speakerId) {
     earpieceId = outputs[0]?.deviceId ?? null
     speakerId = outputs[outputs.length - 1]?.deviceId ?? "default"
@@ -119,59 +118,23 @@ export async function applyRemoteAudioOutput(
   audio: HTMLAudioElement,
   speakerOn: boolean,
 ): Promise<void> {
+  audio.muted = false
+
   const { speakerId, earpieceId, distinct } = await resolveOutputDevices()
   const targetSinkId = speakerOn ? speakerId : (earpieceId ?? speakerId)
 
-  audio.muted = false
-
   if (supportsAudioOutputSelection()) {
     const routed = await setElementSinkId(audio, targetSinkId)
-
-    if (routed && distinct) {
-      audio.volume = 1
-    } else {
-      // Single output device — volume difference is the only browser fallback.
-      audio.volume = speakerOn ? 1 : 0.55
+    if (!routed) {
+      await setElementSinkId(audio, "default")
     }
+  }
+
+  if (distinct) {
+    audio.volume = 1
   } else {
     audio.volume = speakerOn ? 1 : 0.55
   }
 
   await audio.play().catch(() => {})
-}
-
-export function attachWebAudioFallback(stream: MediaStream, speakerOn: boolean): () => void {
-  try {
-    const context = new AudioContext() as AudioContextWithSink
-    const source = context.createMediaStreamSource(stream)
-    const gain = context.createGain()
-    gain.gain.value = speakerOn ? 1 : 0.45
-    source.connect(gain)
-    gain.connect(context.destination)
-
-    void (async () => {
-      if (supportsAudioOutputSelection() && typeof context.setSinkId === "function") {
-        const { speakerId, earpieceId, distinct } = await resolveOutputDevices()
-        if (distinct) {
-          const targetSinkId = speakerOn ? speakerId : (earpieceId ?? speakerId)
-          try {
-            await context.setSinkId.call(context, targetSinkId)
-            gain.gain.value = 1
-          } catch {
-            gain.gain.value = speakerOn ? 1 : 0.45
-          }
-        }
-      }
-
-      await context.resume()
-    })()
-
-    return () => {
-      source.disconnect()
-      gain.disconnect()
-      void context.close()
-    }
-  } catch {
-    return () => {}
-  }
 }
