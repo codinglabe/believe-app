@@ -18,8 +18,9 @@ class UnityCallNotifier
     {
         $call->loadMissing(['chatRoom', 'livestream']);
         $callerName = trim((string) $caller->name) ?: 'Someone';
-        $joinUrl = url('/unity-call/'.$call->id);
-        $ringUrl = url('/unity-call/'.$call->id).'?ring=1'
+        $joinPath = '/unity-call/'.$call->id;
+        $joinUrl = url($joinPath);
+        $ringUrl = $joinPath.'?ring=1'
             .'&caller_id='.urlencode((string) $caller->id)
             .'&caller_name='.urlencode($callerName)
             .'&caller_avatar='.urlencode((string) ($caller->avatar_url ?? ''))
@@ -96,7 +97,7 @@ class UnityCallNotifier
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
-                'joinUrl' => url('/unity-call/'.$call->id),
+                'joinUrl' => '/unity-call/'.$call->id,
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
                 'answeredAt' => $call->answered_at?->toIso8601String(),
                 'endedAt' => $call->ended_at?->toIso8601String(),

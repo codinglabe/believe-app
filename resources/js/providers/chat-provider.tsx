@@ -7,7 +7,7 @@ import toast from "react-hot-toast"
 import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { attachCsrfToAxios } from "@/lib/csrf"
-import { startAudioCall as initiateAudioCall } from "@/lib/unityCall"
+import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 
 // Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
@@ -297,11 +297,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startAudioCall = useCallback(async (roomId: number) => {
     try {
       const result = await initiateAudioCall(roomId)
-      if (!result?.join_url) {
+      if (!result?.call_id) {
         toast.error("Could not start audio call")
         return null
       }
-      return result.join_url
+      return toInternalAppPath(result.join_url || unityCallShowPath(result.call_id))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not start audio call")
       return null

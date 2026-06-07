@@ -23,7 +23,7 @@ class UnityCallController extends Controller
         return response()->json([
             'call_id' => $call->id,
             'status' => $call->status,
-            'join_url' => route('unity-call.show', $call->id),
+            'join_url' => $this->callJoinPath($call),
         ]);
     }
 
@@ -145,7 +145,7 @@ class UnityCallController extends Controller
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
-                'joinUrl' => route('unity-call.show', $call->id),
+                'joinUrl' => $this->callJoinPath($call),
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
                 'answeredAt' => $call->answered_at?->toIso8601String(),
                 'endedAt' => $call->ended_at?->toIso8601String(),
@@ -169,9 +169,14 @@ class UnityCallController extends Controller
             'endCallUrl' => route('unity-calls.end', $call->id),
             'cancelCallUrl' => route('unity-calls.cancel', $call->id),
             'acceptCallUrl' => route('unity-calls.accept', $call->id),
-            'chatUrl' => route('chat.index'),
+            'chatUrl' => '/chat',
             'authUserId' => $user->id,
         ]);
+    }
+
+    private function callJoinPath(UnityCall $call): string
+    {
+        return '/unity-call/'.$call->id;
     }
 
     private function authorizeCall(Request $request, UnityCall $call): void
@@ -191,14 +196,14 @@ class UnityCallController extends Controller
         return [
             'call_id' => $call->id,
             'status' => $call->status,
-            'join_url' => route('unity-call.show', $call->id),
+            'join_url' => $this->callJoinPath($call),
             'call' => [
                 'id' => $call->id,
                 'status' => $call->status,
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
-                'joinUrl' => route('unity-call.show', $call->id),
+                'joinUrl' => $this->callJoinPath($call),
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
                 'answeredAt' => $call->answered_at?->toIso8601String(),
                 'endedAt' => $call->ended_at?->toIso8601String(),

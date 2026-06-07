@@ -6,7 +6,7 @@ import { useEcho } from "@laravel/echo-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { acceptUnityCall, declineUnityCall } from "@/lib/unityCall"
+import { acceptUnityCall, declineUnityCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
 import { startCallRingtone, stopCallRingtone } from "@/lib/callRingtone"
 import {
   clearCustomCallRingtone,
@@ -186,7 +186,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     if (!ok) {
       return
     }
-    const joinUrl = incoming.call.joinUrl || `/unity-call/${incoming.call.id}`
+    const joinUrl = toInternalAppPath(incoming.call.joinUrl || unityCallShowPath(incoming.call.id))
     dismiss()
     router.visit(joinUrl)
   }

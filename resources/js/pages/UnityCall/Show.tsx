@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Head, router } from "@inertiajs/react"
-import { Loader2, Mic, MicOff, PhoneOff, Volume2 } from "lucide-react"
+import { Loader2, Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
-import { cancelUnityCall, declineUnityCall, endUnityCall, acceptUnityCall } from "@/lib/unityCall"
+import { cancelUnityCall, declineUnityCall, endUnityCall, acceptUnityCall, toInternalAppPath } from "@/lib/unityCall"
+import { applyRemoteAudioOutput, attachWebAudioFallback, supportsAudioOutputSelection } from "@/lib/callAudioOutput"
 import { dispatchUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
@@ -37,31 +38,38 @@ function formatElapsed(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
-function RemoteAudio({ stream }: { stream: MediaStream }) {
+function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: boolean }) {
   const ref = useRef<HTMLAudioElement>(null)
+  const canSelectOutput = supportsAudioOutputSelection()
 
   useEffect(() => {
+    if (!canSelectOutput) {
+      if (speakerOn) {
+        return attachWebAudioFallback(stream)
+      }
+      const audio = ref.current
+      if (!audio) {
+        return
+      }
+      audio.srcObject = stream
+      void audio.play().catch(() => {})
+      return () => {
+        audio.srcObject = null
+      }
+    }
+
     const audio = ref.current
     if (!audio) {
       return
     }
     audio.srcObject = stream
-    audio.muted = false
-
-    const tryPlay = () => {
-      void audio.play().catch(() => {})
-    }
-
-    tryPlay()
-    audio.addEventListener("loadedmetadata", tryPlay)
-
+    void applyRemoteAudioOutput(audio, speakerOn)
     return () => {
-      audio.removeEventListener("loadedmetadata", tryPlay)
       audio.srcObject = null
     }
-  }, [stream])
+  }, [stream, speakerOn, canSelectOutput])
 
-  return <audio ref={ref} autoPlay playsInline className="hidden" />
+  return <audio ref={ref} autoPlay playsInline={!speakerOn || !canSelectOutput} className="hidden" />
 }
 
 export default function UnityCallShow({
@@ -79,6 +87,7 @@ export default function UnityCallShow({
   const [participants, setParticipants] = useState(initialParticipants)
   const [elapsed, setElapsed] = useState(0)
   const [ending, setEnding] = useState(false)
+  const [speakerOn, setSpeakerOn] = useState(true)
   const acceptAttempted = useRef(false)
 
   const ringMode = useMemo(() => {
@@ -159,7 +168,7 @@ export default function UnityCallShow({
       return "Microphone not available"
     }
     if (callConnected && mediaConnected) {
-      return isAudioEnabled ? "Audio call" : "Microphone muted"
+      return speakerOn ? (isAudioEnabled ? "Speaker on" : "Speaker on · mic muted") : "Earpiece"
     }
     if (isCaller && call.status === "ringing") {
       return "Waiting for answer…"
@@ -168,7 +177,7 @@ export default function UnityCallShow({
       return connectionStatus
     }
     return "Setting up call…"
-  }, [callConnected, mediaConnected, isAudioEnabled, isCaller, call.status, connectionStatus, permissionStatus])
+  }, [callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus])
 
   const onStatus = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -262,7 +271,7 @@ export default function UnityCallShow({
       <Head title="Audio call" />
 
       {remoteStreams.map(({ peerId, stream }) => (
-        <RemoteAudio key={peerId} stream={stream} />
+        <RemoteAudio key={peerId} stream={stream} speakerOn={speakerOn} />
       ))}
 
       <div className="flex flex-1 flex-col px-4 py-8">
@@ -327,12 +336,21 @@ export default function UnityCallShow({
                 </span>
                 <span className="text-xs">{!isAudioEnabled ? "Unmute" : "Mute"}</span>
               </button>
-              <div className="flex flex-col items-center gap-2 text-white/70">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
-                  <Volume2 className="h-5 w-5" />
+              <button
+                type="button"
+                className="flex flex-col items-center gap-2 text-white/70"
+                aria-label={speakerOn ? "Switch to earpiece" : "Switch to speaker"}
+                onClick={() => setSpeakerOn((current) => !current)}
+              >
+                <span
+                  className={`flex h-12 w-12 items-center justify-center rounded-full ${
+                    speakerOn ? "bg-purple-500/30 ring-1 ring-purple-400/50" : "bg-white/10"
+                  }`}
+                >
+                  {speakerOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
                 </span>
-                <span className="text-xs">Speaker</span>
-              </div>
+                <span className="text-xs">{speakerOn ? "Speaker" : "Earpiece"}</span>
+              </button>
             </div>
           ) : null}
 

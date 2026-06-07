@@ -10,6 +10,23 @@ export type UnityCallInitResponse = {
   join_url: string
 }
 
+export function unityCallShowPath(callId: number): string {
+  return `/unity-call/${callId}`
+}
+
+/** Inertia visits must use same-origin paths — not absolute APP_URL from the server. */
+export function toInternalAppPath(urlOrPath: string): string {
+  if (!urlOrPath) {
+    return "/"
+  }
+  try {
+    const parsed = new URL(urlOrPath, window.location.origin)
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return urlOrPath.startsWith("/") ? urlOrPath : `/${urlOrPath}`
+  }
+}
+
 export type UnityCallAcceptResponse = {
   call_id: number
   status: string
