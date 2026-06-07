@@ -193,7 +193,7 @@ jobs:
 
       - name: Install PHP dependencies
         run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi --ignore-platform-req=ext-sodium
           mkdir -p resources/views storage/framework/views
 
       - name: Load Vite env from server (match local build)
