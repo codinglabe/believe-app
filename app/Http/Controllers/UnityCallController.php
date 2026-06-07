@@ -26,17 +26,26 @@ class UnityCallController extends Controller
         ]);
     }
 
+    public function acceptSigned(Request $request, UnityCall $call, int $user, UnityCallService $calls): JsonResponse
+    {
+        if ((int) $request->user()->id !== $user) {
+            abort(403);
+        }
+
+        $this->authorizeCall($request, $call);
+
+        $call = $calls->accept($call, $request->user());
+
+        return response()->json($this->acceptResponse($call));
+    }
+
     public function accept(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
     {
         $this->authorizeCall($request, $call);
 
         $call = $calls->accept($call, $request->user());
 
-        return response()->json([
-            'call_id' => $call->id,
-            'status' => $call->status,
-            'join_url' => route('unity-call.show', $call->id),
-        ]);
+        return response()->json($this->acceptResponse($call));
     }
 
     public function decline(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
@@ -115,6 +124,7 @@ class UnityCallController extends Controller
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
+                'joinUrl' => route('unity-call.show', $call->id),
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
                 'answeredAt' => $call->answered_at?->toIso8601String(),
                 'endedAt' => $call->ended_at?->toIso8601String(),
@@ -147,5 +157,42 @@ class UnityCallController extends Controller
         if (! app(UnityCallService::class)->userCanAccess($call, $request->user())) {
             abort(403);
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function acceptResponse(UnityCall $call): array
+    {
+        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+
+        return [
+            'call_id' => $call->id,
+            'status' => $call->status,
+            'join_url' => route('unity-call.show', $call->id),
+            'call' => [
+                'id' => $call->id,
+                'status' => $call->status,
+                'type' => $call->type,
+                'chatRoomId' => $call->chat_room_id,
+                'chatRoomName' => $call->chatRoom?->name,
+                'joinUrl' => route('unity-call.show', $call->id),
+                'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
+                'answeredAt' => $call->answered_at?->toIso8601String(),
+                'endedAt' => $call->ended_at?->toIso8601String(),
+            ],
+            'caller' => [
+                'id' => $call->caller->id,
+                'name' => trim((string) $call->caller->name) ?: 'Unknown',
+                'avatar' => $call->caller->avatar_url,
+            ],
+            'participants' => $call->participants->map(fn ($p) => [
+                'userId' => $p->user_id,
+                'name' => trim((string) ($p->user?->name ?? '')) ?: 'Participant',
+                'avatar' => $p->user?->avatar_url,
+                'role' => $p->role,
+                'status' => $p->status,
+            ])->values(),
+        ];
     }
 }

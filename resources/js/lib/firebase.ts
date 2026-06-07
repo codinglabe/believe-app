@@ -144,6 +144,24 @@ function attachForegroundMessageListener(instance: Messaging) {
         const body = payload.notification?.body ?? data.body ?? data.message;
         const detail = { title, body, data };
 
+        if (data.type === "incoming_call") {
+            void import("@/lib/unityCallEvents").then(({ buildIncomingCallFromPush, dispatchUnityCallIncoming }) => {
+                const metaUserId = document.querySelector('meta[name="user-id"]')?.getAttribute("content");
+                const userId = metaUserId ? Number(metaUserId) : NaN;
+                if (Number.isFinite(userId) && userId > 0) {
+                    const incoming = buildIncomingCallFromPush(data, userId);
+                    if (incoming) {
+                        dispatchUnityCallIncoming(incoming);
+                        return;
+                    }
+                }
+                void import("@/lib/firebase-push-toast").then(({ showNativePushNotification }) => {
+                    void showNativePushNotification(detail);
+                });
+            });
+            return;
+        }
+
         // Foreground: native OS notification (same as background / device tray).
         void import("@/lib/firebase-push-toast").then(({ showNativePushNotification }) => {
             void showNativePushNotification(detail);

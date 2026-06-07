@@ -18,9 +18,15 @@ class UnityCallNotifier
     {
         $call->loadMissing(['chatRoom', 'livestream']);
         $joinUrl = url('/unity-call/'.$call->id);
+        $expiresAt = $call->ring_expires_at ?? now()->addMinutes(2);
         $declineUrl = URL::temporarySignedRoute(
             'unity-calls.decline-signed',
-            $call->ring_expires_at ?? now()->addMinutes(2),
+            $expiresAt,
+            ['call' => $call->id, 'user' => $callee->id],
+        );
+        $acceptUrl = URL::temporarySignedRoute(
+            'unity-calls.accept-signed',
+            $expiresAt,
             ['call' => $call->id, 'user' => $callee->id],
         );
         $callerName = trim((string) $caller->name) ?: 'Someone';
@@ -37,6 +43,7 @@ class UnityCallNotifier
             'caller_avatar' => (string) ($caller->avatar_url ?? ''),
             'chat_room_id' => $call->chat_room_id ? (string) $call->chat_room_id : '',
             'join_url' => $joinUrl,
+            'accept_url' => $acceptUrl,
             'decline_url' => $declineUrl,
             'url' => $joinUrl,
             'click_action' => $joinUrl,

@@ -4,10 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { router } from "@inertiajs/react"
 import { useEcho } from "@laravel/echo-react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Phone, PhoneOff, User } from "lucide-react"
+import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { acceptUnityCall, declineUnityCall } from "@/lib/unityCall"
+import { startCallRingtone, stopCallRingtone } from "@/lib/callRingtone"
+import {
+  clearCustomCallRingtone,
+  getCallRingtoneMode,
+  saveCustomCallRingtone,
+  setCallRingtoneMode,
+} from "@/lib/callRingtoneSettings"
+import { subscribeUnityCallIncoming } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 
 type Props = {
   authUserId: number | null | undefined
@@ -25,30 +34,26 @@ function readAuthUserId(): number | null {
 export default function IncomingCallOverlay({ authUserId }: Props) {
   const [incoming, setIncoming] = useState<UnityCallStatusEvent | null>(null)
   const [busy, setBusy] = useState(false)
-  const ringRef = useRef<HTMLAudioElement | null>(null)
+  const [showRingtoneSettings, setShowRingtoneSettings] = useState(false)
+  const [ringtoneMode, setRingtoneMode] = useState<"default" | "custom">("default")
+  const [ringtoneLabel, setRingtoneLabel] = useState("Default ringtone")
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const userId = authUserId ?? readAuthUserId()
 
-  const stopRingtone = useCallback(() => {
-    const audio = ringRef.current
-    if (!audio) {
-      return
-    }
-    audio.pause()
-    audio.currentTime = 0
+  useEffect(() => {
+    setRingtoneMode(getCallRingtoneMode())
   }, [])
 
-  const playRingtone = useCallback(() => {
-    stopRingtone()
-    const audio = new Audio("/notification-sound.mp3")
-    audio.loop = true
-    ringRef.current = audio
-    void audio.play().catch(() => {})
-  }, [stopRingtone])
+  const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
+    setIncoming(payload)
+    void startCallRingtone()
+  }, [])
 
   const dismiss = useCallback(() => {
-    stopRingtone()
+    stopCallRingtone()
     setIncoming(null)
-  }, [stopRingtone])
+    setShowRingtoneSettings(false)
+  }, [])
 
   const onStatus = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -64,8 +69,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         payload.call.status === "ringing"
 
       if (isIncomingCallee) {
-        setIncoming(payload)
-        playRingtone()
+        showIncoming(payload)
         return
       }
 
@@ -75,7 +79,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         }
       }
     },
-    [userId, incoming?.call.id, playRingtone, dismiss],
+    [userId, incoming?.call.id, showIncoming, dismiss],
   )
 
   useEcho<UnityCallStatusEvent>(
@@ -87,22 +91,35 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   )
 
   useEffect(() => {
-    return () => stopRingtone()
-  }, [stopRingtone])
+    if (!userId) {
+      return
+    }
+    return subscribeUnityCallIncoming((payload) => {
+      const self = payload.participants.find((p) => p.userId === userId)
+      if (self?.role === "callee" && self.status === "ringing") {
+        showIncoming(payload)
+      }
+    })
+  }, [userId, showIncoming])
+
+  useEffect(() => {
+    return () => stopCallRingtone()
+  }, [])
 
   const handleAccept = async () => {
     if (!incoming) {
       return
     }
     setBusy(true)
-    stopRingtone()
-    const ok = await acceptUnityCall(incoming.call.id)
+    stopCallRingtone()
+    const { ok } = await acceptUnityCall(incoming.call.id)
     setBusy(false)
     if (!ok) {
       return
     }
+    const joinUrl = incoming.call.joinUrl || `/unity-call/${incoming.call.id}`
     dismiss()
-    router.visit(incoming.call.joinUrl)
+    router.visit(joinUrl)
   }
 
   const handleDecline = async () => {
@@ -110,10 +127,28 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       return
     }
     setBusy(true)
-    stopRingtone()
+    stopCallRingtone()
     await declineUnityCall(incoming.call.id)
     setBusy(false)
     dismiss()
+  }
+
+  const handleRingtoneFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) {
+      return
+    }
+    await saveCustomCallRingtone(file)
+    setRingtoneMode("custom")
+    setRingtoneLabel(file.name)
+  }
+
+  const handleUseDefaultRingtone = async () => {
+    await clearCustomCallRingtone()
+    setCallRingtoneMode("default")
+    setRingtoneMode("default")
+    setRingtoneLabel("Default ringtone")
   }
 
   if (!userId) {
@@ -128,57 +163,95 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[250] flex flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white"
         >
-          <motion.div
-            initial={{ scale: 0.94, y: 12 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.94, y: 12 }}
-            className="w-full max-w-sm overflow-hidden rounded-2xl border border-purple-500/30 bg-gradient-to-b from-purple-950/95 to-blue-950/95 shadow-2xl"
-          >
-            <div className="px-6 pt-8 pb-4 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600">
-                {incoming.caller.avatar ? (
-                  <img
-                    src={incoming.caller.avatar}
-                    alt=""
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <User className="h-8 w-8 text-white" />
-                )}
-              </div>
-              <p className="text-xs font-medium uppercase tracking-wide text-purple-200/80">
-                Incoming audio call
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-white">{incoming.caller.name}</h2>
-              {incoming.call.chatRoomName ? (
-                <p className="mt-1 text-sm text-white/60">{incoming.call.chatRoomName}</p>
-              ) : null}
-            </div>
+          <div className="flex items-center justify-between px-4 pt-4 safe-area-inset-top">
+            <p className="text-sm font-medium text-purple-200/80">Incoming call</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-white/70 hover:bg-white/10 hover:text-white"
+              aria-label="Ringtone settings"
+              onClick={() => setShowRingtoneSettings((open) => !open)}
+            >
+              <Settings2 className="h-5 w-5" />
+            </Button>
+          </div>
 
-            <div className="flex gap-3 px-6 pb-8">
+          <div className="flex flex-1 flex-col items-center justify-center px-6 pb-8">
+            <PhoneCallAvatar
+              name={incoming.caller.name}
+              avatar={incoming.caller.avatar}
+              subtitle={incoming.call.chatRoomName ?? "Audio call"}
+              pulse
+            />
+
+            {showRingtoneSettings ? (
+              <div className="mt-8 w-full max-w-sm rounded-2xl border border-white/10 bg-black/30 p-4 text-left">
+                <p className="text-sm font-semibold text-white">Ringtone</p>
+                <p className="mt-1 text-xs text-white/60">Use the default ring or choose a sound from your device.</p>
+                <div className="mt-4 space-y-2">
+                  <button
+                    type="button"
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm ${
+                      ringtoneMode === "default" ? "border-purple-400 bg-purple-500/10" : "border-white/10"
+                    }`}
+                    onClick={() => void handleUseDefaultRingtone()}
+                  >
+                    <Music className="h-4 w-4 shrink-0" />
+                    Default ringtone
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm ${
+                      ringtoneMode === "custom" ? "border-purple-400 bg-purple-500/10" : "border-white/10"
+                    }`}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <User className="h-4 w-4 shrink-0" />
+                    {ringtoneMode === "custom" ? ringtoneLabel : "Choose from device…"}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    aria-label="Choose ringtone from device"
+                    onChange={(event) => void handleRingtoneFile(event)}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-center gap-10 px-6 pb-10 safe-area-inset-bottom">
+            <div className="flex flex-col items-center gap-2">
               <Button
                 type="button"
                 variant="destructive"
-                className="h-12 flex-1 gap-2"
+                className="h-16 w-16 rounded-full p-0 shadow-lg"
                 disabled={busy}
+                aria-label="Decline call"
                 onClick={() => void handleDecline()}
               >
-                <PhoneOff className="h-4 w-4" />
-                Decline
+                <PhoneOff className="h-7 w-7" />
               </Button>
+              <span className="text-xs text-white/60">Decline</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
               <Button
                 type="button"
-                className="h-12 flex-1 gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 p-0 shadow-lg hover:from-purple-700 hover:to-blue-700"
                 disabled={busy}
+                aria-label="Accept call"
                 onClick={() => void handleAccept()}
               >
-                <Phone className="h-4 w-4" />
-                Accept
+                <Phone className="h-7 w-7" />
               </Button>
+              <span className="text-xs text-white/60">Accept</span>
             </div>
-          </motion.div>
+          </div>
         </motion.div>
       ) : null}
     </AnimatePresence>

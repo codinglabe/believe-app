@@ -1,3 +1,5 @@
+import type { UnityCallPayload, UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
+
 function getCsrfToken(): string {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
 }
@@ -6,6 +8,19 @@ export type UnityCallInitResponse = {
   call_id: number
   status: string
   join_url: string
+}
+
+export type UnityCallAcceptResponse = {
+  call_id: number
+  status: string
+  join_url: string
+  call: UnityCallPayload
+  caller: {
+    id: number
+    name: string
+    avatar?: string | null
+  }
+  participants: UnityCallParticipantRow[]
 }
 
 type UnityCallErrorResponse = {
@@ -53,9 +68,9 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
   return ok && data ? data : null
 }
 
-export async function acceptUnityCall(callId: number): Promise<boolean> {
-  const { ok } = await postUnityCallJson(route("unity-calls.accept", callId))
-  return ok
+export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; data: UnityCallAcceptResponse | null }> {
+  const { ok, data } = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
+  return { ok, data: ok && data ? data : null }
 }
 
 export async function declineUnityCall(callId: number): Promise<boolean> {

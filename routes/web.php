@@ -1034,6 +1034,11 @@ Route::get('/unity-calls/{call}/decline-signed/{user}', [UnityCallController::cl
     ->name('unity-calls.decline-signed')
     ->where(['call' => '[0-9]+', 'user' => '[0-9]+']);
 
+Route::get('/unity-calls/{call}/accept-signed/{user}', [UnityCallController::class, 'acceptSigned'])
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'signed'])
+    ->name('unity-calls.accept-signed')
+    ->where(['call' => '[0-9]+', 'user' => '[0-9]+']);
+
 // Wallet Routes
 Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'care_alliance.wallet'])->name('wallet.')->group(function () {
     Route::post('/connect', [WalletController::class, 'connect'])->name('connect');

@@ -135,19 +135,14 @@ class UnityCallService
         $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
         $caller = $call->caller;
 
-        $this->notifier->broadcastStatus(
-            $caller->id,
-            $this->notifier->payloadForUser($call->fresh(['participants.user', 'chatRoom']), $caller, 'accepted'),
+        $acceptedPayload = $this->notifier->payloadForUser(
+            $call->fresh(['participants.user', 'chatRoom']),
+            $caller,
+            'accepted',
         );
 
         foreach ($call->participants as $p) {
-            if ($p->user_id === $user->id || $p->user_id === $caller->id) {
-                continue;
-            }
-            $this->notifier->broadcastStatus(
-                $p->user_id,
-                $this->notifier->payloadForUser($call, $caller, 'accepted'),
-            );
+            $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
         }
 
         return $call->fresh(['participants.user', 'chatRoom', 'livestream', 'caller']);

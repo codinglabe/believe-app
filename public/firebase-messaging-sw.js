@@ -1,4 +1,4 @@
-// @version adad759ba41dad52
+// @version 79dca5a8d89b7af2
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -93,7 +93,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-adad759ba41dad52";
+const CACHE_NAME = "pwa-cache-79dca5a8d89b7af2";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -198,7 +198,28 @@ self.addEventListener("notificationclick", (event) => {
     }
 
     if (event.action === "accept") {
-        urlToOpen = data.join_url || data.click_action || data.url || "/";
+        const acceptUrl = data.accept_url;
+        const joinUrl = data.join_url || data.click_action || data.url || "/";
+        if (acceptUrl) {
+            event.waitUntil(
+                fetch(acceptUrl, {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                })
+                    .catch(function () {})
+                    .then(function () {
+                        return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+                            return openNotificationUrl(clientList, new URL(joinUrl, self.location.origin).href);
+                        });
+                    }),
+            );
+            return;
+        }
+        urlToOpen = joinUrl;
     }
 
     if (event.action === "decline") {
@@ -215,6 +236,32 @@ self.addEventListener("notificationclick", (event) => {
                 }).catch(function () {}),
             );
         }
+        return;
+    }
+
+    if (
+        (!event.action || event.action === "") &&
+        data.type === INCOMING_CALL_TYPE &&
+        data.accept_url
+    ) {
+        const acceptUrl = data.accept_url;
+        const joinUrl = data.join_url || data.click_action || data.url || "/";
+        event.waitUntil(
+            fetch(acceptUrl, {
+                method: "GET",
+                credentials: "include",
+                headers: {
+                    Accept: "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            })
+                .catch(function () {})
+                .then(function () {
+                    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+                        return openNotificationUrl(clientList, new URL(joinUrl, self.location.origin).href);
+                    });
+                }),
+        );
         return;
     }
 
