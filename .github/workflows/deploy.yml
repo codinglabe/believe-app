@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, believe-vps]
 
     env:
       PHP_VERSION: '8.4'
@@ -38,6 +38,8 @@ jobs:
       SSH_RELAY_TO_C3ERS: true
       SSH_RELAY_USER: believeinunity
       SSH_RELAY_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
+      SSH_SELF_HOSTED: true
+      SERVER_INNER_KEY: /home/believeinunity/.local/share/.gconf/deploy_key
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -101,7 +103,7 @@ jobs:
       - name: Verify deploy secrets
         run: |
           missing=0
-          if [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
+          if [ "${SSH_SELF_HOSTED}" != "true" ] && [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
             echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
             missing=1
           fi
@@ -109,6 +111,7 @@ jobs:
             echo "ONE-TIME VPS fix (root): curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
             exit 1
           fi
+          echo "Using self-hosted VPS runner (believe-vps) for development deploy."
 
       - name: Preflight — open SSH for this runner
         env:
@@ -118,7 +121,12 @@ jobs:
           SSH_PORT: ${{ env.SSH_PORT }}
           SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
           SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
+          SSH_SELF_HOSTED: ${{ env.SSH_SELF_HOSTED }}
         run: |
+          if [ "${SSH_SELF_HOSTED}" = "true" ]; then
+            echo "Self-hosted runner — skipping CSF preflight."
+            exit 0
+          fi
           chmod +x .github/scripts/preflight-open-runner-ssh.sh
           bash .github/scripts/preflight-open-runner-ssh.sh
 
@@ -137,10 +145,12 @@ jobs:
           SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
           SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
           SSH_RELAY_HOST: ${{ env.SSH_RELAY_HOST }}
+          SSH_SELF_HOSTED: ${{ env.SSH_SELF_HOSTED }}
+          SERVER_INNER_KEY: ${{ env.SERVER_INNER_KEY }}
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
-          if [ -z "${SSH_PRIVATE_KEY}" ]; then
+          if [ "${SSH_SELF_HOSTED}" != "true" ] && [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
           fi

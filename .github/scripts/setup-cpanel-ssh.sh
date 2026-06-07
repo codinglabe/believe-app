@@ -18,7 +18,45 @@ SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-10}"
 SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
 SSH_USE_TCP_PROBE="${SSH_USE_TCP_PROBE:-false}"
 SSH_USE_DEPLOY_HOST="${SSH_USE_DEPLOY_HOST:-true}"
+SSH_SELF_HOSTED="${SSH_SELF_HOSTED:-false}"
 SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
+
+if [ "${SSH_SELF_HOSTED}" = "true" ]; then
+  mkdir -p "${SSH_DIR}"
+  chmod 700 "${SSH_DIR}"
+  if [ ! -f "${SERVER_INNER_KEY}" ]; then
+    echo "::error::Missing deploy key on VPS: ${SERVER_INNER_KEY}"
+    exit 1
+  fi
+  printf '%s\n' \
+    'Host cpanel-deploy' \
+    '  HostName 127.0.0.1' \
+    "  User ${DEPLOY_USER}" \
+    "  Port ${SSH_PORT}" \
+    "  IdentityFile ${SERVER_INNER_KEY}" \
+    '  IdentitiesOnly yes' \
+    '  StrictHostKeyChecking accept-new' \
+    '  ServerAliveInterval 15' \
+    '  ServerAliveCountMax 4' \
+    > "${SSH_DIR}/config"
+  chmod 600 "${SSH_DIR}/config"
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    {
+      echo "SSH_DIR=${SSH_DIR}"
+      echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4"
+      echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4"
+    } >> "${GITHUB_ENV}"
+  fi
+  echo "Self-hosted VPS runner -> ${DEPLOY_USER}@127.0.0.1:${SSH_PORT}"
+  if out="$(ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes cpanel-deploy "echo SSH_OK && whoami && hostname" 2>&1)"; then
+    echo "${out}"
+    echo "SSH connected (self-hosted local hop)."
+    exit 0
+  fi
+  echo "${out}" | tail -8
+  echo "::error::Self-hosted SSH to ${DEPLOY_USER}@127.0.0.1 failed."
+  exit 1
+fi
 
 if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
   echo "::error::SSH_PRIVATE_KEY is empty (set CPANEL_SSH_KEY secret)."
