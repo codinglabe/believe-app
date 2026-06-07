@@ -12,7 +12,8 @@ SSH_CONNECT_HOST="${SSH_CONNECT_HOST:-72.60.226.88}"
 SSH_USE_JUMP="${SSH_USE_JUMP:-false}"
 SSH_JUMP_USER="${SSH_JUMP_USER:-believeinunity}"
 SSH_JUMP_HOST="${SSH_JUMP_HOST:-72.60.226.88}"
-SSH_INNER_KEY_PATH="${SSH_INNER_KEY_PATH:-/home/believeinunity/.local/share/.gconf/deploy_key}"
+SSH_INNER_KEY_PATH="${SSH_INNER_KEY_PATH:-/home/believeinunity/.ssh/c3ers_deploy}"
+SSH_C3ERS_PROXY_PATH="${SSH_C3ERS_PROXY_PATH:-/home/believeinunity/bin/c3ers-proxy}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-30}"
 SSH_MAX_ATTEMPTS="${SSH_MAX_ATTEMPTS:-10}"
 SSH_RETRY_SLEEP="${SSH_RETRY_SLEEP:-8}"
@@ -100,6 +101,56 @@ format_ssh_hostname() {
   fi
 }
 
+write_jump_only_config() {
+  local jump_host
+  jump_host="$(format_ssh_hostname "${SSH_JUMP_HOST}")"
+  printf '%s\n' \
+    'Host believeinunity-vps' \
+    "  HostName ${jump_host}" \
+    "  User ${SSH_JUMP_USER}" \
+    "  Port ${SSH_PORT}" \
+    "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
+    '  IdentitiesOnly yes' \
+    '  StrictHostKeyChecking accept-new' \
+    '  ServerAliveInterval 15' \
+    '  ServerAliveCountMax 4' \
+    '  AddressFamily inet' \
+    '  IPQoS throughput' \
+    '  TCPKeepAlive yes' \
+    > "${SSH_DIR}/config"
+  chmod 600 "${SSH_DIR}/config"
+}
+
+bootstrap_c3ers_on_jump() {
+  write_jump_only_config
+  if ! ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
+    believeinunity-vps "echo JUMP_OK" >/dev/null 2>&1; then
+    echo "::error::Cannot SSH to jump host ${SSH_JUMP_USER}@${SSH_JUMP_HOST}"
+    return 1
+  fi
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  if [ -n "${SSH_C3ERS_PRIVATE_KEY:-}" ]; then
+    if printf '%s' "${SSH_C3ERS_PRIVATE_KEY}" | grep -q '\\n'; then
+      printf '%b\n' "${SSH_C3ERS_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/c3ers_deploy"
+    else
+      printf '%s\n' "${SSH_C3ERS_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/c3ers_deploy"
+    fi
+    chmod 600 "${SSH_DIR}/c3ers_deploy"
+    ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps "mkdir -p .ssh bin && chmod 700 .ssh bin"
+    scp -F "${SSH_DIR}/config" -o BatchMode=yes "${SSH_DIR}/c3ers_deploy" believeinunity-vps:.ssh/c3ers_deploy
+    ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps "chmod 600 .ssh/c3ers_deploy"
+    echo "Uploaded c3ers deploy key to jump host."
+  fi
+
+  scp -F "${SSH_DIR}/config" -o BatchMode=yes "${script_dir}/c3ers-proxy.sh" believeinunity-vps:bin/c3ers-proxy
+  ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes believeinunity-vps \
+    "chmod 700 bin/c3ers-proxy && test -f .ssh/c3ers_deploy || cp -f .local/share/.gconf/deploy_key .ssh/c3ers_deploy 2>/dev/null; chmod 600 .ssh/c3ers_deploy 2>/dev/null || true"
+  echo "Installed c3ers-proxy on jump host."
+}
+
 write_jump_ssh_config() {
   local jump_host
   jump_host="$(format_ssh_hostname "${SSH_JUMP_HOST}")"
@@ -122,7 +173,7 @@ write_jump_ssh_config() {
     '  HostName 127.0.0.1' \
     "  User ${DEPLOY_USER}" \
     "  Port ${SSH_PORT}" \
-    "  ProxyCommand ssh -F ${SSH_DIR}/config -o BatchMode=yes believeinunity-vps \"ssh -i ${SSH_INNER_KEY_PATH} -o BatchMode=yes -o StrictHostKeyChecking=no -W %h:%p ${DEPLOY_USER}@127.0.0.1\"" \
+    "  ProxyCommand ssh -F ${SSH_DIR}/config -o BatchMode=yes believeinunity-vps ${SSH_C3ERS_PROXY_PATH} %h %p" \
     '  StrictHostKeyChecking accept-new' \
     '  ServerAliveInterval 15' \
     '  ServerAliveCountMax 4' \
@@ -195,10 +246,14 @@ print_firewall_help() {
 
 connected=0
 last_err=""
+if [ "${SSH_USE_JUMP}" = "true" ]; then
+  bootstrap_c3ers_on_jump
+fi
+
 for attempt in $(seq 1 "${SSH_MAX_ATTEMPTS}"); do
   if [ "${SSH_USE_JUMP}" = "true" ]; then
     host="${SSH_JUMP_HOST}"
-    write_ssh_host "${host}"
+    write_jump_ssh_config
   else
     host="${SSH_HOSTS[$(( (attempt - 1) % ${#SSH_HOSTS[@]} ))]}"
     write_ssh_host "${host}"
