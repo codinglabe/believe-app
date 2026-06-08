@@ -108,5 +108,8 @@ Route::middleware('auth:api')->group(function () {
         });
 
         Route::post('/push-notifications/open', [PushNotificationOpenController::class, 'store']);
+
+        Route::post('/push-token', [\App\Http\Controllers\PushTokenController::class, 'store']);
+        Route::delete('/push-token', [\App\Http\Controllers\PushTokenController::class, 'destroy']);
     });
 });

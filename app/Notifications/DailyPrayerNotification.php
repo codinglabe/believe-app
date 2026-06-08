@@ -25,6 +25,7 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
     {
         $this->contentItem = $contentItem;
         $this->channel = $channel;
+        $this->connection = (string) config('services.firebase.queue_connection', 'sync');
     }
 
     public function via($notifiable): array

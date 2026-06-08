@@ -17,6 +17,11 @@ class PushTokenController extends Controller
         $request->validate([
             'token' => 'required|string',
             'device_info' => 'sometimes|array',
+            'device_info.device_type' => 'sometimes|string|in:web,android,ios,mobile',
+            'device_info.device_id' => 'sometimes|string|max:255',
+            'device_info.device_name' => 'sometimes|string|max:255',
+            'device_info.platform' => 'sometimes|string|max:255',
+            'device_info.browser' => 'sometimes|nullable|string|max:255',
         ]);
 
         try {
@@ -41,6 +46,7 @@ class PushTokenController extends Controller
             Log::info('Push token updated', [
                 'user_id' => $user->id,
                 'device_id' => $deviceInfo['device_id'] ?? null,
+                'device_type' => $deviceInfo['device_type'] ?? 'web',
                 'token' => substr($request->token, 0, 20).'...',
             ]);
 

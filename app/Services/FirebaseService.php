@@ -190,6 +190,11 @@ class FirebaseService
 
         if ($deviceType === 'web') {
             $message['message']['webpush'] = [
+                'notification' => [
+                    'title' => $title,
+                    'body' => $body,
+                    'icon' => url('/favicon-96x96.png'),
+                ],
                 'fcm_options' => [
                     'link' => $notificationUrl,
                 ],
@@ -209,7 +214,18 @@ class FirebaseService
                 'title' => $title,
                 'body' => $body,
             ];
+            $message['message']['android'] = [
+                'priority' => 'HIGH',
+                'notification' => [
+                    'click_action' => $notificationUrl,
+                    'sound' => 'default',
+                    'channel_id' => 'default',
+                ],
+            ];
             $message['message']['apns'] = [
+                'headers' => [
+                    'apns-priority' => '10',
+                ],
                 'payload' => [
                     'aps' => [
                         'alert' => [
@@ -219,12 +235,6 @@ class FirebaseService
                         'sound' => 'default',
                     ],
                     'click_action' => $notificationUrl,
-                ],
-            ];
-            $message['message']['android'] = [
-                'notification' => [
-                    'click_action' => $notificationUrl,
-                    'sound' => 'default',
                 ],
             ];
         }
