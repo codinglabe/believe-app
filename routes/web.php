@@ -213,10 +213,6 @@ Broadcast::routes(['middleware' => ['auth']]);
 // These routes are automatically excluded from livestock domain because
 // livestock routes are defined with Route::domain() above.
 // Routes without Route::domain() only work on the main domain.
-Route::get('/csrf-cookie', function () {
-    return response()->json(['token' => csrf_token()]);
-})->middleware('web');
-
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // SEO: sitemap and robots

@@ -1,10 +1,10 @@
-import { csrfFetch, isCsrfMismatch } from "@/lib/csrf";
 import {
     activateForegroundMessaging,
     ensureMessagingReady,
     requestFcmToken,
     resetMessagingRegistration,
 } from "@/lib/firebase";
+import { getCsrfHeaders, getCsrfToken, syncCsrfMetaFromCookie } from "@/lib/csrf";
 import { isPushCapableBrowser } from "@/lib/push-environment";
 
 const DEVICE_ID_KEY = "device_id";
@@ -34,35 +34,37 @@ export function getWebPushDeviceInfo() {
 }
 
 async function postPushTokenToServer(token: string): Promise<void> {
-    const response = await csrfFetch("/push-token", {
-        method: "POST",
-        body: {
-            token,
-            device_info: getWebPushDeviceInfo(),
-        },
-    });
+    const doPost = () =>
+        fetch("/push-token", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                ...getCsrfHeaders(),
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                token,
+                device_info: getWebPushDeviceInfo(),
+            }),
+        });
+
+    let response = await doPost();
+
+    if (response.status === 419) {
+        syncCsrfMetaFromCookie();
+        if (getCsrfToken()) {
+            response = await doPost();
+        }
+    }
 
     if (!response.ok) {
         const text = await response.text();
-        let message: string | null = null;
-        try {
-            const parsed = JSON.parse(text) as { message?: string };
-            message = typeof parsed.message === "string" ? parsed.message : null;
-        } catch {
-            message = null;
-        }
-
-        if (isCsrfMismatch(response.status, message)) {
-            console.warn("[Push] CSRF token mismatch — will retry on next page visit");
-            return;
-        }
-
         if (response.status !== 401 && response.status !== 403) {
             localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
         }
-
-        console.warn(`[Push] Token save failed (${response.status}): ${text}`);
-        return;
+        throw new Error(`Push token save failed (${response.status}): ${text}`);
     }
 
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
@@ -77,11 +79,18 @@ export async function removeCurrentDevicePushToken(): Promise<void> {
     }
 
     try {
-        await csrfFetch("/push-token", {
+        await fetch("/push-token", {
             method: "DELETE",
-            body: {
-                device_info: getWebPushDeviceInfo(),
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                ...getCsrfHeaders(),
             },
+            credentials: "include",
+            body: JSON.stringify({
+                device_info: getWebPushDeviceInfo(),
+            }),
             keepalive: true,
         });
     } catch (error) {
