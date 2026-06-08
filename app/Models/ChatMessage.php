@@ -13,11 +13,17 @@ class ChatMessage extends Model
 {
     use HasFactory;
 
+    public const TYPE_TEXT = 'text';
+
+    public const TYPE_UNITY_CALL = 'unity_call';
+
     protected $fillable = [
         'chat_room_id',
         'user_id',
         'message',
+        'message_type',
         'attachments',
+        'metadata',
         'reply_to_message_id',
         'is_edited',
         'edited_at'
@@ -25,6 +31,7 @@ class ChatMessage extends Model
 
     protected $casts = [
         'attachments' => 'array',
+        'metadata' => 'array',
         'is_edited' => 'boolean',
         'created_at' => UtcDatetime::class,
         'updated_at' => UtcDatetime::class,

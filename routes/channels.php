@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\UnityCall;
 use App\Models\User;
+use App\Services\UnityCallService;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::routes(['middleware' => ['auth']]);
@@ -45,6 +47,15 @@ Broadcast::channel('presence-chat.{roomId}', function (User $user, $roomId) {
 
 Broadcast::channel('user.{id}', function ($user, $userId) {
     return (int) $user->id === (int) $userId;
+});
+
+Broadcast::channel('unity-call.{callId}', function (User $user, $callId) {
+    $call = UnityCall::query()->whereKey($callId)->first();
+    if (! $call) {
+        return false;
+    }
+
+    return app(UnityCallService::class)->userCanAccess($call, $user);
 });
 
 Broadcast::channel('meeting.{meetingId}.participants', function (User $user, $meetingId) {

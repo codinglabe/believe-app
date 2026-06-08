@@ -1,4 +1,4 @@
-import { UNITY_MEET_INVITATION_TYPE } from "@/lib/notification-map"
+import { INCOMING_CALL_TYPE, UNITY_MEET_INVITATION_TYPE } from "@/lib/notification-map"
 import { trackPushNotificationOpen } from "@/lib/push-open-tracker"
 
 export type FirebaseNotificationDetail = {
@@ -75,6 +75,24 @@ export function buildNativeNotificationOptions(
         options.actions = [{ action: "join", title: "Join" }]
     }
 
+    if (data.type === INCOMING_CALL_TYPE) {
+        options.actions = [
+            { action: "accept", title: "Accept" },
+            { action: "decline", title: "Decline" },
+        ]
+        options.requireInteraction = true
+        options.renotify = true
+        options.silent = false
+        options.vibrate = [500, 250, 500, 250, 500, 250, 500]
+        const ringUrl = data.ring_url || data.join_url || clickUrl
+        options.data = {
+            ...options.data,
+            ring_url: ringUrl,
+            click_action: ringUrl,
+            url: ringUrl,
+        }
+    }
+
     return options
 }
 
@@ -94,7 +112,7 @@ export async function showNativePushNotification(detail: FirebaseNotificationDet
     const { title } = resolvePushTitleBody(detail)
     const data = detail.data ?? {}
 
-    const dedupeKey = `${data.type ?? "push"}:${data.livestream_id ?? data.source_id ?? title}`
+    const dedupeKey = `${data.type ?? "push"}:${data.call_id ?? data.livestream_id ?? data.source_id ?? title}`
     const now = Date.now()
     const lastShown = recentNativeKeys.get(dedupeKey)
     if (lastShown !== undefined && now - lastShown < NATIVE_DEDUPE_MS) {

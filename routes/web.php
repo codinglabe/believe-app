@@ -165,12 +165,14 @@ use App\Http\Controllers\SupporterBelievePointGiftController;
 use App\Http\Controllers\SupporterLivestreamController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\UnityCallController;
 use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UnityLiveEngagementController;
 use App\Http\Controllers\UnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
+use App\Http\Controllers\Internal\DeployRunnerAllowController;
 use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
@@ -198,6 +200,10 @@ Route::domain(config('merchant.domain'))->group(function () {
 Route::domain(config('livestock.domain'))->group(function () {
     require __DIR__.'/livestock.php';
 });
+
+Route::post('/internal/deploy/allow-runner-ip', DeployRunnerAllowController::class)
+    ->middleware('throttle:10,1')
+    ->name('internal.deploy.allow-runner-ip');
 
 // Route::get('/test-broadcast', function () {
 //     $message = App\Models\ChatMessage::first();
@@ -1016,6 +1022,32 @@ Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
+
+Route::prefix('unity-calls')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('unity-calls.')->group(function () {
+    Route::post('/', [UnityCallController::class, 'store'])->name('store');
+    Route::post('/{call}/accept', [UnityCallController::class, 'accept'])->name('accept')->where('call', '[0-9]+');
+    Route::post('/{call}/decline', [UnityCallController::class, 'decline'])->name('decline')->where('call', '[0-9]+');
+    Route::post('/{call}/cancel', [UnityCallController::class, 'cancel'])->name('cancel')->where('call', '[0-9]+');
+    Route::post('/{call}/end', [UnityCallController::class, 'end'])->name('end')->where('call', '[0-9]+');
+    Route::post('/{call}/expire-ringing', [UnityCallController::class, 'expireRinging'])->name('expire-ringing')->where('call', '[0-9]+');
+    Route::post('/{call}/signal', [UnityCallController::class, 'signal'])->name('signal')->where('call', '[0-9]+');
+    Route::get('/{call}/pending-signals', [UnityCallController::class, 'pendingSignals'])->name('pending-signals')->where('call', '[0-9]+');
+});
+
+Route::get('/unity-call/{call}', [UnityCallController::class, 'show'])
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])
+    ->name('unity-call.show')
+    ->where('call', '[0-9]+');
+
+Route::get('/unity-calls/{call}/decline-signed/{user}', [UnityCallController::class, 'declineSigned'])
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'signed'])
+    ->name('unity-calls.decline-signed')
+    ->where(['call' => '[0-9]+', 'user' => '[0-9]+']);
+
+Route::get('/unity-calls/{call}/accept-signed/{user}', [UnityCallController::class, 'acceptSigned'])
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'signed'])
+    ->name('unity-calls.accept-signed')
+    ->where(['call' => '[0-9]+', 'user' => '[0-9]+']);
 
 // Wallet Routes
 Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'care_alliance.wallet'])->name('wallet.')->group(function () {
