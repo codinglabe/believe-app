@@ -22,9 +22,9 @@ import { syncPushTokenWithServer, startPushTokenRefreshListeners } from './lib/p
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
+import { getCsrfHeaders, getCsrfToken, syncCsrfMetaFromCookie } from './lib/csrf';
 import { initStoredAppVersion, markPwaUpdateComplete, fetchServerAppVersion } from './lib/pwa-update';
 import axios from 'axios';
-import { buildCsrfHeaders, refreshCsrfToken, syncCsrfMetaFromCookie, updateCsrfMeta } from './lib/csrf';
 
 configureEcho(buildReverbEchoConfig());
 
@@ -80,13 +80,15 @@ createInertiaApp({
             const raw = event.detail.page?.props?.csrf_token;
             const token = typeof raw === 'string' ? raw : '';
             if (token && typeof document !== 'undefined') {
-                updateCsrfMeta(token);
-                syncEchoCsrfToken(token);
-            } else if (typeof document !== 'undefined') {
-                const fromCookie = syncCsrfMetaFromCookie();
-                if (fromCookie) {
-                    syncEchoCsrfToken(fromCookie);
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                if (meta) meta.setAttribute('content', token);
+                else {
+                    const newMeta = document.createElement('meta');
+                    newMeta.name = 'csrf-token';
+                    newMeta.content = token;
+                    document.head.appendChild(newMeta);
                 }
+                syncEchoCsrfToken(token);
             }
 
             const pageProps = event.detail.page?.props as {
@@ -151,21 +153,24 @@ createInertiaApp({
     },
 });
 
-// Every Inertia visit (GET/POST/Link) must send the browser IANA timezone so Laravel DetectTimezone applies it.
+// Every Inertia visit (GET/POST/Link) must send timezone + CSRF so Laravel accepts the request.
 if (typeof window !== 'undefined') {
     router.on('before', (event: GlobalEvent<'before'>) => {
         event.detail.visit.headers['X-Timezone'] = getBrowserTimezone();
+        const csrf = getCsrfToken();
+        if (csrf) {
+            event.detail.visit.headers['X-CSRF-TOKEN'] = csrf;
+        }
     });
 }
 
-// Global axios: CSRF from cookie (preferred) or meta — kept in sync by CsrfTokenSync + router.on('success').
+// Global axios: CSRF from meta (CsrfTokenSync + router.on('success')), cookie fallback when meta is empty.
 if (typeof window !== 'undefined') {
-    syncCsrfMetaFromCookie();
     axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
     axios.defaults.withCredentials = true;
     axios.interceptors.request.use((config) => {
-        const csrfHeaders = buildCsrfHeaders();
-        for (const [key, value] of Object.entries(csrfHeaders)) {
+        const headers = getCsrfHeaders();
+        for (const [key, value] of Object.entries(headers)) {
             config.headers[key] = value;
         }
         config.headers['X-Timezone'] = getBrowserTimezone();
@@ -173,25 +178,11 @@ if (typeof window !== 'undefined') {
     });
     axios.interceptors.response.use(
         (r) => r,
-        async (err) => {
-            const status = err.response?.status;
-            const originalRequest = err.config as import('axios').InternalAxiosRequestConfig & {
-                _csrfRetried?: boolean;
-            };
-
-            if (status === 419 && originalRequest && !originalRequest._csrfRetried) {
-                originalRequest._csrfRetried = true;
-                const newToken = await refreshCsrfToken();
-                if (newToken) {
-                    originalRequest.headers['X-CSRF-TOKEN'] = newToken;
-                    return axios.request(originalRequest);
-                }
+        (err) => {
+            if (err.response?.status === 419) {
+                syncCsrfMetaFromCookie();
             }
-
-            if (status === 419) {
-                window.location.reload();
-            }
-            if (status === 401) {
+            if (err.response?.status === 401) {
                 window.location.href = '/login';
             }
             return Promise.reject(err);
