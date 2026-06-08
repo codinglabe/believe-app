@@ -25,6 +25,7 @@ import { Switch } from "@/components/frontend/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import { router, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
+import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
 
 interface EventType {
   id: number
@@ -255,13 +256,10 @@ export default function EditEvent() {
     })
   }
 
-  const groupedEventTypes = eventTypes.reduce((acc, eventType) => {
-    if (!acc[eventType.category]) {
-      acc[eventType.category] = []
-    }
-    acc[eventType.category].push(eventType)
-    return acc
-  }, {} as Record<string, EventType[]>)
+  const profileTopicFieldClassName =
+    "text-sm font-semibold text-gray-700 dark:text-gray-300"
+  const profileTopicTriggerClassName =
+    "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-blue-500"
 
   return (
     <ProfileLayout title="Edit Event" description="Update your event information">
@@ -329,7 +327,7 @@ export default function EditEvent() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-6">
                     <div className="space-y-3">
                       <Label htmlFor="name" className="text-sm font-semibold text-gray-700 dark:text-gray-300">Event Name *</Label>
                       <Input
@@ -346,32 +344,18 @@ export default function EditEvent() {
                         <p className="text-sm text-red-600 dark:text-red-400">{errors.name}</p>
                       )}
                     </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="event_type_id" className="text-sm font-semibold text-gray-700 dark:text-gray-300">Event Topic *</Label>
-                      <Select value={formData.event_type_id} onValueChange={(value) => handleInputChange('event_type_id', value)}>
-                        <SelectTrigger className={`bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-blue-500 ${
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <EventTypeTopicFields
+                        eventTypes={eventTypes}
+                        eventTypeId={formData.event_type_id}
+                        onEventTypeIdChange={(value) => handleInputChange('event_type_id', value)}
+                        error={errors.event_type_id}
+                        labelClassName={profileTopicFieldClassName}
+                        triggerClassName={`${profileTopicTriggerClassName} ${
                           errors.event_type_id ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
-                        }`}>
-                          <SelectValue placeholder="Select event topic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(groupedEventTypes).map(([category, types]) => (
-                            <div key={category}>
-                              <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 dark:text-gray-400">
-                                {category}
-                              </div>
-                              {types.map((type) => (
-                                <SelectItem key={type.id} value={type.id.toString()}>
-                                  {type.name}
-                                </SelectItem>
-                              ))}
-                            </div>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {errors.event_type_id && (
-                        <p className="text-sm text-red-600 dark:text-red-400">{errors.event_type_id}</p>
-                      )}
+                        }`}
+                        errorClassName="text-sm text-red-600 dark:text-red-400"
+                      />
                     </div>
                   </div>
 

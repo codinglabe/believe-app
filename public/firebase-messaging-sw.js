@@ -1,4 +1,4 @@
-// @version b0be8a03623c119f
+// @version 9f9fe7b2e3a2a745
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -17,9 +17,62 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation";
+const INCOMING_CALL_TYPE = "incoming_call";
+const PENDING_CALL_DB = "unity-call";
+const PENDING_CALL_STORE = "pending";
+const PENDING_CALL_KEY = "incoming";
+const PENDING_CALL_TTL_MS = 120000;
 
-function notificationIconUrl() {
+function openPendingCallDb() {
+    return new Promise(function (resolve, reject) {
+        const request = indexedDB.open(PENDING_CALL_DB, 1);
+        request.onerror = function () {
+            reject(request.error);
+        };
+        request.onupgradeneeded = function () {
+            request.result.createObjectStore(PENDING_CALL_STORE);
+        };
+        request.onsuccess = function () {
+            resolve(request.result);
+        };
+    });
+}
+
+function storePendingCallInDb(data) {
+    return openPendingCallDb()
+        .then(function (db) {
+            return new Promise(function (resolve, reject) {
+                const tx = db.transaction(PENDING_CALL_STORE, "readwrite");
+                const store = tx.objectStore(PENDING_CALL_STORE);
+                store.put({ data: data, storedAt: Date.now() }, PENDING_CALL_KEY);
+                tx.oncomplete = function () {
+                    resolve();
+                };
+                tx.onerror = function () {
+                    reject(tx.error);
+                };
+            });
+        })
+        .catch(function () {});
+}
+
+function appNotificationIconUrl() {
     return new URL("/favicon-96x96.png", self.location.origin).href;
+}
+
+function resolveNotificationBadgeUrl(data) {
+    const orgLogo =
+        data && data.organization_logo_url
+            ? String(data.organization_logo_url).trim()
+            : "";
+    if (orgLogo) {
+        try {
+            return new URL(orgLogo, self.location.origin).href;
+        } catch (e) {
+            // Fall back to app logo when the organization logo URL is invalid.
+        }
+    }
+    return appNotificationIconUrl();
 }
 
 function trackPushOpenFromData(data) {
@@ -49,12 +102,13 @@ function resolveClickUrl(data) {
 
 function buildNotificationOptions(title, body, data) {
     const clickUrl = resolveClickUrl(data);
-    const tag = (data.type || "push") + ":" + (data.livestream_id || data.source_id || title);
-    const icon = notificationIconUrl();
+    const tag = (data.type || "push") + ":" + (data.call_id || data.livestream_id || data.source_id || title);
+    const icon = appNotificationIconUrl();
+    const badge = resolveNotificationBadgeUrl(data);
     const options = {
         body: body || undefined,
         icon: icon,
-        badge: icon,
+        badge: badge,
         tag: tag,
         data: Object.assign({}, data, {
             click_action: clickUrl,
@@ -67,16 +121,113 @@ function buildNotificationOptions(title, body, data) {
         options.actions = [{ action: "join", title: "Join" }];
     }
 
+    if (data.type === INCOMING_CALL_TYPE) {
+        const ringUrl = data.ring_url || data.join_url || clickUrl;
+        options.actions = [
+            { action: "accept", title: "Accept" },
+            { action: "decline", title: "Decline" },
+        ];
+        options.requireInteraction = true;
+        options.renotify = true;
+        options.silent = false;
+        options.vibrate = [500, 250, 500, 250, 500, 250, 500];
+        options.data = Object.assign({}, options.data, {
+            ring_url: ringUrl,
+            click_action: ringUrl,
+            url: ringUrl,
+        });
+        if (data.caller_avatar) {
+            options.image = data.caller_avatar;
+        }
+    }
+
     return options;
+}
+
+function resolveIncomingCallRingUrl(data) {
+    const ringUrl = data.ring_url || data.join_url || data.click_action || data.url || "/";
+    return new URL(ringUrl, self.location.origin).href;
+}
+
+function postIncomingCallToClients(clientList, data) {
+    clientList.forEach(function (client) {
+        client.postMessage({
+            type: "unity-call-incoming-push",
+            data: data,
+        });
+    });
+}
+
+function focusAndShowIncomingCall(client, data) {
+    postIncomingCallToClients([client], data);
+    if (!("focus" in client)) {
+        return Promise.resolve(false);
+    }
+    return client.focus().then(function () {
+        return true;
+    });
+}
+
+function openFreshIncomingCallWindow() {
+    if (!self.clients.openWindow) {
+        return Promise.resolve(false);
+    }
+
+    const chatUrl = new URL("/chat", self.location.origin).href;
+    return self.clients.openWindow(chatUrl).then(function (windowClient) {
+        return Boolean(windowClient);
+    }).catch(function () {
+        return false;
+    });
+}
+
+/** Bring the in-app incoming call screen to the foreground without a notification tap. */
+function notifyOpenClientsIncomingCall(data) {
+    const absoluteRingUrl = resolveIncomingCallRingUrl(data);
+
+    return storePendingCallInDb(data).then(function () {
+        return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+            postIncomingCallToClients(clientList, data);
+
+            if (clientList.length === 0) {
+                return openFreshIncomingCallWindow().then(function (opened) {
+                    return { opened: opened, absoluteRingUrl: absoluteRingUrl };
+                });
+            }
+
+            return focusAndShowIncomingCall(clientList[0], data).then(function (focused) {
+                if (focused) {
+                    return { opened: true, absoluteRingUrl: absoluteRingUrl };
+                }
+
+                return openFreshIncomingCallWindow().then(function (opened) {
+                    return { opened: opened, absoluteRingUrl: absoluteRingUrl };
+                });
+            });
+        });
+    });
 }
 
 /** Native OS notification (Windows/macOS/Android) when the app is in the background. */
 messaging.onBackgroundMessage((payload) => {
     const data = payload.data || {};
-    const title =
-        payload.notification?.title || data.title || "Believe In Unity";
-    const body =
-        payload.notification?.body || data.body || data.message || "";
+    const isIncomingCall = data.type === INCOMING_CALL_TYPE;
+    const isGroupCall = data.is_group_call === "1" || data.is_group_call === "true";
+    const title = isIncomingCall && isGroupCall && data.chat_room_name
+        ? data.chat_room_name
+        : payload.notification?.title || data.title || "Believe In Unity";
+    const body = isIncomingCall && isGroupCall && data.caller_name
+        ? data.caller_name + " is calling"
+        : payload.notification?.body || data.body || data.message || "";
+
+    if (data.type === INCOMING_CALL_TYPE) {
+        return notifyOpenClientsIncomingCall(data).then(function () {
+            return self.registration.showNotification(
+                title,
+                buildNotificationOptions(title, body, data),
+            );
+        });
+    }
 
     return self.registration.showNotification(
         title,
@@ -85,7 +236,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-b0be8a03623c119f";
+const CACHE_NAME = "pwa-cache-9f9fe7b2e3a2a745";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -187,6 +338,62 @@ self.addEventListener("notificationclick", (event) => {
 
     if (event.action === "join") {
         urlToOpen = data.join_url || data.click_action || data.url || "/";
+    }
+
+    if (event.action === "accept") {
+        const acceptUrl = data.accept_url;
+        const joinUrl = data.join_url || data.click_action || data.url || "/";
+        if (acceptUrl) {
+            event.waitUntil(
+                fetch(acceptUrl, {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                })
+                    .catch(function () {})
+                    .then(function () {
+                        return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+                            return openNotificationUrl(clientList, new URL(joinUrl, self.location.origin).href);
+                        });
+                    }),
+            );
+            return;
+        }
+        urlToOpen = joinUrl;
+    }
+
+    if (event.action === "decline") {
+        const declineUrl = data.decline_url;
+        if (declineUrl) {
+            event.waitUntil(
+                fetch(declineUrl, {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                }).catch(function () {}),
+            );
+        }
+        return;
+    }
+
+    if (
+        (!event.action || event.action === "") &&
+        data.type === INCOMING_CALL_TYPE
+    ) {
+        const ringUrl = data.ring_url || data.join_url || data.click_action || data.url || "/";
+        const absoluteRingUrl = new URL(ringUrl, self.location.origin).href;
+        event.waitUntil(
+            self.clients
+                .matchAll({ type: "window", includeUncontrolled: true })
+                .then((clientList) => openNotificationUrl(clientList, absoluteRingUrl)),
+        );
+        return;
     }
 
     const absoluteUrl = new URL(urlToOpen, self.location.origin).href;

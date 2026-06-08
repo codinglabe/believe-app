@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useCallback, useState } from "react"
 import { useChat } from "@/providers/chat-provider"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { ChatMessage } from "@/components/chat/chat-message"
+import { ChatCallMessage } from "@/components/chat/chat-call-message"
 import { Loader2Icon, ChevronUpIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { chatAmbientBg, chatGradientBg, chatGradientBgHover, chatSendButtonActive, chatWallpaperBg } from "./chat-brand"
@@ -167,16 +168,28 @@ export function MessageList({ isMobile = false, isGroupChat = false }: MessageLi
           </div>
         ) : (
           <div className="flex flex-col">
-            {normalizedMessages.map((normalizedMessage, index) => (
-              <ChatMessage
-                key={getMessageKey(messages[index], index)}
-                message={normalizedMessage}
-                isOwnMessage={normalizedMessage.user?.id === currentUser.id}
-                isMobile={isMobile}
-                isGroupChat={isGroupChat}
-                showAvatar={shouldShowAvatar(index)}
-              />
-            ))}
+            {normalizedMessages.map((normalizedMessage, index) => {
+              if (normalizedMessage.message_type === "unity_call") {
+                return (
+                  <ChatCallMessage
+                    key={getMessageKey(messages[index], index)}
+                    message={normalizedMessage}
+                    currentUserId={currentUser.id}
+                  />
+                )
+              }
+
+              return (
+                <ChatMessage
+                  key={getMessageKey(messages[index], index)}
+                  message={normalizedMessage}
+                  isOwnMessage={normalizedMessage.user?.id === currentUser.id}
+                  isMobile={isMobile}
+                  isGroupChat={isGroupChat}
+                  showAvatar={shouldShowAvatar(index)}
+                />
+              )
+            })}
           </div>
         )}
       </ScrollArea>

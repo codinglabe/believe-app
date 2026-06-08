@@ -7,6 +7,9 @@ import toast from "react-hot-toast"
 import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { attachCsrfToAxios } from "@/lib/csrf"
+import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
+import { dispatchUnityCallIncoming, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 
 // Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
@@ -74,9 +77,26 @@ interface Attachment {
   size: number
 }
 
+export interface UnityCallChatMetadata {
+  unity_call_id: number
+  call_status: string
+  call_type: string
+  join_url: string
+  is_group_call: boolean
+  answered_at?: string | null
+  ended_at?: string | null
+  duration_seconds?: number | null
+  duration_label?: string | null
+  accepted_count: number
+  caller_id: number
+  caller_name: string
+}
+
 export interface ChatMessage {
   id: number
   message: string
+  message_type?: "text" | "unity_call"
+  metadata?: UnityCallChatMetadata | null
   attachments: Attachment[]
   created_at: string
   is_edited: boolean
@@ -128,6 +148,7 @@ interface ChatContextType {
   setChatRooms: React.Dispatch<React.SetStateAction<ChatRoom[]>>
   activeRoom: ChatRoom | null
   setActiveRoom: (room: ChatRoom | null) => void
+  selectChatRoom: (room: ChatRoom | null) => void
   messages: ChatMessage[]
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   hasMoreMessages: boolean
@@ -158,6 +179,7 @@ interface ChatContextType {
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>
   allTopics: ChatTopic[]
   loadingMessages: boolean
+  startAudioCall: (roomId: number) => Promise<string | null>
 }
 
 export interface ChatTopic {
@@ -168,6 +190,18 @@ export interface ChatTopic {
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
+
+function syncChatRoomUrl(roomId: number | null): void {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  const target = roomId && roomId > 0 ? `/chat?room=${roomId}` : "/chat"
+  const current = `${window.location.pathname}${window.location.search}`
+  if (current !== target) {
+    window.history.replaceState(window.history.state, "", target)
+  }
+}
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { props, url } = usePage()
@@ -183,7 +217,35 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     // Intentional: re-sync on navigation (url) or when the server’s room list set changes; avoid depending on the whole Inertia `props` object.
   }, [url, roomsSyncKey])
-  const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null)
+
+  const [activeRoom, setActiveRoomState] = useState<ChatRoom | null>(null)
+
+  const setActiveRoom = useCallback((room: ChatRoom | null) => {
+    setActiveRoomState(room)
+    syncChatRoomUrl(room?.id ?? null)
+  }, [])
+
+  const selectChatRoom = setActiveRoom
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const roomId = Number(new URLSearchParams(window.location.search).get("room"))
+    if (!Number.isFinite(roomId) || roomId <= 0) {
+      return
+    }
+
+    setActiveRoomState((prev) => {
+      if (prev?.id === roomId) {
+        return prev
+      }
+      const room = chatRooms.find((entry) => entry.id === roomId)
+      return room ?? prev
+    })
+  }, [url, chatRooms])
+
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -292,6 +354,20 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
+  const startAudioCall = useCallback(async (roomId: number) => {
+    try {
+      const result = await initiateAudioCall(roomId)
+      if (!result?.call_id) {
+        toast.error("Could not start audio call")
+        return null
+      }
+      return toInternalAppPath(result.join_url || unityCallShowPath(result.call_id))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not start audio call")
+      return null
+    }
+  }, [])
+
   const fetchMessages = useCallback(async (roomId: number, page = 1, append = false) => {
     try {
       const { data } = await api.get<{
@@ -324,6 +400,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
     return sortMessagesByTime(unique)
   }, [])
+
+  const mergeIncomingChatMessage = useCallback(
+    (previous: ChatMessage[], incoming: ChatMessage) => {
+      const existing = previous.find((msg) => msg.id === incoming.id)
+      if (existing) {
+        return deduplicateMessages(previous.map((msg) => (msg.id === incoming.id ? { ...existing, ...incoming } : msg)))
+      }
+
+      const optimisticMatch = previous.find(
+        (msg) =>
+          typeof msg.id === "number" &&
+          msg.id > 1_000_000_000_000 &&
+          msg.user?.id === incoming.user.id &&
+          msg.message === incoming.message,
+      )
+
+      if (optimisticMatch) {
+        return deduplicateMessages(previous.filter((msg) => msg.id !== optimisticMatch.id).concat(incoming))
+      }
+
+      return deduplicateMessages([...previous, incoming])
+    },
+    [deduplicateMessages],
+  )
 
   /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
   useEffect(() => {
@@ -393,12 +493,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (e.message && ar?.id === e.message?.chat_room_id && (ar?.type === "direct" || ar?.type === "private")) {
-        setMessages((prev) => {
-          const existingMessage = prev.find((msg) => msg.id === e.message.id)
-          if (existingMessage) return prev
-
-          return deduplicateMessages([...prev, e.message])
-        })
+        setMessages((prev) => mergeIncomingChatMessage(prev, e.message))
 
         // Mark as read if message is from another user
         if (e.message.user.id !== currentUser.id) {
@@ -417,7 +512,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       privateChannel.stopListening(".MessageSent")
       echoInstance.leave(`user.${currentUser.id}`)
     }
-  }, [currentUser?.id, markRoomAsRead, deduplicateMessages])
+  }, [currentUser?.id, markRoomAsRead, mergeIncomingChatMessage])
 
   // Real-time event handling (subscriptions only — messages load via HTTP above)
   useEffect(() => {
@@ -455,29 +550,74 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Message listener (merge with optimistic sends)
     channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
-        setMessages((prev) => {
-          const existingMessage = prev.find((msg) => msg.id === e.message.id)
-          if (existingMessage) return prev
-
-          const optimisticMatch = prev.find(
-            (msg) =>
-              typeof msg.id === "number" &&
-              msg.id > 1_000_000_000_000 &&
-              msg.user?.id === e.message.user.id &&
-              msg.message === e.message.message,
-          )
-
-          if (optimisticMatch) {
-            return deduplicateMessages([...prev.filter((msg) => msg.id !== optimisticMatch.id), e.message])
-          }
-
-          return deduplicateMessages([...prev, e.message])
-        })
+        setMessages((prev) => mergeIncomingChatMessage(prev, e.message))
 
         if (e.message.user.id !== currentUser.id) {
           markRoomAsRead(roomId)
         }
       })
+
+    channel.listen(".call.incoming", (payload: UnityCallStatusEvent) => {
+      if (payload.caller?.id === currentUser.id || payload.call.status !== "ringing") {
+        return
+      }
+
+      const participants = payload.participants.some((p) => p.userId === currentUser.id)
+        ? payload.participants
+        : [
+            ...payload.participants,
+            {
+              userId: currentUser.id,
+              name: currentUser.name,
+              avatar: currentUser.avatar_url,
+              role: "callee" as const,
+              status: "ringing" as const,
+            },
+          ]
+
+      dispatchUnityCallIncoming({ ...payload, participants })
+    })
+
+    channel.listen(".call.status", (payload: UnityCallStatusEvent) => {
+      if (isUnityCallTerminated(payload)) {
+        dispatchUnityCallTerminated(payload)
+      }
+
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.message_type !== "unity_call" || msg.metadata?.unity_call_id !== payload.call.id) {
+            return msg
+          }
+
+          const endedAt = payload.call.endedAt ?? msg.metadata?.ended_at ?? null
+          const answeredAt = payload.call.answeredAt ?? msg.metadata?.answered_at ?? null
+          let durationSeconds = msg.metadata?.duration_seconds ?? null
+          if (answeredAt && endedAt) {
+            durationSeconds = Math.max(
+              0,
+              Math.floor((new Date(endedAt).getTime() - new Date(answeredAt).getTime()) / 1000),
+            )
+          }
+
+          const acceptedCount = payload.participants.filter(
+            (p) => p.role === "callee" && p.status === "accepted",
+          ).length
+
+          return {
+            ...msg,
+            message: payload.call.status === "accepted" ? "Audio call in progress" : msg.message,
+            metadata: {
+              ...msg.metadata,
+              call_status: payload.call.status,
+              answered_at: answeredAt,
+              ended_at: endedAt,
+              duration_seconds: durationSeconds,
+              accepted_count: acceptedCount,
+            },
+          }
+        }),
+      )
+    })
 
     const normalizeTypingUser = (payload: {
       id: number
@@ -593,6 +733,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       channel.stopListening(".MessageSent")
+      channel.stopListening(".call.incoming")
+      channel.stopListening(".call.status")
       channel.stopListening(".user.typing")
       channel.stopListening(".member.joined")
       channel.stopListening(".member.left")
@@ -961,6 +1103,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setChatRooms,
         activeRoom,
         setActiveRoom,
+        selectChatRoom,
         messages,
         setMessages,
         hasMoreMessages,
@@ -984,6 +1127,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSearchQuery,
         allTopics,
         loadingMessages,
+        startAudioCall,
       }}
     >
       {children}

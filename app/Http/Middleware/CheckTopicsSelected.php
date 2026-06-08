@@ -42,6 +42,8 @@ class CheckTopicsSelected
             'profile/topics/select',
             'group-topics/select',
             'user/topics/store',
+            'unity-call/*',
+            'unity-calls/*',
         )) {
             return $next($request);
         }

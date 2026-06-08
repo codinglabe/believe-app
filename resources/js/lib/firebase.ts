@@ -144,6 +144,13 @@ function attachForegroundMessageListener(instance: Messaging) {
         const body = payload.notification?.body ?? data.body ?? data.message;
         const detail = { title, body, data };
 
+        if (data.type === "incoming_call") {
+            void import("@/lib/swIncomingCallBridge").then(({ handleSwIncomingCallPayload }) => {
+                handleSwIncomingCallPayload(data);
+            });
+            return;
+        }
+
         // Foreground: native OS notification (same as background / device tray).
         void import("@/lib/firebase-push-toast").then(({ showNativePushNotification }) => {
             void showNativePushNotification(detail);

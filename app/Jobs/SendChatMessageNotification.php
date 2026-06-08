@@ -35,6 +35,10 @@ class SendChatMessageNotification implements ShouldQueue
         try {
             $this->message->loadMissing(['chatRoom', 'user:id,name,role']);
 
+            if (($this->message->message_type ?? ChatMessage::TYPE_TEXT) === ChatMessage::TYPE_UNITY_CALL) {
+                return;
+            }
+
             $chatRoom = $this->message->chatRoom;
             $sender = $this->message->user;
             $senderName = $sender->name;

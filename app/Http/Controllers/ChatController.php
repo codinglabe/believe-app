@@ -590,6 +590,8 @@ class ChatController extends Controller
         return [
             'id' => $message->id,
             'message' => $message->message,
+            'message_type' => $message->message_type ?? ChatMessage::TYPE_TEXT,
+            'metadata' => $message->metadata ?? [],
             'attachments' => $message->attachments ?? [],
             'created_at' => $message->created_at->utc()->toIso8601String(),
             'is_edited' => $message->is_edited,

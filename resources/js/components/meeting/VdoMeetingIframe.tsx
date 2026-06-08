@@ -37,16 +37,24 @@ function normalizeMeetingSrc(url: string): string {
   }
 }
 
-async function queryMediaPermissionState(): Promise<"granted" | "prompt" | "denied" | "unknown"> {
+async function queryMediaPermissionState(audioOnly = false): Promise<"granted" | "prompt" | "denied" | "unknown"> {
   if (typeof navigator === "undefined" || !navigator.permissions?.query) {
     return "unknown"
   }
 
   try {
-    const [camera, microphone] = await Promise.all([
-      navigator.permissions.query({ name: "camera" as PermissionName }),
-      navigator.permissions.query({ name: "microphone" as PermissionName }),
-    ])
+    const microphone = await navigator.permissions.query({ name: "microphone" as PermissionName })
+    if (audioOnly) {
+      if (microphone.state === "denied") {
+        return "denied"
+      }
+      if (microphone.state === "granted") {
+        return "granted"
+      }
+      return "prompt"
+    }
+
+    const camera = await navigator.permissions.query({ name: "camera" as PermissionName })
 
     if (camera.state === "denied" || microphone.state === "denied") {
       return "denied"
@@ -60,13 +68,15 @@ async function queryMediaPermissionState(): Promise<"granted" | "prompt" | "deni
   }
 }
 
-async function requestCameraAndMicrophone(): Promise<boolean> {
+async function requestCameraAndMicrophone(audioOnly = false): Promise<boolean> {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return false
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia(
+      audioOnly ? { audio: true } : { video: true, audio: true },
+    )
     stream.getTracks().forEach((track) => track.stop())
     return true
   } catch {
@@ -119,6 +129,8 @@ type VdoMeetingIframeProps = {
   showLogoOverlay?: boolean
   /** When false, tear down the iframe immediately (avoids VDO reconnect / Refresh UI). */
   active?: boolean
+  /** Audio-only chat calls — microphone permission only, no camera. */
+  audioOnly?: boolean
 }
 
 export default function VdoMeetingIframe({
@@ -128,6 +140,7 @@ export default function VdoMeetingIframe({
   allow = VDO_IFRAME_ALLOW,
   showLogoOverlay = true,
   active = true,
+  audioOnly = false,
 }: VdoMeetingIframeProps) {
   const meetingSrc = useMemo(() => normalizeMeetingSrc(src), [src])
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -167,7 +180,7 @@ export default function VdoMeetingIframe({
         setMediaAccess("checking")
       }
 
-      const permissionState = await queryMediaPermissionState()
+      const permissionState = await queryMediaPermissionState(audioOnly)
       if (cancelled) {
         return
       }
@@ -190,7 +203,7 @@ export default function VdoMeetingIframe({
     return () => {
       cancelled = true
     }
-  }, [meetingSrc])
+  }, [meetingSrc, audioOnly])
 
   useEffect(() => {
     if (active) {
@@ -240,7 +253,7 @@ export default function VdoMeetingIframe({
 
   const handleAllowAccess = useCallback(async () => {
     setIsRequestingAccess(true)
-    const allowed = await requestCameraAndMicrophone()
+    const allowed = await requestCameraAndMicrophone(audioOnly)
     setIsRequestingAccess(false)
 
     if (allowed) {
@@ -248,9 +261,9 @@ export default function VdoMeetingIframe({
       return
     }
 
-    const permissionState = await queryMediaPermissionState()
+    const permissionState = await queryMediaPermissionState(audioOnly)
     setMediaAccess(permissionState === "denied" ? "denied" : "prompt")
-  }, [])
+  }, [audioOnly])
 
   const handleRetryPermission = useCallback(() => {
     setMediaAccess("prompt")
@@ -286,19 +299,27 @@ export default function VdoMeetingIframe({
             <>
               <Loader2 className="h-10 w-10 animate-spin text-purple-400" aria-hidden />
               <p className="text-sm font-medium text-white/90">
-                {isRequestingAccess ? "Waiting for camera and microphone access…" : "Checking access…"}
+                {isRequestingAccess
+                  ? audioOnly
+                    ? "Waiting for microphone access…"
+                    : "Waiting for camera and microphone access…"
+                  : "Checking access…"}
               </p>
             </>
           ) : mediaAccess === "prompt" ? (
             <>
               <div className="flex items-center gap-3 text-purple-300">
-                <Camera className="h-8 w-8" aria-hidden />
+                {!audioOnly ? <Camera className="h-8 w-8" aria-hidden /> : null}
                 <Mic className="h-8 w-8" aria-hidden />
               </div>
               <div className="space-y-2 max-w-sm">
-                <p className="text-base font-semibold text-white">Camera &amp; microphone required</p>
+                <p className="text-base font-semibold text-white">
+                  {audioOnly ? "Microphone required" : "Camera & microphone required"}
+                </p>
                 <p className="text-sm text-white/70">
-                  Allow access to join the meeting. The room will not load until permission is granted.
+                  {audioOnly
+                    ? "Allow microphone access to join the audio call."
+                    : "Allow access to join the meeting. The room will not load until permission is granted."}
                 </p>
               </div>
               <Button
@@ -306,17 +327,19 @@ export default function VdoMeetingIframe({
                 onClick={() => void handleAllowAccess()}
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
               >
-                <Video className="mr-2 h-4 w-4" />
-                Allow camera &amp; microphone
+                {!audioOnly ? <Video className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                {audioOnly ? "Allow microphone" : "Allow camera & microphone"}
               </Button>
             </>
           ) : mediaAccess === "denied" ? (
             <>
-              <Camera className="h-10 w-10 text-amber-400" aria-hidden />
+              {!audioOnly ? <Camera className="h-10 w-10 text-amber-400" aria-hidden /> : <Mic className="h-10 w-10 text-amber-400" aria-hidden />}
               <div className="space-y-2 max-w-sm">
                 <p className="text-base font-semibold text-white">Access blocked</p>
                 <p className="text-sm text-white/70">
-                  Enable camera and microphone for this site in your browser settings, then try again.
+                  {audioOnly
+                    ? "Enable microphone for this site in your browser settings, then try again."
+                    : "Enable camera and microphone for this site in your browser settings, then try again."}
                 </p>
               </div>
               <Button type="button" variant="outline" className="border-white/20 text-white hover:bg-white/10" onClick={handleRetryPermission}>

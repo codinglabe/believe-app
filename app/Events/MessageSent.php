@@ -56,6 +56,8 @@ class MessageSent implements ShouldBroadcastNow
             'message' => [
                 'id' => $this->message->id,
                 'message' => $this->message->message,
+                'message_type' => $this->message->message_type ?? ChatMessage::TYPE_TEXT,
+                'metadata' => $this->message->metadata ?? [],
                 'attachments' => $this->message->attachments ?? [],
                 'created_at' => $this->message->created_at->utc()->toIso8601String(),
                 'is_edited' => $this->message->is_edited,

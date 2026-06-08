@@ -1,16 +1,17 @@
 "use client"
 
 import React from "react"
+import { callNotificationsEnabled, requestCallPermissionsPrompt } from "@/lib/call-permissions"
 import { useChat } from "@/providers/chat-provider"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { TypingIndicator } from "@/components/chat/typing-indicator"
 import { Button } from "@/components/chat/ui/button"
-import { ChevronLeft, InfoIcon, SettingsIcon } from "lucide-react"
+import { ChevronLeft, InfoIcon, Phone, SettingsIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/chat/ui/sheet"
 import { ChatDetailsPanel } from "@/components/chat/chat-details-panel"
-import { Link } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { chatAccentText, chatGradientBg, chatGradientBgHover, chatGradientText, chatInputBarBg, chatMobileDivider } from "./chat-brand"
 import { cn } from "@/lib/utils"
@@ -22,9 +23,10 @@ type ChatAreaProps = {
 }
 
 export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAreaProps = {}) {
-  const { activeRoom, currentUser, typingUsers, joinRoom } = useChat()
+  const { activeRoom, currentUser, typingUsers, joinRoom, startAudioCall } = useChat()
   const otherTypingUsers = typingUsers.filter((u) => u.id !== currentUser?.id)
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
+  const [startingCall, setStartingCall] = React.useState(false)
 
   const isMember = activeRoom?.is_member || activeRoom?.members?.some((member) => member.id === currentUser?.id)
 
@@ -116,6 +118,30 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5 pr-1 sm:gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-full hover:bg-muted/80"
+            aria-label="Start audio call"
+            disabled={startingCall}
+            onClick={() => {
+              if (!activeRoom) {
+                return
+              }
+              if (!callNotificationsEnabled()) {
+                requestCallPermissionsPrompt()
+              }
+              setStartingCall(true)
+              void startAudioCall(activeRoom.id).then((joinUrl) => {
+                setStartingCall(false)
+                if (joinUrl) {
+                  router.visit(joinUrl)
+                }
+              })
+            }}
+          >
+            <Phone className="h-5 w-5" />
+          </Button>
           {activeRoom.type !== "direct" && !isMobile && (
             <Link href={getManageGroupsLink()}>
               <Button
