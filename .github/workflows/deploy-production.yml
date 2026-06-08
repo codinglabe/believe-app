@@ -93,32 +93,6 @@ jobs:
             exit 1
           fi
 
-      - name: Verify deploy secrets
-        run: |
-          missing=0
-          if [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
-            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
-            missing=1
-          fi
-          if [ -z "${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}" ]; then
-            echo "::error::Missing GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN."
-            missing=1
-          fi
-          if [ "${missing}" -eq 1 ]; then
-            echo "ONE-TIME VPS fix (root): curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
-            exit 1
-          fi
-
-      - name: Preflight — open SSH for this runner
-        env:
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
-          APP_URL: ${{ env.APP_URL }}
-          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
-          SSH_PORT: ${{ env.SSH_PORT }}
-        run: |
-          chmod +x .github/scripts/preflight-open-runner-ssh.sh
-          bash .github/scripts/preflight-open-runner-ssh.sh
-
       - name: Setup SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
@@ -134,9 +108,15 @@ jobs:
           DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
+          set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
+          fi
+          if [ -z "${DEPLOY_RUNNER_ALLOW_TOKEN}" ]; then
+            echo "::warning::DEPLOY_RUNNER_ALLOW_TOKEN not set — skipping HTTPS CSF preflight."
+            echo "::warning::If SSH times out, run on VPS as root:"
+            echo "::warning::  DEPLOY_USER=believeinunity DEPLOY_PATH=${DEPLOY_PATH} bash ${DEPLOY_PATH}/scripts/allow-github-actions-csf.sh"
           fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
           bash .github/scripts/setup-cpanel-ssh.sh
