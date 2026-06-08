@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RefreshCw, Building2, Plus, ArrowDownLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ExternalAccount } from './types'
@@ -8,6 +8,7 @@ import { AddBankAccount } from './AddBankAccount'
 interface ExternalAccountsProps {
     externalAccounts: ExternalAccount[]
     isLoading: boolean
+    initialShowAddForm?: boolean
     onRefresh: () => void
     onLinkAccount: (accountData: {
         routing_number: string
@@ -29,11 +30,18 @@ interface ExternalAccountsProps {
 export function ExternalAccounts({
     externalAccounts,
     isLoading,
+    initialShowAddForm = false,
     onRefresh,
     onLinkAccount,
     onWithdraw
 }: ExternalAccountsProps) {
-    const [showAddForm, setShowAddForm] = useState(false)
+    const [showAddForm, setShowAddForm] = useState(initialShowAddForm)
+
+    useEffect(() => {
+        if (initialShowAddForm) {
+            setShowAddForm(true)
+        }
+    }, [initialShowAddForm])
 
     const handleLinkClick = () => {
         setShowAddForm(true)

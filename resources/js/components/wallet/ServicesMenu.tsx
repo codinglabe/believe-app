@@ -6,9 +6,19 @@ interface ServicesMenuProps {
     onNavigate: (view: ActionView) => void
     hasCardWallet?: boolean | null
     isCheckingCardWallet?: boolean
+    hasBankAccounts?: boolean | null
+    isCheckingBankAccounts?: boolean
+    onAddBankAccount?: () => void
 }
 
-export function ServicesMenu({ onNavigate, hasCardWallet, isCheckingCardWallet }: ServicesMenuProps) {
+export function ServicesMenu({
+    onNavigate,
+    hasCardWallet,
+    isCheckingCardWallet,
+    hasBankAccounts,
+    isCheckingBankAccounts,
+    onAddBankAccount,
+}: ServicesMenuProps) {
     return (
         <motion.div
             initial={{ opacity: 0, x: 20 }}
@@ -25,13 +35,31 @@ export function ServicesMenu({ onNavigate, hasCardWallet, isCheckingCardWallet }
                 
                 <div className="grid grid-cols-2 gap-2">
                     <button
-                        onClick={() => onNavigate('external_accounts')}
+                        onClick={() => {
+                            if (hasBankAccounts === false && onAddBankAccount) {
+                                onAddBankAccount()
+                            } else {
+                                onNavigate('external_accounts')
+                            }
+                        }}
                         className="w-full flex flex-col items-center justify-center p-3 rounded-lg border border-border hover:bg-muted transition-colors group cursor-pointer"
                     >
-                        <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg mb-2 group-hover:scale-110 transition-transform">
-                            <Building2 className="h-4 w-4 text-white" />
-                        </div>
-                        <p className="text-sm font-medium text-center">Bank Accounts</p>
+                        {isCheckingBankAccounts ? (
+                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg mb-2">
+                                <Loader2 className="h-4 w-4 text-white animate-spin" />
+                            </div>
+                        ) : (
+                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg mb-2 group-hover:scale-110 transition-transform">
+                                {hasBankAccounts === false ? (
+                                    <Plus className="h-4 w-4 text-white" />
+                                ) : (
+                                    <Building2 className="h-4 w-4 text-white" />
+                                )}
+                            </div>
+                        )}
+                        <p className="text-sm font-medium text-center">
+                            {hasBankAccounts === false ? 'Add Bank Account' : 'Bank Accounts'}
+                        </p>
                     </button>
 
                     <button
