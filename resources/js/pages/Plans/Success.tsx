@@ -113,7 +113,7 @@ export default function PlansSuccess({
   isSupporterSubscription: isSupporterSubscriptionProp = false,
   welcomeBonus = null,
 }: PlansSuccessProps) {
-  const { url } = usePage()
+  const { url, auth } = usePage().props as { url?: string; auth?: { user?: { role?: string } } }
   const isSupporterSubscription =
     isSupporterSubscriptionProp ||
     Boolean(
@@ -330,7 +330,14 @@ export default function PlansSuccess({
                   </>
                 ) : (
                   <>
-                    <Link href="/dashboard" className="flex-1">
+                    <Link
+                      href={
+                        auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
+                          ? "/dashboard?verify_bridge=1"
+                          : "/dashboard"
+                      }
+                      className="flex-1"
+                    >
                       <Button className="group relative h-11 w-full overflow-hidden border-0 font-semibold text-white shadow-md">
                         <span className={cn("absolute inset-0", logoGradientCTA)} aria-hidden />
                         <span className="relative flex items-center justify-center gap-2">

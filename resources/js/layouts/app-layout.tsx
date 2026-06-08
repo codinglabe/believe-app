@@ -13,6 +13,7 @@ import { registerServiceWorker } from '@/pwa/register-service-worker';
 import { PushNotificationManager } from '@/components/PushNotificationManager';
 import { ProximityLocationManager } from '@/components/ProximityLocationManager';
 import { shouldAutoPromptForPushPermission } from '@/lib/push-environment';
+import { BridgeVerificationGate } from '@/components/organization/BridgeVerificationGate';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -91,6 +92,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
                 </div>
             )}
             {children}
+            <BridgeVerificationGate />
 
             {/* Toast Container */}
             <Toaster

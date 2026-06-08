@@ -921,7 +921,7 @@ class BridgeWalletController extends Controller
             // Wallet is created after KYC approval
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
             $needsVerification = $isOrgUser
-                ? ($integration->kyb_status !== 'approved')
+                ? ($integration->kyb_status !== 'approved' || $integration->kyc_status !== 'approved')
                 : ($integration->kyc_status !== 'approved');
 
             // Check TOS status from Bridge API via customer endorsements

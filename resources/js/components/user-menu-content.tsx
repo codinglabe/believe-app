@@ -35,7 +35,8 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
         ? 'month'
         : ((planDetails?.frequency || 'month') === 'one-time' ? 'One-time' : (planDetails?.frequency || 'month'));
     const hasActivePlan = Boolean(isSupporter ? activeSupporterPlan || planDetails?.name : planDetails?.name);
-    const planManageHref = route('plans.index');
+    const supporterPricingHref = `${route('pricing')}?tab=supporters`;
+    const planManageHref = isSupporter ? supporterPricingHref : route('plans.index');
     const showViewPlans = !isAdmin && !hasActivePlan && (isSupporter || !(user as any).current_plan_id);
 
     const handleLogout = async (e: React.MouseEvent) => {
@@ -75,7 +76,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                     <DropdownMenuItem asChild>
                         <Link className="block w-full" href={planManageHref} as="button" prefetch onClick={cleanup}>
                             <Crown className="mr-2" />
-                            Manage Plan
+                            {isSupporter ? 'Manage supporter plan' : 'Manage Plan'}
                         </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -163,7 +164,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                 <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                        <Link className="block w-full" href={planManageHref} as="button" prefetch onClick={cleanup}>
+                        <Link className="block w-full" href={isSupporter ? supporterPricingHref : planManageHref} as="button" prefetch onClick={cleanup}>
                             <Crown className="mr-2" />
                             View Plans
                         </Link>

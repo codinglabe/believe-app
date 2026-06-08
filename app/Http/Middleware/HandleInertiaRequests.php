@@ -8,6 +8,7 @@ use App\Models\LivestockUser;
 use App\Models\Merchant;
 use App\Models\Organization;
 use App\Models\OrganizationProduct;
+use App\Services\BridgeVerificationService;
 use App\Services\SeoService;
 use App\Services\StripeProcessingFeeEstimator;
 use App\Support\AppVersion;
@@ -355,6 +356,7 @@ class HandleInertiaRequests extends Middleware
             'supporterSubscription' => fn () => ($user instanceof \App\Models\User && ($user->role ?? null) === 'user')
                 ? SupporterSubscriptionService::subscriptionStateForUser($user)
                 : null,
+            'bridgeVerification' => fn () => $this->sharedBridgeVerification($user, $isLivestockDomain, $isMerchantDomain),
             'firebaseWeb' => [
                 'apiKey' => config('services.firebase.api_key'),
                 'authDomain' => config('services.firebase.auth_domain'),
@@ -365,5 +367,23 @@ class HandleInertiaRequests extends Middleware
                 'vapidKey' => config('services.firebase.vapid_key'),
             ],
         ];
+    }
+
+    /**
+     * @return array{initialized: bool, kyb_status: string, kyc_status: string, requires_verification: bool, has_wallet: bool, is_verified: bool}|null
+     */
+    private function sharedBridgeVerification(mixed $user, bool $isLivestockDomain, bool $isMerchantDomain): ?array
+    {
+        if (! $user instanceof \App\Models\User || $isLivestockDomain || $isMerchantDomain) {
+            return null;
+        }
+
+        if (! $user->hasNonprofitDashboardRole()) {
+            return null;
+        }
+
+        $organization = Organization::forAuthUser($user);
+
+        return BridgeVerificationService::payloadForOrganization($organization);
     }
 }

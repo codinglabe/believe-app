@@ -41,6 +41,8 @@ import {
     DepositInstructionsSkeleton,
     WaitingScreen,
     getCsrfToken as getWalletCsrfToken,
+    walletFetch,
+    isCsrfMismatch,
     formatAddress as formatWalletAddress
 } from './wallet'
 
@@ -947,33 +949,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                         if (!csrfToken) {
                             showErrorToast('CSRF token not found. Please refresh the page and try again.')
-                            // Refresh page to get new CSRF token
-                            setTimeout(() => {
-                                window.location.reload()
-                            }, 2000)
                             return
                         }
 
-                        const response = await fetch('/wallet/tos-callback', {
+                        const response = await walletFetch('/wallet/tos-callback', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-store',
-                            body: JSON.stringify({ signed_agreement_id: agreementId }),
+                            body: { signed_agreement_id: agreementId },
                         })
 
-                        // Handle CSRF token mismatch
-                        if (response.status === 419 || response.status === 403) {
-                            const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
-                            showErrorToast('Session expired. Refreshing page...')
-                            setTimeout(() => {
-                                window.location.reload()
-                            }, 2000)
+                        const tosErrorData = await response.json().catch(() => ({} as Record<string, unknown>))
+                        if (isCsrfMismatch(response.status, typeof tosErrorData.message === 'string' ? tosErrorData.message : null)) {
+                            showErrorToast('Session expired. Please refresh the page and try again.')
                             return
                         }
 
@@ -1579,50 +1565,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setIsConnectingWallet(true) // Show loading animation screen
         setIsLoading(true)
         try {
-            // Get fresh CSRF token
-            const csrfToken = getCsrfToken()
-
-            if (!csrfToken) {
-                showErrorToast('CSRF token not found. Please refresh the page and try again.')
-                setIsLoading(false)
-                return
-            }
-
-            const response = await fetch('/wallet/bridge/initialize', {
+            const response = await walletFetch('/wallet/bridge/initialize', {
                 method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
+                body: {},
             })
 
-            // Handle CSRF token mismatch (419 error)
-            if (response.status === 419) {
-                showErrorToast('Session expired. Refreshing page...')
-                setTimeout(() => {
-                    window.location.reload()
-                }, 1500)
+            const data = await response.json().catch(() => ({} as Record<string, unknown>))
+
+            if (isCsrfMismatch(response.status, typeof data.message === 'string' ? data.message : null)) {
+                showErrorToast('Session expired. Please refresh the page and try again.')
                 setIsLoading(false)
                 return
             }
 
-            const data = await response.json()
-
             if (!response.ok || !data.success) {
-                // Check if it's a CSRF error in the response
-                if (data.message && (data.message.includes('CSRF') || data.message.includes('419') || data.message.includes('token'))) {
-                    showErrorToast('Session expired. Refreshing page...')
-                    setTimeout(() => {
-                        window.location.reload()
-                    }, 1500)
-                    setIsLoading(false)
-                    return
-                }
-                throw new Error(data.message || 'Failed to connect wallet')
+                throw new Error(
+                    (typeof data.message === 'string' && data.message) || 'Failed to connect wallet',
+                )
             }
 
             // Successfully connected
@@ -1630,29 +1589,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             showSuccessToast('Wallet connected successfully!')
 
             // Check status first, then fetch balance only if wallet exists
-            const statusCsrfToken = getCsrfToken()
-            const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
+            const statusResponse = await walletFetch(`/wallet/bridge/status?t=${Date.now()}`, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': statusCsrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
             })
 
-            // Handle CSRF token mismatch for status request
-            if (statusResponse.status === 419) {
-                showErrorToast('Session expired. Refreshing page...')
-                setTimeout(() => {
-                    window.location.reload()
-                }, 1500)
+            const statusData = await statusResponse.json().catch(() => ({} as Record<string, unknown>))
+
+            if (isCsrfMismatch(statusResponse.status, typeof statusData.message === 'string' ? statusData.message : null)) {
+                showErrorToast('Session expired. Please refresh the page and try again.')
                 setIsLoading(false)
                 return
             }
-
-            const statusData = await statusResponse.json()
 
             if (statusData.success && statusData.initialized) {
                 // Update verification status if provided
@@ -1806,15 +1753,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 }
 
                 // Always fetch balance from user/organization table, not Bridge wallet
-                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                const balanceResponse = await walletFetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': getCsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    cache: 'no-store',
                 })
 
                 if (balanceResponse.ok) {
@@ -1927,38 +1867,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             if (!csrfToken) {
                 showErrorToast('CSRF token not found. Please refresh the page and try again.')
                 setIsLoading(false)
-                setTimeout(() => {
-                    window.location.reload()
-                }, 2000)
                 return
             }
 
             // Always get a fresh TOS link from Bridge (refresh=1 ensures new link is fetched and saved to database)
-            const response = await fetch('/wallet/bridge/tos-link?refresh=1', {
+            const response = await walletFetch('/wallet/bridge/tos-link?refresh=1', {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include', // Important: Include cookies for session/CSRF
-                cache: 'no-store',
             })
 
-            // Check if response is OK - handle CSRF token mismatch
             if (!response.ok) {
-                // If CSRF token mismatch (419) or forbidden (403), refresh page
-                if (response.status === 419 || response.status === 403) {
-                    const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
-                    showErrorToast('Session expired. Refreshing page...')
+                const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
+                if (isCsrfMismatch(response.status, typeof errorData.message === 'string' ? errorData.message : null)) {
+                    showErrorToast('Session expired. Please refresh the page and try again.')
                     setIsLoading(false)
-                    // Refresh the page after a short delay to get a new CSRF token
-                    setTimeout(() => {
-                        window.location.reload()
-                    }, 1500)
                     return
                 }
-                const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
                 showErrorToast(errorData.message || 'Failed to load Terms of Service')
                 setIsLoading(false)
                 return
@@ -2206,13 +2129,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             console.warn(`CSRF token mismatch (attempt ${retryCount + 1}/${maxRetries}), retrying...`)
                             continue
                         } else {
-                            // Max retries reached
-                            const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
-                            showErrorToast('Session expired. Refreshing page...')
+                            showErrorToast('Session expired. Please refresh the page and try again.')
                             setIsLoading(false)
-                            setTimeout(() => {
-                                window.location.reload()
-                            }, 1500)
                             return
                         }
                     }
