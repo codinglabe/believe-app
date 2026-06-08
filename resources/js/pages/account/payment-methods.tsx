@@ -16,9 +16,10 @@ import {
   Trash2,
 } from "lucide-react"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { SavedPaymentMethod } from "@/components/account/saved-payment-method-selector"
 import { cn } from "@/lib/utils"
+import { ConfirmationModal } from "@/components/confirmation-modal"
 
 type PageProps = {
   layout: "profile" | "settings"
@@ -118,6 +119,10 @@ function PaymentMethodsContent({
     if (flash?.error) showErrorToast(flash.error)
   }, [flash?.success, flash?.error])
 
+  const [removeTarget, setRemoveTarget] = useState<SavedPaymentMethod | null>(null)
+  const [isRemoving, setIsRemoving] = useState(false)
+  const removingRef = useRef(false)
+
   const defaultMethod = useMemo(
     () => paymentMethods.find((m) => m.is_default) ?? null,
     [paymentMethods],
@@ -138,9 +143,18 @@ function PaymentMethodsContent({
     router.post(route("account.payment-methods.default", paymentMethodId), {}, { preserveScroll: true })
   }
 
-  const removeMethod = (paymentMethodId: string) => {
-    if (!window.confirm("Remove this payment method from your account?")) return
-    router.delete(route("account.payment-methods.destroy", paymentMethodId), { preserveScroll: true })
+  const confirmRemove = () => {
+    if (!removeTarget) return
+    removingRef.current = true
+    setIsRemoving(true)
+    router.delete(route("account.payment-methods.destroy", removeTarget.id), {
+      preserveScroll: true,
+      onFinish: () => {
+        removingRef.current = false
+        setIsRemoving(false)
+        setRemoveTarget(null)
+      },
+    })
   }
 
   return (
@@ -192,11 +206,29 @@ function PaymentMethodsContent({
               key={method.id}
               method={method}
               onSetDefault={() => setDefault(method.id)}
-              onRemove={() => removeMethod(method.id)}
+              onRemove={() => setRemoveTarget(method)}
             />
           ))}
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={removeTarget !== null}
+        onChange={(open) => {
+          if (!open && !removingRef.current) setRemoveTarget(null)
+        }}
+        title="Remove payment method?"
+        description={
+          removeTarget
+            ? `${methodLabel(removeTarget)} will be removed from your account. You can add it again anytime through Stripe.`
+            : "This payment method will be removed from your account."
+        }
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        onConfirm={confirmRemove}
+        onCancel={() => setRemoveTarget(null)}
+        isLoading={isRemoving}
+      />
     </div>
   )
 }
