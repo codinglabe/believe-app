@@ -162,6 +162,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         currency?: string;
     } | null>(null)
     const [isLoadingDepositInstructions, setIsLoadingDepositInstructions] = useState(false)
+    const [isCreatingDepositAccount, setIsCreatingDepositAccount] = useState(false)
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'ach' | 'wire'>('ach')
     const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
     const [receiveDepositInstructions, setReceiveDepositInstructions] = useState<{
@@ -1214,6 +1215,97 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setActionView('external_accounts')
         if (hasBankAccounts === null) {
             fetchExternalAccounts()
+        }
+    }
+
+    const applyDepositInstructions = (instructions: NonNullable<typeof depositInstructions>) => {
+        setDepositInstructions(instructions)
+
+        if (instructions.payment_rails && Array.isArray(instructions.payment_rails)) {
+            if (instructions.payment_rails.includes('ach_push')) {
+                setSelectedPaymentMethod('ach')
+            } else if (instructions.payment_rails.includes('wire')) {
+                setSelectedPaymentMethod('wire')
+            }
+        } else if (instructions.payment_rail) {
+            if (instructions.payment_rail === 'ach_push') {
+                setSelectedPaymentMethod('ach')
+            } else if (instructions.payment_rail === 'wire') {
+                setSelectedPaymentMethod('wire')
+            }
+        }
+    }
+
+    const fetchDepositInstructions = async () => {
+        setIsLoadingDepositInstructions(true)
+        try {
+            const timestamp = Date.now()
+            const response = await fetch(`/wallet/bridge/deposit-instructions?t=${timestamp}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                if (data.success && data.data?.deposit_instructions) {
+                    applyDepositInstructions(data.data.deposit_instructions)
+                    return true
+                }
+            }
+
+            setDepositInstructions(null)
+            return false
+        } catch (error) {
+            console.error('Failed to fetch deposit instructions:', error)
+            setDepositInstructions(null)
+            return false
+        } finally {
+            setIsLoadingDepositInstructions(false)
+        }
+    }
+
+    const handleCreateBridgeDepositAccount = async () => {
+        setIsCreatingDepositAccount(true)
+        try {
+            const response = await fetch('/wallet/bridge/virtual-account', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+                body: JSON.stringify({}),
+            })
+
+            const data = await response.json()
+            if (data.success) {
+                showSuccessToast('Deposit bank account created successfully!')
+                const instructions = data.data?.source_deposit_instructions
+                if (instructions) {
+                    applyDepositInstructions(instructions)
+                } else {
+                    await fetchDepositInstructions()
+                }
+            } else {
+                showErrorToast(data.message || 'Failed to create deposit bank account')
+            }
+        } catch (error) {
+            console.error('Failed to create Bridge deposit account:', error)
+            showErrorToast('Failed to create deposit bank account. Please try again.')
+        } finally {
+            setIsCreatingDepositAccount(false)
         }
     }
 
@@ -2910,7 +3002,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         const needsBankAccounts = actionView === 'transfer_from_external'
             || actionView === 'withdraw_to_external'
             || actionView === 'services_menu'
-            || actionView === 'addMoney'
 
         if (needsBankAccounts && walletReady && hasBankAccounts === null && !isLoadingExternalAccounts) {
             fetchExternalAccounts()
@@ -2919,59 +3010,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
     useEffect(() => {
         if (actionView === 'addMoney') {
-            const fetchDepositInstructions = async () => {
-                setIsLoadingDepositInstructions(true)
-                try {
-                    // Add timestamp to URL to prevent any caching
-                    const timestamp = Date.now()
-                    const response = await fetch(`/wallet/bridge/deposit-instructions?t=${timestamp}`, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': getCsrfToken(),
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                            'Expires': '0',
-                        },
-                        credentials: 'include',
-                        cache: 'no-store', // Use no-store instead of no-cache for stricter no-cache behavior
-                    })
-
-                    if (response.ok) {
-                        const data = await response.json()
-                        if (data.success && data.data?.deposit_instructions) {
-                            const instructions = data.data.deposit_instructions
-                            setDepositInstructions(instructions)
-
-                            // Set default payment method based on available options
-                            if (instructions.payment_rails && Array.isArray(instructions.payment_rails)) {
-                                // Prefer ACH if available, otherwise use first available
-                                if (instructions.payment_rails.includes('ach_push')) {
-                                    setSelectedPaymentMethod('ach')
-                                } else if (instructions.payment_rails.includes('wire')) {
-                                    setSelectedPaymentMethod('wire')
-                                }
-                            } else if (instructions.payment_rail) {
-                                // Fallback to single payment_rail
-                                if (instructions.payment_rail === 'ach_push') {
-                                    setSelectedPaymentMethod('ach')
-                                } else if (instructions.payment_rail === 'wire') {
-                                    setSelectedPaymentMethod('wire')
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch deposit instructions:', error)
-                } finally {
-                    setIsLoadingDepositInstructions(false)
-                }
-            }
-
             fetchDepositInstructions()
         } else if (actionView !== 'addMoney') {
-            // Clear deposit instructions when leaving addMoney view to ensure fresh fetch next time
             setDepositInstructions(null)
         }
     }, [actionView])
@@ -3629,13 +3669,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         ) : (
                                             <AddMoney
                                                 key="add-money"
-                                                isLoading={isLoadingDepositInstructions}
+                                                isLoading={isLoadingDepositInstructions && !isCreatingDepositAccount}
                                                 depositInstructions={depositInstructions}
                                                 selectedPaymentMethod={selectedPaymentMethod}
                                                 onPaymentMethodChange={setSelectedPaymentMethod}
-                                                hasBankAccounts={hasBankAccounts}
-                                                isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
-                                                onAddBankAccount={goToAddBankAccount}
+                                                isCreatingDepositAccount={isCreatingDepositAccount}
+                                                onCreateDepositAccount={handleCreateBridgeDepositAccount}
                                             />
                                         )
                                     ) : actionView === 'main' ? (
