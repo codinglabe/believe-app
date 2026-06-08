@@ -20,6 +20,10 @@ import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistratio
 import { showNativePushNotification } from './lib/firebase-push-toast';
 import { syncPushTokenWithServer, startPushTokenRefreshListeners } from './lib/push-token-sync';
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
+import IncomingCallOverlay from './components/call/IncomingCallOverlay';
+import CallPermissionsPrompt from './components/call/CallPermissionsPrompt';
+import UnityCallGlobalListener from './components/call/UnityCallGlobalListener';
+import { setupSwIncomingCallBridge } from './lib/swIncomingCallBridge';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import { initStoredAppVersion, markPwaUpdateComplete, fetchServerAppVersion } from './lib/pwa-update';
@@ -112,18 +116,23 @@ createInertiaApp({
             }
         });
 
+        const initialUserId = initial.initialPage?.props?.auth?.user?.id;
+
         root.render(
           <NotificationProvider>
             <App {...props} />
+            <IncomingCallOverlay authUserId={initialUserId ?? null} />
+            <CallPermissionsPrompt authUserId={initialUserId ?? null} />
+            <UnityCallGlobalListener authUserId={initialUserId ?? null} />
             <Toaster position="top-right" gutter={8} />
             <PwaInstallPrompt />
             <PWAUpdatePrompt />
           </NotificationProvider>
         );
 
-        const initialUserId = initial.initialPage?.props?.auth?.user?.id;
         if (!isLivestockDomain()) {
             initStoredAppVersion();
+            setupSwIncomingCallBridge();
             void fetchServerAppVersion().then((server) => {
                 if (server?.version) {
                     const stored = localStorage.getItem('biu_pwa_version');

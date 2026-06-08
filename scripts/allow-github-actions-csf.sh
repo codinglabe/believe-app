@@ -34,6 +34,7 @@ for cidr in "${cidrs[@]}"; do
     echo "${cidr} # GitHub Actions deploy" >> "${ALLOW_FILE}"
     added=$((added + 1))
   fi
+  csf -a "${cidr}" "GitHub Actions deploy" 2>/dev/null || true
 done
 
 echo "Added ${added} new entries to ${ALLOW_FILE} (${#cidrs[@]} total GitHub Actions IPv4 ranges)."

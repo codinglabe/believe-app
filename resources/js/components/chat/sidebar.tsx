@@ -42,6 +42,7 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
     allUsers = [],
     currentUser,
     createDirectChat,
+    selectChatRoom,
     searchQuery = "",
     setSearchQuery,
   } = useChat()
@@ -112,6 +113,9 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
   const handleUserClick = async (userId: number) => {
     try {
       const room = await createDirectChat(userId)
+      if (room) {
+        selectChatRoom(room)
+      }
       setActiveTab("direct")
       setSearchQuery("")
     } catch (error) {
@@ -263,7 +267,7 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
                   key={room?.id}
                   room={room}
                   isActive={activeRoom?.id === room?.id}
-                  onClick={() => room?.id && setActiveRoom(room)}
+                  onClick={() => room?.id && selectChatRoom(room)}
                   currentUser={currentUser}
                   mobileList={mobileList}
                 />
