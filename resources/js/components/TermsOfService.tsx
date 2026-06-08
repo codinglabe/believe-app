@@ -22,14 +22,6 @@ export function TermsOfService({ tosUrl, onAccept, onCancel, isAccepted, isLoadi
     // Check if we're on localhost
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     
-    // Auto-show iframe when TOS URL is available (after loading)
-    useEffect(() => {
-        if (tosUrl && !isAccepted && !showIframe && !isLoading) {
-            // Automatically show iframe when TOS URL is loaded
-            setShowIframe(true)
-        }
-    }, [tosUrl, isAccepted, showIframe, isLoading])
-
     useEffect(() => {
         // Listen for messages from Bridge iframe
         const handleMessage = (event: MessageEvent) => {
@@ -76,14 +68,6 @@ export function TermsOfService({ tosUrl, onAccept, onCancel, isAccepted, isLoadi
         setShowIframe(true)
     }
     
-    // Auto-show iframe when tosUrl is available (after loading)
-    useEffect(() => {
-        if (tosUrl && !isAccepted && !showIframe) {
-            // Automatically show iframe when TOS URL is loaded
-            setShowIframe(true)
-        }
-    }, [tosUrl, isAccepted, showIframe])
-
     // Hide iframe immediately when accepted
     useEffect(() => {
         if (isAccepted && showIframe) {
@@ -218,12 +202,6 @@ export function TermsOfService({ tosUrl, onAccept, onCancel, isAccepted, isLoadi
                 )}
             </div>
         )
-    }
-
-    // If TOS URL is available, automatically show iframe (no need for Accept button click)
-    if (tosUrl && !showIframe && !isAccepted) {
-        // Auto-show iframe when URL is available
-        setShowIframe(true)
     }
 
     return (

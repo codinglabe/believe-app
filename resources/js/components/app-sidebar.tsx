@@ -92,7 +92,7 @@ export function AppSidebar() {
     const hasPlan = currentPlanId !== null;
 
     return (
-        <Sidebar collapsible="icon" variant="inset" className='z-30 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-sidebar [&_[data-sidebar=sidebar]]:!bg-sidebar'>
+        <Sidebar collapsible="icon" variant="inset" className="z-30 [&_[data-sidebar=sidebar]]:!bg-sidebar">
             <div className="relative h-full flex flex-col border-r border-sidebar-border bg-sidebar">
                 <SidebarResizeHandle />
                 <SidebarHeader className="h-16 shrink-0 flex flex-col justify-center border-b-2 border-sidebar-border bg-sidebar px-4 py-0">

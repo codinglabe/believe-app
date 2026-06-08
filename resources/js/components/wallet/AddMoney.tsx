@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
-import { RefreshCw, Copy, Building2, AlertCircle } from 'lucide-react'
+import { RefreshCw, Copy, Building2, AlertCircle, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { DepositInstructions, PaymentMethod } from './types'
 import { showSuccessToast } from '@/lib/toast'
 
@@ -8,13 +9,17 @@ interface AddMoneyProps {
     depositInstructions: DepositInstructions | null
     selectedPaymentMethod: PaymentMethod
     onPaymentMethodChange: (method: PaymentMethod) => void
+    isCreatingDepositAccount?: boolean
+    onCreateDepositAccount?: () => void
 }
 
 export function AddMoney({
     isLoading,
     depositInstructions,
     selectedPaymentMethod,
-    onPaymentMethodChange
+    onPaymentMethodChange,
+    isCreatingDepositAccount,
+    onCreateDepositAccount,
 }: AddMoneyProps) {
     if (isLoading) {
         return (
@@ -33,9 +38,34 @@ export function AddMoney({
                 transition={{ duration: 0.3 }}
                 className="p-4 space-y-4"
             >
-                <div className="text-center py-8">
-                    <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No deposit instructions available</p>
+                <div className="text-center py-8 border border-dashed border-border rounded-lg space-y-3">
+                    <Building2 className="h-8 w-8 text-muted-foreground mx-auto" />
+                    <div className="space-y-1 px-4">
+                        <p className="text-sm font-medium">No deposit account yet</p>
+                        <p className="text-xs text-muted-foreground">
+                            Create a Bridge deposit bank account to receive ACH and wire transfers.
+                        </p>
+                    </div>
+                    {onCreateDepositAccount && (
+                        <Button
+                            onClick={onCreateDepositAccount}
+                            disabled={isCreatingDepositAccount}
+                            size="sm"
+                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                        >
+                            {isCreatingDepositAccount ? (
+                                <>
+                                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                    Creating…
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Create Deposit Account
+                                </>
+                            )}
+                        </Button>
+                    )}
                 </div>
             </motion.div>
         )

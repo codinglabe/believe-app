@@ -1,4 +1,4 @@
-import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Building2, CreditCard, Menu } from 'lucide-react'
+import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, Menu } from 'lucide-react'
 import { ActionView } from './types'
 import { formatCurrency } from './utils'
 
@@ -17,7 +17,7 @@ export function WalletScreen({
     walletBalance,
     isLoading,
     onRefresh,
-    onActionViewChange
+    onActionViewChange,
 }: WalletScreenProps) {
     return (
         <div className="p-4 space-y-4">
@@ -88,7 +88,6 @@ export function WalletScreen({
                     <span className="text-xs font-medium">More</span>
                 </button>
             </div>
-
 
         </div>
     )

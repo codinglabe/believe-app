@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils"
 import {
   CARE_ALLIANCE_INVITATION_TYPE,
   SUPPORTER_BIRTHDAY_TYPE,
+  donationNotificationTarget,
   mapDatabaseNotification,
   type DatabaseNotification,
   type Notification,
@@ -252,7 +253,12 @@ export default function NotificationsInbox() {
       } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
         router.visit(`/supporters/gift/${notification.meta.celebrant_id}`)
       } else {
-        router.reload({ only: ["notifications", "activeCategory", "filterCounts", "searchQuery"] })
+        const donationTarget = donationNotificationTarget(notification)
+        if (donationTarget) {
+          router.visit(donationTarget)
+        } else {
+          router.reload({ only: ["notifications", "activeCategory", "filterCounts", "searchQuery"] })
+        }
       }
     } catch {
       toast.error("Could not update notification.")

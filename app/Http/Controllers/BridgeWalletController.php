@@ -57,6 +57,18 @@ class BridgeWalletController extends Controller
                 ->where('integratable_type', $entityType)
                 ->first();
 
+            // Link existing Bridge customer by email (e.g. after local DB cleanup)
+            $linked = $this->linkBridgeCustomerByEmail($entity, $entityType, $user, $isOrgUser, $integration);
+            if ($linked) {
+                $integration = $linked->loadMissing('primaryWallet');
+            }
+
+            // Re-sync from Bridge when customer exists locally
+            if ($integration && $integration->bridge_customer_id) {
+                $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+                $integration->refresh();
+            }
+
             // If fully initialized, return existing data
             if ($integration && $integration->bridge_customer_id && $integration->bridge_wallet_id) {
                 return response()->json([
@@ -65,22 +77,62 @@ class BridgeWalletController extends Controller
                     'data' => [
                         'customer_id' => $integration->bridge_customer_id,
                         'wallet_id' => $integration->bridge_wallet_id,
+                        'requires_verification' => false,
                     ],
                 ]);
             }
 
-            // If KYC link exists but not completed, return existing links
-            if ($integration && $integration->kyc_link_id) {
+            // Customer on Bridge may already be approved — skip verification UI when synced
+            if ($integration && $integration->bridge_customer_id && $this->integrationVerificationApproved($integration, $isOrgUser)) {
+                $kycWidgetUrl = $integration->kyc_link_url
+                    ? $this->bridgeService->convertKycLinkToWidgetUrl($integration->kyc_link_url)
+                    : null;
+
                 return response()->json([
                     'success' => true,
-                    'message' => 'Please complete verification',
+                    'message' => empty($integration->bridge_wallet_id)
+                        ? 'Account verified — create your wallet to continue'
+                        : 'Bridge already initialized',
                     'data' => [
                         'customer_id' => $integration->bridge_customer_id,
                         'kyc_link_id' => $integration->kyc_link_id,
                         'tos_link' => $integration->tos_link_url,
                         'kyc_link' => $integration->kyc_link_url,
+                        'kyc_widget_url' => $kycWidgetUrl,
                         'kyc_status' => $integration->kyc_status,
-                        'requires_verification' => true,
+                        'kyb_status' => $integration->kyb_status,
+                        'tos_status' => $integration->tos_status,
+                        'requires_verification' => false,
+                    ],
+                ]);
+            }
+
+            // If KYC link exists but verification may already be complete on Bridge
+            if ($integration && $integration->kyc_link_id) {
+                if ($integration->bridge_customer_id) {
+                    $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+                    $integration->refresh();
+                }
+
+                $kycWidgetUrl = $integration->kyc_link_url
+                    ? $this->bridgeService->convertKycLinkToWidgetUrl($integration->kyc_link_url)
+                    : null;
+
+                $requiresVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $requiresVerification ? 'Please complete verification' : 'Wallet connected successfully',
+                    'data' => [
+                        'customer_id' => $integration->bridge_customer_id,
+                        'kyc_link_id' => $integration->kyc_link_id,
+                        'tos_link' => $integration->tos_link_url,
+                        'kyc_link' => $integration->kyc_link_url,
+                        'kyc_widget_url' => $kycWidgetUrl,
+                        'kyc_status' => $integration->kyc_status,
+                        'kyb_status' => $integration->kyb_status,
+                        'tos_status' => $integration->tos_status,
+                        'requires_verification' => $requiresVerification,
                     ],
                 ]);
             }
@@ -131,19 +183,26 @@ class BridgeWalletController extends Controller
                     ]);
                 }
 
-                // Save integration
-                if (!$integration) {
-                    $integration = new BridgeIntegration();
-                    $integration->integratable_id = $entity->id;
-                    $integration->integratable_type = $entityType;
-                }
+                $customerId = $response['customer_id'] ?? null;
+                $kycLinkId = $response['id'] ?? null;
 
-                $integration->bridge_customer_id = $response['customer_id'] ?? null;
-                $integration->kyc_link_id = $response['id'] ?? null;
+                // Reuse existing row when Bridge returns an existing customer (avoids duplicate bridge_customer_id).
+                $integration = BridgeIntegration::resolveForEntity(
+                    $entity->id,
+                    $entityType,
+                    $customerId,
+                    $kycLinkId,
+                );
+
+                $integration->bridge_customer_id = $customerId;
+                $integration->kyc_link_id = $kycLinkId;
                 $integration->kyc_link_url = $response['kyc_link'] ?? null;
                 $integration->tos_link_url = $response['tos_link'] ?? null;
                 // Use Bridge's actual status values
                 $integration->kyc_status = $response['kyc_status'] ?? 'not_started';
+                if ($isOrgUser) {
+                    $integration->kyb_status = $response['kyb_status'] ?? ($integration->kyb_status ?? 'not_started');
+                }
                 $integration->tos_status = $response['tos_status'] ?? 'pending'; // ToS uses 'pending' or 'approved'
                 $integration->bridge_metadata = [
                     'kyc_link_response' => $response,
@@ -153,6 +212,12 @@ class BridgeWalletController extends Controller
 
                 DB::commit();
 
+                // KYC link payload may be stale — pull full customer status from Bridge
+                $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+                $integration->refresh();
+
+                $requiresVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
+
                 // Convert KYC link to widget URL for iframe embedding
                 $kycWidgetUrl = null;
                 if ($integration->kyc_link_url) {
@@ -161,7 +226,7 @@ class BridgeWalletController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Please complete verification',
+                    'message' => $requiresVerification ? 'Please complete verification' : 'Wallet connected successfully',
                     'data' => [
                         'customer_id' => $integration->bridge_customer_id,
                         'kyc_link_id' => $integration->kyc_link_id,
@@ -169,8 +234,9 @@ class BridgeWalletController extends Controller
                         'kyc_link' => $integration->kyc_link_url,  // Original redirect link
                         'kyc_widget_url' => $kycWidgetUrl,  // Widget URL for iframe
                         'kyc_status' => $integration->kyc_status,
+                        'kyb_status' => $integration->kyb_status,
                         'tos_status' => $integration->tos_status,
-                        'requires_verification' => true,
+                        'requires_verification' => $requiresVerification,
                     ],
                 ]);
             } catch (\Exception $e) {
@@ -908,21 +974,24 @@ class BridgeWalletController extends Controller
                 ];
             }
             
-            if (!$integration || !$integration->bridge_customer_id) {
+            // Status check is read-only — do not auto-link Bridge customers here.
+            // Linking/sync happens only when the user clicks Connect (initializeBridge).
+            if (! $integration || ! $integration->bridge_customer_id) {
                 return response()->json([
                     'success' => false,
                     'initialized' => false,
-                    'message' => 'Bridge wallet not initialized.',
+                    'message' => 'Bridge wallet not initialized. Click Connect Wallet to link your account.',
                     'organization_data' => $organizationData, // Include organization data for pre-filling
                 ], 200); // Return 200 so frontend can handle it gracefully
             }
 
-            // Customer exists, so Bridge is initialized (even if wallet doesn't exist yet)
-            // Wallet is created after KYC approval
+            // Customer exists locally from a prior Connect — refresh from Bridge API
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
-            $needsVerification = $isOrgUser
-                ? ($integration->kyb_status !== 'approved')
-                : ($integration->kyc_status !== 'approved');
+
+            $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+            $integration->refresh();
+
+            $needsVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
 
             // Check TOS status from Bridge API via customer endorsements
             $tosStatusFromBridge = $integration->tos_status ?? 'pending';
@@ -1335,7 +1404,8 @@ class BridgeWalletController extends Controller
                 'kyb_link' => $integration->kyb_link_url,
                 'kyc_widget_url' => $kycWidgetUrl,
                 'kyb_widget_url' => $kybWidgetUrl,
-                'requires_verification' => $needsVerification || empty($integration->bridge_wallet_id),
+                'requires_verification' => $needsVerification,
+                'bridge_account_verified' => ! $needsVerification,
                 'verification_type' => $isOrgUser ? 'kyb' : 'kyc',
                 'organization_data' => $organizationData, // Always include organization data for pre-filling
                 'kyb_step' => $isOrgUser ? $kybStep : null, // Current step for KYB multi-step flow
@@ -2141,6 +2211,18 @@ class BridgeWalletController extends Controller
                 }
             }
 
+            if (! $integration && $user && $entity && $entityType) {
+                $isOrgUserForLink = $user->hasRole(['organization', 'organization_pending']);
+                $linked = $this->linkBridgeCustomerByEmail($entity, $entityType, $user, $isOrgUserForLink, null);
+                if ($linked) {
+                    $integration = $linked;
+                    Log::info('TOS callback: Linked integration by email before accepting ToS', [
+                        'integration_id' => $integration->id,
+                        'bridge_customer_id' => $integration->bridge_customer_id,
+                    ]);
+                }
+            }
+
             if (!$integration) {
                 // Enhanced logging to help debug
                 $allIntegrations = BridgeIntegration::whereNotNull('bridge_customer_id')->get(['id', 'bridge_customer_id', 'integratable_id', 'integratable_type']);
@@ -2290,13 +2372,13 @@ class BridgeWalletController extends Controller
             }
             
             // If we still don't have a valid customer, return error
-            if (!$customerIdToUpdate || !$customerExists) {
+            if (! $customerIdToUpdate || ! $customerExists) {
                 Log::error('TOS callback: Cannot find valid customer in Bridge', [
                     'integration_id' => $integration->id,
                     'signed_agreement_id' => $signedAgreementId,
                     'customer_id_in_integration' => $integration->bridge_customer_id,
                 ]);
-                
+
                 if ($request->isMethod('GET')) {
                     return response()->view('bridge.tos-callback', [
                         'signedAgreementId' => $signedAgreementId,
@@ -2304,57 +2386,77 @@ class BridgeWalletController extends Controller
                         'error' => 'Cannot find customer in Bridge. Please contact support.',
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot find customer in Bridge'
+                    'message' => 'Cannot find customer in Bridge',
                 ], 404);
             }
 
             // ============================================
-            // KEY FIX: Update Bridge customer with signed_agreement_id
+            // Update Bridge customer with signed_agreement_id (skip if ToS already accepted)
             // ============================================
-            $updateResult = $this->bridgeService->updateCustomer(
-                $customerIdToUpdate,
-                [
-                    'signed_agreement_id' => $signedAgreementId,
-                ]
-            );
+            $customerResult = $this->bridgeService->getCustomer($customerIdToUpdate);
+            $alreadyAcceptedOnBridge = $customerResult['success']
+                && ($customerResult['data']['has_accepted_terms_of_service'] ?? false);
 
-            if (!$updateResult['success']) {
-                Log::error('TOS callback: Failed to update Bridge customer', [
+            if (! $alreadyAcceptedOnBridge) {
+                $updateResult = $this->bridgeService->updateCustomer(
+                    $customerIdToUpdate,
+                    [
+                        'signed_agreement_id' => $signedAgreementId,
+                    ]
+                );
+
+                if (! $updateResult['success']) {
+                    $recheck = $this->bridgeService->getCustomer($customerIdToUpdate);
+                    $alreadyAcceptedOnBridge = $recheck['success']
+                        && ($recheck['data']['has_accepted_terms_of_service'] ?? false);
+
+                    if ($alreadyAcceptedOnBridge) {
+                        $customerResult = $recheck;
+                        Log::info('TOS callback: updateCustomer failed but Bridge already shows ToS accepted', [
+                            'customer_id' => $customerIdToUpdate,
+                            'signed_agreement_id' => $signedAgreementId,
+                        ]);
+                    } else {
+                        Log::error('TOS callback: Failed to update Bridge customer', [
+                            'customer_id' => $customerIdToUpdate,
+                            'signed_agreement_id' => $signedAgreementId,
+                            'error' => $updateResult['error'] ?? 'Unknown error',
+                        ]);
+
+                        if ($request->isMethod('GET')) {
+                            return response()->view('bridge.tos-callback', [
+                                'signedAgreementId' => $signedAgreementId,
+                                'success' => false,
+                                'error' => 'Failed to update Bridge: ' . ($updateResult['error'] ?? 'Unknown error'),
+                            ]);
+                        }
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Failed to update Bridge customer',
+                        ], 500);
+                    }
+                } else {
+                    Log::info('TOS callback: Bridge customer updated successfully', [
+                        'customer_id' => $customerIdToUpdate,
+                        'signed_agreement_id' => $signedAgreementId,
+                    ]);
+                    $customerResult = $this->bridgeService->getCustomer($customerIdToUpdate);
+                }
+            } else {
+                Log::info('TOS callback: Skipping updateCustomer — ToS already accepted on Bridge', [
                     'customer_id' => $customerIdToUpdate,
                     'signed_agreement_id' => $signedAgreementId,
-                    'error' => $updateResult['error'] ?? 'Unknown error',
                 ]);
-
-                if ($request->isMethod('GET')) {
-                    return response()->view('bridge.tos-callback', [
-                        'signedAgreementId' => $signedAgreementId,
-                        'success' => false,
-                        'error' => 'Failed to update Bridge: ' . ($updateResult['error'] ?? 'Unknown error'),
-                    ]);
-                }
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to update Bridge customer'
-                ], 500);
             }
 
-            Log::info('TOS callback: Bridge customer updated successfully', [
+            Log::info('TOS callback: Using customer data from Bridge API', [
                 'customer_id' => $customerIdToUpdate,
                 'signed_agreement_id' => $signedAgreementId,
             ]);
-
-            // ============================================
-            // CRITICAL: Fetch FRESH customer data from Bridge API (NO CACHE)
-            // ============================================
-            Log::info('TOS callback: Fetching FRESH customer data from Bridge API (no cache)', [
-                'customer_id' => $customerIdToUpdate,
-                'signed_agreement_id' => $signedAgreementId,
-            ]);
-            
-            // Force fresh data - clear any potential cache and fetch directly from Bridge
-            $customerResult = $this->bridgeService->getCustomer($customerIdToUpdate);
             
             $tosStatus = 'approved'; // Default
             $hasAcceptedTos = false;
@@ -2376,21 +2478,28 @@ class BridgeWalletController extends Controller
                 $tosAcceptedFromBridge = false;
                 $tosStatusFromBridge = 'pending';
                 
-                if (!empty($endorsements)) {
+                if (! empty($endorsements)) {
                     foreach ($endorsements as $endorsement) {
-                        $complete = $endorsement['complete'] ?? [];
-                        $missing = $endorsement['missing'] ?? [];
-                        
-                        if (!empty($complete)) {
-                            if (in_array('terms_of_service_v1', $complete) || in_array('terms_of_service_v2', $complete)) {
+                        $complete = $endorsement['requirements']['complete'] ?? $endorsement['complete'] ?? [];
+                        $missing = $endorsement['requirements']['missing'] ?? $endorsement['missing'] ?? [];
+
+                        foreach ($complete as $item) {
+                            if (is_string($item) && str_contains($item, 'terms_of_service')) {
                                 $tosAcceptedFromBridge = true;
                                 $tosStatusFromBridge = 'accepted';
+                                break 2;
                             }
                         }
-                        
-                        if (!$tosAcceptedFromBridge && !empty($missing)) {
-                            if (in_array('terms_of_service_v1', $missing) || in_array('terms_of_service_v2', $missing)) {
-                                $tosStatusFromBridge = 'pending';
+
+                        if (! $tosAcceptedFromBridge && is_array($missing)) {
+                            $missingItems = $missing['all_of'] ?? $missing;
+                            if (is_array($missingItems)) {
+                                foreach ($missingItems as $item) {
+                                    if (is_string($item) && str_contains($item, 'terms_of_service')) {
+                                        $tosStatusFromBridge = 'pending';
+                                        break 2;
+                                    }
+                                }
                             }
                         }
                     }
@@ -2450,6 +2559,16 @@ class BridgeWalletController extends Controller
                 'tos_status' => $finalTosStatus,
                 'bridge_metadata' => $metadata,
             ]);
+
+            if ($customerResult['success'] && ! empty($customerResult['data'])) {
+                $isOrgUserForSync = $integration->integratable_type === Organization::class;
+                $this->applyBridgeCustomerSnapshot(
+                    $integration,
+                    $customerResult['data'],
+                    $isOrgUserForSync,
+                );
+                $integration->refresh();
+            }
             
             Log::info('TOS callback: Setting tos_status', [
                 'integration_id' => $integration->id,
@@ -5224,6 +5343,372 @@ class BridgeWalletController extends Controller
     }
 
     /**
+     * Link an existing Bridge customer to the local entity using email lookup.
+     */
+    private function linkBridgeCustomerByEmail(
+        object $entity,
+        string $entityType,
+        User $user,
+        bool $isOrgUser,
+        ?BridgeIntegration $integration = null,
+    ): ?BridgeIntegration {
+        $emails = $this->bridgeLookupEmailsForEntity($entity, $user);
+        if ($emails === []) {
+            return null;
+        }
+
+        try {
+            $customer = $this->findBridgeCustomerForEmails($emails, $isOrgUser);
+            if ($customer === null || empty($customer['id'])) {
+                Log::warning('No Bridge customer matched local emails', [
+                    'integratable_id' => $entity->id,
+                    'integratable_type' => $entityType,
+                    'emails' => $emails,
+                ]);
+
+                return null;
+            }
+
+            $customerId = (string) $customer['id'];
+            $matchedEmail = strtolower(trim((string) ($customer['email'] ?? $emails[0])));
+
+            $integration = BridgeIntegration::resolveForEntity(
+                $entity->id,
+                $entityType,
+                $customerId,
+                $integration?->kyc_link_id,
+            );
+
+            $integration->bridge_customer_id = $customerId;
+            $metadata = $integration->bridge_metadata ?? [];
+            if (! is_array($metadata)) {
+                $metadata = is_string($metadata) ? (json_decode($metadata, true) ?? []) : [];
+            }
+            $metadata['type'] = $isOrgUser ? 'business' : 'individual';
+            $metadata['linked_by_email'] = $matchedEmail;
+            $metadata['linked_at'] = now()->toIso8601String();
+            $metadata['bridge_list_customer'] = $customer;
+            $integration->bridge_metadata = $metadata;
+
+            // Apply list/search payload first — works even if GET /customers/{id} fails.
+            $this->applyBridgeCustomerSnapshot($integration, $customer, $isOrgUser);
+            $integration->save();
+
+            Log::info('Linked existing Bridge customer by email', [
+                'integratable_id' => $entity->id,
+                'integratable_type' => $entityType,
+                'customer_id' => $customerId,
+                'email' => $matchedEmail,
+                'customer_status' => $customer['status'] ?? null,
+                'has_accepted_terms_of_service' => $customer['has_accepted_terms_of_service'] ?? null,
+                'kyb_status' => $integration->kyb_status,
+                'kyc_status' => $integration->kyc_status,
+                'tos_status' => $integration->tos_status,
+            ]);
+
+            $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+
+            return $integration->fresh();
+        } catch (\Exception $e) {
+            Log::warning('Failed to link Bridge customer by email', [
+                'emails' => $emails,
+                'integratable_id' => $entity->id,
+                'integratable_type' => $entityType,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bridgeLookupEmailsForEntity(object $entity, User $user): array
+    {
+        $candidates = [
+            (string) ($entity->email ?? ''),
+            (string) ($user->email ?? ''),
+        ];
+
+        if (isset($entity->platform_email)) {
+            $candidates[] = (string) $entity->platform_email;
+        }
+
+        $emails = [];
+        foreach ($candidates as $candidate) {
+            $normalized = strtolower(trim($candidate));
+            if ($normalized !== '' && ! in_array($normalized, $emails, true)) {
+                $emails[] = $normalized;
+            }
+        }
+
+        return $emails;
+    }
+
+    /**
+     * @param  list<string>  $emails
+     * @return array<string, mixed>|null
+     */
+    private function findBridgeCustomerForEmails(array $emails, bool $isOrgUser): ?array
+    {
+        foreach ($emails as $email) {
+            $result = $this->bridgeService->getCustomersByEmail($email);
+            if ($result['success']) {
+                $customers = $this->normalizeBridgeCustomerList($result['data'] ?? []);
+                $customer = $this->pickBestBridgeCustomer($customers, $isOrgUser, $email);
+                if ($customer !== null) {
+                    return $customer;
+                }
+            }
+        }
+
+        $allResult = $this->bridgeService->getCustomers();
+        if (! $allResult['success']) {
+            return null;
+        }
+
+        $allCustomers = $this->normalizeBridgeCustomerList($allResult['data'] ?? []);
+        foreach ($emails as $email) {
+            $customer = $this->pickBestBridgeCustomer($allCustomers, $isOrgUser, $email);
+            if ($customer !== null) {
+                return $customer;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Map a Bridge customer payload (list or detail) into bridge_integrations status columns.
+     *
+     * @param  array<string, mixed>  $customer
+     */
+    private function applyBridgeCustomerSnapshot(
+        BridgeIntegration $integration,
+        array $customer,
+        bool $isOrgUser,
+    ): void {
+        $customerStatus = strtolower((string) ($customer['status'] ?? ''));
+        $hasApprovedEndorsements = false;
+
+        foreach ($customer['endorsements'] ?? [] as $endorsement) {
+            if (strtolower((string) ($endorsement['status'] ?? '')) === 'approved') {
+                $hasApprovedEndorsements = true;
+                break;
+            }
+        }
+
+        $hasAcceptedTos = (bool) ($customer['has_accepted_terms_of_service'] ?? false);
+        if (! $hasAcceptedTos) {
+            foreach ($customer['endorsements'] ?? [] as $endorsement) {
+                foreach ($endorsement['requirements']['complete'] ?? [] as $item) {
+                    if (is_string($item) && str_contains($item, 'terms_of_service')) {
+                        $hasAcceptedTos = true;
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        if ($hasAcceptedTos) {
+            $integration->tos_status = 'accepted';
+        }
+
+        if ($isOrgUser) {
+            $bridgeKybStatus = strtolower((string) ($customer['kyb_status'] ?? ''));
+            if ($bridgeKybStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
+                $integration->kyb_status = 'approved';
+            } elseif ($bridgeKybStatus !== '') {
+                $integration->kyb_status = $bridgeKybStatus;
+            }
+
+            $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
+            if (
+                in_array($bridgeKycStatus, ['approved', 'verified'], true)
+                || $integration->kyb_status === 'approved'
+                || ($customerStatus === 'active' && $hasApprovedEndorsements)
+            ) {
+                $integration->kyc_status = 'approved';
+            } elseif ($bridgeKycStatus !== '') {
+                $integration->kyc_status = $bridgeKycStatus;
+            }
+        } else {
+            $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
+            if ($bridgeKycStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
+                $integration->kyc_status = 'approved';
+            } elseif ($bridgeKycStatus !== '') {
+                $integration->kyc_status = $bridgeKycStatus;
+            }
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeBridgeCustomerList(mixed $payload): array
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+
+        if (isset($payload['data']) && is_array($payload['data'])) {
+            return array_values($payload['data']);
+        }
+
+        if (isset($payload[0]) && is_array($payload[0])) {
+            return array_values($payload);
+        }
+
+        if (isset($payload['id'])) {
+            return [$payload];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $customers
+     * @return array<string, mixed>|null
+     */
+    private function pickBestBridgeCustomer(array $customers, bool $isOrgUser, string $email): ?array
+    {
+        $expectedType = $isOrgUser ? 'business' : 'individual';
+        $email = strtolower($email);
+
+        $matches = array_values(array_filter($customers, function (array $customer) use ($expectedType, $email): bool {
+            $customerEmail = strtolower(trim((string) ($customer['email'] ?? '')));
+            $customerType = strtolower((string) ($customer['type'] ?? ''));
+
+            return $customerEmail === $email && ($customerType === $expectedType || $customerType === '');
+        }));
+
+        if ($matches === []) {
+            $matches = array_values(array_filter($customers, function (array $customer) use ($email): bool {
+                return strtolower(trim((string) ($customer['email'] ?? ''))) === $email;
+            }));
+        }
+
+        if ($matches === []) {
+            return null;
+        }
+
+        usort($matches, function (array $a, array $b): int {
+            $score = fn (array $customer): int => (
+                (strtolower((string) ($customer['status'] ?? '')) === 'active' ? 100 : 0)
+                + $this->bridgeCustomerEndorsementScore($customer)
+            );
+
+            return $score($b) <=> $score($a);
+        });
+
+        return $matches[0];
+    }
+
+    /**
+     * @param  array<string, mixed>  $customer
+     */
+    private function bridgeCustomerEndorsementScore(array $customer): int
+    {
+        $score = 0;
+
+        foreach ($customer['endorsements'] ?? [] as $endorsement) {
+            if (strtolower((string) ($endorsement['status'] ?? '')) === 'approved') {
+                $score += 10;
+            }
+        }
+
+        if (! empty($customer['has_accepted_terms_of_service'])) {
+            $score += 5;
+        }
+
+        return $score;
+    }
+
+    /**
+     * Whether local integration reflects an approved Bridge account (KYC for individuals, KYB+KYC for orgs).
+     */
+    private function integrationVerificationApproved(BridgeIntegration $integration, bool $isOrgUser): bool
+    {
+        if ($isOrgUser) {
+            return $integration->kyb_status === 'approved' && $integration->kyc_status === 'approved';
+        }
+
+        return $integration->kyc_status === 'approved';
+    }
+
+    /**
+     * Pull customer KYC/KYB/TOS/wallet state from Bridge into bridge_integrations.
+     * Used after database cleanup when Bridge still has the customer.
+     */
+    private function syncIntegrationFromBridgeApi(BridgeIntegration $integration, bool $isOrgUser): void
+    {
+        if (empty($integration->bridge_customer_id)) {
+            return;
+        }
+
+        try {
+            $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            if (! $customerResult['success'] || empty($customerResult['data'])) {
+                return;
+            }
+
+            $customer = $customerResult['data'];
+            $before = [
+                'kyb_status' => $integration->kyb_status,
+                'kyc_status' => $integration->kyc_status,
+                'tos_status' => $integration->tos_status,
+            ];
+
+            $this->applyBridgeCustomerSnapshot($integration, $customer, $isOrgUser);
+
+            $statusChanged = $before['kyb_status'] !== $integration->kyb_status
+                || $before['kyc_status'] !== $integration->kyc_status
+                || $before['tos_status'] !== $integration->tos_status;
+
+            $metadata = $integration->bridge_metadata ?? [];
+            if (! is_array($metadata)) {
+                $metadata = is_string($metadata) ? (json_decode($metadata, true) ?? []) : [];
+            }
+            $metadata['bridge_sync_at'] = now()->toIso8601String();
+            $metadata['bridge_customer_status'] = $customer['status'] ?? null;
+            if (! empty($customer['endorsements'])) {
+                $metadata['endorsements'] = $customer['endorsements'];
+            }
+            $integration->bridge_metadata = $metadata;
+            $statusChanged = true;
+
+            if ($statusChanged) {
+                $integration->save();
+            }
+
+            $isApproved = $this->integrationVerificationApproved($integration, $isOrgUser);
+            $primaryWallet = $integration->primaryWallet;
+            $hasWallet = ! empty($integration->bridge_wallet_id)
+                || ($primaryWallet !== null && ! empty($primaryWallet->bridge_wallet_id));
+
+            if ($isApproved && ! $hasWallet) {
+                Log::info('Bridge sync: approved customer missing local wallet — restoring from Bridge', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $integration->bridge_customer_id,
+                ]);
+
+                $webhookController = new BridgeWebhookController($this->bridgeService);
+                $webhookController->createWalletVirtualAccountAndCardAccount(
+                    $integration->fresh(),
+                    $integration->bridge_customer_id
+                );
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to sync Bridge customer into local integration', [
+                'integration_id' => $integration->id,
+                'customer_id' => $integration->bridge_customer_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Normalize status value
      */
     private function normalizeStatus(?string $status): string
@@ -5871,37 +6356,55 @@ class BridgeWalletController extends Controller
                 ], 404);
             }
 
-            // Get wallet ID from request or use primary wallet
+            $wallet = null;
             $walletId = $request->input('wallet_id');
-            $chain = $request->input('chain', 'solana');
-            
-            if (!$walletId) {
-                // Get primary wallet
+
+            if ($walletId) {
+                $wallet = \App\Models\BridgeWallet::where('bridge_integration_id', $integration->id)
+                    ->where('bridge_wallet_id', $walletId)
+                    ->first();
+            }
+
+            if (! $wallet) {
                 $wallet = \App\Models\BridgeWallet::where('bridge_integration_id', $integration->id)
                     ->where('is_primary', true)
                     ->first();
-                
-                if (!$wallet) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No wallet found. Please create a wallet first.',
-                    ], 404);
+            }
+
+            if (! $wallet) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No wallet found. Please create a wallet first.',
+                ], 404);
+            }
+
+            $walletId = $wallet->bridge_wallet_id;
+            $walletAddress = $wallet->wallet_address;
+            $chain = strtolower((string) $request->input('chain', 'usd'));
+
+            if (! $walletAddress && $walletId) {
+                $walletDetails = $this->bridgeService->getWallet($integration->bridge_customer_id, $walletId);
+                if ($walletDetails['success'] && ! empty($walletDetails['data']['address'])) {
+                    $walletAddress = $walletDetails['data']['address'];
+                    $wallet->wallet_address = $walletAddress;
+                    $wallet->save();
                 }
-                
-                $walletId = $wallet->bridge_wallet_id;
             }
 
             // Check if virtual account already exists for this wallet
             $existingVirtualAccounts = $this->bridgeService->getVirtualAccounts($integration->bridge_customer_id);
-            
-            if ($existingVirtualAccounts['success'] && !empty($existingVirtualAccounts['data'])) {
+
+            if ($existingVirtualAccounts['success'] && ! empty($existingVirtualAccounts['data'])) {
                 $virtualAccounts = is_array($existingVirtualAccounts['data']) && isset($existingVirtualAccounts['data']['data'])
                     ? $existingVirtualAccounts['data']['data']
                     : (is_array($existingVirtualAccounts['data']) ? $existingVirtualAccounts['data'] : []);
-                
-                // Check if virtual account exists for this wallet
+
                 foreach ($virtualAccounts as $va) {
-                    if (isset($va['destination']['bridge_wallet_id']) && $va['destination']['bridge_wallet_id'] === $walletId) {
+                    $destination = $va['destination'] ?? [];
+                    $matchesWalletId = $walletId && isset($destination['bridge_wallet_id']) && $destination['bridge_wallet_id'] === $walletId;
+                    $matchesAddress = $walletAddress && isset($destination['address']) && $destination['address'] === $walletAddress;
+
+                    if ($matchesWalletId || $matchesAddress) {
                         return response()->json([
                             'success' => true,
                             'message' => 'Virtual account already exists',
@@ -5911,20 +6414,37 @@ class BridgeWalletController extends Controller
                 }
             }
 
-            // Create virtual account
-            // For chain wallets, use chain-specific method
-            if ($chain !== 'usd' && $chain !== 'USD') {
+            // Fiat USD deposit accounts route to the Bridge wallet; crypto chains need address or wallet id.
+            if (in_array($chain, ['usd', 'fiat'], true)) {
+                if ($walletId) {
+                    $result = $this->bridgeService->createVirtualAccountForWallet(
+                        $integration->bridge_customer_id,
+                        $walletId,
+                        'USD'
+                    );
+                } elseif ($walletAddress) {
+                    $paymentRail = $wallet->chain ?: 'ethereum';
+                    $result = $this->bridgeService->createVirtualAccount(
+                        $integration->bridge_customer_id,
+                        ['currency' => 'usd'],
+                        [
+                            'payment_rail' => $paymentRail,
+                            'currency' => 'usdc',
+                            'address' => $walletAddress,
+                        ]
+                    );
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No Bridge wallet address found. Create a wallet before setting up deposits.',
+                    ], 422);
+                }
+            } else {
                 $result = $this->bridgeService->createVirtualAccountForChainWallet(
                     $integration->bridge_customer_id,
-                    $walletId,
-                    $chain
-                );
-            } else {
-                // For USD accounts
-                $result = $this->bridgeService->createVirtualAccountForWallet(
-                    $integration->bridge_customer_id,
-                    $walletId,
-                    'USD'
+                    $walletId ?? '',
+                    $chain,
+                    $walletAddress
                 );
             }
 

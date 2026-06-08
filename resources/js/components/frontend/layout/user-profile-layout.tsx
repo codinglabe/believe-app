@@ -236,6 +236,13 @@ const navigationItems = [
     color: "from-indigo-500 to-purple-600",
   },
   {
+    name: "Payment Methods",
+    href: "/profile/payment-methods",
+    icon: CreditCard,
+    description: "Saved cards and bank accounts",
+    color: "from-purple-500 to-blue-600",
+  },
+  {
     name: "AI Video Studio",
     href: "/ai-media-studio",
     icon: Video,

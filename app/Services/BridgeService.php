@@ -106,6 +106,16 @@ class BridgeService
     }
 
     /**
+     * HTTP client for Bridge API (verify_ssl can be disabled for local cURL CA issues).
+     */
+    private function httpClient(array $headers): \Illuminate\Http\Client\PendingRequest
+    {
+        $verify = config('services.bridge.verify_ssl', true);
+
+        return Http::withOptions(['verify' => $verify])->withHeaders($headers);
+    }
+
+    /**
      * Make authenticated request to Bridge API
      * 
      * @param string $method HTTP method (GET, POST, PUT, DELETE)
@@ -161,7 +171,7 @@ class BridgeService
             // GET requests should not have a request body
             if (strtoupper($method) === 'GET') {
                 // Build HTTP client - explicitly don't set Content-Type for GET
-                $httpClient = Http::withHeaders($headers);
+                $httpClient = $this->httpClient($headers);
 
                 // For GET requests with query parameters
                 if (!empty($data)) {
@@ -173,7 +183,7 @@ class BridgeService
                 }
             } else {
                 // For POST, PUT, DELETE, etc., send data as JSON body
-            $response = Http::withHeaders($headers)->{strtolower($method)}($url, $data);
+            $response = $this->httpClient($headers)->{strtolower($method)}($url, $data);
             }
 
             $statusCode = $response->status();
@@ -280,6 +290,14 @@ class BridgeService
     public function getCustomers(): array
     {
         return $this->makeRequest('GET', '/customers');
+    }
+
+    /**
+     * Find customers by email (Bridge supports email query filter).
+     */
+    public function getCustomersByEmail(string $email): array
+    {
+        return $this->makeRequest('GET', '/customers', ['email' => trim($email)]);
     }
 
     /**
@@ -478,7 +496,7 @@ class BridgeService
                 $url .= "?endorsement={$endorsement}";
             }
             
-            $response = Http::withHeaders([
+            $response = $this->httpClient([
                 'Api-Key' => $this->apiKey,
                 'Accept' => 'application/json',
             ])->get($url);
@@ -698,17 +716,24 @@ class BridgeService
             // Remove bridge_wallet_id in sandbox (not used with Ethereum payment rail)
             unset($destination['bridge_wallet_id']);
         } else {
-            // Production mode: Validate requirements based on payment rail
-            // For address-based payment rails, address is required
-            // For bridge_wallet payment rail, bridge_wallet_id is required
-            if (!isset($destination['payment_rail']) || $destination['payment_rail'] !== 'bridge_wallet') {
-                if (!isset($destination['address']) || empty($destination['address'])) {
-                    return [
-                        'success' => false,
-                        'error' => 'Destination address is required in production mode for address-based payment rails. Please provide a valid wallet address you control.',
-                        'error_code' => 'MISSING_DESTINATION_ADDRESS',
-                    ];
-                }
+            $paymentRail = $destination['payment_rail'] ?? '';
+            $hasAddress = ! empty($destination['address']);
+            $hasBridgeWalletId = ! empty($destination['bridge_wallet_id']);
+
+            if ($paymentRail === 'bridge_wallet' && ! $hasBridgeWalletId) {
+                return [
+                    'success' => false,
+                    'error' => 'bridge_wallet_id is required in production mode when using the bridge_wallet payment rail.',
+                    'error_code' => 'MISSING_BRIDGE_WALLET_ID',
+                ];
+            }
+
+            if ($paymentRail !== 'bridge_wallet' && ! $hasAddress && ! $hasBridgeWalletId) {
+                return [
+                    'success' => false,
+                    'error' => 'Destination address is required in production mode for address-based payment rails. Please provide a valid wallet address you control.',
+                    'error_code' => 'MISSING_DESTINATION_ADDRESS',
+                ];
             }
         }
 
@@ -1234,8 +1259,12 @@ class BridgeService
      * @param string $chain Blockchain chain (solana, ethereum, etc.)
      * @return array
      */
-    public function createVirtualAccountForChainWallet(string $customerId, string $walletId, string $chain = 'solana'): array
-    {
+    public function createVirtualAccountForChainWallet(
+        string $customerId,
+        string $walletId,
+        string $chain = 'solana',
+        ?string $walletAddress = null,
+    ): array {
         $source = [
             'currency' => 'usd',
         ];
@@ -1251,8 +1280,15 @@ class BridgeService
             $destination = [
                 'payment_rail' => $chain,
                 'currency' => 'usdc',
-                'bridge_wallet_id' => $walletId,
             ];
+
+            if ($walletId) {
+                $destination['bridge_wallet_id'] = $walletId;
+            }
+
+            if ($walletAddress) {
+                $destination['address'] = $walletAddress;
+            }
         }
 
         return $this->createVirtualAccount($customerId, $source, $destination);

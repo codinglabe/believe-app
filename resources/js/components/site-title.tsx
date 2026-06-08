@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 /** Dark UI theme: show a light-on-dark mark (same treatment as navbar). */
 const brandImageDarkThemeTreatment =
-    'dark:object-contain dark:brightness-0 dark:hue-rotate-60 dark:invert dark:sepia dark:filter dark:[.group\\/sidebar-wrapper[data-collapsible=icon]_&]:h-5 dark:[.group\\/sidebar-wrapper[data-collapsible=icon]_&]:w-5';
+    'dark:object-contain dark:brightness-0 dark:hue-rotate-60 dark:invert dark:sepia dark:filter dark:group-data-[collapsible=icon]:h-5 dark:group-data-[collapsible=icon]:w-5';
 
 const defaultBrandImageClass = cn(
     'h-9 w-9 shrink-0 sm:h-10 sm:w-10 lg:h-11 lg:w-11',
@@ -12,7 +12,7 @@ const defaultBrandImageClass = cn(
 );
 
 const defaultBrandWordmarkClass =
-    'truncate bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-base font-bold text-transparent sm:text-lg [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:hidden';
+    'truncate bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-base font-bold text-transparent sm:text-lg group-data-[collapsible=icon]:hidden';
 
 const meetOverlayBrandImageClass = cn(
     'h-7 w-7 shrink-0 object-contain sm:h-8 sm:w-8',
@@ -66,11 +66,11 @@ export default function SiteTitle({ className, href }: SiteTitleProps) {
         <Link
             href={href || route('home')}
             className={cn(
-                'flex min-w-0 items-center gap-2 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:justify-center [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:gap-0',
+                'flex min-w-0 items-center gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0',
                 className,
             )}
         >
-            <BelieveInUnityBrandMark className="min-w-0 gap-2 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:gap-0" />
+            <BelieveInUnityBrandMark className="min-w-0 gap-2 group-data-[collapsible=icon]:gap-0" />
         </Link>
     );
 }

@@ -24,8 +24,16 @@ export function CareAllianceOrgInvitesInline() {
         headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
       })
       setInvites(data.invitations ?? [])
-    } catch {
-      toast.error("Could not load Unity Impact Alliance invitations.")
+    } catch (error) {
+      const blockedByBridge =
+        axios.isAxiosError(error) &&
+        error.response?.status === 403 &&
+        (error.response?.data as { requires_bridge_verification?: boolean } | undefined)
+          ?.requires_bridge_verification === true
+
+      if (!blockedByBridge) {
+        toast.error("Could not load Unity Impact Alliance invitations.")
+      }
       setInvites([])
     } finally {
       setLoading(false)
@@ -62,8 +70,18 @@ export function CareAllianceOrgInvitesInline() {
       )
       toast.success(action === "accept" ? "You joined the Unity Impact Alliance." : "Invitation declined.")
       await load()
-    } catch {
-      toast.error("Something went wrong. Try again.")
+    } catch (error) {
+      const blockedByBridge =
+        axios.isAxiosError(error) &&
+        error.response?.status === 403 &&
+        (error.response?.data as { requires_bridge_verification?: boolean } | undefined)
+          ?.requires_bridge_verification === true
+
+      if (blockedByBridge) {
+        toast.error("Complete Bridge wallet verification first.")
+      } else {
+        toast.error("Something went wrong. Try again.")
+      }
     }
   }
 

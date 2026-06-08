@@ -26,6 +26,7 @@ import UnityCallGlobalListener from './components/call/UnityCallGlobalListener';
 import { setupSwIncomingCallBridge } from './lib/swIncomingCallBridge';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
+import { getCsrfHeaders, getCsrfToken, syncCsrfMetaFromCookie } from './lib/csrf';
 import { initStoredAppVersion, markPwaUpdateComplete, fetchServerAppVersion } from './lib/pwa-update';
 import axios from 'axios';
 
@@ -161,20 +162,26 @@ createInertiaApp({
     },
 });
 
-// Every Inertia visit (GET/POST/Link) must send the browser IANA timezone so Laravel DetectTimezone applies it.
+// Every Inertia visit (GET/POST/Link) must send timezone + CSRF so Laravel accepts the request.
 if (typeof window !== 'undefined') {
     router.on('before', (event: GlobalEvent<'before'>) => {
         event.detail.visit.headers['X-Timezone'] = getBrowserTimezone();
+        const csrf = getCsrfToken();
+        if (csrf) {
+            event.detail.visit.headers['X-CSRF-TOKEN'] = csrf;
+        }
     });
 }
 
-// Global axios: always send CSRF from meta (kept in sync by CsrfTokenSync + router.on('success')).
+// Global axios: CSRF from meta (CsrfTokenSync + router.on('success')), cookie fallback when meta is empty.
 if (typeof window !== 'undefined') {
-    const getCsrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
     axios.defaults.withCredentials = true;
     axios.interceptors.request.use((config) => {
-        config.headers['X-CSRF-TOKEN'] = getCsrf();
+        const headers = getCsrfHeaders();
+        for (const [key, value] of Object.entries(headers)) {
+            config.headers[key] = value;
+        }
         config.headers['X-Timezone'] = getBrowserTimezone();
         return config;
     });
@@ -182,8 +189,7 @@ if (typeof window !== 'undefined') {
         (r) => r,
         (err) => {
             if (err.response?.status === 419) {
-                // Refresh page to get new token; CsrfTokenSync will keep meta in sync after.
-                window.location.reload();
+                syncCsrfMetaFromCookie();
             }
             if (err.response?.status === 401) {
                 window.location.href = '/login';

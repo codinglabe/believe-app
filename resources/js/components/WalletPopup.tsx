@@ -12,6 +12,11 @@ import { DocumentUploadDropzone } from './DocumentUploadDropzone'
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal'
 import { usePage } from '@inertiajs/react'
 import {
+    applyWalletBridgeStatusPayload,
+    isWalletBridgeAccountVerified,
+    type WalletBridgeStatusPayload,
+} from '@/lib/bridge-verification'
+import {
     SuccessMessage,
     BalanceDisplay,
     SwapView,
@@ -41,6 +46,8 @@ import {
     DepositInstructionsSkeleton,
     WaitingScreen,
     getCsrfToken as getWalletCsrfToken,
+    walletFetch,
+    isCsrfMismatch,
     formatAddress as formatWalletAddress
 } from './wallet'
 
@@ -141,6 +148,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [isSandbox, setIsSandbox] = useState(false)
     const [hasCardWallet, setHasCardWallet] = useState<boolean | null>(null)
     const [isCheckingCardWallet, setIsCheckingCardWallet] = useState(false)
+    const [hasBankAccounts, setHasBankAccounts] = useState<boolean | null>(null)
+    const [showAddBankFormOnEntry, setShowAddBankFormOnEntry] = useState(false)
     const [depositInstructions, setDepositInstructions] = useState<{
         bank_name?: string;
         bank_address?: string;
@@ -153,6 +162,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         currency?: string;
     } | null>(null)
     const [isLoadingDepositInstructions, setIsLoadingDepositInstructions] = useState(false)
+    const [isCreatingDepositAccount, setIsCreatingDepositAccount] = useState(false)
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'ach' | 'wire'>('ach')
     const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
     const [receiveDepositInstructions, setReceiveDepositInstructions] = useState<{
@@ -183,6 +193,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [kycSubmitted, setKycSubmitted] = useState(false) // Track if KYC has been submitted
     const [tosIframeUrl, setTosIframeUrl] = useState<string | null>(null)
     const [signedAgreementId, setSignedAgreementId] = useState<string | null>(null)
+    const processedTosAgreementIdsRef = useRef<Set<string>>(new Set())
 
     // Custom KYC form state
     const [kycFormData, setKycFormData] = useState({
@@ -428,13 +439,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
 
             if (statusData.success && statusData.initialized) {
+                const bridgeStatus = applyWalletBridgeStatusPayload(
+                    statusData as WalletBridgeStatusPayload,
+                )
+
                 // Bridge is initialized (customer exists)
-                setBridgeInitialized(true)
+                setBridgeInitialized(bridgeStatus.bridgeInitialized)
 
                 // Update verification status if provided
-                if (statusData.requires_verification !== undefined) {
-                    setRequiresVerification(statusData.requires_verification)
-                }
+                setRequiresVerification(bridgeStatus.requiresVerification)
+                setTosStatus(bridgeStatus.tosStatus)
+
                 if (statusData.kyc_status) {
                     // If KYC was submitted, preserve the waiting screen state
                     // Only update to approved or rejected, otherwise keep current status if it's a pending state
@@ -460,20 +475,22 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
-                }
-                if (statusData.tos_status) {
-                    // Only update TOS status if:
-                    // 1. Current status is not already accepted/approved, OR
-                    // 2. Backend confirms it's accepted/approved (to sync with backend)
-                    const currentTosStatus = tosStatus
-                    const isCurrentlyAccepted = currentTosStatus === 'accepted' || currentTosStatus === 'approved'
-                    const isBackendAccepted = statusData.tos_status === 'accepted' || statusData.tos_status === 'approved'
-
-                    // Always update if backend says it's accepted (to sync)
-                    // Or update if current status is not accepted (to get latest status)
-                    if (isBackendAccepted || !isCurrentlyAccepted) {
-                    setTosStatus(statusData.tos_status)
+                    if (statusData.kyb_status === 'approved') {
+                        setTosStatus('accepted')
                     }
+                }
+                if (statusData.tos_accepted === true) {
+                    setTosStatus('accepted')
+                }
+                if (isWalletBridgeAccountVerified(statusData as WalletBridgeStatusPayload)) {
+                    setRequiresVerification(false)
+                }
+                if (statusData.tos_status || statusData.tos_accepted) {
+                    const isBackendAccepted =
+                        statusData.tos_accepted === true ||
+                        statusData.tos_status === 'accepted' ||
+                        statusData.tos_status === 'approved' ||
+                        statusData.kyb_status === 'approved'
 
                     // If TOS is accepted, hide the iframe immediately
                     if (isBackendAccepted) {
@@ -891,11 +908,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    // Check Bridge status and fetch balance on mount
+    // On open: only restore an already-connected wallet from local DB — do not auto-link Bridge.
+    // New connections start on the Connect Wallet screen until the user clicks Connect.
     useEffect(() => {
         if (!isOpen) {
-            // Reset initial loading when popup closes
             setIsInitialLoading(true)
+            setBridgeInitialized(false)
             return
         }
         checkBridgeAndFetchBalance()
@@ -913,115 +931,80 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 return
             }
 
+            // Follow-up iframe messages after TOS redirect (no re-submit)
+            if (event.data && typeof event.data === 'object') {
+                const action = event.data.action
+                if (action === 'close') {
+                    setTosIframeUrl(null)
+                    setTimeout(() => checkBridgeAndFetchBalance(), 500)
+                    return
+                }
+                if (action === 'checkStatus') {
+                    setTimeout(() => checkBridgeAndFetchBalance(), 300)
+                    return
+                }
+            }
+
             // Handle TOS acceptance from iframe callback
             if (event.data && typeof event.data === 'object' && event.data.signedAgreementId) {
-                const agreementId = event.data.signedAgreementId
-                const action = event.data.action
-                const hideSuccess = event.data.hideSuccess
+                const agreementId = String(event.data.signedAgreementId).trim()
+                if (!agreementId) {
+                    return
+                }
+
+                if (processedTosAgreementIdsRef.current.has(agreementId)) {
+                    return
+                }
+                processedTosAgreementIdsRef.current.add(agreementId)
 
                 setSignedAgreementId(agreementId)
 
-                // Submit the signed agreement ID to backend first
                 const submitTosAcceptance = async () => {
                     try {
-                        // Get fresh CSRF token before making the request
-                        let csrfToken = getCsrfToken()
-
-                        // If token is missing, try to refresh it by making a GET request first
-                        if (!csrfToken) {
-                            try {
-                                const tokenResponse = await fetch('/wallet/bridge/status', {
-                                    method: 'GET',
-                                    headers: {
-                                        'Accept': 'application/json',
-                                        'X-Requested-With': 'XMLHttpRequest',
-                                    },
-                                    credentials: 'include',
-                                    cache: 'no-store',
-                                })
-                                // After the request, try to get token again
-                                csrfToken = getCsrfToken()
-                            } catch (e) {
-                            }
-                        }
-
-                        if (!csrfToken) {
-                            showErrorToast('CSRF token not found. Please refresh the page and try again.')
-                            // Refresh page to get new CSRF token
-                            setTimeout(() => {
-                                window.location.reload()
-                            }, 2000)
+                        if (tosStatus === 'accepted' || tosStatus === 'approved') {
+                            setTosIframeUrl(null)
                             return
                         }
 
-                        const response = await fetch('/wallet/tos-callback', {
+                        const response = await walletFetch('/wallet/tos-callback', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-store',
-                            body: JSON.stringify({ signed_agreement_id: agreementId }),
+                            body: { signed_agreement_id: agreementId },
                         })
 
-                        // Handle CSRF token mismatch
-                        if (response.status === 419 || response.status === 403) {
-                            const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
-                            showErrorToast('Session expired. Refreshing page...')
-                            setTimeout(() => {
-                                window.location.reload()
-                            }, 2000)
+                        const data = await response.json().catch(() => ({} as Record<string, unknown>))
+                        const message = typeof data.message === 'string' ? data.message : null
+
+                        if (isCsrfMismatch(response.status, message)) {
+                            processedTosAgreementIdsRef.current.delete(agreementId)
+                            showErrorToast('Session expired. Please refresh the page and try again.')
                             return
                         }
 
-                        if (!response.ok) {
-                            const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
-                            showErrorToast(errorData.message || 'Failed to accept Terms of Service')
+                        if (!response.ok || !data.success) {
+                            processedTosAgreementIdsRef.current.delete(agreementId)
+                            showErrorToast(message || 'Failed to accept Terms of Service')
                             return
                         }
 
-                        const data = await response.json()
+                        setTosIframeUrl(null)
 
-                        if (data.success) {
-                            // Hide TOS iframe immediately when accepted
-                            setTosIframeUrl(null)
+                        const backendTosStatus =
+                            typeof data.tos_status === 'string' ? data.tos_status : 'accepted'
+                        setTosStatus(backendTosStatus === 'approved' ? 'approved' : 'accepted')
 
-                            // Update TOS status from backend response if available, otherwise use 'accepted'
-                            const backendTosStatus = data.tos_status || 'accepted'
-                            const finalTosStatus = backendTosStatus === 'approved' ? 'approved' : 'accepted'
-                            // Immediately set the status to ensure UI updates
-                            setTosStatus(finalTosStatus)
+                        showSuccessToast('Terms of Service accepted successfully')
 
-                            // Show success message
-                                showSuccessToast('Terms of Service accepted successfully')
-
-                                    // Re-check status to ensure everything is synced with backend
-                            setTimeout(() => {
-                                    checkBridgeAndFetchBalance()
-                            }, 1000)
-                        } else {
-                            showErrorToast(data.message || 'Failed to accept Terms of Service')
-                        }
+                        setTimeout(() => {
+                            checkBridgeAndFetchBalance()
+                        }, 1000)
                     } catch (error) {
+                        processedTosAgreementIdsRef.current.delete(agreementId)
                         console.error('Error submitting TOS acceptance:', error)
                         showErrorToast('Failed to accept Terms of Service')
                     }
                 }
 
                 submitTosAcceptance()
-
-                // Handle close action from iframe
-                if (action === 'close') {
-                    // Hide the TOS iframe immediately
-                    setTosIframeUrl(null)
-                    // Iframe is closing, ensure we check status
-                    setTimeout(() => {
-                        checkBridgeAndFetchBalance()
-                    }, 500)
-                }
                 return
             }
 
@@ -1212,15 +1195,117 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 console.log('Final accounts to set:', accounts)
                 // Use accounts as-is since backend already mapped them correctly
                 setExternalAccounts(accounts)
+                setHasBankAccounts(accounts.length > 0)
             } else {
                 console.warn('No accounts found in response:', data)
                 setExternalAccounts([])
+                setHasBankAccounts(false)
             }
         } catch (error) {
             console.error('Failed to fetch external accounts:', error)
             setExternalAccounts([])
+            setHasBankAccounts(false)
         } finally {
             setIsLoadingExternalAccounts(false)
+        }
+    }
+
+    const goToAddBankAccount = () => {
+        setShowAddBankFormOnEntry(true)
+        setActionView('external_accounts')
+        if (hasBankAccounts === null) {
+            fetchExternalAccounts()
+        }
+    }
+
+    const applyDepositInstructions = (instructions: NonNullable<typeof depositInstructions>) => {
+        setDepositInstructions(instructions)
+
+        if (instructions.payment_rails && Array.isArray(instructions.payment_rails)) {
+            if (instructions.payment_rails.includes('ach_push')) {
+                setSelectedPaymentMethod('ach')
+            } else if (instructions.payment_rails.includes('wire')) {
+                setSelectedPaymentMethod('wire')
+            }
+        } else if (instructions.payment_rail) {
+            if (instructions.payment_rail === 'ach_push') {
+                setSelectedPaymentMethod('ach')
+            } else if (instructions.payment_rail === 'wire') {
+                setSelectedPaymentMethod('wire')
+            }
+        }
+    }
+
+    const fetchDepositInstructions = async () => {
+        setIsLoadingDepositInstructions(true)
+        try {
+            const timestamp = Date.now()
+            const response = await fetch(`/wallet/bridge/deposit-instructions?t=${timestamp}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                if (data.success && data.data?.deposit_instructions) {
+                    applyDepositInstructions(data.data.deposit_instructions)
+                    return true
+                }
+            }
+
+            setDepositInstructions(null)
+            return false
+        } catch (error) {
+            console.error('Failed to fetch deposit instructions:', error)
+            setDepositInstructions(null)
+            return false
+        } finally {
+            setIsLoadingDepositInstructions(false)
+        }
+    }
+
+    const handleCreateBridgeDepositAccount = async () => {
+        setIsCreatingDepositAccount(true)
+        try {
+            const response = await fetch('/wallet/bridge/virtual-account', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+                body: JSON.stringify({}),
+            })
+
+            const data = await response.json()
+            if (data.success) {
+                showSuccessToast('Deposit bank account created successfully!')
+                const instructions = data.data?.source_deposit_instructions
+                if (instructions) {
+                    applyDepositInstructions(instructions)
+                } else {
+                    await fetchDepositInstructions()
+                }
+            } else {
+                showErrorToast(data.message || 'Failed to create deposit bank account')
+            }
+        } catch (error) {
+            console.error('Failed to create Bridge deposit account:', error)
+            showErrorToast('Failed to create deposit bank account. Please try again.')
+        } finally {
+            setIsCreatingDepositAccount(false)
         }
     }
 
@@ -1259,6 +1344,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             const data = await response.json()
             if (data.success) {
                 showSuccessToast('Bank account linked successfully!')
+                setShowAddBankFormOnEntry(false)
                 await fetchExternalAccounts()
                 setActionView('external_accounts')
             } else {
@@ -1579,50 +1665,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setIsConnectingWallet(true) // Show loading animation screen
         setIsLoading(true)
         try {
-            // Get fresh CSRF token
-            const csrfToken = getCsrfToken()
-
-            if (!csrfToken) {
-                showErrorToast('CSRF token not found. Please refresh the page and try again.')
-                setIsLoading(false)
-                return
-            }
-
-            const response = await fetch('/wallet/bridge/initialize', {
+            const response = await walletFetch('/wallet/bridge/initialize', {
                 method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
+                body: {},
             })
 
-            // Handle CSRF token mismatch (419 error)
-            if (response.status === 419) {
-                showErrorToast('Session expired. Refreshing page...')
-                setTimeout(() => {
-                    window.location.reload()
-                }, 1500)
+            const data = await response.json().catch(() => ({} as Record<string, unknown>))
+
+            if (isCsrfMismatch(response.status, typeof data.message === 'string' ? data.message : null)) {
+                showErrorToast('Session expired. Please refresh the page and try again.')
                 setIsLoading(false)
                 return
             }
 
-            const data = await response.json()
-
             if (!response.ok || !data.success) {
-                // Check if it's a CSRF error in the response
-                if (data.message && (data.message.includes('CSRF') || data.message.includes('419') || data.message.includes('token'))) {
-                    showErrorToast('Session expired. Refreshing page...')
-                    setTimeout(() => {
-                        window.location.reload()
-                    }, 1500)
-                    setIsLoading(false)
-                    return
-                }
-                throw new Error(data.message || 'Failed to connect wallet')
+                throw new Error(
+                    (typeof data.message === 'string' && data.message) || 'Failed to connect wallet',
+                )
             }
 
             // Successfully connected
@@ -1630,43 +1689,37 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             showSuccessToast('Wallet connected successfully!')
 
             // Check status first, then fetch balance only if wallet exists
-            const statusCsrfToken = getCsrfToken()
-            const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
+            const statusResponse = await walletFetch(`/wallet/bridge/status?t=${Date.now()}`, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': statusCsrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
             })
 
-            // Handle CSRF token mismatch for status request
-            if (statusResponse.status === 419) {
-                showErrorToast('Session expired. Refreshing page...')
-                setTimeout(() => {
-                    window.location.reload()
-                }, 1500)
+            const statusData = await statusResponse.json().catch(() => ({} as Record<string, unknown>))
+
+            if (isCsrfMismatch(statusResponse.status, typeof statusData.message === 'string' ? statusData.message : null)) {
+                showErrorToast('Session expired. Please refresh the page and try again.')
                 setIsLoading(false)
                 return
             }
 
-            const statusData = await statusResponse.json()
-
             if (statusData.success && statusData.initialized) {
-                // Update verification status if provided
-                if (statusData.requires_verification !== undefined) {
-                    setRequiresVerification(statusData.requires_verification)
-                }
+                const bridgeStatus = applyWalletBridgeStatusPayload(
+                    statusData as WalletBridgeStatusPayload,
+                )
+
+                setRequiresVerification(bridgeStatus.requiresVerification)
+                setTosStatus(bridgeStatus.tosStatus)
+
                 if (statusData.kyc_status) {
                     setKycStatus(statusData.kyc_status)
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
+                    if (statusData.kyb_status === 'approved') {
+                        setTosStatus('accepted')
+                    }
                 }
-                if (statusData.tos_status) {
-                    setTosStatus(statusData.tos_status)
+                if (statusData.tos_accepted === true) {
+                    setTosStatus('accepted')
                 }
                 if (statusData.tos_link) {
                     setTosLinkUrl(statusData.tos_link)
@@ -1685,6 +1738,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 }
                 if (statusData.verification_type) {
                     setVerificationType(statusData.verification_type)
+                }
+
+                if (isWalletBridgeAccountVerified(statusData as WalletBridgeStatusPayload)) {
+                    setRequiresVerification(false)
                 }
 
                 // Load KYB step progress from backend
@@ -1806,15 +1863,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 }
 
                 // Always fetch balance from user/organization table, not Bridge wallet
-                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                const balanceResponse = await walletFetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': getCsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    cache: 'no-store',
                 })
 
                 if (balanceResponse.ok) {
@@ -1844,17 +1894,26 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (data.data.kyb_widget_url) {
                     setKybWidgetUrl(data.data.kyb_widget_url)
                 }
-                if (data.data.tos_status) {
-                    setTosStatus(data.data.tos_status)
-                }
+                const initBridgeStatus = applyWalletBridgeStatusPayload({
+                    ...(data.data as WalletBridgeStatusPayload),
+                    initialized: true,
+                })
+                setTosStatus(initBridgeStatus.tosStatus)
                 if (data.data.kyc_status) {
                     setKycStatus(data.data.kyc_status)
                 }
                 if (data.data.kyb_status) {
                     setKybStatus(data.data.kyb_status)
+                    if (data.data.kyb_status === 'approved') {
+                        setTosStatus('accepted')
+                    }
                 }
-                if (data.data.requires_verification) {
-                    setRequiresVerification(data.data.requires_verification)
+                setRequiresVerification(initBridgeStatus.requiresVerification)
+                if (isWalletBridgeAccountVerified({
+                    ...(data.data as WalletBridgeStatusPayload),
+                    initialized: true,
+                })) {
+                    setRequiresVerification(false)
                 }
             }
         } catch (error) {
@@ -1927,38 +1986,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             if (!csrfToken) {
                 showErrorToast('CSRF token not found. Please refresh the page and try again.')
                 setIsLoading(false)
-                setTimeout(() => {
-                    window.location.reload()
-                }, 2000)
                 return
             }
 
             // Always get a fresh TOS link from Bridge (refresh=1 ensures new link is fetched and saved to database)
-            const response = await fetch('/wallet/bridge/tos-link?refresh=1', {
+            const response = await walletFetch('/wallet/bridge/tos-link?refresh=1', {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include', // Important: Include cookies for session/CSRF
-                cache: 'no-store',
             })
 
-            // Check if response is OK - handle CSRF token mismatch
             if (!response.ok) {
-                // If CSRF token mismatch (419) or forbidden (403), refresh page
-                if (response.status === 419 || response.status === 403) {
-                    const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
-                    showErrorToast('Session expired. Refreshing page...')
+                const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
+                if (isCsrfMismatch(response.status, typeof errorData.message === 'string' ? errorData.message : null)) {
+                    showErrorToast('Session expired. Please refresh the page and try again.')
                     setIsLoading(false)
-                    // Refresh the page after a short delay to get a new CSRF token
-                    setTimeout(() => {
-                        window.location.reload()
-                    }, 1500)
                     return
                 }
-                const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
                 showErrorToast(errorData.message || 'Failed to load Terms of Service')
                 setIsLoading(false)
                 return
@@ -1977,9 +2019,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         setTosIframeUrl(data.data.tos_url)
                     }
                 } else if (data.data?.tos_url) {
-                    // Set the TOS URL - this will automatically show the TermsOfService component with iframe
+                    // Store TOS URL — user opens the iframe by clicking the Terms of Service button
                     setTosIframeUrl(data.data.tos_url)
-                    // Don't show success toast - the iframe will appear automatically
                 } else {
                     showErrorToast(data.message || 'Failed to get TOS link')
                 }
@@ -2206,13 +2247,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             console.warn(`CSRF token mismatch (attempt ${retryCount + 1}/${maxRetries}), retrying...`)
                             continue
                         } else {
-                            // Max retries reached
-                            const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
-                            showErrorToast('Session expired. Refreshing page...')
+                            showErrorToast('Session expired. Please refresh the page and try again.')
                             setIsLoading(false)
-                            setTimeout(() => {
-                                window.location.reload()
-                            }, 1500)
                             return
                         }
                     }
@@ -2946,64 +2982,36 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     useEffect(() => {
         if (actionView === 'external_accounts') {
             fetchExternalAccounts()
+        } else {
+            setShowAddBankFormOnEntry(false)
+        }
+    }, [actionView])
+
+    // Prefetch bank accounts when wallet is ready
+    useEffect(() => {
+        const walletReady = walletAddress || (bridgeInitialized && hasWallet)
+
+        if (walletReady && hasBankAccounts === null && !isLoadingExternalAccounts) {
+            fetchExternalAccounts()
+        }
+    }, [bridgeInitialized, hasWallet, walletAddress])
+
+    // Refresh bank accounts when opening flows that need them
+    useEffect(() => {
+        const walletReady = walletAddress || (bridgeInitialized && hasWallet)
+        const needsBankAccounts = actionView === 'transfer_from_external'
+            || actionView === 'withdraw_to_external'
+            || actionView === 'services_menu'
+
+        if (needsBankAccounts && walletReady && hasBankAccounts === null && !isLoadingExternalAccounts) {
+            fetchExternalAccounts()
         }
     }, [actionView])
 
     useEffect(() => {
         if (actionView === 'addMoney') {
-            const fetchDepositInstructions = async () => {
-                setIsLoadingDepositInstructions(true)
-                try {
-                    // Add timestamp to URL to prevent any caching
-                    const timestamp = Date.now()
-                    const response = await fetch(`/wallet/bridge/deposit-instructions?t=${timestamp}`, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': getCsrfToken(),
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                            'Expires': '0',
-                        },
-                        credentials: 'include',
-                        cache: 'no-store', // Use no-store instead of no-cache for stricter no-cache behavior
-                    })
-
-                    if (response.ok) {
-                        const data = await response.json()
-                        if (data.success && data.data?.deposit_instructions) {
-                            const instructions = data.data.deposit_instructions
-                            setDepositInstructions(instructions)
-
-                            // Set default payment method based on available options
-                            if (instructions.payment_rails && Array.isArray(instructions.payment_rails)) {
-                                // Prefer ACH if available, otherwise use first available
-                                if (instructions.payment_rails.includes('ach_push')) {
-                                    setSelectedPaymentMethod('ach')
-                                } else if (instructions.payment_rails.includes('wire')) {
-                                    setSelectedPaymentMethod('wire')
-                                }
-                            } else if (instructions.payment_rail) {
-                                // Fallback to single payment_rail
-                                if (instructions.payment_rail === 'ach_push') {
-                                    setSelectedPaymentMethod('ach')
-                                } else if (instructions.payment_rail === 'wire') {
-                                    setSelectedPaymentMethod('wire')
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch deposit instructions:', error)
-                } finally {
-                    setIsLoadingDepositInstructions(false)
-                }
-            }
-
             fetchDepositInstructions()
         } else if (actionView !== 'addMoney') {
-            // Clear deposit instructions when leaving addMoney view to ensure fresh fetch next time
             setDepositInstructions(null)
         }
     }, [actionView])
@@ -3542,6 +3550,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 key="external-accounts"
                                                 externalAccounts={externalAccounts}
                                                 isLoading={isLoadingExternalAccounts}
+                                                initialShowAddForm={showAddBankFormOnEntry}
                                                 onRefresh={fetchExternalAccounts}
                                                 onLinkAccount={handleLinkExternalAccount}
                                                 onWithdraw={() => {
@@ -3552,33 +3561,54 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             />
                                         )
                                     ) : !showSuccess && actionView === 'transfer_from_external' ? (
-                                        <TransferFromExternal
-                                            key="transfer-from-external"
-                                            externalAccounts={externalAccounts}
-                                            selectedExternalAccount={selectedExternalAccount}
-                                            transferAmount={transferAmount}
-                                            isLoading={isLoading}
-                                            onAccountChange={setSelectedExternalAccount}
-                                            onAmountChange={setTransferAmount}
-                                            onTransfer={handleTransferFromExternal}
-                                        />
+                                        isLoadingExternalAccounts && hasBankAccounts === null ? (
+                                            <div key="transfer-from-external-loading" className="p-4 space-y-4">
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                            </div>
+                                        ) : (
+                                            <TransferFromExternal
+                                                key="transfer-from-external"
+                                                externalAccounts={externalAccounts}
+                                                selectedExternalAccount={selectedExternalAccount}
+                                                transferAmount={transferAmount}
+                                                isLoading={isLoading}
+                                                onAccountChange={setSelectedExternalAccount}
+                                                onAmountChange={setTransferAmount}
+                                                onTransfer={handleTransferFromExternal}
+                                                onAddBankAccount={goToAddBankAccount}
+                                            />
+                                        )
                                     ) : !showSuccess && actionView === 'withdraw_to_external' ? (
-                                        <WithdrawToExternal
-                                            key="withdraw-to-external"
-                                            externalAccounts={externalAccounts}
-                                            selectedExternalAccount={selectedExternalAccount}
-                                            withdrawAmount={withdrawAmount}
-                                            walletBalance={walletBalance}
-                                            isLoading={isLoading}
-                                            onAccountChange={setSelectedExternalAccount}
-                                            onAmountChange={setWithdrawAmount}
-                                            onWithdraw={handleWithdrawToExternal}
-                                        />
+                                        isLoadingExternalAccounts && hasBankAccounts === null ? (
+                                            <div key="withdraw-to-external-loading" className="p-4 space-y-4">
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                            </div>
+                                        ) : (
+                                            <WithdrawToExternal
+                                                key="withdraw-to-external"
+                                                externalAccounts={externalAccounts}
+                                                selectedExternalAccount={selectedExternalAccount}
+                                                withdrawAmount={withdrawAmount}
+                                                walletBalance={walletBalance}
+                                                isLoading={isLoading}
+                                                onAccountChange={setSelectedExternalAccount}
+                                                onAmountChange={setWithdrawAmount}
+                                                onWithdraw={handleWithdrawToExternal}
+                                                onAddBankAccount={goToAddBankAccount}
+                                            />
+                                        )
                                     ) : !showSuccess && actionView === 'services_menu' ? (
                                         <ServicesMenu
                                             onNavigate={setActionView}
                                             hasCardWallet={hasCardWallet}
                                             isCheckingCardWallet={isCheckingCardWallet}
+                                            hasBankAccounts={hasBankAccounts}
+                                            isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
+                                            onAddBankAccount={goToAddBankAccount}
                                         />
                                     ) : !showSuccess && actionView === 'activity' ? (
                                         <ActivityScreen
@@ -3639,10 +3669,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         ) : (
                                             <AddMoney
                                                 key="add-money"
-                                                isLoading={isLoadingDepositInstructions}
+                                                isLoading={isLoadingDepositInstructions && !isCreatingDepositAccount}
                                                 depositInstructions={depositInstructions}
                                                 selectedPaymentMethod={selectedPaymentMethod}
                                                 onPaymentMethodChange={setSelectedPaymentMethod}
+                                                isCreatingDepositAccount={isCreatingDepositAccount}
+                                                onCreateDepositAccount={handleCreateBridgeDepositAccount}
                                             />
                                         )
                                     ) : actionView === 'main' ? (
@@ -3948,6 +3980,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 </div>
                                             </motion.div>
                                         ) : (() => {
+                                            const walletVerified = isWalletBridgeAccountVerified({
+                                                initialized: bridgeInitialized,
+                                                verification_type: verificationType ?? undefined,
+                                                kyb_status: kybStatus,
+                                                kyc_status: kycStatus,
+                                                tos_status: tosStatus,
+                                                tos_accepted:
+                                                    tosStatus === 'accepted' || tosStatus === 'approved',
+                                                requires_verification: requiresVerification,
+                                            })
+
+                                            if (walletVerified) {
+                                                return false
+                                            }
+
                                             // PRIORITY: If status is approved, ALWAYS show wallet screen (return false)
                                             if (bridgeInitialized && verificationType) {
                                                 const isKybApproved = verificationType === 'kyb' && kybStatus === 'approved'

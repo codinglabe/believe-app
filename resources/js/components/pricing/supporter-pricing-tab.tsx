@@ -2,9 +2,11 @@
 
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
+import { ConfirmationModal } from "@/components/confirmation-modal"
 import {
   ArrowRight,
   Check,
+  Crown,
   Heart,
   Loader2,
   Minus,
@@ -84,6 +86,8 @@ export default function SupporterPricingTab({
   const { auth } = usePage().props as { auth?: { user?: { id?: number } | null } }
   const isAuthenticated = Boolean(auth?.user)
   const [activatingSlug, setActivatingSlug] = useState<string | null>(null)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   const freePlan =
     supporterPlans.find((plan) => plan.slug === "free_supporter") ??
@@ -125,42 +129,125 @@ export default function SupporterPricingTab({
     })
   }
 
+  const handleConfirmCancel = () => {
+    setIsCancelling(true)
+    router.post(route("plans.cancel"), {}, {
+      preserveScroll: true,
+      onFinish: () => {
+        setIsCancelling(false)
+        setShowCancelModal(false)
+      },
+    })
+  }
+
   return (
     <>
       {supporterSubscription && (
-        <div className="mb-6 rounded-xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-4 dark:border-emerald-500/25 dark:bg-emerald-950/20 sm:px-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <Check className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <div>
-                <p className="font-semibold text-slate-900 dark:text-white">Active supporter plan</p>
-                <p className="text-sm text-slate-600 dark:text-white/70">
-                  {supporterSubscription.name}
-                  {supporterSubscription.price > 0
-                    ? ` · $${formatPrimePrice(supporterSubscription.price)}/${PRIME_SUPPORTER_FREQUENCY}`
-                    : " · Free"}
-                </p>
+        <div
+          className={cn(
+            "mb-8 overflow-hidden rounded-2xl p-[2px] shadow-lg shadow-purple-500/15 dark:shadow-purple-900/25",
+            logoGradientFrame,
+          )}
+        >
+          <div className="overflow-hidden rounded-[14px] bg-white dark:bg-[#0b0b18]">
+            <div className="relative">
+              <div
+                className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-blue-400/20 blur-3xl dark:bg-blue-600/15"
+                aria-hidden
+              />
+              <div
+                className="pointer-events-none absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-purple-400/20 blur-3xl dark:bg-purple-600/15"
+                aria-hidden
+              />
+              <div className="relative bg-gradient-to-br from-violet-50/90 via-white to-sky-50/70 px-5 py-5 dark:from-purple-950/40 dark:via-[#0b0b18] dark:to-blue-950/30 sm:px-6 sm:py-6">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 items-start gap-4">
+                    <div
+                      className={cn(
+                        "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-md shadow-purple-500/25",
+                        logoGradientDiagonal,
+                      )}
+                    >
+                      {isPrimeActive ? (
+                        <Crown className="h-7 w-7" strokeWidth={1.75} />
+                      ) : (
+                        <Heart className="h-7 w-7 fill-white/20" strokeWidth={1.75} />
+                      )}
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-700 dark:text-violet-300">
+                          Your membership
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+                          Active
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl dark:text-white">
+                        {supporterSubscription.name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-lg px-3 py-1 text-sm font-semibold tabular-nums",
+                            isPrimeActive
+                              ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm"
+                              : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white/90",
+                          )}
+                        >
+                          {supporterSubscription.price > 0
+                            ? `$${formatPrimePrice(supporterSubscription.price)}/${PRIME_SUPPORTER_FREQUENCY}`
+                            : "Free · $0"}
+                        </span>
+                        {isPrimeActive && (
+                          <span className="text-xs text-slate-500 dark:text-white/55">
+                            Billed monthly · Cancel anytime
+                          </span>
+                        )}
+                      </div>
+                      <p className="max-w-md text-sm leading-relaxed text-slate-600 dark:text-white/65">
+                        {isPrimeActive
+                          ? "Thanks for supporting nonprofits on Believe In Unity — your Prime benefits are unlocked."
+                          : "You’re on the free supporter tier. Upgrade to Prime for rewards and premium perks."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto lg:min-w-[220px]">
+                    {!isPrimeActive && primePlan && (
+                      <Button
+                        size="lg"
+                        className="h-11 w-full bg-gradient-to-r from-purple-600 to-blue-600 font-semibold text-white shadow-md shadow-purple-500/20 hover:brightness-110 sm:w-auto lg:w-full"
+                        disabled={activatingSlug !== null || isCancelling}
+                        onClick={() => subscribe(primePlan)}
+                      >
+                        {activatingSlug === (primePlan.slug ?? String(primePlan.id)) ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Upgrade to Prime
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    <Button
+                      size="lg"
+                      className="h-11 w-full border border-red-600/20 bg-red-600 font-semibold text-white shadow-sm hover:bg-red-700 dark:border-red-500/30 dark:bg-red-600 dark:text-white dark:hover:bg-red-500 sm:w-auto lg:w-full"
+                      disabled={activatingSlug !== null || isCancelling}
+                      onClick={() => setShowCancelModal(true)}
+                    >
+                      Cancel subscription
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
-            {!isPrimeActive && primePlan && (
-              <Button
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:brightness-110"
-                disabled={activatingSlug !== null}
-                onClick={() => subscribe(primePlan)}
-              >
-                {activatingSlug === (primePlan.slug ?? String(primePlan.id)) ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    Upgrade to Prime
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            )}
           </div>
         </div>
       )}
@@ -387,6 +474,21 @@ export default function SupporterPricingTab({
           </div>
         </div>
       </section>
+
+      <ConfirmationModal
+        isOpen={showCancelModal}
+        onChange={setShowCancelModal}
+        title="Cancel supporter subscription"
+        description={
+          supporterSubscription && supporterSubscription.price > 0
+            ? "Are you sure you want to cancel your Prime Supporter subscription? This action cannot be undone and no refund will be issued."
+            : "Are you sure you want to cancel your supporter membership? You can rejoin anytime from this page."
+        }
+        confirmLabel="Yes, cancel subscription"
+        cancelLabel="Keep subscription"
+        onConfirm={handleConfirmCancel}
+        isLoading={isCancelling}
+      />
     </>
   )
 }

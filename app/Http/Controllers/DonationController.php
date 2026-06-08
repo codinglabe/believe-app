@@ -7,11 +7,13 @@ use App\Models\Donation;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\CareAlliancePublicPageService;
+use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\DonationProcessingFeeEstimator;
 use App\Services\DonationStripeConnectCheckoutSessionService;
 use App\Services\DonationStripeConnectRouting;
 use App\Services\DonationStripeDescriptionBuilder;
 use App\Services\DonationStripePaymentCompletion;
+use App\Services\UserStripePaymentMethodService;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
 use App\Services\StripeConfigService;
@@ -26,8 +28,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
+use Stripe\Exception\ApiErrorException;
+use Symfony\Component\HttpFoundation\Response;
 
 class DonationController extends Controller
 {
@@ -524,6 +529,7 @@ class DonationController extends Controller
             'payment_method' => 'nullable|string|in:stripe,believe_points',
             'donor_covers_processing_fees' => 'sometimes|boolean',
             'donation_fee_rail' => 'nullable|in:card,bank',
+            'saved_payment_method_id' => ['nullable', 'string', 'max:255'],
         ]);
 
         $user = $request->user();
@@ -740,6 +746,22 @@ class DonationController extends Controller
             }
 
             $paymentMethodTypes = $feeRail === 'bank' ? ['us_bank_account'] : ['card'];
+
+            if ($isOneTime && filled($validated['saved_payment_method_id'] ?? null)) {
+                return $this->donateWithSavedPaymentMethod(
+                    $user,
+                    $donation,
+                    $organization,
+                    (string) $validated['saved_payment_method_id'],
+                    $feeRail,
+                    $amountInCents,
+                    $applicationFeeInCents,
+                    $useStripeConnectCheckout,
+                    $metadata,
+                    $piDescription,
+                    $statementSuffix
+                );
+            }
 
             if ($useStripeConnectCheckout) {
                 $successUrl = route('donations.success').'?donation_id='.$donation->id.'&session_id={CHECKOUT_SESSION_ID}';
@@ -1117,6 +1139,194 @@ class DonationController extends Controller
     private function applyDonationToBalances(Donation $donation): void
     {
         DonationStripePaymentCompletion::applyDonationLedgerAndBalances($donation);
+    }
+
+    /**
+     * Charge a saved Stripe card or bank account for a one-time donation.
+     */
+    private function donateWithSavedPaymentMethod(
+        User $user,
+        Donation $donation,
+        Organization $organization,
+        string $paymentMethodId,
+        string $feeRail,
+        int $amountInCents,
+        int $applicationFeeInCents,
+        bool $useStripeConnectCheckout,
+        array $metadata,
+        string $piDescription,
+        ?string $statementDescriptorSuffix
+    ): RedirectResponse|Response {
+        $railFromPm = UserStripePaymentMethodService::railForPaymentMethod($paymentMethodId);
+
+        if ($railFromPm !== $feeRail) {
+            $donation->update(['status' => 'failed']);
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors([
+                    'message' => 'The selected saved payment method does not match this payment type.',
+                ]);
+        }
+
+        if (! UserStripePaymentMethodService::paymentMethodBelongsToUser($user, $paymentMethodId)) {
+            $donation->update(['status' => 'failed']);
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors([
+                    'message' => 'Invalid saved payment method.',
+                ]);
+        }
+
+        try {
+            if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
+                $donation->update(['status' => 'failed']);
+
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors([
+                        'message' => 'Could not prepare your billing profile. Please try again.',
+                    ]);
+            }
+            $user->refresh();
+
+            BelievePointsPaymentMethodSyncService::ensurePaymentMethodBelongsToCustomer($user, $paymentMethodId);
+
+            $intentPayload = [
+                'amount' => $amountInCents,
+                'currency' => config('cashier.currency'),
+                'customer' => $user->stripe_id,
+                'payment_method' => $paymentMethodId,
+                'confirm' => true,
+                'off_session' => false,
+                'return_url' => route('donations.complete-saved-payment', ['donation' => $donation->id]),
+                'description' => mb_substr($piDescription, 0, 1000),
+                'metadata' => $metadata,
+            ];
+
+            if ($useStripeConnectCheckout && $organization->stripe_connect_account_id) {
+                $applicationFeeInCents = max(0, min($applicationFeeInCents, $amountInCents - 1));
+                $intentPayload['transfer_data'] = [
+                    'destination' => $organization->stripe_connect_account_id,
+                ];
+                $intentPayload['on_behalf_of'] = $organization->stripe_connect_account_id;
+                if ($applicationFeeInCents > 0) {
+                    $intentPayload['application_fee_amount'] = $applicationFeeInCents;
+                }
+                if ($statementDescriptorSuffix !== null && trim($statementDescriptorSuffix) !== '') {
+                    $intentPayload['statement_descriptor_suffix'] = mb_substr(trim($statementDescriptorSuffix), 0, 22);
+                }
+            }
+
+            $intent = Cashier::stripe()->paymentIntents->create($intentPayload);
+
+            $donation->update([
+                'transaction_id' => $intent->id,
+            ]);
+
+            $paymentLabel = $feeRail === 'bank' ? 'us_bank_account' : 'card';
+
+            if ($intent->status === 'succeeded') {
+                DonationStripePaymentCompletion::completeSuccessfulOneTime($donation->fresh(), $intent->id, $paymentLabel);
+
+                return redirect(route('donations.success').'?donation_id='.$donation->id)
+                    ->with('success', 'Donation completed successfully!');
+            }
+
+            if ($intent->status === 'requires_action') {
+                return Inertia::location(route('cashier.payment', $intent->id));
+            }
+
+            if (in_array($intent->status, ['processing', 'requires_confirmation'], true)) {
+                return redirect()->route('donate')
+                    ->with('info', 'Your bank payment is processing. Your donation will be recorded once it completes.');
+            }
+
+            $donation->update(['status' => 'failed']);
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors([
+                    'message' => 'Payment could not be completed. Please try another method.',
+                ]);
+        } catch (ApiErrorException $e) {
+            $donation->update(['status' => 'failed']);
+            Log::error('Donation saved payment method Stripe error', [
+                'donation_id' => $donation->id,
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors([
+                    'message' => 'Payment failed. Please try again or use a different payment method.',
+                ]);
+        } catch (\Throwable $e) {
+            $donation->update(['status' => 'failed']);
+            Log::error('Donation saved payment method error', [
+                'donation_id' => $donation->id,
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors([
+                    'message' => 'Payment failed. Please try again.',
+                ]);
+        }
+    }
+
+    public function completeSavedPayment(Request $request, int $donation): RedirectResponse
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        $donationModel = Donation::query()
+            ->where('id', $donation)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $donationModel || ! is_string($donationModel->transaction_id) || ! str_starts_with($donationModel->transaction_id, 'pi_')) {
+            return redirect()->route('donate')->withErrors([
+                'message' => 'Could not find this donation payment.',
+            ]);
+        }
+
+        try {
+            $intent = Cashier::stripe()->paymentIntents->retrieve($donationModel->transaction_id);
+            $feeRail = (string) ($intent->metadata->fee_rail ?? 'card');
+            $paymentLabel = $feeRail === 'bank' ? 'us_bank_account' : 'card';
+
+            if ($intent->status === 'succeeded') {
+                DonationStripePaymentCompletion::completeSuccessfulOneTime($donationModel, $intent->id, $paymentLabel);
+
+                return redirect(route('donations.success').'?donation_id='.$donationModel->id)
+                    ->with('success', 'Donation completed successfully!');
+            }
+
+            if (in_array($intent->status, ['processing', 'requires_confirmation'], true)) {
+                return redirect()->route('donate')
+                    ->with('info', 'Your payment is still processing. Your donation will be recorded once it completes.');
+            }
+
+            return redirect()->route('donate')->withErrors([
+                'message' => 'Payment was not completed.',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Donation complete saved payment error', [
+                'donation_id' => $donation,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('donate')->withErrors([
+                'message' => 'Could not confirm payment status.',
+            ]);
+        }
     }
 
     /**

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { RefreshCw, ArrowDownLeft, AlertCircle, Info } from 'lucide-react'
+import { RefreshCw, ArrowDownLeft, AlertCircle, Info, Plus, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ExternalAccount } from './types'
 
@@ -12,6 +12,7 @@ interface WithdrawToExternalProps {
     onAccountChange: (accountId: string) => void
     onAmountChange: (amount: string) => void
     onWithdraw: () => void
+    onAddBankAccount?: () => void
 }
 
 export function WithdrawToExternal({
@@ -22,11 +23,42 @@ export function WithdrawToExternal({
     isLoading,
     onAccountChange,
     onAmountChange,
-    onWithdraw
+    onWithdraw,
+    onAddBankAccount,
 }: WithdrawToExternalProps) {
     const verifiedAccounts = externalAccounts.filter(acc => acc.status === 'verified')
     const amount = parseFloat(withdrawAmount) || 0
     const isValid = selectedExternalAccount && withdrawAmount && amount > 0 && walletBalance !== null && amount <= walletBalance
+
+    if (verifiedAccounts.length === 0) {
+        return (
+            <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="p-4 space-y-4"
+            >
+                <div className="text-center py-8 border border-dashed border-border rounded-lg">
+                    <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm font-medium mb-1">No verified bank account</p>
+                    <p className="text-xs text-muted-foreground mb-4 px-4">
+                        Link a bank account to withdraw funds from your wallet.
+                    </p>
+                    {onAddBankAccount && (
+                        <Button
+                            onClick={onAddBankAccount}
+                            size="sm"
+                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                        >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Bank Account
+                        </Button>
+                    )}
+                </div>
+            </motion.div>
+        )
+    }
 
     const handleMaxClick = () => {
         if (walletBalance !== null && walletBalance > 0) {

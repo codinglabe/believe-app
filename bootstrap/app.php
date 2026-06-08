@@ -15,6 +15,7 @@ use App\Http\Middleware\CheckRoleSimple;
 use App\Http\Middleware\CheckTopicsSelected;
 use App\Http\Middleware\DenyCareAllianceHubUser;
 use App\Http\Middleware\DetectTimezone;
+use App\Http\Middleware\EnsureBridgeVerified;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\GrantMeetingEmbedPermissions;
 use App\Http\Middleware\EnsureApiEmailVerified;
@@ -74,6 +75,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: [
             'appearance',
             'sidebar_state',
+            'XSRF-TOKEN',
         ]);
 
         // DetectTimezone syncs the viewer's IANA timezone to users.timezone (X-Timezone header).
@@ -85,6 +87,7 @@ return Application::configure(basePath: dirname(__DIR__))
             GrantMeetingEmbedPermissions::class,
             HandleAppearance::class,
             DetectTimezone::class, // Persists browser timezone to users.timezone (app stays UTC)
+            EnsureBridgeVerified::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             IncreaseUploadLimits::class,

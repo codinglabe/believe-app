@@ -103,9 +103,9 @@ if tcp_reachable; then
 fi
 
 if [ -z "${TOKEN}" ]; then
-  echo "::error::DEPLOY_RUNNER_ALLOW_TOKEN is not set in GitHub Secrets."
+  echo "::warning::DEPLOY_RUNNER_ALLOW_TOKEN not set — skipping HTTPS CSF allow."
   print_fix_instructions
-  exit 1
+  exit 0
 fi
 
 if ! request_server_allow; then

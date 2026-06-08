@@ -1,43 +1,24 @@
 // Utility functions for wallet components
 
+import { getCsrfToken, syncCsrfMetaFromCookie } from '@/lib/csrf'
+
+export { getCsrfToken, syncCsrfMetaFromCookie }
+
 /**
- * Helper function to get CSRF token with multiple fallbacks
+ * True when Laravel rejected the request due to CSRF/session mismatch.
  */
-export const getCsrfToken = (): string => {
-    // Method 1: From meta tag (most common and reliable)
-    try {
-        const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        if (metaToken && metaToken.trim()) return metaToken.trim()
-    } catch (e) {
-        console.warn('Failed to get CSRF token from meta tag:', e)
+export const isCsrfMismatch = (status: number, message?: string | null): boolean => {
+    if (status === 419) {
+        return true
     }
-    
-    // Method 2: From cookie (XSRF-TOKEN) - Laravel stores it as XSRF-TOKEN
-    try {
-        const cookies = document.cookie.split('; ')
-        const xsrfCookie = cookies.find(row => row.startsWith('XSRF-TOKEN='))
-        if (xsrfCookie) {
-            const cookieToken = decodeURIComponent(xsrfCookie.split('=')[1])
-            if (cookieToken && cookieToken.trim()) return cookieToken.trim()
-        }
-    } catch (e) {
-        console.warn('Failed to get CSRF token from cookie:', e)
+
+    if (!message) {
+        return false
     }
-    
-    // Method 3: Try alternative cookie name (some configurations use csrf_token)
-    try {
-        const cookies = document.cookie.split('; ')
-        const csrfCookie = cookies.find(row => row.startsWith('csrf_token='))
-        if (csrfCookie) {
-            const cookieToken = decodeURIComponent(csrfCookie.split('=')[1])
-            if (cookieToken && cookieToken.trim()) return cookieToken.trim()
-        }
-    } catch (e) {
-        console.warn('Failed to get CSRF token from alternative cookie:', e)
-    }
-    
-    console.error('CSRF token not found. Please refresh the page.')
-    return ''
+
+    const lower = message.toLowerCase()
+
+    return lower.includes('csrf') || lower.includes('page expired')
 }
 
 /**
@@ -45,8 +26,7 @@ export const getCsrfToken = (): string => {
  */
 export const refreshCsrfToken = async (): Promise<string> => {
     try {
-        // Make a simple GET request to refresh the session and get CSRF token
-        await fetch('/wallet/plans', {
+        await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
@@ -55,7 +35,7 @@ export const refreshCsrfToken = async (): Promise<string> => {
             credentials: 'include',
             cache: 'no-store',
         })
-        // Try to get token again after the request
+        syncCsrfMetaFromCookie()
         return getCsrfToken()
     } catch (e) {
         console.warn('Failed to refresh CSRF token:', e)
@@ -159,10 +139,9 @@ export const walletFetch = async (
             if (contentType && contentType.includes('application/json')) {
                 try {
                     const errorData = await response.clone().json()
-                    const isCsrfError = response.status === 419 || 
-                        errorData.message?.includes('CSRF') || 
-                        errorData.message?.includes('419') ||
-                        response.status === 403
+                    const isCsrfError =
+                        isCsrfMismatch(response.status, errorData.message) ||
+                        (response.status === 403 && typeof errorData.message === 'string' && errorData.message.toLowerCase().includes('csrf'))
 
                     if (isCsrfError) {
                         console.warn('CSRF token mismatch detected, refreshing token and retrying...')

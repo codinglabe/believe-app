@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 import {
@@ -40,6 +40,7 @@ import PromotionalBanner from "@/components/PromotionalBanner"
 import MarketplaceSavingsHighlight from "@/components/frontend/MarketplaceSavingsHighlight"
 import ProfileCompletionBanner from "@/components/ProfileCompletionBanner"
 import { CareAllianceOrgInvitesInline } from "@/components/CareAllianceOrgInvitesInline"
+import { WalletPopup } from "@/components/WalletPopup"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -693,13 +694,14 @@ export default function Dashboard({
   const [isCheckingWallet, setIsCheckingWallet] = useState(true)
   const [userDismissedPopup, setUserDismissedPopup] = useState(false)
 
-  const careAllianceWalletEligible = auth?.user?.care_alliance_wallet_eligible !== false
-
+  const walletHeaderVisible = auth?.user?.wallet_header_visible !== false
+  const isNonprofitDashboardUser =
+    isOrgUser || userRole === "care_alliance" || isCareAllianceHub
   // Check wallet connection status - FORCE CHECK FOR EACH ORGANIZATION USER
   // Re-check when user ID changes (different organization account)
   useEffect(() => {
     const checkWalletStatus = async () => {
-      if (!isOrgUser || !careAllianceWalletEligible) {
+      if (!isNonprofitDashboardUser || !walletHeaderVisible) {
         setIsCheckingWallet(false)
         setShowWalletPopup(false)
         setWalletConnected(false)
@@ -779,7 +781,7 @@ export default function Dashboard({
     // Always check wallet status for organization users
     // Check immediately when component mounts or user changes
     checkWalletStatus()
-  }, [isOrgUser, userId, careAllianceWalletEligible]) // Add userId to dependencies to re-check when user changes
+  }, [isNonprofitDashboardUser, userId, walletHeaderVisible])
 
   // Check if wallet is connected
   const isWalletConnected = walletConnected || (auth.user?.balance !== undefined && auth.user?.balance !== null)

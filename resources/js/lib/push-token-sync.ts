@@ -4,6 +4,7 @@ import {
     requestFcmToken,
     resetMessagingRegistration,
 } from "@/lib/firebase";
+import { getCsrfHeaders, getCsrfToken, syncCsrfMetaFromCookie } from "@/lib/csrf";
 import { isPushCapableBrowser } from "@/lib/push-environment";
 
 const DEVICE_ID_KEY = "device_id";
@@ -33,26 +34,45 @@ export function getWebPushDeviceInfo() {
 }
 
 async function postPushTokenToServer(token: string): Promise<void> {
-    const csrf =
-        document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+    const doPost = () =>
+        fetch("/push-token", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                ...getCsrfHeaders(),
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                token,
+                device_info: getWebPushDeviceInfo(),
+            }),
+        });
 
-    const response = await fetch("/push-token", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "X-CSRF-TOKEN": csrf,
-            "X-Requested-With": "XMLHttpRequest",
-        },
-        credentials: "same-origin",
-        body: JSON.stringify({
-            token,
-            device_info: getWebPushDeviceInfo(),
-        }),
-    });
+    let response = await doPost();
+
+    if (response.status === 419) {
+        syncCsrfMetaFromCookie();
+        if (getCsrfToken()) {
+            response = await doPost();
+        }
+    }
 
     if (!response.ok) {
         const text = await response.text();
+        let payload: { requires_bridge_verification?: boolean } | null = null;
+        try {
+            payload = JSON.parse(text) as { requires_bridge_verification?: boolean };
+        } catch {
+            payload = null;
+        }
+
+        if (response.status === 403 && payload?.requires_bridge_verification) {
+            console.info("[Push] Token sync blocked until Bridge verification completes");
+            return;
+        }
+
         if (response.status !== 401 && response.status !== 403) {
             localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
         }
@@ -70,19 +90,16 @@ export async function removeCurrentDevicePushToken(): Promise<void> {
         return;
     }
 
-    const csrf =
-        document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
-
     try {
         await fetch("/push-token", {
             method: "DELETE",
             headers: {
                 "Content-Type": "application/json",
                 Accept: "application/json",
-                "X-CSRF-TOKEN": csrf,
                 "X-Requested-With": "XMLHttpRequest",
+                ...getCsrfHeaders(),
             },
-            credentials: "same-origin",
+            credentials: "include",
             body: JSON.stringify({
                 device_info: getWebPushDeviceInfo(),
             }),

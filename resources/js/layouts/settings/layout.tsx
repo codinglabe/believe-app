@@ -130,7 +130,7 @@ export default function SettingsLayout({
                           }`}
                         >
                           <CreditCard className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">Payment Methods</span>
+                          <span className="truncate">Stripe &amp; PayPal Keys</span>
                         </Link>
                         <Link
                           href="/settings/bridge"
@@ -181,6 +181,17 @@ export default function SettingsLayout({
                     >
                       <CreditCard className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Billing & Wallet</span>
+                    </Link>
+                    <Link
+                      href={route("settings.saved-payment-methods.index")}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                        activeTab === "saved-payment-methods"
+                          ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      <CreditCard className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">Payment Methods</span>
                     </Link>
                     <Link
                       href={route("referral.edit")}
@@ -297,7 +308,7 @@ export default function SettingsLayout({
                           }`}
                         >
                           <CreditCard className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">Payment Methods</span>
+                          <span className="truncate">Stripe &amp; PayPal Keys</span>
                         </Link>
                         <Link
                           href="/settings/bridge"
@@ -348,6 +359,17 @@ export default function SettingsLayout({
                     >
                       <CreditCard className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Billing & Wallet</span>
+                    </Link>
+                    <Link
+                      href={route("settings.saved-payment-methods.index")}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                        activeTab === "saved-payment-methods"
+                          ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      <CreditCard className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">Payment Methods</span>
                     </Link>
                     <Link
                       href={route("referral.edit")}

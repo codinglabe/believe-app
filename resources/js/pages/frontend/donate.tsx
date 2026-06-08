@@ -18,6 +18,10 @@ import SiteTitle from "@/components/site-title"
 import { cn } from "@/lib/utils"
 import type { ProcessingFeeRates } from "@/types"
 import { Switch } from "@/components/frontend/ui/switch"
+import {
+  SavedPaymentMethodSelector,
+  type SavedPaymentMethod,
+} from "@/components/account/saved-payment-method-selector"
 
 /** Matches `DonationController@index` `feePreview` prop (same rules as checkout). */
 type FeePreviewRail = "card" | "bank"
@@ -69,7 +73,7 @@ function CauseAvatar({
       <AvatarFallback
         className={cn(
           round,
-          "bg-purple-500/25 text-slate-800 text-sm font-semibold dark:bg-purple-500/35 dark:text-white",
+          "bg-purple-100 text-purple-800 text-sm font-semibold dark:bg-purple-900/40 dark:text-purple-100",
         )}
       >
         {initial}
@@ -80,12 +84,12 @@ function CauseAvatar({
 
 function CauseKindBadge({ kind }: { kind: DonateCause["kind"] }) {
   return kind === "care_alliance" ? (
-    <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-600">
+    <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-blue-600 text-white hover:bg-blue-600">
       <Building2 className="h-3 w-3 shrink-0" />
       Unity Impact Alliance
     </Badge>
   ) : (
-    <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-green-600 text-white hover:bg-green-600">
+    <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-purple-600 text-white hover:bg-purple-600">
       <CheckCircle className="h-3 w-3 shrink-0" />
       Organization
     </Badge>
@@ -137,6 +141,27 @@ const amountConfig = [
 ]
 
 const TOP_ORG_ICONS = [Building2, UtensilsCrossed, Brain]
+
+const DONATE_CARD =
+  "rounded-2xl border border-purple-200/50 bg-white/80 shadow-lg shadow-purple-600/[0.08] backdrop-blur-xl text-gray-900 dark:border-purple-700/35 dark:bg-purple-950/35 dark:shadow-purple-950/25 dark:text-white"
+
+const DONATE_CARD_HEADER =
+  "border-b border-purple-100/80 bg-gradient-to-r from-purple-50/90 via-white/50 to-blue-50/80 dark:border-purple-800/30 dark:from-purple-900/40 dark:via-purple-950/20 dark:to-blue-950/35"
+
+const DONATE_SEARCH_INPUT =
+  "rounded-lg border-purple-200/60 bg-white/90 text-gray-900 placeholder:text-gray-400 focus-visible:ring-purple-600/30 focus-visible:border-purple-600 dark:border-purple-800/40 dark:bg-purple-950/25 dark:text-white dark:placeholder:text-white/40"
+
+const DONATE_DROPDOWN =
+  "absolute left-0 right-0 top-full z-50 mt-1.5 rounded-xl border border-purple-200/60 bg-white/95 shadow-xl shadow-purple-600/10 backdrop-blur-xl overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(192_132_252_/_0.55)_rgb(250_245_255_/_0.6)] dark:[scrollbar-color:rgb(147_51_234_/_0.55)_rgb(59_7_100_/_0.45)] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-purple-50/70 dark:[&::-webkit-scrollbar-track]:bg-purple-950/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-purple-400/80 [&::-webkit-scrollbar-thumb]:to-blue-500/80 dark:[&::-webkit-scrollbar-thumb]:from-purple-500/80 dark:[&::-webkit-scrollbar-thumb]:to-blue-600/80 [&::-webkit-scrollbar-thumb:hover]:from-purple-500 [&::-webkit-scrollbar-thumb:hover]:to-blue-600 dark:border-purple-700/45 dark:bg-purple-950/95 dark:shadow-purple-950/40"
+
+const DONATE_DROPDOWN_SECTION =
+  "sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-purple-700 bg-gradient-to-r from-purple-50 to-blue-50/90 border-b border-purple-100/80 dark:text-purple-200/90 dark:from-purple-900/70 dark:to-blue-950/50 dark:border-purple-800/35"
+
+const DONATE_DROPDOWN_ITEM =
+  "w-full p-3 text-left flex items-center gap-3 text-gray-900 border-b border-purple-50/80 transition-colors hover:bg-purple-50/90 dark:text-white dark:border-purple-900/25 dark:hover:bg-purple-900/35"
+
+const DONATE_SELECTED_ORG =
+  "mt-2 flex items-center justify-between p-2.5 rounded-lg border border-purple-200/60 bg-gradient-to-r from-purple-50/90 to-blue-50/50 dark:border-purple-700/40 dark:from-purple-900/35 dark:to-blue-950/25"
 
 type DonationMode = "cash_points" | "non_cash"
 type NonCashType = "goods" | "services" | "stocks_crypto" | "vehicle" | "other"
@@ -192,6 +217,7 @@ export default function DonatePage({
   const [donorCoversProcessingFees, setDonorCoversProcessingFees] = useState(true)
   const [feePreviewRail, setFeePreviewRail] = useState<FeePreviewRail>("card")
   const [feePreviewLoading, setFeePreviewLoading] = useState(false)
+  const [savedPaymentMethodId, setSavedPaymentMethodId] = useState<string | null>(null)
 
   // Non-cash donation state
   const [nonCashType, setNonCashType] = useState<NonCashType>("goods")
@@ -207,6 +233,9 @@ export default function DonatePage({
   // Get user's Believe Points balance
   const pageProps = usePage().props as any
   const authUser = pageProps.auth?.user || null
+  const savedPaymentMethods = (pageProps.savedPaymentMethods ?? []) as SavedPaymentMethod[]
+  const paymentMethodsUrl =
+    pageProps.paymentMethodsUrl ?? route("user.profile.payment-methods.index")
   const donatedCauses = (pageProps.donatedCauses as DonateCause[] | undefined) ?? initialDonatedCauses
   const currentBalance = parseFloat(authUser?.believe_points || '0') || 0
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery) // Initialize with prop from Laravel
@@ -380,6 +409,9 @@ export default function DonatePage({
       payment_method: paymentMethod,
       donor_covers_processing_fees: paymentMethod === "stripe" ? donorCoversProcessingFees : false,
       donation_fee_rail: paymentMethod === "stripe" ? feePreviewRail : undefined,
+      ...(paymentMethod === "stripe" && savedPaymentMethodId
+        ? { saved_payment_method_id: savedPaymentMethodId }
+        : {}),
       name: name,
       email: email,
       phone: phone,
@@ -451,17 +483,17 @@ export default function DonatePage({
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Donate"} description={seo?.description} />
       <div
-        className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-100/30 dark:from-[#1e0a2e] dark:via-[#2d1b4e] dark:to-[#1e0a2e]"
+        className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-purple-50/80 to-blue-50/60 dark:from-gray-950 dark:via-purple-950/40 dark:to-blue-950/30"
       >
         {/* Light-mode speckles */}
         <div
           className="absolute inset-0 pointer-events-none opacity-70 block dark:hidden"
           style={{
-            backgroundImage: `radial-gradient(circle at 10% 30%, rgba(236,72,153,0.12) 0%, transparent 2%),
-              radial-gradient(circle at 90% 20%, rgba(147,51,234,0.12) 0%, transparent 2%),
+            backgroundImage: `radial-gradient(circle at 10% 30%, rgba(147,51,234,0.10) 0%, transparent 2%),
+              radial-gradient(circle at 90% 20%, rgba(37,99,235,0.10) 0%, transparent 2%),
               radial-gradient(circle at 50% 70%, rgba(255,255,255,0.35) 0%, transparent 1.5%),
-              radial-gradient(circle at 30% 80%, rgba(236,72,153,0.10) 0%, transparent 2%),
-              radial-gradient(circle at 70% 50%, rgba(147,51,234,0.10) 0%, transparent 2%)`,
+              radial-gradient(circle at 30% 80%, rgba(59,130,246,0.08) 0%, transparent 2%),
+              radial-gradient(circle at 70% 50%, rgba(126,34,206,0.08) 0%, transparent 2%)`,
           }}
         />
 
@@ -469,11 +501,11 @@ export default function DonatePage({
         <div
           className="absolute inset-0 pointer-events-none opacity-40 hidden dark:block"
           style={{
-            backgroundImage: `radial-gradient(circle at 10% 30%, rgba(236,72,153,0.2) 0%, transparent 2%),
-              radial-gradient(circle at 90% 20%, rgba(147,51,234,0.2) 0%, transparent 2%),
-              radial-gradient(circle at 50% 70%, rgba(255,255,255,0.08) 0%, transparent 1.5%),
-              radial-gradient(circle at 30% 80%, rgba(236,72,153,0.15) 0%, transparent 2%),
-              radial-gradient(circle at 70% 50%, rgba(147,51,234,0.15) 0%, transparent 2%)`,
+            backgroundImage: `radial-gradient(circle at 10% 30%, rgba(147,51,234,0.18) 0%, transparent 2%),
+              radial-gradient(circle at 90% 20%, rgba(37,99,235,0.18) 0%, transparent 2%),
+              radial-gradient(circle at 50% 70%, rgba(255,255,255,0.06) 0%, transparent 1.5%),
+              radial-gradient(circle at 30% 80%, rgba(59,130,246,0.12) 0%, transparent 2%),
+              radial-gradient(circle at 70% 50%, rgba(126,34,206,0.12) 0%, transparent 2%)`,
           }}
         />
         <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
@@ -498,7 +530,7 @@ export default function DonatePage({
 
             {/* Center: Make a Difference Today + subtitle */}
             <div className="text-center order-1 lg:order-2 flex-1 px-0 lg:px-4">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-1 dark:text-white">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
                 Make a Difference Today
               </h1>
               <p className="text-sm sm:text-base text-slate-900/80 max-w-xl mx-auto dark:text-white/80">
@@ -512,13 +544,13 @@ export default function DonatePage({
                 <div className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-white/70 dark:border-white/10 dark:bg-white/5 px-4 py-2.5 backdrop-blur-sm">
                   <Avatar className="h-9 w-9 border border-slate-200/70 dark:border-white/20">
                     <AvatarImage src={typeof (authUser as any).image === 'string' && (authUser as any).image ? ((authUser as any).image.startsWith('/') ? (authUser as any).image : `/${(authUser as any).image}`) : undefined} />
-                    <AvatarFallback className="bg-purple-500/25 text-slate-900 text-sm dark:text-white">
+                    <AvatarFallback className="bg-purple-100 text-purple-800 text-sm dark:bg-purple-900/50 dark:text-purple-100">
                       {(authUser as any).name?.charAt(0)?.toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="text-left min-w-0">
                     <p className="font-medium text-slate-900 text-sm truncate dark:text-white">{(authUser as any).name}</p>
-                    <p className="flex items-center gap-1 text-xs text-green-400">
+                    <p className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
                       <Check className="h-3.5 w-3.5 shrink-0" />
                       {(authUser as any).role === "organization" || (authUser as any).role === "organization_pending" ? "Organization" : "Verified Supporter"}
                     </p>
@@ -539,15 +571,15 @@ export default function DonatePage({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mb-8 flex flex-col sm:flex-row gap-3 p-1 rounded-2xl bg-white/70 dark:bg-white/5 border border-slate-200/70 dark:border-white/10 w-full sm:w-auto sm:inline-flex"
+            className="mb-8 flex flex-col sm:flex-row gap-3 p-1 rounded-2xl bg-white border border-gray-200 dark:bg-gray-900/60 dark:border-gray-700 w-full sm:w-auto sm:inline-flex"
           >
             <button
               type="button"
               onClick={() => setDonationMode("cash_points")}
               className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
                 donationMode === "cash_points"
-                  ? "bg-purple-500/40 text-white shadow-lg shadow-purple-500/25 border border-purple-400/50"
-                  : "text-slate-900/70 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:bg-purple-500/10 dark:hover:bg-white/10 border border-transparent"
+                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
+                  : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-transparent"
               }`}
             >
               <Coins className="h-5 w-5 shrink-0" />
@@ -558,8 +590,8 @@ export default function DonatePage({
               onClick={() => setDonationMode("non_cash")}
               className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
                 donationMode === "non_cash"
-                  ? "bg-purple-500/40 text-white shadow-lg shadow-purple-500/25 border border-purple-400/50"
-                  : "text-slate-900/70 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:bg-purple-500/10 dark:hover:bg-white/10 border border-transparent"
+                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
+                  : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-transparent"
               }`}
             >
               <Gift className="h-5 w-5 shrink-0" />
@@ -570,16 +602,16 @@ export default function DonatePage({
           {donationMode === "cash_points" ? (
           <>
           {/* Three glass cards — Cash / Points */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
             {/* Card 1: Select Your Donation */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="relative z-30 rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-visible text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className={cn(DONATE_CARD, "relative z-30 overflow-visible")}
             >
-              <div className="rounded-t-2xl px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
-                <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80 shrink-0" />
+              <div className={cn(DONATE_CARD_HEADER, "rounded-t-2xl px-5 py-4 flex items-center gap-2")}>
+                <Heart className="h-5 w-5 text-purple-600 fill-purple-500/30 shrink-0 dark:text-purple-400" />
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Select Your Donation</h2>
               </div>
               <div className="p-5 space-y-5 rounded-b-2xl">
@@ -587,20 +619,21 @@ export default function DonatePage({
                 {/* Org search */}
                 <div className="relative" ref={searchContainerRef}>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-white/50" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-500/70 dark:text-purple-300/70" />
                     <Input
                       type="text"
                       placeholder="Search for non-profit organisation..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onFocus={() => setIsSearchFocused(true)}
-                      className="pl-10 h-11 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 text-sm focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/50"
+                      className={cn(DONATE_SEARCH_INPUT, "pl-10 h-11 text-sm")}
                     />
                     {searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600/70 hover:text-slate-900 dark:text-white/60 dark:hover:text-white"
+                        aria-label="Clear search"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-purple-700 dark:text-white/60 dark:hover:text-white"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -612,7 +645,7 @@ export default function DonatePage({
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/70 border border-slate-200/70 dark:bg-white/10 dark:border-white/10"
+                        className={DONATE_SELECTED_ORG}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <CauseAvatar name={selectedCause.name} src={selectedCause.image} className="h-8 w-8" />
@@ -635,25 +668,25 @@ export default function DonatePage({
                   {isSearchFocused &&
                     !selectedCause &&
                     (searchQuery || initialOrganizations.length > 0 || donatedCauses.length > 0) && (
-                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-72 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
+                    <div className={cn(DONATE_DROPDOWN, "max-h-72")}>
                       {isSearchingOrganizations ? (
-                        <div className="p-3 text-center text-sm text-slate-600/70 dark:text-white/60 flex items-center justify-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" /> Searching...
+                        <div className="p-3 text-center text-sm text-purple-700/70 dark:text-purple-200/70 flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-purple-600 dark:text-purple-400" /> Searching...
                         </div>
                       ) : donatedCausesFiltered.length === 0 && allOrganizationsFiltered.length === 0 ? (
-                        <p className="p-3 text-sm text-slate-600/70 dark:text-white/60">No organizations found.</p>
+                        <p className="p-3 text-sm text-gray-500 dark:text-purple-200/60">No organizations found.</p>
                       ) : (
                         <>
                           {donatedCausesFiltered.length > 0 && (
                             <div role="group" aria-label="Organizations you have donated to">
-                              <div className="sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-white/95 border-b border-slate-200/60 dark:text-white/55 dark:bg-purple-950/98 dark:border-white/10">
+                              <div className={DONATE_DROPDOWN_SECTION}>
                                 Organizations you&apos;ve supported
                               </div>
                               {donatedCausesFiltered.map((cause) => (
                                 <button
                                   key={cause.id}
                                   type="button"
-                                  className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 border-b border-slate-100/80 dark:hover:bg-white/10 dark:text-white dark:border-white/5"
+                                  className={DONATE_DROPDOWN_ITEM}
                                   onClick={() => handleCauseSelect(cause.id)}
                                 >
                                   <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
@@ -679,7 +712,7 @@ export default function DonatePage({
                           {allOrganizationsFiltered.length > 0 && (
                             <div role="group" aria-label="All organizations">
                               {donatedCausesFiltered.length > 0 && (
-                                <div className="sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-white/95 border-b border-slate-200/60 dark:text-white/55 dark:bg-purple-950/98 dark:border-white/10">
+                                <div className={DONATE_DROPDOWN_SECTION}>
                                   All organizations
                                 </div>
                               )}
@@ -687,7 +720,7 @@ export default function DonatePage({
                                 <button
                                   key={cause.id}
                                   type="button"
-                                  className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 border-b border-slate-100/80 last:border-b-0 dark:hover:bg-white/10 dark:text-white dark:border-white/5"
+                                  className={cn(DONATE_DROPDOWN_ITEM, "last:border-b-0")}
                                   onClick={() => handleCauseSelect(cause.id)}
                                 >
                                   <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
@@ -713,12 +746,12 @@ export default function DonatePage({
                       onClick={() => handleAmountSelect(amount)}
                       className={`relative rounded-xl border-2 p-3 text-center transition-all ${
                         selectedAmount === amount
-                          ? "border-purple-400 bg-purple-500/30 text-slate-900 shadow-lg shadow-purple-500/20 dark:text-white"
-                          : "border-slate-200/60 bg-white/60 hover:border-purple-400/50 hover:bg-white/80 text-slate-800 dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white"
+                          ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                          : "border-purple-100/80 bg-white/80 hover:border-purple-400 hover:bg-purple-50/60 text-gray-800 dark:border-purple-800/30 dark:bg-white/[0.04] dark:hover:bg-purple-950/25 dark:text-white"
                       }`}
                     >
                       {badge && (
-                        <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500 text-white whitespace-nowrap">
+                        <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white whitespace-nowrap">
                           {badge}
                         </span>
                       )}
@@ -736,7 +769,7 @@ export default function DonatePage({
                       placeholder="0.00"
                       value={customAmount}
                       onChange={(e) => handleCustomAmountChange(e.target.value)}
-                      className="pl-8 h-11 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
+                      className="pl-8 h-11 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-600/30 focus-visible:border-purple-600 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                     />
                   </div>
                 </div>
@@ -748,20 +781,22 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className={cn(DONATE_CARD, "overflow-hidden")}
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
-                <Lock className="h-5 w-5 text-purple-300 shrink-0" />
+              <div className={cn(DONATE_CARD_HEADER, "px-5 py-4 flex items-center gap-2")}>
+                <Lock className="h-5 w-5 text-blue-600 shrink-0 dark:text-blue-400" />
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pay Securely</h2>
               </div>
               <div className="p-5 space-y-3">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('stripe')}
+                  onClick={() => {
+                    setPaymentMethod('stripe')
+                  }}
                   className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                     paymentMethod === 'stripe'
-                      ? "border-purple-400 bg-purple-500/20 text-slate-900 shadow-lg shadow-purple-500/10 dark:text-white"
-                      : "border-slate-200/60 bg-white/60 hover:border-purple-400/50 text-slate-800 dark:border-white/20 dark:bg-white/5 dark:text-white"
+                      ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                      : "border-purple-100/80 bg-white/70 hover:border-purple-400 text-gray-800 dark:border-purple-800/30 dark:bg-white/[0.04] dark:text-white"
                   }`}
                 >
                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
@@ -779,17 +814,20 @@ export default function DonatePage({
                   <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/50" />
                 </button>
                 {paymentMethod === "stripe" && getCurrentAmount() > 0 && (
-                  <div className="rounded-xl border border-slate-200/60 bg-white/40 p-4 space-y-3 dark:border-white/15 dark:bg-white/5">
+                  <div className="rounded-xl border border-purple-100/80 bg-gradient-to-br from-purple-50/40 to-blue-50/30 p-4 space-y-3 dark:border-purple-800/25 dark:from-purple-950/25 dark:to-blue-950/20">
                     <div>
                       <div className="text-xs text-slate-600/80 dark:text-white/65 mb-2 font-medium">Fee preview for</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setFeePreviewRail("card")}
+                          onClick={() => {
+                            setFeePreviewRail("card")
+                            setSavedPaymentMethodId(null)
+                          }}
                           className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "card"
-                              ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
-                              : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
+                              ? "border-purple-600 bg-purple-50 text-purple-900 dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                              : "border-gray-200 bg-white text-gray-700 hover:border-blue-400 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200"
                           }`}
                         >
                           <span>Card</span>
@@ -801,11 +839,14 @@ export default function DonatePage({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setFeePreviewRail("bank")}
+                          onClick={() => {
+                            setFeePreviewRail("bank")
+                            setSavedPaymentMethodId(null)
+                          }}
                           className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "bank"
-                              ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
-                              : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
+                              ? "border-purple-600 bg-purple-50 text-purple-900 dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                              : "border-gray-200 bg-white text-gray-700 hover:border-blue-400 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200"
                           }`}
                         >
                           <span>Bank (ACH)</span>
@@ -882,32 +923,49 @@ export default function DonatePage({
                             </>
                           )}
                           {feePreviewLoading ? (
-                            <div className="absolute inset-0 top-0 flex items-center justify-center rounded-md bg-white/50 dark:bg-purple-950/50 backdrop-blur-[1px]">
+                            <div className="absolute inset-0 top-0 flex items-center justify-center rounded-md bg-white/50 dark:bg-gray-900/60 backdrop-blur-[1px]">
                               <Loader2 className="h-5 w-5 animate-spin text-purple-600 dark:text-purple-300" aria-hidden />
                             </div>
                           ) : null}
                         </div>
                       ) : null}
+                      {authUser && (
+                        <div className="space-y-1.5 border-t border-slate-200/50 pt-3 dark:border-white/10">
+                          <p className="text-xs font-medium text-slate-800 dark:text-white/90">Saved method</p>
+                          <SavedPaymentMethodSelector
+                            methods={savedPaymentMethods}
+                            rail={feePreviewRail}
+                            value={savedPaymentMethodId}
+                            onChange={setSavedPaymentMethodId}
+                            manageHref={paymentMethodsUrl}
+                            className="text-xs"
+                          />
+                        </div>
+                      )}
                       <p className="text-[11px] text-slate-500 dark:text-white/50 pt-1 flex items-start gap-1.5">
                         <Landmark className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-80" />
-                        Sales tax may apply at checkout when enabled in Stripe. Stripe Checkout will only show{" "}
-                        {feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this
-                        donation, matching your selection above.
+                        {savedPaymentMethodId
+                          ? "Your saved payment method will be charged directly."
+                          : `Sales tax may apply at checkout when enabled in Stripe. Stripe Checkout will only show ${feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this donation.`}
                       </p>
                     </div>
                   </div>
                 )}
                 <button
                   type="button"
-                  onClick={() => canUseBelievePoints && setPaymentMethod('believe_points')}
+                  onClick={() => {
+                    if (!canUseBelievePoints) return
+                    setPaymentMethod('believe_points')
+                    setSavedPaymentMethodId(null)
+                  }}
                   disabled={!canUseBelievePoints}
                   className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                     paymentMethod === 'believe_points'
-                      ? "border-purple-400 bg-purple-500/20 text-slate-900 shadow-lg shadow-purple-500/10 dark:text-white"
-                      : "border-slate-200/60 bg-white/60 hover:border-purple-400/50 text-slate-800 dark:border-white/20 dark:bg-white/5 dark:text-white"
+                      ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                      : "border-purple-100/80 bg-white/70 hover:border-purple-400 text-gray-800 dark:border-purple-800/30 dark:bg-white/[0.04] dark:text-white"
                   } ${!canUseBelievePoints ? "opacity-60 cursor-not-allowed" : ""}`}
                 >
-                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shrink-0">
                     <Coins className="h-5 w-5 text-white" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -920,10 +978,10 @@ export default function DonatePage({
                 </button>
                 <Link
                   href="/believe-points"
-                  className="flex items-center justify-between gap-3 p-4 rounded-xl border-2 border-slate-200/60 bg-white/60 hover:border-purple-400/50 hover:bg-white/80 text-left text-slate-800 dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white font-medium text-sm transition-all"
+                  className="flex items-center justify-between gap-3 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50/50 text-left text-gray-800 dark:border-gray-600 dark:bg-gray-800/50 dark:hover:bg-blue-950/20 dark:text-white font-medium text-sm transition-all"
                 >
                   <span className="flex items-center gap-3 min-w-0">
-                    <span className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                    <span className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shrink-0">
                       <Coins className="h-5 w-5 text-white" />
                     </span>
                     <span className="font-semibold">Add Believe Points</span>
@@ -938,10 +996,10 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className={cn(DONATE_CARD, "overflow-hidden")}
             >
-              <div className="px-5 py-4 border-b border-slate-200/70 dark:border-white/10">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Your Year-to-Date Giving</h2>
+              <div className={cn(DONATE_CARD_HEADER, "px-5 py-4")}>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Your Year-to-Date Giving</h2>
               </div>
               <div className="p-5 space-y-4">
                 <div>
@@ -952,7 +1010,7 @@ export default function DonatePage({
                 </div>
                 <div className="h-2.5 rounded-full bg-slate-200/50 dark:bg-white/20 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                    className="h-full rounded-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-500"
                     style={{ width: `${givingProgress}%` }}
                   />
                 </div>
@@ -964,7 +1022,7 @@ export default function DonatePage({
                         const Icon = TOP_ORG_ICONS[i] ?? Building2
                         return (
                           <li key={i} className="flex items-center gap-2 text-sm text-slate-700/90 dark:text-white/80">
-                            <Icon className="h-4 w-4 text-purple-400 shrink-0" />
+                            <Icon className="h-4 w-4 text-blue-500 shrink-0 dark:text-blue-400" />
                             <span className="truncate flex-1">{org.name}</span>
                             <span className="font-medium text-slate-900 shrink-0 dark:text-white">
                               ${org.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -979,7 +1037,7 @@ export default function DonatePage({
                 )}
                 <Link
                   href={route("profile.donations")}
-                  className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-slate-200/70 bg-white/60 hover:bg-white/80 hover:border-purple-400/50 text-slate-900 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/20 dark:hover:border-purple-400/50 dark:text-white font-medium text-sm transition-all"
+                  className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-500 text-gray-900 dark:border-gray-600 dark:bg-gray-800/50 dark:hover:bg-purple-950/30 dark:hover:border-purple-500 dark:text-white font-medium text-sm transition-all"
                 >
                   View Giving Dashboard
                 </Link>
@@ -1002,7 +1060,7 @@ export default function DonatePage({
             )}
             <Button
               size="lg"
-              className="w-full max-w-2xl mx-auto flex h-14 text-lg font-bold bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 hover:from-purple-600 hover:via-purple-700 hover:to-pink-600 text-white shadow-xl shadow-purple-500/25 rounded-xl border-0"
+              className="w-full max-w-2xl mx-auto flex h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg shadow-blue-500/20 rounded-xl border-0"
               onClick={handleSubmit}
               disabled={getCurrentAmount() === 0 || !selectedCauseId || isSubmitting || (paymentMethod === 'believe_points' && !hasEnoughPoints)}
             >
@@ -1020,15 +1078,15 @@ export default function DonatePage({
           </>
           ) : (
           /* ——— Non-Cash Asset: three panels ——— */
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
             {/* Left: Select a type */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className={cn(DONATE_CARD, "overflow-hidden")}
             >
-              <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/10">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate Non-Cash Asset</h2>
+              <div className={cn(DONATE_CARD_HEADER, "px-5 py-4")}>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Donate Non-Cash Asset</h2>
               </div>
               <div className="p-5 space-y-3">
                 <p className="text-sm text-slate-600/70 dark:text-white/70">Select a type:</p>
@@ -1039,8 +1097,8 @@ export default function DonatePage({
                     onClick={() => setNonCashType(id)}
                     className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border-2 text-left transition-all ${
                       nonCashType === id
-                        ? "border-purple-400 bg-purple-500/20 text-slate-900 dark:text-white"
-                        : "border-slate-200/80 bg-white/75 text-slate-800 hover:bg-white/90 hover:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:border-white/30"
+                        ? "border-purple-600 bg-purple-50 text-purple-900 dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                        : "border-gray-200 bg-white text-gray-800 hover:bg-purple-50/50 hover:border-purple-400 dark:border-gray-600 dark:bg-gray-800/50 dark:text-white dark:hover:border-purple-500"
                     }`}
                   >
                     <span className="flex items-center gap-2">
@@ -1058,7 +1116,7 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="relative z-30 rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-visible text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className={cn(DONATE_CARD, "relative z-30 overflow-visible")}
             >
               <div className="rounded-t-2xl px-5 py-4 flex items-center gap-2 border-b border-slate-200/80 dark:border-white/10">
                 <FileText className="h-5 w-5 text-purple-300 shrink-0" />
@@ -1071,7 +1129,7 @@ export default function DonatePage({
                     placeholder="e.g. Office furniture, laptops..."
                     value={nonCashItemName}
                     onChange={(e) => setNonCashItemName(e.target.value)}
-                    className="rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
+                    className="rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-600/30 focus-visible:border-purple-600 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                   />
                 </div>
                 <div>
@@ -1084,7 +1142,7 @@ export default function DonatePage({
                       placeholder="0.00"
                       value={nonCashEstimatedValue}
                       onChange={(e) => setNonCashEstimatedValue(e.target.value)}
-                      className="pl-8 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
+                      className="pl-8 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-600/30 focus-visible:border-purple-600 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                     />
                   </div>
                 </div>
@@ -1093,7 +1151,7 @@ export default function DonatePage({
                   <select
                     value={nonCashCondition}
                     onChange={(e) => setNonCashCondition(e.target.value)}
-                    className="w-full h-10 rounded-lg border border-slate-200/60 bg-white/60 text-slate-900 px-3 focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white"
+                    className="w-full h-10 rounded-lg border border-slate-200/60 bg-white/60 text-slate-900 px-3 focus:ring-2 focus:ring-purple-600/30 focus:border-purple-600 dark:border-white/20 dark:bg-white/5 dark:text-white"
                   >
                     {CONDITION_OPTIONS.map((opt) => (
                       <option key={opt} value={opt} className="bg-white text-slate-900 dark:bg-purple-950 dark:text-white">{opt}</option>
@@ -1103,7 +1161,7 @@ export default function DonatePage({
                 <div className="relative" ref={nonCashOrgSearchRef}>
                   <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Preferred Receiving Organization</Label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-white/50" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-500/70 dark:text-purple-300/70" />
                     <Input
                       type="text"
                       placeholder="Select an organization"
@@ -1118,7 +1176,7 @@ export default function DonatePage({
                         if (nonCashPreferredOrgId) setNonCashPreferredOrgId(null)
                       }}
                       onFocus={() => setNonCashSearchFocused(true)}
-                      className="pl-10 pr-9 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
+                      className={cn(DONATE_SEARCH_INPUT, "pl-10 pr-9 h-10")}
                     />
                     {nonCashPreferredOrgId ? (
                       <button
@@ -1135,7 +1193,7 @@ export default function DonatePage({
                     ) : null}
                   </div>
                   {nonCashSearchFocused && (
-                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
+                    <div className={cn(DONATE_DROPDOWN, "max-h-48")}>
                       {initialOrganizations
                         .filter((o) => !nonCashSearchQuery || o.name.toLowerCase().includes(nonCashSearchQuery.toLowerCase()))
                         .slice(0, 8)
@@ -1143,7 +1201,7 @@ export default function DonatePage({
                           <button
                             key={org.id}
                             type="button"
-                            className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
+                            className={cn(DONATE_DROPDOWN_ITEM, "last:border-b-0")}
                             onClick={() => {
                               setNonCashPreferredOrgId(org.organization_id)
                               setNonCashSearchQuery("")
@@ -1165,7 +1223,7 @@ export default function DonatePage({
                     type="checkbox"
                     checked={nonCashUploadPhotos}
                     onChange={(e) => setNonCashUploadPhotos(e.target.checked)}
-                    className="rounded border-slate-200/60 bg-white/60 text-purple-600 focus:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-purple-500"
+                    className="rounded border-slate-200/60 bg-white/60 text-purple-600 focus:ring-purple-600/30 dark:border-white/20 dark:bg-white/5 dark:text-purple-500"
                   />
                   <Camera className="h-4 w-4 shrink-0" />
                   Upload Photos
@@ -1178,7 +1236,7 @@ export default function DonatePage({
                 <div className="flex flex-col gap-2 pt-2">
                   <Button
                     size="lg"
-                    className="w-full bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg"
+                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-lg"
                     onClick={handleNonCashSubmit}
                     disabled={isSubmittingNonCash}
                   >
@@ -1200,10 +1258,10 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className={cn(DONATE_CARD, "overflow-hidden")}
             >
-              <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/10">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate a Non-Cash Asset</h2>
+              <div className={cn(DONATE_CARD_HEADER, "px-5 py-4")}>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Donate a Non-Cash Asset</h2>
               </div>
               <div className="p-5 space-y-3">
                 {NON_CASH_TYPES.map(({ id, label, icon: Icon }) => (
@@ -1227,13 +1285,13 @@ export default function DonatePage({
                   <div className="text-sm text-slate-600/70 dark:text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
                   <div className="h-2 rounded-full bg-slate-200/50 mt-2 overflow-hidden dark:bg-white/20">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                      className="h-full rounded-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all"
                       style={{ width: `${givingProgress}%` }}
                     />
                   </div>
                   <Link
                     href={route("profile.donations")}
-                    className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-slate-200/70 bg-white/60 hover:bg-white/80 hover:border-purple-400/50 text-slate-900 font-medium text-sm mt-3 transition-all dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/20 dark:hover:border-purple-400/50 dark:text-white"
+                    className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-500 text-gray-900 font-medium text-sm mt-3 transition-all dark:border-gray-600 dark:bg-gray-800/50 dark:hover:bg-purple-950/30 dark:hover:border-purple-500 dark:text-white"
                   >
                     View Giving Dashboard
                   </Link>
@@ -1250,7 +1308,7 @@ export default function DonatePage({
             className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-slate-600/70 dark:text-white/70"
           >
             <span className="flex items-center gap-1.5">
-              <Shield className="h-4 w-4 text-green-400" /> 100% Secure Donations
+              <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" /> 100% Secure Donations
             </span>
             <span className="flex items-center gap-1.5">501(c)(3) EIN: 12-3456789</span>
             <span>IRS Compliant</span>
