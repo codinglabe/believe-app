@@ -1,4 +1,4 @@
-// @version b0be8a03623c119f
+// @version e32381c6f4669c7a
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -18,8 +18,23 @@ const messaging = firebase.messaging();
 
 const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation";
 
-function notificationIconUrl() {
+function appNotificationIconUrl() {
     return new URL("/favicon-96x96.png", self.location.origin).href;
+}
+
+function resolveNotificationBadgeUrl(data) {
+    const orgLogo =
+        data && data.organization_logo_url
+            ? String(data.organization_logo_url).trim()
+            : "";
+    if (orgLogo) {
+        try {
+            return new URL(orgLogo, self.location.origin).href;
+        } catch (e) {
+            // Fall back to app logo when the organization logo URL is invalid.
+        }
+    }
+    return appNotificationIconUrl();
 }
 
 function trackPushOpenFromData(data) {
@@ -50,11 +65,12 @@ function resolveClickUrl(data) {
 function buildNotificationOptions(title, body, data) {
     const clickUrl = resolveClickUrl(data);
     const tag = (data.type || "push") + ":" + (data.livestream_id || data.source_id || title);
-    const icon = notificationIconUrl();
+    const icon = appNotificationIconUrl();
+    const badge = resolveNotificationBadgeUrl(data);
     const options = {
         body: body || undefined,
         icon: icon,
-        badge: icon,
+        badge: badge,
         tag: tag,
         data: Object.assign({}, data, {
             click_action: clickUrl,
@@ -85,7 +101,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-b0be8a03623c119f";
+const CACHE_NAME = "pwa-cache-e32381c6f4669c7a";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationRecipientStatus;
+use App\Models\Organization;
 use App\Models\PushNotificationLog;
 use App\Models\PushNotificationRecipient;
 use App\Models\UserPushToken;
@@ -136,11 +137,14 @@ class PushNotificationLogger
         $body = (string) ($log->notification_body ?? '');
         $clickAction = $log->deep_link ? url($log->deep_link) : url('/');
 
-        $payload = array_merge($fcmData, [
-            'notification_log_id' => (string) $log->id,
-            'click_action' => $clickAction,
-            'url' => $clickAction,
-        ]);
+        $payload = $this->enrichPayloadWithOrganizationLogo(
+            $log,
+            array_merge($fcmData, [
+                'notification_log_id' => (string) $log->id,
+                'click_action' => $clickAction,
+                'url' => $clickAction,
+            ]),
+        );
 
         $log->recipients()
             ->where('status', PushNotificationRecipientStatus::Pending)
@@ -411,5 +415,27 @@ class PushNotificationLogger
             'User unsubscribed' => PushNotificationRecipientStatus::Unsubscribed,
             default => PushNotificationRecipientStatus::Failed,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function enrichPayloadWithOrganizationLogo(PushNotificationLog $log, array $payload): array
+    {
+        if (! $log->organization_id || ! empty($payload['organization_logo_url'])) {
+            return $payload;
+        }
+
+        $logoUrl = Organization::query()
+            ->whereKey($log->organization_id)
+            ->first(['id', 'registered_user_image'])
+            ?->logoUrl();
+
+        if ($logoUrl) {
+            $payload['organization_logo_url'] = $logoUrl;
+        }
+
+        return $payload;
     }
 }

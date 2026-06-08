@@ -4,6 +4,7 @@ namespace Tests\Unit\Services;
 
 use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationRecipientStatus;
+use App\Models\Organization;
 use App\Models\PushNotificationLog;
 use App\Models\PushNotificationRecipient;
 use App\Services\FirebaseService;
@@ -67,6 +68,14 @@ class PushNotificationLoggerTest extends TestCase
             $table->timestamp('last_used_at')->nullable();
             $table->timestamps();
         });
+
+        Schema::create('organizations', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('name')->nullable();
+            $table->string('registered_user_image')->nullable();
+            $table->timestamps();
+        });
     }
 
     protected function tearDown(): void
@@ -74,6 +83,7 @@ class PushNotificationLoggerTest extends TestCase
         Schema::dropIfExists('push_notification_recipients');
         Schema::dropIfExists('push_notification_logs');
         Schema::dropIfExists('user_push_tokens');
+        Schema::dropIfExists('organizations');
         Mockery::close();
         parent::tearDown();
     }
@@ -144,5 +154,53 @@ class PushNotificationLoggerTest extends TestCase
 
         $this->assertSame(PushNotificationRecipientStatus::Delivered, $result->recipients()->first()->status);
         $this->assertGreaterThanOrEqual(1, $result->delivered_count);
+    }
+
+    public function test_send_log_includes_organization_logo_url_when_org_has_logo(): void
+    {
+        $org = Organization::query()->create([
+            'name' => 'Helping Hands',
+            'registered_user_image' => 'organizations/helping-hands.png',
+        ]);
+
+        $capturedPayload = null;
+
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldReceive('sendToDevice')
+            ->once()
+            ->withArgs(function ($token, $title, $body, $payload) use (&$capturedPayload) {
+                $capturedPayload = $payload;
+
+                return $token === 'token-abc' && $title === 'New event';
+            })
+            ->andReturn([
+                'success' => true,
+                'error_code' => null,
+                'response' => null,
+            ]);
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $log = PushNotificationLog::query()->create([
+            'organization_id' => $org->id,
+            'module_name' => 'events',
+            'notification_title' => 'New event',
+            'audience_type' => 'users',
+            'status' => PushNotificationLogStatus::Draft,
+        ]);
+
+        PushNotificationRecipient::query()->create([
+            'push_notification_log_id' => $log->id,
+            'device_token' => 'token-abc',
+            'status' => PushNotificationRecipientStatus::Pending,
+        ]);
+
+        $logger = app(PushNotificationLogger::class);
+        $logger->sendLog($log, []);
+
+        $this->assertIsArray($capturedPayload);
+        $this->assertStringContainsString(
+            'organizations/helping-hands.png',
+            (string) ($capturedPayload['organization_logo_url'] ?? ''),
+        );
     }
 }

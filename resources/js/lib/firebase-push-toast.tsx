@@ -26,6 +26,28 @@ export function resolvePushClickUrl(data: Record<string, string | undefined>): s
     return data.join_url || data.click_action || data.url || "/"
 }
 
+export function resolveAppNotificationIcon(origin?: string): string {
+    const base = origin ?? (typeof window !== "undefined" ? window.location.origin : "")
+    return base ? new URL("/favicon-96x96.png", base).href : "/favicon-96x96.png"
+}
+
+export function resolveNotificationBadge(
+    data: Record<string, string | undefined>,
+    origin?: string,
+): string {
+    const orgLogo = data.organization_logo_url?.trim()
+    if (orgLogo) {
+        try {
+            const base = origin ?? (typeof window !== "undefined" ? window.location.origin : undefined)
+            return base ? new URL(orgLogo, base).href : orgLogo
+        } catch {
+            // Fall back to app logo when the organization logo URL is invalid.
+        }
+    }
+
+    return resolveAppNotificationIcon(origin)
+}
+
 export function buildNativeNotificationOptions(
     detail: FirebaseNotificationDetail,
     dedupeTag: string,
@@ -33,15 +55,13 @@ export function buildNativeNotificationOptions(
     const { body } = resolvePushTitleBody(detail)
     const data = detail.data ?? {}
     const clickUrl = resolvePushClickUrl(data)
-    const icon =
-        typeof window !== "undefined"
-            ? new URL("/favicon-96x96.png", window.location.origin).href
-            : "/favicon-96x96.png"
+    const icon = resolveAppNotificationIcon()
+    const badge = resolveNotificationBadge(data)
 
     const options: NotificationOptions = {
         body: body || undefined,
         icon,
-        badge: icon,
+        badge,
         tag: dedupeTag,
         data: {
             ...data,
@@ -93,6 +113,7 @@ export async function showNativePushNotification(detail: FirebaseNotificationDet
         const notification = new Notification(title, {
             body: options.body,
             icon: options.icon,
+            badge: options.badge,
             tag: dedupeKey,
             data: options.data,
         })
