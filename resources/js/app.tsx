@@ -24,6 +24,7 @@ import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import { initStoredAppVersion, markPwaUpdateComplete, fetchServerAppVersion } from './lib/pwa-update';
 import axios from 'axios';
+import { buildCsrfHeaders, refreshCsrfToken, syncCsrfMetaFromCookie, updateCsrfMeta } from './lib/csrf';
 
 configureEcho(buildReverbEchoConfig());
 
@@ -79,15 +80,13 @@ createInertiaApp({
             const raw = event.detail.page?.props?.csrf_token;
             const token = typeof raw === 'string' ? raw : '';
             if (token && typeof document !== 'undefined') {
-                const meta = document.querySelector('meta[name="csrf-token"]');
-                if (meta) meta.setAttribute('content', token);
-                else {
-                    const newMeta = document.createElement('meta');
-                    newMeta.name = 'csrf-token';
-                    newMeta.content = token;
-                    document.head.appendChild(newMeta);
-                }
+                updateCsrfMeta(token);
                 syncEchoCsrfToken(token);
+            } else if (typeof document !== 'undefined') {
+                const fromCookie = syncCsrfMetaFromCookie();
+                if (fromCookie) {
+                    syncEchoCsrfToken(fromCookie);
+                }
             }
 
             const pageProps = event.detail.page?.props as {
@@ -159,24 +158,40 @@ if (typeof window !== 'undefined') {
     });
 }
 
-// Global axios: always send CSRF from meta (kept in sync by CsrfTokenSync + router.on('success')).
+// Global axios: CSRF from cookie (preferred) or meta — kept in sync by CsrfTokenSync + router.on('success').
 if (typeof window !== 'undefined') {
-    const getCsrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    syncCsrfMetaFromCookie();
     axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
     axios.defaults.withCredentials = true;
     axios.interceptors.request.use((config) => {
-        config.headers['X-CSRF-TOKEN'] = getCsrf();
+        const csrfHeaders = buildCsrfHeaders();
+        for (const [key, value] of Object.entries(csrfHeaders)) {
+            config.headers[key] = value;
+        }
         config.headers['X-Timezone'] = getBrowserTimezone();
         return config;
     });
     axios.interceptors.response.use(
         (r) => r,
-        (err) => {
-            if (err.response?.status === 419) {
-                // Refresh page to get new token; CsrfTokenSync will keep meta in sync after.
+        async (err) => {
+            const status = err.response?.status;
+            const originalRequest = err.config as import('axios').InternalAxiosRequestConfig & {
+                _csrfRetried?: boolean;
+            };
+
+            if (status === 419 && originalRequest && !originalRequest._csrfRetried) {
+                originalRequest._csrfRetried = true;
+                const newToken = await refreshCsrfToken();
+                if (newToken) {
+                    originalRequest.headers['X-CSRF-TOKEN'] = newToken;
+                    return axios.request(originalRequest);
+                }
+            }
+
+            if (status === 419) {
                 window.location.reload();
             }
-            if (err.response?.status === 401) {
+            if (status === 401) {
                 window.location.href = '/login';
             }
             return Promise.reject(err);

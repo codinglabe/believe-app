@@ -1,5 +1,6 @@
 "use client";
 
+import { syncCsrfMetaFromCookie, updateCsrfMeta } from "@/lib/csrf";
 import { useEffect } from "react";
 import { usePage } from "@inertiajs/react";
 
@@ -12,18 +13,15 @@ export function CsrfTokenSync() {
     const { props } = usePage<{ csrf_token?: string }>();
 
     useEffect(() => {
-        const token = props?.csrf_token;
-        if (!token || typeof document === "undefined") return;
+        if (typeof document === "undefined") return;
 
-        const meta = document.querySelector('meta[name="csrf-token"]');
-        if (meta) {
-            meta.setAttribute("content", token);
-        } else {
-            const newMeta = document.createElement("meta");
-            newMeta.name = "csrf-token";
-            newMeta.content = token;
-            document.head.appendChild(newMeta);
+        const token = props?.csrf_token;
+        if (token) {
+            updateCsrfMeta(token);
+            return;
         }
+
+        syncCsrfMetaFromCookie();
     }, [props?.csrf_token]);
 
     return null;
