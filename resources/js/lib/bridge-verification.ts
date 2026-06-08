@@ -100,7 +100,8 @@ export function applyWalletBridgeStatusPayload(payload: WalletBridgeStatusPayloa
     kybStatus: payload.kyb_status,
     kycStatus: payload.kyc_status,
     requiresVerification: !verified,
-    bridgeInitialized: Boolean(payload.initialized ?? payload.bridge_account_verified ?? verified),
+    // Only treat as connected after explicit Connect (backend initialized flag), not from inferred verification alone.
+    bridgeInitialized: payload.initialized === true,
   }
 }
 

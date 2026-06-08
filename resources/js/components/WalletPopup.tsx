@@ -905,11 +905,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    // Check Bridge status and fetch balance on mount
+    // On open: only restore an already-connected wallet from local DB — do not auto-link Bridge.
+    // New connections start on the Connect Wallet screen until the user clicks Connect.
     useEffect(() => {
         if (!isOpen) {
-            // Reset initial loading when popup closes
             setIsInitialLoading(true)
+            setBridgeInitialized(false)
             return
         }
         checkBridgeAndFetchBalance()
@@ -1912,9 +1913,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         setTosIframeUrl(data.data.tos_url)
                     }
                 } else if (data.data?.tos_url) {
-                    // Set the TOS URL - this will automatically show the TermsOfService component with iframe
+                    // Store TOS URL — user opens the iframe by clicking the Terms of Service button
                     setTosIframeUrl(data.data.tos_url)
-                    // Don't show success toast - the iframe will appear automatically
                 } else {
                     showErrorToast(data.message || 'Failed to get TOS link')
                 }

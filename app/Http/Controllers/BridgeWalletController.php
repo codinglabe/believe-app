@@ -974,27 +974,20 @@ class BridgeWalletController extends Controller
                 ];
             }
             
-            if (! $integration || ! $integration->bridge_customer_id) {
-                $linked = $this->linkBridgeCustomerByEmail($entity, $entityType, $user, $isOrgUser, $integration);
-                if ($linked) {
-                    $integration = $linked->loadMissing('primaryWallet');
-                }
-            }
-
+            // Status check is read-only — do not auto-link Bridge customers here.
+            // Linking/sync happens only when the user clicks Connect (initializeBridge).
             if (! $integration || ! $integration->bridge_customer_id) {
                 return response()->json([
                     'success' => false,
                     'initialized' => false,
-                    'message' => 'Bridge wallet not initialized.',
+                    'message' => 'Bridge wallet not initialized. Click Connect Wallet to link your account.',
                     'organization_data' => $organizationData, // Include organization data for pre-filling
                 ], 200); // Return 200 so frontend can handle it gracefully
             }
 
-            // Customer exists, so Bridge is initialized (even if wallet doesn't exist yet)
-            // Wallet is created after KYC approval
+            // Customer exists locally from a prior Connect — refresh from Bridge API
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
 
-            // Sync KYC/KYB/wallet from Bridge API (local DB may be empty after cleanup)
             $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
             $integration->refresh();
 
