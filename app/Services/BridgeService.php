@@ -106,6 +106,16 @@ class BridgeService
     }
 
     /**
+     * HTTP client for Bridge API (verify_ssl can be disabled for local cURL CA issues).
+     */
+    private function httpClient(array $headers): \Illuminate\Http\Client\PendingRequest
+    {
+        $verify = config('services.bridge.verify_ssl', true);
+
+        return Http::withOptions(['verify' => $verify])->withHeaders($headers);
+    }
+
+    /**
      * Make authenticated request to Bridge API
      * 
      * @param string $method HTTP method (GET, POST, PUT, DELETE)
@@ -161,7 +171,7 @@ class BridgeService
             // GET requests should not have a request body
             if (strtoupper($method) === 'GET') {
                 // Build HTTP client - explicitly don't set Content-Type for GET
-                $httpClient = Http::withHeaders($headers);
+                $httpClient = $this->httpClient($headers);
 
                 // For GET requests with query parameters
                 if (!empty($data)) {
@@ -173,7 +183,7 @@ class BridgeService
                 }
             } else {
                 // For POST, PUT, DELETE, etc., send data as JSON body
-            $response = Http::withHeaders($headers)->{strtolower($method)}($url, $data);
+            $response = $this->httpClient($headers)->{strtolower($method)}($url, $data);
             }
 
             $statusCode = $response->status();
@@ -478,7 +488,7 @@ class BridgeService
                 $url .= "?endorsement={$endorsement}";
             }
             
-            $response = Http::withHeaders([
+            $response = $this->httpClient([
                 'Api-Key' => $this->apiKey,
                 'Accept' => 'application/json',
             ])->get($url);

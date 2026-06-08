@@ -219,7 +219,7 @@ class DashboardController extends Controller
             ->first();
         $isCareAllianceCreator = $careAlliance !== null;
 
-        $organization = $user->organization ?? null;
+        $organization = Organization::forAuthUser($user) ?? $user->organization;
         $totalFav = 0;
         $volunteers = 0;
         $donations = 0;
@@ -632,4 +632,5 @@ class DashboardController extends Controller
             $user->save();
         }
     }
+
 }

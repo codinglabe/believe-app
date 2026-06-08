@@ -330,6 +330,8 @@ return [
         'base_url' => env('BRIDGE_BASE_URL'), // Will be set in BridgeService based on environment
         'webhook_secret' => env('BRIDGE_WEBHOOK_SECRET'),
         'redirect_uri' => env('BRIDGE_REDIRECT_URI'), // Public URL for TOS callback (e.g., ngrok for local dev)
+        // Local Windows dev: set false if cURL error 60 (missing CA bundle). Never disable in production.
+        'verify_ssl' => filter_var(env('BRIDGE_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
     ],
 
     'youtube' => [

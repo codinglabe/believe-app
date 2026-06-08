@@ -1031,22 +1031,36 @@ class PlansController extends Controller
             return redirect()->route('login');
         }
 
-        if (! $user->current_plan_id) {
-            return redirect()->route('plans.index')->with('error', 'You do not have an active subscription.');
+        $manageUrl = $this->subscriptionManageUrl($user);
+        $supporterPlan = SupporterSubscriptionService::currentWalletPlan($user);
+        $isSupporterCancellation = ($user->role ?? null) === 'user'
+            && $supporterPlan !== null
+            && SupporterSubscriptionService::isSupporterPlan($supporterPlan);
+
+        if (! $user->current_plan_id && ! SupporterSubscriptionService::hasActiveWalletAccess($user)) {
+            return redirect()->to($manageUrl)->with('error', 'You do not have an active subscription.');
         }
 
         try {
             // Get plan details before clearing
-            $plan = Plan::find($user->current_plan_id);
-            $planName = $plan ? $plan->name : 'Plan';
+            $plan = $user->current_plan_id ? Plan::find($user->current_plan_id) : null;
+            $planName = $plan?->name ?? $supporterPlan?->name ?? 'Plan';
 
             // Cancel Stripe subscription using Laravel Cashier methods
             $subscriptionCancelled = false;
+
+            if ($isSupporterCancellation) {
+                SupporterSubscriptionService::endLocalSubscriptions($user);
+            }
 
             // Use Cashier's subscription relationship to get all subscriptions
             $localSubscriptions = $user->subscriptions()->get();
 
             foreach ($localSubscriptions as $subscription) {
+                if (str_starts_with((string) $subscription->stripe_id, 'local_wallet_')) {
+                    continue;
+                }
+
                 if ($subscription->stripe_status === 'active' || $subscription->stripe_status === 'trialing') {
                     try {
                         // Use Cashier's cancelNow() method
@@ -1166,14 +1180,23 @@ class PlansController extends Controller
                 'plan_id' => $plan ? $plan->id : null,
             ]);
 
-            return redirect()->route('plans.index')->with('success', "Your subscription to {$planName} has been cancelled. No refund will be issued.");
+            return redirect()->to($manageUrl)->with('success', "Your subscription to {$planName} has been cancelled. No refund will be issued.");
         } catch (\Exception $e) {
             Log::error('Plan cancellation error', [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
             ]);
 
-            return redirect()->route('plans.index')->with('error', 'Failed to cancel subscription. Please contact support.');
+            return redirect()->to($manageUrl)->with('error', 'Failed to cancel subscription. Please contact support.');
         }
+    }
+
+    private function subscriptionManageUrl(User $user): string
+    {
+        if (($user->role ?? null) === 'user') {
+            return route('pricing').'?tab=supporters';
+        }
+
+        return route('plans.index');
     }
 }

@@ -8,8 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import {
   CARE_ALLIANCE_INVITATION_TYPE,
+  DONATION_CONFIRMED_TYPE,
+  DONATION_RECEIVED_TYPE,
   SUPPORTER_BIRTHDAY_TYPE,
   UNITY_MEET_INVITATION_TYPE,
+  donationNotificationTarget,
   mapDatabaseNotification,
   parseNotificationPayload,
   type DatabaseNotification,
@@ -109,6 +112,11 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         if (joinUrl) {
           router.visit(joinUrl)
         }
+      } else {
+        const donationTarget = donationNotificationTarget(notification)
+        if (donationTarget) {
+          router.visit(donationTarget)
+        }
       }
 
       return true
@@ -197,11 +205,16 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                         ? String(newNotification.meta.livestream_id)
                         : undefined,
                   }
-                : {
-                    click_action: newNotification.content_item_id
-                      ? `/notifications/content/${newNotification.content_item_id}`
-                      : undefined,
-                  },
+                : newNotification.type === DONATION_CONFIRMED_TYPE || newNotification.type === DONATION_RECEIVED_TYPE
+                  ? {
+                      type: newNotification.type,
+                      click_action: donationNotificationTarget(newNotification) ?? undefined,
+                    }
+                  : {
+                      click_action: newNotification.content_item_id
+                        ? `/notifications/content/${newNotification.content_item_id}`
+                        : undefined,
+                    },
           })
         })
         .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
@@ -210,20 +223,13 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
           const notificationData = parseNotificationPayload(data.data)
           const invitationId = notificationData.invitation_id ?? notificationData.meta?.invitation_id
 
-          const newNotification: Notification = {
+          const newNotification: Notification = mapDatabaseNotification({
             id: data.id || `laravel-${Date.now()}`,
-            title: notificationData.title || "New Notification",
-            body: notificationData.body || notificationData.message || "",
-            content_item_id: notificationData.content_item_id || 0,
-            type: notificationData.type || data.type,
-            channel: notificationData.channel || "app",
-            meta: {
-              ...(notificationData.meta || {}),
-              ...(invitationId != null ? { invitation_id: invitationId } : {}),
-            },
-            timestamp: data.created_at || new Date().toISOString(),
-            read: false,
-          }
+            type: notificationData.type || data.type || "notification",
+            data: notificationData,
+            created_at: data.created_at || new Date().toISOString(),
+            read_at: null,
+          })
 
           setNotifications((prev) => [newNotification, ...prev])
           setUnreadCount((prev) => prev + 1)
@@ -254,11 +260,16 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                         ? String(notificationData.livestream_id)
                         : undefined,
                   }
-                : {
-                    click_action: newNotification.content_item_id
-                      ? `/notifications/content/${newNotification.content_item_id}`
-                      : undefined,
-                  },
+                : newNotification.type === DONATION_CONFIRMED_TYPE || newNotification.type === DONATION_RECEIVED_TYPE
+                  ? {
+                      type: newNotification.type,
+                      click_action: donationNotificationTarget(newNotification) ?? undefined,
+                    }
+                  : {
+                      click_action: newNotification.content_item_id
+                        ? `/notifications/content/${newNotification.content_item_id}`
+                        : undefined,
+                    },
           })
         })
 
