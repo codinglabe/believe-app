@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
-import { RefreshCw, Copy, Building2, AlertCircle } from 'lucide-react'
+import { RefreshCw, Copy, Building2, AlertCircle, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { DepositInstructions, PaymentMethod } from './types'
 import { showSuccessToast } from '@/lib/toast'
 
@@ -8,13 +9,19 @@ interface AddMoneyProps {
     depositInstructions: DepositInstructions | null
     selectedPaymentMethod: PaymentMethod
     onPaymentMethodChange: (method: PaymentMethod) => void
+    hasBankAccounts?: boolean | null
+    isCheckingBankAccounts?: boolean
+    onAddBankAccount?: () => void
 }
 
 export function AddMoney({
     isLoading,
     depositInstructions,
     selectedPaymentMethod,
-    onPaymentMethodChange
+    onPaymentMethodChange,
+    hasBankAccounts,
+    isCheckingBankAccounts,
+    onAddBankAccount,
 }: AddMoneyProps) {
     if (isLoading) {
         return (
@@ -33,9 +40,34 @@ export function AddMoney({
                 transition={{ duration: 0.3 }}
                 className="p-4 space-y-4"
             >
-                <div className="text-center py-8">
-                    <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No deposit instructions available</p>
+                <div className="text-center py-8 border border-dashed border-border rounded-lg space-y-3">
+                    <Building2 className="h-8 w-8 text-muted-foreground mx-auto" />
+                    <div className="space-y-1 px-4">
+                        <p className="text-sm font-medium">No deposit instructions available</p>
+                        <p className="text-xs text-muted-foreground">
+                            Link a bank account to set up deposits and withdrawals.
+                        </p>
+                    </div>
+                    {onAddBankAccount && (
+                        <Button
+                            onClick={onAddBankAccount}
+                            disabled={isCheckingBankAccounts}
+                            size="sm"
+                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                        >
+                            {isCheckingBankAccounts ? (
+                                <>
+                                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                    Checking…
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add Bank Account
+                                </>
+                            )}
+                        </Button>
+                    )}
                 </div>
             </motion.div>
         )
@@ -212,6 +244,38 @@ export function AddMoney({
                         )}
                     </div>
                 </div>
+
+                {hasBankAccounts === false && onAddBankAccount && (
+                    <div className="rounded-lg border border-dashed border-border p-4 text-center space-y-3">
+                        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                            <Building2 className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium">No bank account linked</p>
+                            <p className="text-xs text-muted-foreground">
+                                Add a bank account to withdraw funds after you deposit.
+                            </p>
+                        </div>
+                        <Button
+                            onClick={onAddBankAccount}
+                            disabled={isCheckingBankAccounts}
+                            size="sm"
+                            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                        >
+                            {isCheckingBankAccounts ? (
+                                <>
+                                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                    Checking…
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add Bank Account
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                )}
 
                 {/* Instructions Card */}
                 <div className="p-3.5 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg">

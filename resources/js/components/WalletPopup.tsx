@@ -2910,6 +2910,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         const needsBankAccounts = actionView === 'transfer_from_external'
             || actionView === 'withdraw_to_external'
             || actionView === 'services_menu'
+            || actionView === 'addMoney'
 
         if (needsBankAccounts && walletReady && hasBankAccounts === null && !isLoadingExternalAccounts) {
             fetchExternalAccounts()
@@ -3632,6 +3633,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 depositInstructions={depositInstructions}
                                                 selectedPaymentMethod={selectedPaymentMethod}
                                                 onPaymentMethodChange={setSelectedPaymentMethod}
+                                                hasBankAccounts={hasBankAccounts}
+                                                isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
+                                                onAddBankAccount={goToAddBankAccount}
                                             />
                                         )
                                     ) : actionView === 'main' ? (
