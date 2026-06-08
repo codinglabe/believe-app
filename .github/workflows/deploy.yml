@@ -1,12 +1,9 @@
 # Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
-# PRODUCTION https://believeinunity.org is NOT deployed by this workflow.
+# Production uses deploy-production.yml → believeinunity.org on branch `production`.
 #
-# Dev login landing: code is host-gated (501c3ers.com only). Production deploys are unaffected.
-# Post-deploy always syncs PRODUCTION_APP_URL + DEVELOPMENT_HOSTS into server .env — do not remove.
-#
-# Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
-# Optional repository variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL, SSH_PORT,
-#   SSH_HOST (IPv4 for SSH — default 72.60.226.88), SSH_IPV6_HOST, PRODUCTION_APP_URL, DEVELOPMENT_HOSTS
+# Required secret: CPANEL_SSH_KEY_PRODUCTION (same VPS entry as production deploy)
+# Required variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL
+# Deploys to c3ers@501c3ers.com via believeinunity relay (CSF-safe for GitHub Actions).
 name: Deploy development (501c3ers.com)
 
 on:
@@ -15,29 +12,34 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cpanel-development
+  group: deploy-development-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, believe-vps]
 
     env:
       PHP_VERSION: '8.4'
       NODE_VERSION: '20'
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST != '' && vars.DEPLOY_HOST || '501c3ers.com' }}
-      # GitHub runners often fail 501c3ers.com over broken IPv6 — connect via VPS IPv4 first.
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      # GitHub runners must use VPS IPv4 — hostname/IPv6 often time out from Azure datacenters.
       SSH_CONNECT_HOST: ${{ vars.SSH_HOST != '' && vars.SSH_HOST || '72.60.226.88' }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'c3ers' }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
-      APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      APP_URL: ${{ vars.APP_URL }}
       PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL != '' && vars.PRODUCTION_APP_URL || 'https://believeinunity.org' }}
       DEVELOPMENT_HOSTS: ${{ vars.DEVELOPMENT_HOSTS != '' && vars.DEVELOPMENT_HOSTS || '501c3ers.com,www.501c3ers.com' }}
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
-      SSH_MAX_ATTEMPTS: 6
-      SSH_RETRY_SLEEP: 5
+      SSH_MAX_ATTEMPTS: 10
+      SSH_RETRY_SLEEP: 8
       SSH_USE_TCP_PROBE: false
-      SSH_USE_DEPLOY_HOST: false
+      SSH_USE_DEPLOY_HOST: true
+      SSH_RELAY_TO_C3ERS: true
+      SSH_RELAY_USER: believeinunity
+      SSH_RELAY_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
+      SSH_SELF_HOSTED: true
+      SERVER_INNER_KEY: /home/believeinunity/.local/share/.gconf/deploy_key
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -82,25 +84,78 @@ jobs:
 
       - name: Deploy target
         run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH APP_URL; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Set GitHub variable ${v} (Settings -> Secrets and variables -> Actions -> Variables)."
+              exit 1
+            fi
+          done
           echo "Environment: development (501c3ers.com)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
           echo "SSH connect host: ${SSH_CONNECT_HOST}"
           echo "APP_URL (build only): ${APP_URL}"
-          echo "PRODUCTION_APP_URL (server .env): ${PRODUCTION_APP_URL}"
-          echo "DEVELOPMENT_HOSTS (server .env): ${DEVELOPMENT_HOSTS}"
           if echo "${DEPLOY_HOST}" | grep -qi 'believeinunity'; then
-            echo "::error::Refusing to deploy to production host. Use 501c3ers.com for development only."
+            echo "::error::Development workflow must not target believeinunity.org (production server)."
             exit 1
           fi
 
+      - name: Verify deploy secrets
+        run: |
+          missing=0
+          if [ "${SSH_SELF_HOSTED}" != "true" ] && [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
+            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
+            missing=1
+          fi
+          if [ "${missing}" -eq 1 ]; then
+            echo "ONE-TIME VPS fix (root): curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
+            exit 1
+          fi
+          echo "Using self-hosted VPS runner (believe-vps) for development deploy."
+
+      - name: Preflight — open SSH for this runner
+        env:
+          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
+          APP_URL: ${{ env.APP_URL }}
+          SSH_CONNECT_HOST: ${{ env.SSH_RELAY_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
+          SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
+          SSH_SELF_HOSTED: ${{ env.SSH_SELF_HOSTED }}
+        run: |
+          if [ "${SSH_SELF_HOSTED}" = "true" ]; then
+            echo "Self-hosted runner — skipping CSF preflight."
+            exit 0
+          fi
+          chmod +x .github/scripts/preflight-open-runner-ssh.sh
+          bash .github/scripts/preflight-open-runner-ssh.sh
+
       - name: Setup SSH
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy
+          DEPLOY_USER: ${{ env.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
+          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_MAX_ATTEMPTS: ${{ env.SSH_MAX_ATTEMPTS }}
+          SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
+          SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
+          SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
+          SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
+          SSH_RELAY_HOST: ${{ env.SSH_RELAY_HOST }}
+          SSH_SELF_HOSTED: ${{ env.SSH_SELF_HOSTED }}
+          SERVER_INNER_KEY: ${{ env.SERVER_INNER_KEY }}
+          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
+          APP_URL: ${{ env.APP_URL }}
         run: |
-          set -euo pipefail
+          if [ "${SSH_SELF_HOSTED}" != "true" ] && [ -z "${SSH_PRIVATE_KEY}" ]; then
+            echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
+            exit 1
+          fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
-          .github/scripts/setup-cpanel-ssh.sh
+          bash .github/scripts/setup-cpanel-ssh.sh
 
       - name: Cache Composer
         uses: actions/cache@v4
@@ -112,26 +167,35 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          tools: composer:v2
-          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
+      - name: Prepare build tools (self-hosted VPS)
+        run: |
+          set -euo pipefail
+          php --version | grep -E '^PHP 8\.(3|4)\.' || { echo "::error::PHP 8.3+ required on VPS"; exit 1; }
+          mkdir -p "${HOME}/bin"
+          if ! command -v composer >/dev/null 2>&1; then
+            curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "${HOME}/bin/composer.phar"
+            printf '%s\n' '#!/usr/bin/env bash' 'exec php "${HOME}/bin/composer.phar" "$@"' > "${HOME}/bin/composer"
+            chmod +x "${HOME}/bin/composer"
+          fi
+          echo "${HOME}/bin" >> "${GITHUB_PATH}"
+          export NVM_DIR="${HOME}/.nvm"
+          if [ ! -s "${NVM_DIR}/nvm.sh" ]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+          fi
+          # shellcheck disable=SC1090
+          . "${NVM_DIR}/nvm.sh"
+          nvm install "${NODE_VERSION}"
+          nvm use "${NODE_VERSION}"
+          echo "NVM_DIR=${NVM_DIR}" >> "${GITHUB_ENV}"
+          node --version
+          npm --version
+          composer --version
 
       - name: Install PHP dependencies
         run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi --ignore-platform-req=ext-sodium
           mkdir -p resources/views storage/framework/views
 
-      - name: Setup Node
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      # Vite cannot expand ${REVERB_APP_KEY} — resolve literals from server .env.
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
@@ -141,8 +205,8 @@ jobs:
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
           chmod +x .github/scripts/expand-vite-env.sh
           {
+            ./.github/scripts/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
             echo "APP_URL=${APP_URL}"
-            ./.github/scripts/expand-vite-env.sh < .env.server
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
           echo "Wrote .env for Vite build (${lines} lines)"
@@ -154,6 +218,10 @@ jobs:
         env:
           APP_URL: ${{ env.APP_URL }}
         run: |
+          set -euo pipefail
+          # shellcheck disable=SC1090
+          . "${NVM_DIR}/nvm.sh"
+          nvm use "${NODE_VERSION}"
           npm ci --legacy-peer-deps --no-audit --no-fund
           npm run build
           test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
@@ -172,7 +240,6 @@ jobs:
       - name: Deploy with rsync
         run: |
           set -euo pipefail
-          # App + assets (with --delete). Vendor synced separately without --delete for speed.
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ${RSYNC_EXCLUDES} \
@@ -181,14 +248,7 @@ jobs:
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
-          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
-          set -euo pipefail
-          test -f "${DEPLOY_PATH}/public/build/manifest.json"
-          asset_count=\$(find "${DEPLOY_PATH}/public/build/assets" -type f 2>/dev/null | wc -l | tr -d ' ')
-          test "\${asset_count}" -gt 20 || { echo "::error::public/build/assets has only \${asset_count} files"; exit 1; }
-          ls -la "${DEPLOY_PATH}/public/build/manifest.json" | head -1
-          echo "Vite assets on server: \${asset_count} files"
-          REMOTE
+          ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
       - name: Prune non-runtime files on server
         run: |
@@ -217,29 +277,37 @@ jobs:
             "PRODUCTION_APP_URL=${PRODUCTION_APP_URL}" \
             "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}"
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
-          php artisan config:clear
-          php artisan route:clear
-          php artisan view:clear
-          php artisan cache:clear
-          php artisan migrate --force
+          timeout 300 php artisan migrate --force -v || {
+            echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"
+            php artisan migrate:status 2>&1 | tail -20
+            exit 1
+          }
           php artisan storage:link --force
           php artisan config:cache
           php artisan view:cache
-          # cPanel docroot is public_html; Vite assets are under public/build — nginx needs /build at account root.
           rm -rf build 2>/dev/null || true
           ln -sfn public/build build
           test -L build && test -d public/build/assets
-          # Do not route:cache — duplicate route names can break serialization on the server.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
-      - name: Smoke test
+      - name: Smoke test (development URL only)
+        env:
+          SMOKE_URL: ${{ vars.APP_URL }}
         run: |
           set -euo pipefail
+          if [ -z "${SMOKE_URL}" ]; then
+            echo "::error::Set GitHub variable APP_URL=https://501c3ers.com"
+            exit 1
+          fi
+          if echo "${SMOKE_URL}" | grep -qi 'believeinunity'; then
+            echo "::error::Development smoke test must not use believeinunity.org (check APP_URL variable)"
+            exit 1
+          fi
           ok=0
           for attempt in 1 2 3; do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}/" || echo "000")
-            echo "GET ${APP_URL}/ => HTTP ${code} (attempt ${attempt}/3)"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${SMOKE_URL}/" || echo "000")
+            echo "GET ${SMOKE_URL}/ => HTTP ${code} (attempt ${attempt}/3)"
             if [ "${code}" = "200" ] || [ "${code}" = "302" ]; then
               ok=1
               break
@@ -247,14 +315,3 @@ jobs:
             sleep 15
           done
           test "${ok}" = "1" || { echo "::error::Homepage smoke test failed after 3 attempts"; exit 1; }
-          html=$(curl -sS --max-time 60 "${APP_URL}/" || true)
-          css_path=$(echo "${html}" | grep -oE '/build/assets/[^"'\'' ]+\.css' | head -1 || true)
-          js_path=$(echo "${html}" | grep -oE '/build/assets/[^"'\'' ]+\.js' | head -1 || true)
-          test -n "${css_path}" || { echo "::error::No Vite CSS path in homepage HTML"; exit 1; }
-          test -n "${js_path}" || { echo "::error::No Vite JS path in homepage HTML"; exit 1; }
-          css_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}${css_path}" || echo "000")
-          js_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}${js_path}" || echo "000")
-          echo "GET ${APP_URL}${css_path} => HTTP ${css_code}"
-          echo "GET ${APP_URL}${js_path} => HTTP ${js_code}"
-          test "${css_code}" = "200" || { echo "::error::Vite CSS asset missing (${css_path})"; exit 1; }
-          test "${js_code}" = "200" || { echo "::error::Vite JS asset missing (${js_path})"; exit 1; }

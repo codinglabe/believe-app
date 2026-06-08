@@ -1,4 +1,4 @@
-import { UNITY_MEET_INVITATION_TYPE } from "@/lib/notification-map"
+import { INCOMING_CALL_TYPE, UNITY_MEET_INVITATION_TYPE } from "@/lib/notification-map"
 import { trackPushNotificationOpen } from "@/lib/push-open-tracker"
 
 export type FirebaseNotificationDetail = {
@@ -26,6 +26,28 @@ export function resolvePushClickUrl(data: Record<string, string | undefined>): s
     return data.join_url || data.click_action || data.url || "/"
 }
 
+export function resolveAppNotificationIcon(origin?: string): string {
+    const base = origin ?? (typeof window !== "undefined" ? window.location.origin : "")
+    return base ? new URL("/favicon-96x96.png", base).href : "/favicon-96x96.png"
+}
+
+export function resolveNotificationBadge(
+    data: Record<string, string | undefined>,
+    origin?: string,
+): string {
+    const orgLogo = data.organization_logo_url?.trim()
+    if (orgLogo) {
+        try {
+            const base = origin ?? (typeof window !== "undefined" ? window.location.origin : undefined)
+            return base ? new URL(orgLogo, base).href : orgLogo
+        } catch {
+            // Fall back to app logo when the organization logo URL is invalid.
+        }
+    }
+
+    return resolveAppNotificationIcon(origin)
+}
+
 export function buildNativeNotificationOptions(
     detail: FirebaseNotificationDetail,
     dedupeTag: string,
@@ -33,15 +55,13 @@ export function buildNativeNotificationOptions(
     const { body } = resolvePushTitleBody(detail)
     const data = detail.data ?? {}
     const clickUrl = resolvePushClickUrl(data)
-    const icon =
-        typeof window !== "undefined"
-            ? new URL("/favicon-96x96.png", window.location.origin).href
-            : "/favicon-96x96.png"
+    const icon = resolveAppNotificationIcon()
+    const badge = resolveNotificationBadge(data)
 
     const options: NotificationOptions = {
         body: body || undefined,
         icon,
-        badge: icon,
+        badge,
         tag: dedupeTag,
         data: {
             ...data,
@@ -53,6 +73,24 @@ export function buildNativeNotificationOptions(
 
     if (data.type === UNITY_MEET_INVITATION_TYPE) {
         options.actions = [{ action: "join", title: "Join" }]
+    }
+
+    if (data.type === INCOMING_CALL_TYPE) {
+        options.actions = [
+            { action: "accept", title: "Accept" },
+            { action: "decline", title: "Decline" },
+        ]
+        options.requireInteraction = true
+        options.renotify = true
+        options.silent = false
+        options.vibrate = [500, 250, 500, 250, 500, 250, 500]
+        const ringUrl = data.ring_url || data.join_url || clickUrl
+        options.data = {
+            ...options.data,
+            ring_url: ringUrl,
+            click_action: ringUrl,
+            url: ringUrl,
+        }
     }
 
     return options
@@ -74,7 +112,7 @@ export async function showNativePushNotification(detail: FirebaseNotificationDet
     const { title } = resolvePushTitleBody(detail)
     const data = detail.data ?? {}
 
-    const dedupeKey = `${data.type ?? "push"}:${data.livestream_id ?? data.source_id ?? title}`
+    const dedupeKey = `${data.type ?? "push"}:${data.call_id ?? data.livestream_id ?? data.source_id ?? title}`
     const now = Date.now()
     const lastShown = recentNativeKeys.get(dedupeKey)
     if (lastShown !== undefined && now - lastShown < NATIVE_DEDUPE_MS) {
@@ -93,6 +131,7 @@ export async function showNativePushNotification(detail: FirebaseNotificationDet
         const notification = new Notification(title, {
             body: options.body,
             icon: options.icon,
+            badge: options.badge,
             tag: dedupeKey,
             data: options.data,
         })

@@ -417,6 +417,49 @@ class UserLivestream extends Model
         return $base;
     }
 
+    public function isChatAudioCall(): bool
+    {
+        return (($this->settings ?? [])['source'] ?? null) === 'chat_call'
+            && (bool) (($this->settings ?? [])['audio_only'] ?? false);
+    }
+
+    /**
+     * Audio-only host URL for chat calls (mic on, camera off, no YouTube/Dropbox).
+     */
+    public function getAudioCallHostUrl(): string
+    {
+        $this->loadMissing('user');
+        $settings = $this->settings ?? [];
+        $hostName = trim((string) ($settings['display_name'] ?? $this->user?->name ?? 'Host')) ?: 'Host';
+        $room = rawurlencode($this->getVdoRoomName());
+        $pass = rawurlencode((string) $this->getDecryptedPassword());
+        $passwordParam = $pass !== '' ? '&password='.$pass : '';
+        $label = rawurlencode($hostName);
+        $avatarImage = 'https://ui-avatars.com/api/?name='.rawurlencode($hostName).'&size=256&length=2';
+
+        return 'https://vdo.ninja/?room='.$room.'&push=main&label='.$label.$passwordParam
+            .'&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&clock=false'
+            .'&avatar='.rawurlencode($avatarImage)
+            .'&autostart&noheader&hideguests=false';
+    }
+
+    /**
+     * Audio-only participant URL for chat calls.
+     */
+    public function getAudioCallParticipantUrl(string $displayLabel): string
+    {
+        $room = rawurlencode($this->getVdoRoomName());
+        $pass = rawurlencode((string) $this->getDecryptedPassword());
+        $passwordParam = $pass !== '' ? '&password='.$pass : '';
+        $label = rawurlencode(trim($displayLabel) !== '' ? trim($displayLabel) : 'Guest');
+        $avatarImage = 'https://ui-avatars.com/api/?name='.rawurlencode(trim($displayLabel) ?: 'Guest').'&size=256&length=2';
+
+        return 'https://vdo.ninja/?room='.$room.'&label='.$label.$passwordParam
+            .'&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&clock=false'
+            .'&avatar='.rawurlencode($avatarImage)
+            .'&autostart&noheader&hideguests=false';
+    }
+
     public function canStartMeeting(): bool
     {
         return in_array($this->status, ['draft', 'scheduled']);

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { OrganizationPrimaryActionCategoriesField } from '@/components/organization-primary-action-categories-field';
 import { useState, useEffect } from 'react';
 import { showErrorToast } from '@/lib/toast';
+import { EventTypeTopicFields } from '@/components/event-type-topic-fields';
 
 type EventType = {
     id: number;
@@ -159,35 +160,15 @@ export default function EditEvent({
                                     <CardTitle className="text-gray-900 dark:text-white">Basic Information</CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <div>
-                                        <Label htmlFor="event_type_id">Event Topic *</Label>
-                                        <Select value={data.event_type_id} onValueChange={(value) => setData('event_type_id', value)}>
-                                            <SelectTrigger className={errors.event_type_id ? 'border-red-500' : ''}>
-                                                <SelectValue placeholder="Select event topic" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {Object.entries(eventTypes.reduce((acc, eventType) => {
-                                                    const category = eventType.category;
-                                                    if (!acc[category]) {
-                                                        acc[category] = [];
-                                                    }
-                                                    acc[category].push(eventType);
-                                                    return acc;
-                                                }, {} as Record<string, EventType[]>)).map(([category, types]) => (
-                                                    <div key={category}>
-                                                        <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
-                                                            {category}
-                                                        </div>
-                                                        {types.map((type) => (
-                                                            <SelectItem key={type.id} value={type.id.toString()}>
-                                                                {type.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </div>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.event_type_id && <p className="text-red-500 text-sm mt-1">{errors.event_type_id}</p>}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <EventTypeTopicFields
+                                            eventTypes={eventTypes}
+                                            eventTypeId={data.event_type_id}
+                                            onEventTypeIdChange={(value) => setData('event_type_id', value)}
+                                            error={typeof errors.event_type_id === 'string' ? errors.event_type_id : undefined}
+                                            errorClassName="text-red-500 text-sm mt-1"
+                                            triggerClassName={errors.event_type_id ? 'border-red-500' : ''}
+                                        />
                                     </div>
 
                                     {showOrganizationCauses ? (
