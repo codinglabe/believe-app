@@ -689,6 +689,7 @@ Route::get('/service-hub/chat/{chatId}', [ServiceHubController::class, 'serviceC
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->prefix('believe-points')->name('believe-points.')->group(function () {
     Route::get('/', [BelievePointController::class, 'index'])->name('index');
     Route::post('/purchase', [BelievePointController::class, 'purchase'])->name('purchase');
+    Route::get('/complete-saved-payment/{purchase}', [BelievePointController::class, 'completeSavedPayment'])->name('complete-saved-payment');
     Route::get('/success', [BelievePointController::class, 'success'])->name('success');
     Route::get('/cancel', [BelievePointController::class, 'cancel'])->name('cancel');
     Route::get('/refunds', [BelievePointController::class, 'refunds'])->name('refunds');
@@ -962,6 +963,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/redemptions', [UserProfileController::class, 'redemptions'])->name('profile.redemptions');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
+    Route::get('/profile/payment-methods', [\App\Http\Controllers\UserPaymentMethodController::class, 'index'])->name('profile.payment-methods.index');
     Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');
     Route::get('/profile/impact-score', [ImpactScoreController::class, 'show'])->name('profile.impact-score');
     Route::get('/api/impact-score', [ImpactScoreController::class, 'index'])->name('api.impact-score');
@@ -1204,6 +1206,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::delete('/push-token', [PushTokenController::class, 'destroy']);
     Route::post('/api/push-notifications/open', [PushNotificationOpenController::class, 'store'])
         ->name('push-notifications.open');
+});
+
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('account/payment-methods')->name('account.payment-methods.')->group(function () {
+    Route::post('/setup', [\App\Http\Controllers\UserPaymentMethodController::class, 'setup'])->name('setup');
+    Route::get('/setup-success', [\App\Http\Controllers\UserPaymentMethodController::class, 'setupSuccess'])->name('setup-success');
+    Route::post('/{paymentMethodId}/default', [\App\Http\Controllers\UserPaymentMethodController::class, 'setDefault'])->name('default');
+    Route::delete('/{paymentMethodId}', [\App\Http\Controllers\UserPaymentMethodController::class, 'destroy'])->name('destroy');
 });
 
 Route::middleware(['auth', 'web', 'throttle:120,1'])->post('/api/user/proximity-location', [ProximityLocationController::class, 'store'])->name('api.user.proximity-location');
@@ -2214,6 +2223,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::post('/donate/non-cash', [DonationController::class, 'storeNonCash'])->name('donations.non-cash.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
+    Route::get('/donations/complete-saved-payment/{donation}', [DonationController::class, 'completeSavedPayment'])->name('donations.complete-saved-payment');
 
     Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/checkout', [CareAllianceDonationController::class, 'checkout'])
         ->name('care-alliance.campaigns.checkout')

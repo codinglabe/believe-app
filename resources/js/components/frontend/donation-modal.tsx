@@ -15,6 +15,10 @@ import { Separator } from "@/components/frontend/ui/separator"
 import { router, usePage } from "@inertiajs/react"
 import { useNotification } from "./notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
+import {
+  SavedPaymentMethodSelector,
+  type SavedPaymentMethod,
+} from "@/components/account/saved-payment-method-selector"
 
 interface DonationModalProps {
   isOpen: boolean
@@ -61,6 +65,10 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
+  const [savedPaymentMethodId, setSavedPaymentMethodId] = useState<string | null>(null)
+  const savedPaymentMethods = (pageProps.savedPaymentMethods ?? []) as SavedPaymentMethod[]
+  const paymentMethodsUrl =
+    pageProps.paymentMethodsUrl ?? route("user.profile.payment-methods.index")
 
   // Get user's Believe Points balance
   const currentBalance = parseFloat(user?.believe_points || '0') || 0
@@ -124,6 +132,12 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
       frequency: donationType,
       message: donorInfo.message,
       payment_method: paymentMethod,
+      ...(paymentMethod === "stripe" && donationType === "one-time"
+        ? {
+            donation_fee_rail: "card",
+            ...(savedPaymentMethodId ? { saved_payment_method_id: savedPaymentMethodId } : {}),
+          }
+        : {}),
     }, {
       onSuccess: () => {
         setIsProcessing(false)
@@ -288,7 +302,12 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                   name="payment_method"
                   value="stripe"
                   checked={paymentMethod === 'stripe'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value as 'stripe' | 'believe_points')
+                    if (e.target.value === 'believe_points') {
+                      setSavedPaymentMethodId(null)
+                    }
+                  }}
                   className="w-4 h-4 text-purple-500"
                 />
                 <div className="w-10 h-10 rounded-xl bg-white/20 border border-white/10 flex items-center justify-center">
@@ -372,12 +391,27 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
               </div>
             )}
 
+            {paymentMethod === "stripe" && donationType === "one-time" && user && (
+              <div className="mt-3 space-y-1.5">
+                <p className="text-xs font-medium text-white/80">Saved card</p>
+                <SavedPaymentMethodSelector
+                  methods={savedPaymentMethods}
+                  rail="card"
+                  value={savedPaymentMethodId}
+                  onChange={setSavedPaymentMethodId}
+                  manageHref={paymentMethodsUrl}
+                />
+              </div>
+            )}
+
             {paymentMethod === 'stripe' && (
               <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
                 <div className="flex items-center gap-2 text-blue-200">
                   <Shield className="h-4 w-4" />
                   <span className="text-sm">
-                    Your payment information is secure and encrypted. We use Stripe for payment processing.
+                    {savedPaymentMethodId
+                      ? "Your saved card will be charged directly."
+                      : "Your payment information is secure and encrypted. We use Stripe for payment processing."}
                   </span>
                 </div>
               </div>
@@ -392,8 +426,11 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
               onValueChange={(value) => {
                 setDonationType(value)
                 // Reset to Stripe if switching to recurring (Believe Points only for one-time)
-                if (value !== 'one-time' && paymentMethod === 'believe_points') {
-                  setPaymentMethod('stripe')
+                if (value !== 'one-time') {
+                  setSavedPaymentMethodId(null)
+                  if (paymentMethod === 'believe_points') {
+                    setPaymentMethod('stripe')
+                  }
                 }
               }}
               className="grid grid-cols-3 gap-4"

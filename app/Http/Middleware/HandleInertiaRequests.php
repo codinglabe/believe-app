@@ -357,6 +357,8 @@ class HandleInertiaRequests extends Middleware
                 ? SupporterSubscriptionService::subscriptionStateForUser($user)
                 : null,
             'bridgeVerification' => fn () => $this->sharedBridgeVerification($user, $isLivestockDomain, $isMerchantDomain),
+            'savedPaymentMethods' => fn () => $this->sharedSavedPaymentMethods($user, $isLivestockDomain, $isMerchantDomain),
+            'paymentMethodsUrl' => fn () => $this->sharedPaymentMethodsUrl($user, $isLivestockDomain, $isMerchantDomain),
             'firebaseWeb' => [
                 'apiKey' => config('services.firebase.api_key'),
                 'authDomain' => config('services.firebase.auth_domain'),
@@ -385,5 +387,37 @@ class HandleInertiaRequests extends Middleware
         $organization = Organization::forAuthUser($user);
 
         return BridgeVerificationService::payloadForOrganization($organization);
+    }
+
+    /**
+     * @return list<array{
+     *     id: string,
+     *     type: string,
+     *     brand: string|null,
+     *     last4: string|null,
+     *     exp_month: int|null,
+     *     exp_year: int|null,
+     *     bank_name: string|null,
+     *     is_default: bool
+     * }>
+     */
+    private function sharedSavedPaymentMethods(mixed $user, bool $isLivestockDomain, bool $isMerchantDomain): array
+    {
+        if (! $user instanceof \App\Models\User || $isLivestockDomain || $isMerchantDomain) {
+            return [];
+        }
+
+        return \App\Services\UserStripePaymentMethodService::listForUser($user);
+    }
+
+    private function sharedPaymentMethodsUrl(mixed $user, bool $isLivestockDomain, bool $isMerchantDomain): ?string
+    {
+        if (! $user instanceof \App\Models\User || $isLivestockDomain || $isMerchantDomain) {
+            return null;
+        }
+
+        return $user->hasNonprofitDashboardRole()
+            ? route('settings.saved-payment-methods.index')
+            : route('user.profile.payment-methods.index');
     }
 }

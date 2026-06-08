@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, FormEvent } from "react"
+import React, { useState, useEffect, useRef, useMemo, FormEvent } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
@@ -40,6 +40,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  SavedPaymentMethodSelector,
+  filterMethodsForRail,
+  type SavedPaymentMethod,
+} from "@/components/account/saved-payment-method-selector"
 
 interface Purchase {
   id: number
@@ -57,6 +62,7 @@ interface AutoReplenishProps {
   threshold: number | null
   amount: number | null
   has_payment_method: boolean
+  saved_payment_method_id: string | null
   card_brand: string | null
   card_last4: string | null
   last_replenish_at: string | null
@@ -87,6 +93,8 @@ interface PageProps {
   auth?: { user?: { role?: string } }
   feePreview?: BelievePointsFeePreview | null
   autoReplenish?: AutoReplenishProps
+  savedPaymentMethods?: SavedPaymentMethod[]
+  paymentMethodsUrl?: string
   flash?: {
     success?: string
     error?: string
@@ -101,6 +109,7 @@ const defaultAutoReplenish: AutoReplenishProps = {
   threshold: null,
   amount: null,
   has_payment_method: false,
+  saved_payment_method_id: null,
   card_brand: null,
   card_last4: null,
   last_replenish_at: null,
@@ -115,7 +124,13 @@ export default function BelievePointsIndex({
 }: PageProps) {
   const autoReplenish = { ...defaultAutoReplenish, ...autoReplenishProp }
   const page = usePage<PageProps>()
-  const { flash, auth, feePreview: feePreviewProp } = page.props
+  const {
+    flash,
+    auth,
+    feePreview: feePreviewProp,
+    savedPaymentMethods = [],
+    paymentMethodsUrl = "/profile/payment-methods",
+  } = page.props
   const feePreview = feePreviewProp ?? null
   const isSupporter = auth?.user?.role === 'user' || !auth?.user?.role
   const [formData, setFormData] = useState({
@@ -123,6 +138,7 @@ export default function BelievePointsIndex({
     policyAccepted: false,
   })
   const [paymentRail, setPaymentRail] = useState<"bank" | "card">("bank")
+  const [savedPaymentMethodId, setSavedPaymentMethodId] = useState<string | null>(null)
   const [feePreviewLoading, setFeePreviewLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -140,6 +156,13 @@ export default function BelievePointsIndex({
     policyAccepted: false,
   })
   const [arSubmitting, setArSubmitting] = useState(false)
+  const [arSavedCardId, setArSavedCardId] = useState<string | null>(
+    autoReplenish.saved_payment_method_id,
+  )
+  const savedCards = useMemo(
+    () => filterMethodsForRail(savedPaymentMethods, "card"),
+    [savedPaymentMethods],
+  )
 
   const believePointsFeePreviewSkipRef = useRef(true)
 
@@ -212,7 +235,22 @@ export default function BelievePointsIndex({
     autoReplenish.threshold,
     autoReplenish.amount,
     autoReplenish.has_payment_method,
+    autoReplenish.saved_payment_method_id,
   ])
+
+  useEffect(() => {
+    if (arSavedCardId && savedCards.some((card) => card.id === arSavedCardId)) {
+      return
+    }
+
+    const preferred =
+      autoReplenish.saved_payment_method_id &&
+      savedCards.find((card) => card.id === autoReplenish.saved_payment_method_id)?.id
+
+    const defaultCard = savedCards.find((card) => card.is_default)?.id ?? savedCards[0]?.id ?? null
+
+    setArSavedCardId(preferred ?? defaultCard)
+  }, [arSavedCardId, autoReplenish.saved_payment_method_id, savedCards])
 
   const amountNum = parseFloat(formData.amount)
   const validPurchaseAmount =
@@ -259,8 +297,8 @@ export default function BelievePointsIndex({
   const saveAutoReplenish = (e: FormEvent) => {
     e.preventDefault()
     if (arState.enabled) {
-      if (!autoReplenish.has_payment_method) {
-        showErrorToast("Add a saved card before enabling auto top-up.")
+      if (!arSavedCardId) {
+        showErrorToast("Select a saved card for auto top-up, or add one in Payment Methods.")
         return
       }
       const th = parseFloat(arState.threshold)
@@ -290,6 +328,7 @@ export default function BelievePointsIndex({
             threshold: parseFloat(arState.threshold),
             amount: parseFloat(arState.amount),
             auto_replenish_policy_accepted: true,
+            saved_payment_method_id: arSavedCardId,
           }
         : { enabled: false },
       {
@@ -318,6 +357,7 @@ export default function BelievePointsIndex({
       {
         amount: parseFloat(formData.amount),
         payment_rail: paymentRail,
+        ...(savedPaymentMethodId ? { saved_payment_method_id: savedPaymentMethodId } : {}),
       },
       {
         onError: (errors) => {
@@ -506,7 +546,10 @@ export default function BelievePointsIndex({
                     </div>
                     <Tabs
                       value={paymentRail}
-                      onValueChange={(v) => setPaymentRail(v as "bank" | "card")}
+                      onValueChange={(v) => {
+                        setPaymentRail(v as "bank" | "card")
+                        setSavedPaymentMethodId(null)
+                      }}
                       className="w-full"
                     >
                       <TabsList className="grid h-auto min-h-12 w-full grid-cols-2 gap-1 rounded-lg border-2 border-gray-300 bg-gray-100 p-1 dark:border-gray-600 dark:bg-gray-800">
@@ -550,11 +593,22 @@ export default function BelievePointsIndex({
                         </p>
                       </TabsContent>
                     </Tabs>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">Use a saved method</p>
+                      <SavedPaymentMethodSelector
+                        methods={savedPaymentMethods}
+                        rail={paymentRail}
+                        value={savedPaymentMethodId}
+                        onChange={setSavedPaymentMethodId}
+                        manageHref={paymentMethodsUrl}
+                      />
+                    </div>
                     <p className="flex items-start gap-1.5 text-xs leading-snug text-gray-500 dark:text-gray-400">
                       <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
                       <span>
-                        Stripe Checkout will only show{" "}
-                        {paymentRail === "bank" ? "US bank account (ACH)" : "card"} for this purchase.
+                        {savedPaymentMethodId
+                          ? "Your saved payment method will be charged directly."
+                          : `Stripe Checkout will only show ${paymentRail === "bank" ? "US bank account (ACH)" : "card"} for this purchase.`}
                       </span>
                     </p>
                   </div>
@@ -940,43 +994,33 @@ export default function BelievePointsIndex({
               </CardHeader>
               <CardContent className="space-y-4 pt-0">
                 <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
-                  If a charge shows <span className="font-medium text-gray-900 dark:text-white">failed</span>, use{" "}
-                  <span className="font-medium text-gray-900 dark:text-white">Replace saved card</span> so your bank can
-                  approve off-session payments (e.g. 3D Secure).
+                  Choose a card from your saved payment methods. If charges fail, pick another card or add a new one in{" "}
+                  <a href={paymentMethodsUrl} className="font-medium text-purple-600 underline-offset-2 hover:underline dark:text-purple-400">
+                    Payment Methods
+                  </a>
+                  .
                 </p>
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <SavedPaymentMethodSelector
+                  methods={savedPaymentMethods}
+                  rail="card"
+                  value={arSavedCardId}
+                  onChange={setArSavedCardId}
+                  manageHref={paymentMethodsUrl}
+                  showNewOption={false}
+                />
+                {autoReplenish.enabled && arSavedCardId && (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="w-full justify-center sm:w-auto"
-                    onClick={() => router.visit(route("believe-points.auto-replenish.setup"))}
+                    className="w-full text-destructive sm:w-auto"
+                    onClick={() => {
+                      if (!confirm("Turn off auto top-up?")) return
+                      router.post(route("believe-points.auto-replenish.settings"), { enabled: false }, { preserveScroll: true })
+                    }}
                   >
-                    <CreditCard className="mr-2 h-4 w-4 shrink-0" />
-                    {autoReplenish.has_payment_method ? "Replace saved card" : "Add saved card"}
+                    Turn off auto top-up
                   </Button>
-                  {autoReplenish.has_payment_method && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-destructive sm:w-auto"
-                      onClick={() => {
-                        if (!confirm("Remove saved card and turn off auto top-up?")) return
-                        router.post(route("believe-points.auto-replenish.remove-payment"), {}, { preserveScroll: true })
-                      }}
-                    >
-                      Remove card
-                    </Button>
-                  )}
-                </div>
-                {autoReplenish.has_payment_method && (
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
-                    Saved:{" "}
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      {(autoReplenish.card_brand || "Card").toUpperCase()} ···· {autoReplenish.card_last4 || "????"}
-                    </span>
-                  </p>
                 )}
                 {autoReplenish.last_replenish_at && (
                   <p className="text-xs text-gray-500 dark:text-gray-400">
