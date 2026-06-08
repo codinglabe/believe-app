@@ -716,17 +716,24 @@ class BridgeService
             // Remove bridge_wallet_id in sandbox (not used with Ethereum payment rail)
             unset($destination['bridge_wallet_id']);
         } else {
-            // Production mode: Validate requirements based on payment rail
-            // For address-based payment rails, address is required
-            // For bridge_wallet payment rail, bridge_wallet_id is required
-            if (!isset($destination['payment_rail']) || $destination['payment_rail'] !== 'bridge_wallet') {
-                if (!isset($destination['address']) || empty($destination['address'])) {
-                    return [
-                        'success' => false,
-                        'error' => 'Destination address is required in production mode for address-based payment rails. Please provide a valid wallet address you control.',
-                        'error_code' => 'MISSING_DESTINATION_ADDRESS',
-                    ];
-                }
+            $paymentRail = $destination['payment_rail'] ?? '';
+            $hasAddress = ! empty($destination['address']);
+            $hasBridgeWalletId = ! empty($destination['bridge_wallet_id']);
+
+            if ($paymentRail === 'bridge_wallet' && ! $hasBridgeWalletId) {
+                return [
+                    'success' => false,
+                    'error' => 'bridge_wallet_id is required in production mode when using the bridge_wallet payment rail.',
+                    'error_code' => 'MISSING_BRIDGE_WALLET_ID',
+                ];
+            }
+
+            if ($paymentRail !== 'bridge_wallet' && ! $hasAddress && ! $hasBridgeWalletId) {
+                return [
+                    'success' => false,
+                    'error' => 'Destination address is required in production mode for address-based payment rails. Please provide a valid wallet address you control.',
+                    'error_code' => 'MISSING_DESTINATION_ADDRESS',
+                ];
             }
         }
 
@@ -1252,8 +1259,12 @@ class BridgeService
      * @param string $chain Blockchain chain (solana, ethereum, etc.)
      * @return array
      */
-    public function createVirtualAccountForChainWallet(string $customerId, string $walletId, string $chain = 'solana'): array
-    {
+    public function createVirtualAccountForChainWallet(
+        string $customerId,
+        string $walletId,
+        string $chain = 'solana',
+        ?string $walletAddress = null,
+    ): array {
         $source = [
             'currency' => 'usd',
         ];
@@ -1269,8 +1280,15 @@ class BridgeService
             $destination = [
                 'payment_rail' => $chain,
                 'currency' => 'usdc',
-                'bridge_wallet_id' => $walletId,
             ];
+
+            if ($walletId) {
+                $destination['bridge_wallet_id'] = $walletId;
+            }
+
+            if ($walletAddress) {
+                $destination['address'] = $walletAddress;
+            }
         }
 
         return $this->createVirtualAccount($customerId, $source, $destination);

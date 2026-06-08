@@ -3751,12 +3751,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 isLoading={isLoading}
                                                 copied={copied}
                                                 isSandbox={isSandbox}
-                                                hasBankAccounts={hasBankAccounts}
-                                                isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
                                                 onRefresh={handleRefresh}
                                                 onCopyAddress={handleCopyAddress}
                                                 onActionViewChange={setActionView}
-                                                onAddBankAccount={goToAddBankAccount}
                                             />
                                         ) : (() => {
                                             // PRIORITY 1: Check if account is approved but wallet doesn't exist

@@ -6356,37 +6356,55 @@ class BridgeWalletController extends Controller
                 ], 404);
             }
 
-            // Get wallet ID from request or use primary wallet
+            $wallet = null;
             $walletId = $request->input('wallet_id');
-            $chain = $request->input('chain', 'solana');
-            
-            if (!$walletId) {
-                // Get primary wallet
+
+            if ($walletId) {
+                $wallet = \App\Models\BridgeWallet::where('bridge_integration_id', $integration->id)
+                    ->where('bridge_wallet_id', $walletId)
+                    ->first();
+            }
+
+            if (! $wallet) {
                 $wallet = \App\Models\BridgeWallet::where('bridge_integration_id', $integration->id)
                     ->where('is_primary', true)
                     ->first();
-                
-                if (!$wallet) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No wallet found. Please create a wallet first.',
-                    ], 404);
+            }
+
+            if (! $wallet) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No wallet found. Please create a wallet first.',
+                ], 404);
+            }
+
+            $walletId = $wallet->bridge_wallet_id;
+            $walletAddress = $wallet->wallet_address;
+            $chain = strtolower((string) $request->input('chain', 'usd'));
+
+            if (! $walletAddress && $walletId) {
+                $walletDetails = $this->bridgeService->getWallet($integration->bridge_customer_id, $walletId);
+                if ($walletDetails['success'] && ! empty($walletDetails['data']['address'])) {
+                    $walletAddress = $walletDetails['data']['address'];
+                    $wallet->wallet_address = $walletAddress;
+                    $wallet->save();
                 }
-                
-                $walletId = $wallet->bridge_wallet_id;
             }
 
             // Check if virtual account already exists for this wallet
             $existingVirtualAccounts = $this->bridgeService->getVirtualAccounts($integration->bridge_customer_id);
-            
-            if ($existingVirtualAccounts['success'] && !empty($existingVirtualAccounts['data'])) {
+
+            if ($existingVirtualAccounts['success'] && ! empty($existingVirtualAccounts['data'])) {
                 $virtualAccounts = is_array($existingVirtualAccounts['data']) && isset($existingVirtualAccounts['data']['data'])
                     ? $existingVirtualAccounts['data']['data']
                     : (is_array($existingVirtualAccounts['data']) ? $existingVirtualAccounts['data'] : []);
-                
-                // Check if virtual account exists for this wallet
+
                 foreach ($virtualAccounts as $va) {
-                    if (isset($va['destination']['bridge_wallet_id']) && $va['destination']['bridge_wallet_id'] === $walletId) {
+                    $destination = $va['destination'] ?? [];
+                    $matchesWalletId = $walletId && isset($destination['bridge_wallet_id']) && $destination['bridge_wallet_id'] === $walletId;
+                    $matchesAddress = $walletAddress && isset($destination['address']) && $destination['address'] === $walletAddress;
+
+                    if ($matchesWalletId || $matchesAddress) {
                         return response()->json([
                             'success' => true,
                             'message' => 'Virtual account already exists',
@@ -6396,20 +6414,37 @@ class BridgeWalletController extends Controller
                 }
             }
 
-            // Create virtual account
-            // For chain wallets, use chain-specific method
-            if ($chain !== 'usd' && $chain !== 'USD') {
+            // Fiat USD deposit accounts route to the Bridge wallet; crypto chains need address or wallet id.
+            if (in_array($chain, ['usd', 'fiat'], true)) {
+                if ($walletId) {
+                    $result = $this->bridgeService->createVirtualAccountForWallet(
+                        $integration->bridge_customer_id,
+                        $walletId,
+                        'USD'
+                    );
+                } elseif ($walletAddress) {
+                    $paymentRail = $wallet->chain ?: 'ethereum';
+                    $result = $this->bridgeService->createVirtualAccount(
+                        $integration->bridge_customer_id,
+                        ['currency' => 'usd'],
+                        [
+                            'payment_rail' => $paymentRail,
+                            'currency' => 'usdc',
+                            'address' => $walletAddress,
+                        ]
+                    );
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No Bridge wallet address found. Create a wallet before setting up deposits.',
+                    ], 422);
+                }
+            } else {
                 $result = $this->bridgeService->createVirtualAccountForChainWallet(
                     $integration->bridge_customer_id,
-                    $walletId,
-                    $chain
-                );
-            } else {
-                // For USD accounts
-                $result = $this->bridgeService->createVirtualAccountForWallet(
-                    $integration->bridge_customer_id,
-                    $walletId,
-                    'USD'
+                    $walletId ?? '',
+                    $chain,
+                    $walletAddress
                 );
             }
 
