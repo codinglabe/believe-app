@@ -30,6 +30,13 @@ class EnsureBridgeVerified
         '/push-token',
         '/api/push-notifications',
         '/api/user',
+        '/account/payment-methods',
+        '/profile/payment-methods',
+        '/settings/saved-payment-methods',
+        '/believe-points',
+        '/donate',
+        '/donations',
+        '/stripe',
         '/broadcasting',
     ];
 

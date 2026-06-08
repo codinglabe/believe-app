@@ -7,10 +7,12 @@ use App\Jobs\RetryBelievePointPurchaseSettlementJob;
 use App\Models\AdminSetting;
 use App\Models\BelievePointPurchase;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\DonationProcessingFeeEstimator;
 use App\Services\StripeEnvironmentSyncService;
+use App\Services\UserStripePaymentMethodService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -72,19 +74,11 @@ class BelievePointController extends Controller
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
             'feePreview' => $feePreview,
-            'autoReplenish' => [
-                'enabled' => (bool) $user->believe_points_auto_replenish_enabled,
-                'threshold' => $user->believe_points_auto_replenish_threshold !== null
-                    ? (float) $user->believe_points_auto_replenish_threshold
-                    : null,
-                'amount' => $user->believe_points_auto_replenish_amount !== null
-                    ? (float) $user->believe_points_auto_replenish_amount
-                    : null,
-                'has_payment_method' => filled($user->believe_points_auto_replenish_pm_id),
-                'card_brand' => $user->believe_points_auto_replenish_card_brand,
-                'card_last4' => $user->believe_points_auto_replenish_card_last4,
-                'last_replenish_at' => $user->believe_points_last_auto_replenish_at?->toIso8601String(),
-            ],
+            'savedPaymentMethods' => UserStripePaymentMethodService::listForUser($user),
+            'paymentMethodsUrl' => $user->hasNonprofitDashboardRole()
+                ? route('settings.saved-payment-methods.index')
+                : route('user.profile.payment-methods.index'),
+            'autoReplenish' => $this->autoReplenishPayloadForUser($user),
         ]);
     }
 
@@ -154,7 +148,12 @@ class BelievePointController extends Controller
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
             'payment_rail' => ['required', 'in:card,bank'],
+            'saved_payment_method_id' => ['nullable', 'string', 'max:255'],
         ]);
+
+        if (filled($validated['saved_payment_method_id'] ?? null)) {
+            return $this->purchaseWithSavedPaymentMethod($user, $validated);
+        }
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd; // 1 Believe Point = $1 USD credited (net)
@@ -231,6 +230,173 @@ class BelievePointController extends Controller
             return redirect()->back()
                 ->withInput()
                 ->with('error', 'Failed to process purchase: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Charge a saved Stripe payment method (card or bank) without a new Checkout session.
+     */
+    private function purchaseWithSavedPaymentMethod(User $user, array $validated): RedirectResponse|\Symfony\Component\HttpFoundation\Response
+    {
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
+
+        $pmId = (string) $validated['saved_payment_method_id'];
+        $feeRail = $validated['payment_rail'] === 'bank' ? 'bank' : 'card';
+        $railFromPm = UserStripePaymentMethodService::railForPaymentMethod($pmId);
+
+        if ($railFromPm !== $feeRail) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'The selected saved payment method does not match this payment type.');
+        }
+
+        if (! UserStripePaymentMethodService::paymentMethodBelongsToUser($user, $pmId)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Invalid saved payment method.');
+        }
+
+        $netPointsUsd = round((float) $validated['amount'], 2);
+        $points = $netPointsUsd;
+        $checkoutTotalUsd = $feeRail === 'bank'
+            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
+            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
+        $checkoutTotalUsd = round($checkoutTotalUsd, 2);
+        $processingFeeAddon = round(max(0, $checkoutTotalUsd - $netPointsUsd), 2);
+
+        try {
+            if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Could not prepare your billing profile. Please try again.');
+            }
+            $user->refresh();
+
+            BelievePointsPaymentMethodSyncService::ensurePaymentMethodBelongsToCustomer($user, $pmId);
+
+            $purchase = BelievePointPurchase::create([
+                'user_id' => $user->id,
+                'amount' => $netPointsUsd,
+                'checkout_total' => $checkoutTotalUsd,
+                'processing_fee_estimate' => $processingFeeAddon,
+                'points' => $points,
+                'status' => 'pending',
+                'source' => 'manual',
+                'payment_rail' => $feeRail,
+            ]);
+
+            $amountInCents = (int) round($checkoutTotalUsd * 100);
+            $intent = Cashier::stripe()->paymentIntents->create([
+                'amount' => $amountInCents,
+                'currency' => config('cashier.currency'),
+                'customer' => $user->stripe_id,
+                'payment_method' => $pmId,
+                'confirm' => true,
+                'off_session' => false,
+                'return_url' => route('believe-points.complete-saved-payment', ['purchase' => $purchase->id]),
+                'description' => 'Purchase '.$points.' Believe Points',
+                'metadata' => [
+                    'purchase_id' => (string) $purchase->id,
+                    'user_id' => (string) $user->id,
+                    'type' => 'believe_points_purchase',
+                    'payment_rail' => $feeRail,
+                    'base_points_usd' => (string) $netPointsUsd,
+                    'checkout_total_usd' => (string) $checkoutTotalUsd,
+                ],
+            ]);
+
+            $purchase->update([
+                'stripe_payment_intent_id' => $intent->id,
+            ]);
+
+            if ($intent->status === 'succeeded') {
+                BelievePointPurchaseSettlementService::settleCheckoutPurchase($purchase->id, $intent->id);
+                $purchase->refresh();
+
+                if ($purchase->status === 'completed') {
+                    return redirect()->route('believe-points.index')
+                        ->with('success', "Successfully purchased {$purchase->points} Believe Points!");
+                }
+            }
+
+            if ($intent->status === 'requires_action') {
+                return Inertia::location(route('cashier.payment', $intent->id));
+            }
+
+            if (in_array($intent->status, ['processing', 'requires_confirmation'], true)) {
+                return redirect()->route('believe-points.index')
+                    ->with('info', 'Your bank payment is processing. Believe Points will be credited once it completes.');
+            }
+
+            return redirect()->route('believe-points.index')
+                ->with('error', 'Payment could not be completed. Please try another method.');
+        } catch (ApiErrorException $e) {
+            Log::error('Believe Points saved payment method purchase Stripe error', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Payment failed. Please try again or use a different payment method.');
+        } catch (\Throwable $e) {
+            Log::error('Believe Points saved payment method purchase error', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Payment failed. Please try again.');
+        }
+    }
+
+    public function completeSavedPayment(Request $request, int $purchase): RedirectResponse
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        $purchaseModel = BelievePointPurchase::query()
+            ->where('id', $purchase)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $purchaseModel || ! $purchaseModel->stripe_payment_intent_id) {
+            return redirect()->route('believe-points.index')
+                ->with('error', 'Could not find this purchase.');
+        }
+
+        try {
+            $intent = Cashier::stripe()->paymentIntents->retrieve($purchaseModel->stripe_payment_intent_id);
+
+            if ($intent->status === 'succeeded') {
+                BelievePointPurchaseSettlementService::settleCheckoutPurchase($purchaseModel->id, $intent->id);
+                $purchaseModel->refresh();
+
+                if ($purchaseModel->status === 'completed') {
+                    return redirect()->route('believe-points.index')
+                        ->with('success', "Successfully purchased {$purchaseModel->points} Believe Points!");
+                }
+            }
+
+            if (in_array($intent->status, ['processing', 'requires_confirmation'], true)) {
+                return redirect()->route('believe-points.index')
+                    ->with('info', 'Your payment is still processing. Points will be credited when it completes.');
+            }
+
+            return redirect()->route('believe-points.index')
+                ->with('error', 'Payment was not completed.');
+        } catch (\Throwable $e) {
+            Log::error('Believe Points complete saved payment error', [
+                'purchase_id' => $purchase,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('believe-points.index')
+                ->with('error', 'Could not confirm payment status.');
         }
     }
 
@@ -807,11 +973,32 @@ class BelievePointController extends Controller
                 'threshold' => ['required', 'numeric', 'min:0', 'max:100000'],
                 'amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
                 'auto_replenish_policy_accepted' => ['accepted'],
+                'saved_payment_method_id' => ['nullable', 'string', 'max:255'],
             ]);
-            if (! $user->believe_points_auto_replenish_pm_id) {
+
+            $cardId = UserStripePaymentMethodService::resolveSavedCardId(
+                $user,
+                $validated['saved_payment_method_id'] ?? $user->believe_points_auto_replenish_pm_id,
+            );
+
+            if (! $cardId) {
                 return redirect()->route('believe-points.index')
-                    ->with('error', 'Add a saved card for auto top-up before turning this on.');
+                    ->with('error', 'Select a saved card for auto top-up, or add one in Payment Methods.');
             }
+
+            try {
+                UserStripePaymentMethodService::syncAutoReplenishCard($user, $cardId);
+            } catch (\Throwable $e) {
+                Log::error('Believe Points auto-replenish card sync error', [
+                    'user_id' => $user->id,
+                    'payment_method' => $cardId,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return redirect()->route('believe-points.index')
+                    ->with('error', 'Could not use the selected card for auto top-up. Pick another saved card.');
+            }
+
             $threshold = (float) $validated['threshold'];
             $amount = (float) $validated['amount'];
             $user->update([
@@ -988,6 +1175,42 @@ class BelievePointController extends Controller
         ]);
 
         return redirect()->route('believe-points.index')
-            ->with('success', 'Saved card removed and auto top-up turned off.');
+            ->with('success', 'Auto top-up turned off.');
+    }
+
+    /**
+     * @return array{
+     *     enabled: bool,
+     *     threshold: float|null,
+     *     amount: float|null,
+     *     has_payment_method: bool,
+     *     saved_payment_method_id: string|null,
+     *     card_brand: string|null,
+     *     card_last4: string|null,
+     *     last_replenish_at: string|null
+     * }
+     */
+    private function autoReplenishPayloadForUser(User $user): array
+    {
+        $savedCards = UserStripePaymentMethodService::listCardsForUser($user);
+        $selectedCardId = UserStripePaymentMethodService::resolveSavedCardId(
+            $user,
+            $user->believe_points_auto_replenish_pm_id,
+        );
+
+        return [
+            'enabled' => (bool) $user->believe_points_auto_replenish_enabled,
+            'threshold' => $user->believe_points_auto_replenish_threshold !== null
+                ? (float) $user->believe_points_auto_replenish_threshold
+                : null,
+            'amount' => $user->believe_points_auto_replenish_amount !== null
+                ? (float) $user->believe_points_auto_replenish_amount
+                : null,
+            'has_payment_method' => $selectedCardId !== null || $savedCards !== [],
+            'saved_payment_method_id' => $selectedCardId,
+            'card_brand' => $user->believe_points_auto_replenish_card_brand,
+            'card_last4' => $user->believe_points_auto_replenish_card_last4,
+            'last_replenish_at' => $user->believe_points_last_auto_replenish_at?->toIso8601String(),
+        ];
     }
 }
