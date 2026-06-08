@@ -23,6 +23,8 @@ class PushDiagnoseCommand extends Command
         $this->line('  Credentials path: '.$credentialsPath);
         $this->line('  Credentials exist: '.(is_file($credentialsPath) ? 'yes' : 'NO — add firebase-credentials.json'));
         $this->line('  VAPID key set: '.($vapid ? 'yes' : 'NO'));
+        $pushQueue = config('services.firebase.queue_connection', 'sync');
+        $this->line('  Push job queue: '.$pushQueue.($pushQueue === 'sync' ? ' (immediate — no worker required)' : ' (requires queue:work)'));
 
         $cafile = config('services.firebase.cafile');
         $caResolved = storage_path('app/cacert.pem');

@@ -40,7 +40,25 @@ export function shouldAutoPromptForPushPermission(): boolean {
     if (typeof window === "undefined" || Notification.permission !== "default") {
         return false;
     }
-    return import.meta.env.DEV || isPushCapableBrowser();
+    if (import.meta.env.DEV || isPushCapableBrowser()) {
+        return true;
+    }
+    // Mobile browsers (especially installed PWA) need an explicit permission prompt.
+    return isMobilePushClient();
+}
+
+/** True on phone/tablet browsers where push is expected (Android Chrome, iOS installed PWA). */
+export function isMobilePushClient(): boolean {
+    if (typeof window === "undefined") {
+        return false;
+    }
+    const ua = navigator.userAgent;
+    const isMobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+    const isStandalonePwa =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+    return isMobileUa || isStandalonePwa;
 }
 
 export async function logPushDiagnostics(): Promise<void> {

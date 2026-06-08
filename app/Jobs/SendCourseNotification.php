@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\Course;
 use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class SendCourseNotification implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesPushNotificationQueue;
 
     public $course;
     public $tries = 3;
@@ -25,6 +26,7 @@ class SendCourseNotification implements ShouldQueue
     public function __construct(Course $course)
     {
         $this->course = $course;
+        $this->configurePushNotificationQueue();
     }
 
     /**
