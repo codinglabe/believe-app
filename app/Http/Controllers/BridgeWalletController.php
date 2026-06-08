@@ -1412,6 +1412,7 @@ class BridgeWalletController extends Controller
                 'kyc_widget_url' => $kycWidgetUrl,
                 'kyb_widget_url' => $kybWidgetUrl,
                 'requires_verification' => $needsVerification,
+                'bridge_account_verified' => ! $needsVerification,
                 'verification_type' => $isOrgUser ? 'kyb' : 'kyc',
                 'organization_data' => $organizationData, // Always include organization data for pre-filling
                 'kyb_step' => $isOrgUser ? $kybStep : null, // Current step for KYB multi-step flow
@@ -5309,28 +5310,25 @@ class BridgeWalletController extends Controller
         bool $isOrgUser,
         ?BridgeIntegration $integration = null,
     ): ?BridgeIntegration {
-        $email = strtolower(trim((string) ($entity->email ?? $user->email ?? '')));
-        if ($email === '') {
+        $emails = $this->bridgeLookupEmailsForEntity($entity, $user);
+        if ($emails === []) {
             return null;
         }
 
         try {
-            $result = $this->bridgeService->getCustomersByEmail($email);
-            if (! $result['success']) {
-                return null;
-            }
-
-            $customers = $this->normalizeBridgeCustomerList($result['data'] ?? []);
-            if ($customers === []) {
-                return null;
-            }
-
-            $customer = $this->pickBestBridgeCustomer($customers, $isOrgUser, $email);
+            $customer = $this->findBridgeCustomerForEmails($emails, $isOrgUser);
             if ($customer === null || empty($customer['id'])) {
+                Log::warning('No Bridge customer matched local emails', [
+                    'integratable_id' => $entity->id,
+                    'integratable_type' => $entityType,
+                    'emails' => $emails,
+                ]);
+
                 return null;
             }
 
             $customerId = (string) $customer['id'];
+            $matchedEmail = strtolower(trim((string) ($customer['email'] ?? $emails[0])));
 
             $integration = BridgeIntegration::resolveForEntity(
                 $entity->id,
@@ -5345,17 +5343,25 @@ class BridgeWalletController extends Controller
                 $metadata = is_string($metadata) ? (json_decode($metadata, true) ?? []) : [];
             }
             $metadata['type'] = $isOrgUser ? 'business' : 'individual';
-            $metadata['linked_by_email'] = $email;
+            $metadata['linked_by_email'] = $matchedEmail;
             $metadata['linked_at'] = now()->toIso8601String();
+            $metadata['bridge_list_customer'] = $customer;
             $integration->bridge_metadata = $metadata;
+
+            // Apply list/search payload first — works even if GET /customers/{id} fails.
+            $this->applyBridgeCustomerSnapshot($integration, $customer, $isOrgUser);
             $integration->save();
 
             Log::info('Linked existing Bridge customer by email', [
                 'integratable_id' => $entity->id,
                 'integratable_type' => $entityType,
                 'customer_id' => $customerId,
-                'email' => $email,
+                'email' => $matchedEmail,
                 'customer_status' => $customer['status'] ?? null,
+                'has_accepted_terms_of_service' => $customer['has_accepted_terms_of_service'] ?? null,
+                'kyb_status' => $integration->kyb_status,
+                'kyc_status' => $integration->kyc_status,
+                'tos_status' => $integration->tos_status,
             ]);
 
             $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
@@ -5363,13 +5369,135 @@ class BridgeWalletController extends Controller
             return $integration->fresh();
         } catch (\Exception $e) {
             Log::warning('Failed to link Bridge customer by email', [
-                'email' => $email,
+                'emails' => $emails,
                 'integratable_id' => $entity->id,
                 'integratable_type' => $entityType,
                 'error' => $e->getMessage(),
             ]);
 
             return null;
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bridgeLookupEmailsForEntity(object $entity, User $user): array
+    {
+        $candidates = [
+            (string) ($entity->email ?? ''),
+            (string) ($user->email ?? ''),
+        ];
+
+        if (isset($entity->platform_email)) {
+            $candidates[] = (string) $entity->platform_email;
+        }
+
+        $emails = [];
+        foreach ($candidates as $candidate) {
+            $normalized = strtolower(trim($candidate));
+            if ($normalized !== '' && ! in_array($normalized, $emails, true)) {
+                $emails[] = $normalized;
+            }
+        }
+
+        return $emails;
+    }
+
+    /**
+     * @param  list<string>  $emails
+     * @return array<string, mixed>|null
+     */
+    private function findBridgeCustomerForEmails(array $emails, bool $isOrgUser): ?array
+    {
+        foreach ($emails as $email) {
+            $result = $this->bridgeService->getCustomersByEmail($email);
+            if ($result['success']) {
+                $customers = $this->normalizeBridgeCustomerList($result['data'] ?? []);
+                $customer = $this->pickBestBridgeCustomer($customers, $isOrgUser, $email);
+                if ($customer !== null) {
+                    return $customer;
+                }
+            }
+        }
+
+        $allResult = $this->bridgeService->getCustomers();
+        if (! $allResult['success']) {
+            return null;
+        }
+
+        $allCustomers = $this->normalizeBridgeCustomerList($allResult['data'] ?? []);
+        foreach ($emails as $email) {
+            $customer = $this->pickBestBridgeCustomer($allCustomers, $isOrgUser, $email);
+            if ($customer !== null) {
+                return $customer;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Map a Bridge customer payload (list or detail) into bridge_integrations status columns.
+     *
+     * @param  array<string, mixed>  $customer
+     */
+    private function applyBridgeCustomerSnapshot(
+        BridgeIntegration $integration,
+        array $customer,
+        bool $isOrgUser,
+    ): void {
+        $customerStatus = strtolower((string) ($customer['status'] ?? ''));
+        $hasApprovedEndorsements = false;
+
+        foreach ($customer['endorsements'] ?? [] as $endorsement) {
+            if (strtolower((string) ($endorsement['status'] ?? '')) === 'approved') {
+                $hasApprovedEndorsements = true;
+                break;
+            }
+        }
+
+        $hasAcceptedTos = (bool) ($customer['has_accepted_terms_of_service'] ?? false);
+        if (! $hasAcceptedTos) {
+            foreach ($customer['endorsements'] ?? [] as $endorsement) {
+                foreach ($endorsement['requirements']['complete'] ?? [] as $item) {
+                    if (is_string($item) && str_contains($item, 'terms_of_service')) {
+                        $hasAcceptedTos = true;
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        if ($hasAcceptedTos) {
+            $integration->tos_status = 'accepted';
+        }
+
+        if ($isOrgUser) {
+            $bridgeKybStatus = strtolower((string) ($customer['kyb_status'] ?? ''));
+            if ($bridgeKybStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
+                $integration->kyb_status = 'approved';
+            } elseif ($bridgeKybStatus !== '') {
+                $integration->kyb_status = $bridgeKybStatus;
+            }
+
+            $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
+            if (
+                in_array($bridgeKycStatus, ['approved', 'verified'], true)
+                || $integration->kyb_status === 'approved'
+                || ($customerStatus === 'active' && $hasApprovedEndorsements)
+            ) {
+                $integration->kyc_status = 'approved';
+            } elseif ($bridgeKycStatus !== '') {
+                $integration->kyc_status = $bridgeKycStatus;
+            }
+        } else {
+            $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
+            if ($bridgeKycStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
+                $integration->kyc_status = 'approved';
+            } elseif ($bridgeKycStatus !== '') {
+                $integration->kyc_status = $bridgeKycStatus;
+            }
         }
     }
 
@@ -5484,70 +5612,17 @@ class BridgeWalletController extends Controller
             }
 
             $customer = $customerResult['data'];
-            $customerStatus = strtolower((string) ($customer['status'] ?? ''));
-            $hasApprovedEndorsements = false;
+            $before = [
+                'kyb_status' => $integration->kyb_status,
+                'kyc_status' => $integration->kyc_status,
+                'tos_status' => $integration->tos_status,
+            ];
 
-            foreach ($customer['endorsements'] ?? [] as $endorsement) {
-                if (strtolower((string) ($endorsement['status'] ?? '')) === 'approved') {
-                    $hasApprovedEndorsements = true;
-                    break;
-                }
-            }
+            $this->applyBridgeCustomerSnapshot($integration, $customer, $isOrgUser);
 
-            $statusChanged = false;
-
-            if ($isOrgUser) {
-                $bridgeKybStatus = strtolower((string) ($customer['kyb_status'] ?? ''));
-                if ($bridgeKybStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
-                    if ($integration->kyb_status !== 'approved') {
-                        $integration->kyb_status = 'approved';
-                        $statusChanged = true;
-                    }
-                } elseif ($bridgeKybStatus !== '' && $integration->kyb_status !== $bridgeKybStatus) {
-                    $integration->kyb_status = $bridgeKybStatus;
-                    $statusChanged = true;
-                }
-
-                $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
-                if (in_array($bridgeKycStatus, ['approved', 'verified'], true)
-                    || ($integration->kyb_status === 'approved' && $customerStatus === 'active')) {
-                    if ($integration->kyc_status !== 'approved') {
-                        $integration->kyc_status = 'approved';
-                        $statusChanged = true;
-                    }
-                } elseif ($bridgeKycStatus !== '' && $integration->kyc_status !== $bridgeKycStatus) {
-                    $integration->kyc_status = $bridgeKycStatus;
-                    $statusChanged = true;
-                }
-            } else {
-                $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
-                if ($bridgeKycStatus === 'approved'
-                    || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
-                    if ($integration->kyc_status !== 'approved') {
-                        $integration->kyc_status = 'approved';
-                        $statusChanged = true;
-                    }
-                } elseif ($bridgeKycStatus !== '' && $integration->kyc_status !== $bridgeKycStatus) {
-                    $integration->kyc_status = $bridgeKycStatus;
-                    $statusChanged = true;
-                }
-            }
-
-            $hasAcceptedTos = (bool) ($customer['has_accepted_terms_of_service'] ?? false);
-            if (! $hasAcceptedTos) {
-                foreach ($customer['endorsements'] ?? [] as $endorsement) {
-                    $complete = $endorsement['requirements']['complete'] ?? [];
-                    if (in_array('terms_of_service_v1', $complete, true) || in_array('terms_of_service_v2', $complete, true)) {
-                        $hasAcceptedTos = true;
-                        break;
-                    }
-                }
-            }
-
-            if ($hasAcceptedTos && ! in_array($integration->tos_status, ['accepted', 'approved'], true)) {
-                $integration->tos_status = 'accepted';
-                $statusChanged = true;
-            }
+            $statusChanged = $before['kyb_status'] !== $integration->kyb_status
+                || $before['kyc_status'] !== $integration->kyc_status
+                || $before['tos_status'] !== $integration->tos_status;
 
             $metadata = $integration->bridge_metadata ?? [];
             if (! is_array($metadata)) {
