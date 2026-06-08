@@ -20,6 +20,90 @@ function isApprovedStatus(status: string): boolean {
   return status === "approved" || status === "verified"
 }
 
+export type WalletBridgeStatusPayload = {
+  initialized?: boolean
+  kyb_status?: string
+  kyc_status?: string
+  tos_status?: string
+  tos_accepted?: boolean
+  requires_verification?: boolean
+  bridge_account_verified?: boolean
+  verification_type?: "kyc" | "kyb" | string
+}
+
+/** Bridge KYB/KYC approved means ToS was already accepted on Bridge. */
+export function resolveWalletTosStatus(
+  payload: WalletBridgeStatusPayload,
+  current: string = "pending",
+): "pending" | "accepted" | "approved" | "rejected" {
+  if (payload.tos_accepted === true) {
+    return "accepted"
+  }
+
+  if (payload.kyb_status === "approved" || payload.kyc_status === "approved") {
+    return "accepted"
+  }
+
+  const tos = payload.tos_status
+  if (tos === "accepted" || tos === "approved" || tos === "rejected") {
+    return tos
+  }
+
+  return current as "pending" | "accepted" | "approved" | "rejected"
+}
+
+export function isWalletBridgeAccountVerified(payload: WalletBridgeStatusPayload): boolean {
+  if (payload.bridge_account_verified === true) {
+    return true
+  }
+
+  if (payload.requires_verification === false) {
+    return true
+  }
+
+  const tosOk =
+    payload.tos_accepted === true ||
+    payload.tos_status === "accepted" ||
+    payload.tos_status === "approved" ||
+    payload.kyb_status === "approved" ||
+    payload.kyc_status === "approved"
+
+  if (payload.verification_type === "kyb") {
+    return payload.kyb_status === "approved" && tosOk
+  }
+
+  if (payload.verification_type === "kyc") {
+    return payload.kyc_status === "approved" && tosOk
+  }
+
+  return (
+    (payload.kyb_status === "approved" || payload.kyc_status === "approved") && tosOk
+  )
+}
+
+export function applyWalletBridgeStatusPayload(payload: WalletBridgeStatusPayload): {
+  tosStatus: ReturnType<typeof resolveWalletTosStatus>
+  kybStatus?: string
+  kycStatus?: string
+  requiresVerification: boolean
+  bridgeInitialized: boolean
+} {
+  const tosStatus = resolveWalletTosStatus(payload)
+  const verified = isWalletBridgeAccountVerified({
+    ...payload,
+    tos_status: tosStatus,
+    tos_accepted: tosStatus === "accepted" || tosStatus === "approved" ? true : payload.tos_accepted,
+  })
+
+  return {
+    tosStatus,
+    kybStatus: payload.kyb_status,
+    kycStatus: payload.kyc_status,
+    requiresVerification: !verified,
+    bridgeInitialized: Boolean(payload.initialized ?? payload.bridge_account_verified ?? verified),
+  }
+}
+
 /** Match WalletPopup: org wallet is ready only after KYB + KYC + wallet exist. */
 type AuthLike = {
   user?: { role?: string; current_plan_id?: number | null } | null

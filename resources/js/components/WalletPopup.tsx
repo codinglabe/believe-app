@@ -12,6 +12,11 @@ import { DocumentUploadDropzone } from './DocumentUploadDropzone'
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal'
 import { usePage } from '@inertiajs/react'
 import {
+    applyWalletBridgeStatusPayload,
+    isWalletBridgeAccountVerified,
+    type WalletBridgeStatusPayload,
+} from '@/lib/bridge-verification'
+import {
     SuccessMessage,
     BalanceDisplay,
     SwapView,
@@ -430,13 +435,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
 
             if (statusData.success && statusData.initialized) {
+                const bridgeStatus = applyWalletBridgeStatusPayload(
+                    statusData as WalletBridgeStatusPayload,
+                )
+
                 // Bridge is initialized (customer exists)
-                setBridgeInitialized(true)
+                setBridgeInitialized(bridgeStatus.bridgeInitialized)
 
                 // Update verification status if provided
-                if (statusData.requires_verification !== undefined) {
-                    setRequiresVerification(statusData.requires_verification)
-                }
+                setRequiresVerification(bridgeStatus.requiresVerification)
+                setTosStatus(bridgeStatus.tosStatus)
+
                 if (statusData.kyc_status) {
                     // If KYC was submitted, preserve the waiting screen state
                     // Only update to approved or rejected, otherwise keep current status if it's a pending state
@@ -462,30 +471,22 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
+                    if (statusData.kyb_status === 'approved') {
+                        setTosStatus('accepted')
+                    }
                 }
-                if (statusData.tos_status) {
-                    // Only update TOS status if:
-                    // 1. Current status is not already accepted/approved, OR
-                    // 2. Backend confirms it's accepted/approved (to sync with backend)
-                    const currentTosStatus = tosStatus
-                    const isCurrentlyAccepted = currentTosStatus === 'accepted' || currentTosStatus === 'approved'
-                    const isBackendAccepted = statusData.tos_status === 'accepted' || statusData.tos_status === 'approved'
-
-                    // Always update if backend says it's accepted (to sync)
-                    // Or update if current status is not accepted (to get latest status)
-                    if (isBackendAccepted || !isCurrentlyAccepted) {
-                    setTosStatus(statusData.tos_status)
-                    }
-
-                    const kybApprovedOnBridge = statusData.kyb_status === 'approved'
-                    const kycApprovedOnBridge = statusData.kyc_status === 'approved'
-                    if (
-                        isBackendAccepted &&
-                        ((statusData.verification_type === 'kyb' && kybApprovedOnBridge) ||
-                            (statusData.verification_type === 'kyc' && kycApprovedOnBridge))
-                    ) {
-                        setRequiresVerification(false)
-                    }
+                if (statusData.tos_accepted === true) {
+                    setTosStatus('accepted')
+                }
+                if (isWalletBridgeAccountVerified(statusData as WalletBridgeStatusPayload)) {
+                    setRequiresVerification(false)
+                }
+                if (statusData.tos_status || statusData.tos_accepted) {
+                    const isBackendAccepted =
+                        statusData.tos_accepted === true ||
+                        statusData.tos_status === 'accepted' ||
+                        statusData.tos_status === 'approved' ||
+                        statusData.kyb_status === 'approved'
 
                     // If TOS is accepted, hide the iframe immediately
                     if (isBackendAccepted) {
@@ -1612,18 +1613,24 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
 
             if (statusData.success && statusData.initialized) {
-                // Update verification status if provided
-                if (statusData.requires_verification !== undefined) {
-                    setRequiresVerification(statusData.requires_verification)
-                }
+                const bridgeStatus = applyWalletBridgeStatusPayload(
+                    statusData as WalletBridgeStatusPayload,
+                )
+
+                setRequiresVerification(bridgeStatus.requiresVerification)
+                setTosStatus(bridgeStatus.tosStatus)
+
                 if (statusData.kyc_status) {
                     setKycStatus(statusData.kyc_status)
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
+                    if (statusData.kyb_status === 'approved') {
+                        setTosStatus('accepted')
+                    }
                 }
-                if (statusData.tos_status) {
-                    setTosStatus(statusData.tos_status)
+                if (statusData.tos_accepted === true) {
+                    setTosStatus('accepted')
                 }
                 if (statusData.tos_link) {
                     setTosLinkUrl(statusData.tos_link)
@@ -1644,16 +1651,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setVerificationType(statusData.verification_type)
                 }
 
-                const tosAccepted =
-                    statusData.tos_status === 'accepted' || statusData.tos_status === 'approved'
-                const kybApproved = statusData.kyb_status === 'approved'
-                const kycApproved = statusData.kyc_status === 'approved'
-                if (
-                    tosAccepted &&
-                    ((statusData.verification_type === 'kyb' && kybApproved) ||
-                        (statusData.verification_type === 'kyc' && kycApproved) ||
-                        (kybApproved && statusData.verification_type !== 'kyc'))
-                ) {
+                if (isWalletBridgeAccountVerified(statusData as WalletBridgeStatusPayload)) {
                     setRequiresVerification(false)
                 }
 
@@ -1807,28 +1805,25 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (data.data.kyb_widget_url) {
                     setKybWidgetUrl(data.data.kyb_widget_url)
                 }
-                if (data.data.tos_status) {
-                    setTosStatus(data.data.tos_status)
-                }
+                const initBridgeStatus = applyWalletBridgeStatusPayload({
+                    ...(data.data as WalletBridgeStatusPayload),
+                    initialized: true,
+                })
+                setTosStatus(initBridgeStatus.tosStatus)
                 if (data.data.kyc_status) {
                     setKycStatus(data.data.kyc_status)
                 }
                 if (data.data.kyb_status) {
                     setKybStatus(data.data.kyb_status)
+                    if (data.data.kyb_status === 'approved') {
+                        setTosStatus('accepted')
+                    }
                 }
-                if (data.data.requires_verification !== undefined) {
-                    setRequiresVerification(Boolean(data.data.requires_verification))
-                }
-
-                const initTosAccepted =
-                    data.data.tos_status === 'accepted' || data.data.tos_status === 'approved'
-                const initKybApproved = data.data.kyb_status === 'approved'
-                const initKycApproved = data.data.kyc_status === 'approved'
-                if (
-                    initTosAccepted &&
-                    (initKybApproved || initKycApproved) &&
-                    data.data.requires_verification === false
-                ) {
+                setRequiresVerification(initBridgeStatus.requiresVerification)
+                if (isWalletBridgeAccountVerified({
+                    ...(data.data as WalletBridgeStatusPayload),
+                    initialized: true,
+                })) {
                     setRequiresVerification(false)
                 }
             }
@@ -3901,6 +3896,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 </div>
                                             </motion.div>
                                         ) : (() => {
+                                            const walletVerified = isWalletBridgeAccountVerified({
+                                                initialized: bridgeInitialized,
+                                                verification_type: verificationType ?? undefined,
+                                                kyb_status: kybStatus,
+                                                kyc_status: kycStatus,
+                                                tos_status: tosStatus,
+                                                tos_accepted:
+                                                    tosStatus === 'accepted' || tosStatus === 'approved',
+                                                requires_verification: requiresVerification,
+                                            })
+
+                                            if (walletVerified) {
+                                                return false
+                                            }
+
                                             // PRIORITY: If status is approved, ALWAYS show wallet screen (return false)
                                             if (bridgeInitialized && verificationType) {
                                                 const isKybApproved = verificationType === 'kyb' && kybStatus === 'approved'
