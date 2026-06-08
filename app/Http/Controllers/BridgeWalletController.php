@@ -131,15 +131,19 @@ class BridgeWalletController extends Controller
                     ]);
                 }
 
-                // Save integration
-                if (!$integration) {
-                    $integration = new BridgeIntegration();
-                    $integration->integratable_id = $entity->id;
-                    $integration->integratable_type = $entityType;
-                }
+                $customerId = $response['customer_id'] ?? null;
+                $kycLinkId = $response['id'] ?? null;
 
-                $integration->bridge_customer_id = $response['customer_id'] ?? null;
-                $integration->kyc_link_id = $response['id'] ?? null;
+                // Reuse existing row when Bridge returns an existing customer (avoids duplicate bridge_customer_id).
+                $integration = BridgeIntegration::resolveForEntity(
+                    $entity->id,
+                    $entityType,
+                    $customerId,
+                    $kycLinkId,
+                );
+
+                $integration->bridge_customer_id = $customerId;
+                $integration->kyc_link_id = $kycLinkId;
                 $integration->kyc_link_url = $response['kyc_link'] ?? null;
                 $integration->tos_link_url = $response['tos_link'] ?? null;
                 // Use Bridge's actual status values
