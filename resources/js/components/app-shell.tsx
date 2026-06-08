@@ -22,7 +22,7 @@ function AppShellSidebarBody({ children }: { children: React.ReactNode }) {
         <SidebarProvider
             defaultOpen={isOpen}
             style={style}
-            className="[&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-background [&[data-collapsible=icon]_header]:md:!left-[calc(var(--sidebar-width-icon,3rem)+1rem+2px)]"
+            className="has-data-[variant=inset]:!bg-background"
         >
             <div className="shrink-0">
                 <AppSidebar />
