@@ -29,6 +29,7 @@ class EnsureBridgeVerified
         '/notifications',
         '/push-token',
         '/api/push-notifications',
+        '/api/user',
         '/broadcasting',
     ];
 
