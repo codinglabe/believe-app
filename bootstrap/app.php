@@ -75,6 +75,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: [
             'appearance',
             'sidebar_state',
+            'XSRF-TOKEN',
         ]);
 
         // DetectTimezone syncs the viewer's IANA timezone to users.timezone (X-Timezone header).

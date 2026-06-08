@@ -1,3 +1,4 @@
+import { csrfFetch, isCsrfMismatch } from "@/lib/csrf";
 import {
     activateForegroundMessaging,
     ensureMessagingReady,
@@ -33,30 +34,35 @@ export function getWebPushDeviceInfo() {
 }
 
 async function postPushTokenToServer(token: string): Promise<void> {
-    const csrf =
-        document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
-
-    const response = await fetch("/push-token", {
+    const response = await csrfFetch("/push-token", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "X-CSRF-TOKEN": csrf,
-            "X-Requested-With": "XMLHttpRequest",
-        },
-        credentials: "same-origin",
-        body: JSON.stringify({
+        body: {
             token,
             device_info: getWebPushDeviceInfo(),
-        }),
+        },
     });
 
     if (!response.ok) {
         const text = await response.text();
+        let message: string | null = null;
+        try {
+            const parsed = JSON.parse(text) as { message?: string };
+            message = typeof parsed.message === "string" ? parsed.message : null;
+        } catch {
+            message = null;
+        }
+
+        if (isCsrfMismatch(response.status, message)) {
+            console.warn("[Push] CSRF token mismatch — will retry on next page visit");
+            return;
+        }
+
         if (response.status !== 401 && response.status !== 403) {
             localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
         }
-        throw new Error(`Push token save failed (${response.status}): ${text}`);
+
+        console.warn(`[Push] Token save failed (${response.status}): ${text}`);
+        return;
     }
 
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
@@ -70,22 +76,12 @@ export async function removeCurrentDevicePushToken(): Promise<void> {
         return;
     }
 
-    const csrf =
-        document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
-
     try {
-        await fetch("/push-token", {
+        await csrfFetch("/push-token", {
             method: "DELETE",
-            headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-                "X-CSRF-TOKEN": csrf,
-                "X-Requested-With": "XMLHttpRequest",
-            },
-            credentials: "same-origin",
-            body: JSON.stringify({
+            body: {
                 device_info: getWebPushDeviceInfo(),
-            }),
+            },
             keepalive: true,
         });
     } catch (error) {
