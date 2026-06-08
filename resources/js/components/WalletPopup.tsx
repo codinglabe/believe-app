@@ -190,6 +190,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [kycSubmitted, setKycSubmitted] = useState(false) // Track if KYC has been submitted
     const [tosIframeUrl, setTosIframeUrl] = useState<string | null>(null)
     const [signedAgreementId, setSignedAgreementId] = useState<string | null>(null)
+    const processedTosAgreementIdsRef = useRef<Set<string>>(new Set())
 
     // Custom KYC form state
     const [kycFormData, setKycFormData] = useState({
@@ -926,40 +927,38 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 return
             }
 
+            // Follow-up iframe messages after TOS redirect (no re-submit)
+            if (event.data && typeof event.data === 'object') {
+                const action = event.data.action
+                if (action === 'close') {
+                    setTosIframeUrl(null)
+                    setTimeout(() => checkBridgeAndFetchBalance(), 500)
+                    return
+                }
+                if (action === 'checkStatus') {
+                    setTimeout(() => checkBridgeAndFetchBalance(), 300)
+                    return
+                }
+            }
+
             // Handle TOS acceptance from iframe callback
             if (event.data && typeof event.data === 'object' && event.data.signedAgreementId) {
-                const agreementId = event.data.signedAgreementId
-                const action = event.data.action
-                const hideSuccess = event.data.hideSuccess
+                const agreementId = String(event.data.signedAgreementId).trim()
+                if (!agreementId) {
+                    return
+                }
+
+                if (processedTosAgreementIdsRef.current.has(agreementId)) {
+                    return
+                }
+                processedTosAgreementIdsRef.current.add(agreementId)
 
                 setSignedAgreementId(agreementId)
 
-                // Submit the signed agreement ID to backend first
                 const submitTosAcceptance = async () => {
                     try {
-                        // Get fresh CSRF token before making the request
-                        let csrfToken = getCsrfToken()
-
-                        // If token is missing, try to refresh it by making a GET request first
-                        if (!csrfToken) {
-                            try {
-                                const tokenResponse = await fetch('/wallet/bridge/status', {
-                                    method: 'GET',
-                                    headers: {
-                                        'Accept': 'application/json',
-                                        'X-Requested-With': 'XMLHttpRequest',
-                                    },
-                                    credentials: 'include',
-                                    cache: 'no-store',
-                                })
-                                // After the request, try to get token again
-                                csrfToken = getCsrfToken()
-                            } catch (e) {
-                            }
-                        }
-
-                        if (!csrfToken) {
-                            showErrorToast('CSRF token not found. Please refresh the page and try again.')
+                        if (tosStatus === 'accepted' || tosStatus === 'approved') {
+                            setTosIframeUrl(null)
                             return
                         }
 
@@ -968,57 +967,40 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             body: { signed_agreement_id: agreementId },
                         })
 
-                        const tosErrorData = await response.json().catch(() => ({} as Record<string, unknown>))
-                        if (isCsrfMismatch(response.status, typeof tosErrorData.message === 'string' ? tosErrorData.message : null)) {
+                        const data = await response.json().catch(() => ({} as Record<string, unknown>))
+                        const message = typeof data.message === 'string' ? data.message : null
+
+                        if (isCsrfMismatch(response.status, message)) {
+                            processedTosAgreementIdsRef.current.delete(agreementId)
                             showErrorToast('Session expired. Please refresh the page and try again.')
                             return
                         }
 
-                        if (!response.ok) {
-                            const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
-                            showErrorToast(errorData.message || 'Failed to accept Terms of Service')
+                        if (!response.ok || !data.success) {
+                            processedTosAgreementIdsRef.current.delete(agreementId)
+                            showErrorToast(message || 'Failed to accept Terms of Service')
                             return
                         }
 
-                        const data = await response.json()
+                        setTosIframeUrl(null)
 
-                        if (data.success) {
-                            // Hide TOS iframe immediately when accepted
-                            setTosIframeUrl(null)
+                        const backendTosStatus =
+                            typeof data.tos_status === 'string' ? data.tos_status : 'accepted'
+                        setTosStatus(backendTosStatus === 'approved' ? 'approved' : 'accepted')
 
-                            // Update TOS status from backend response if available, otherwise use 'accepted'
-                            const backendTosStatus = data.tos_status || 'accepted'
-                            const finalTosStatus = backendTosStatus === 'approved' ? 'approved' : 'accepted'
-                            // Immediately set the status to ensure UI updates
-                            setTosStatus(finalTosStatus)
+                        showSuccessToast('Terms of Service accepted successfully')
 
-                            // Show success message
-                                showSuccessToast('Terms of Service accepted successfully')
-
-                                    // Re-check status to ensure everything is synced with backend
-                            setTimeout(() => {
-                                    checkBridgeAndFetchBalance()
-                            }, 1000)
-                        } else {
-                            showErrorToast(data.message || 'Failed to accept Terms of Service')
-                        }
+                        setTimeout(() => {
+                            checkBridgeAndFetchBalance()
+                        }, 1000)
                     } catch (error) {
+                        processedTosAgreementIdsRef.current.delete(agreementId)
                         console.error('Error submitting TOS acceptance:', error)
                         showErrorToast('Failed to accept Terms of Service')
                     }
                 }
 
                 submitTosAcceptance()
-
-                // Handle close action from iframe
-                if (action === 'close') {
-                    // Hide the TOS iframe immediately
-                    setTosIframeUrl(null)
-                    // Iframe is closing, ensure we check status
-                    setTimeout(() => {
-                        checkBridgeAndFetchBalance()
-                    }, 500)
-                }
                 return
             }
 
