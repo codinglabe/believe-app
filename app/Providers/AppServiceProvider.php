@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -53,6 +54,15 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        // Avoid Chrome "preloaded but not used" warnings: keep stylesheet links, skip CSS preload.
+        Vite::usePreloadTagAttributes(function (string $src, string $url, ?array $chunk, ?array $manifest) {
+            if (str_ends_with($url, '.css')) {
+                return false;
+            }
+
+            return [];
+        });
 
         RateLimiter::for('wallet-balance', function (Request $request) {
             return Limit::perMinute(30)->by($request->user()?->id ?: $request->ip());
