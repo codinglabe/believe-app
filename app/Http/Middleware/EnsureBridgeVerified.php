@@ -25,6 +25,11 @@ class EnsureBridgeVerified
         '/wallet/kyc-callback',
         '/wallet/kyb-callback',
         '/wallet/tos-callback',
+        // Account utilities — must work while org completes Bridge verification
+        '/notifications',
+        '/push-token',
+        '/api/push-notifications',
+        '/broadcasting',
     ];
 
     public function handle(Request $request, Closure $next): Response

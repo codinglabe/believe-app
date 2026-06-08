@@ -76,7 +76,15 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       setNotifications(formattedNotifications)
       setUnreadCount(formattedNotifications.filter((n: Notification) => !n.read).length)
     } catch (error) {
-      console.error("Error fetching notifications:", error)
+      const bridgeBlocked =
+        axios.isAxiosError(error) &&
+        error.response?.status === 403 &&
+        (error.response?.data as { requires_bridge_verification?: boolean } | undefined)
+          ?.requires_bridge_verification === true
+
+      if (!bridgeBlocked) {
+        console.error("Error fetching notifications:", error)
+      }
     } finally {
       setIsLoading(false)
     }

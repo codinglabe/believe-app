@@ -61,6 +61,18 @@ async function postPushTokenToServer(token: string): Promise<void> {
 
     if (!response.ok) {
         const text = await response.text();
+        let payload: { requires_bridge_verification?: boolean } | null = null;
+        try {
+            payload = JSON.parse(text) as { requires_bridge_verification?: boolean };
+        } catch {
+            payload = null;
+        }
+
+        if (response.status === 403 && payload?.requires_bridge_verification) {
+            console.info("[Push] Token sync blocked until Bridge verification completes");
+            return;
+        }
+
         if (response.status !== 401 && response.status !== 403) {
             localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
         }
