@@ -57,7 +57,13 @@ class BridgeWalletController extends Controller
                 ->where('integratable_type', $entityType)
                 ->first();
 
-            // Re-sync from Bridge when customer exists locally (e.g. after DB cleanup)
+            // Link existing Bridge customer by email (e.g. after local DB cleanup)
+            $linked = $this->linkBridgeCustomerByEmail($entity, $entityType, $user, $isOrgUser, $integration);
+            if ($linked) {
+                $integration = $linked->loadMissing('primaryWallet');
+            }
+
+            // Re-sync from Bridge when customer exists locally
             if ($integration && $integration->bridge_customer_id) {
                 $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
                 $integration->refresh();
@@ -101,15 +107,22 @@ class BridgeWalletController extends Controller
                 ]);
             }
 
-            // If KYC link exists but not completed, return existing links
+            // If KYC link exists but verification may already be complete on Bridge
             if ($integration && $integration->kyc_link_id) {
+                if ($integration->bridge_customer_id) {
+                    $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+                    $integration->refresh();
+                }
+
                 $kycWidgetUrl = $integration->kyc_link_url
                     ? $this->bridgeService->convertKycLinkToWidgetUrl($integration->kyc_link_url)
                     : null;
 
+                $requiresVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
+
                 return response()->json([
                     'success' => true,
-                    'message' => 'Please complete verification',
+                    'message' => $requiresVerification ? 'Please complete verification' : 'Wallet connected successfully',
                     'data' => [
                         'customer_id' => $integration->bridge_customer_id,
                         'kyc_link_id' => $integration->kyc_link_id,
@@ -118,7 +131,8 @@ class BridgeWalletController extends Controller
                         'kyc_widget_url' => $kycWidgetUrl,
                         'kyc_status' => $integration->kyc_status,
                         'kyb_status' => $integration->kyb_status,
-                        'requires_verification' => true,
+                        'tos_status' => $integration->tos_status,
+                        'requires_verification' => $requiresVerification,
                     ],
                 ]);
             }
@@ -186,6 +200,9 @@ class BridgeWalletController extends Controller
                 $integration->tos_link_url = $response['tos_link'] ?? null;
                 // Use Bridge's actual status values
                 $integration->kyc_status = $response['kyc_status'] ?? 'not_started';
+                if ($isOrgUser) {
+                    $integration->kyb_status = $response['kyb_status'] ?? ($integration->kyb_status ?? 'not_started');
+                }
                 $integration->tos_status = $response['tos_status'] ?? 'pending'; // ToS uses 'pending' or 'approved'
                 $integration->bridge_metadata = [
                     'kyc_link_response' => $response,
@@ -957,7 +974,14 @@ class BridgeWalletController extends Controller
                 ];
             }
             
-            if (!$integration || !$integration->bridge_customer_id) {
+            if (! $integration || ! $integration->bridge_customer_id) {
+                $linked = $this->linkBridgeCustomerByEmail($entity, $entityType, $user, $isOrgUser, $integration);
+                if ($linked) {
+                    $integration = $linked->loadMissing('primaryWallet');
+                }
+            }
+
+            if (! $integration || ! $integration->bridge_customer_id) {
                 return response()->json([
                     'success' => false,
                     'initialized' => false,
@@ -5273,6 +5297,162 @@ class BridgeWalletController extends Controller
                 'message' => 'Failed to fetch webhook event',
             ], 500);
         }
+    }
+
+    /**
+     * Link an existing Bridge customer to the local entity using email lookup.
+     */
+    private function linkBridgeCustomerByEmail(
+        object $entity,
+        string $entityType,
+        User $user,
+        bool $isOrgUser,
+        ?BridgeIntegration $integration = null,
+    ): ?BridgeIntegration {
+        $email = strtolower(trim((string) ($entity->email ?? $user->email ?? '')));
+        if ($email === '') {
+            return null;
+        }
+
+        try {
+            $result = $this->bridgeService->getCustomersByEmail($email);
+            if (! $result['success']) {
+                return null;
+            }
+
+            $customers = $this->normalizeBridgeCustomerList($result['data'] ?? []);
+            if ($customers === []) {
+                return null;
+            }
+
+            $customer = $this->pickBestBridgeCustomer($customers, $isOrgUser, $email);
+            if ($customer === null || empty($customer['id'])) {
+                return null;
+            }
+
+            $customerId = (string) $customer['id'];
+
+            $integration = BridgeIntegration::resolveForEntity(
+                $entity->id,
+                $entityType,
+                $customerId,
+                $integration?->kyc_link_id,
+            );
+
+            $integration->bridge_customer_id = $customerId;
+            $metadata = $integration->bridge_metadata ?? [];
+            if (! is_array($metadata)) {
+                $metadata = is_string($metadata) ? (json_decode($metadata, true) ?? []) : [];
+            }
+            $metadata['type'] = $isOrgUser ? 'business' : 'individual';
+            $metadata['linked_by_email'] = $email;
+            $metadata['linked_at'] = now()->toIso8601String();
+            $integration->bridge_metadata = $metadata;
+            $integration->save();
+
+            Log::info('Linked existing Bridge customer by email', [
+                'integratable_id' => $entity->id,
+                'integratable_type' => $entityType,
+                'customer_id' => $customerId,
+                'email' => $email,
+                'customer_status' => $customer['status'] ?? null,
+            ]);
+
+            $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+
+            return $integration->fresh();
+        } catch (\Exception $e) {
+            Log::warning('Failed to link Bridge customer by email', [
+                'email' => $email,
+                'integratable_id' => $entity->id,
+                'integratable_type' => $entityType,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeBridgeCustomerList(mixed $payload): array
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+
+        if (isset($payload['data']) && is_array($payload['data'])) {
+            return array_values($payload['data']);
+        }
+
+        if (isset($payload[0]) && is_array($payload[0])) {
+            return array_values($payload);
+        }
+
+        if (isset($payload['id'])) {
+            return [$payload];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $customers
+     * @return array<string, mixed>|null
+     */
+    private function pickBestBridgeCustomer(array $customers, bool $isOrgUser, string $email): ?array
+    {
+        $expectedType = $isOrgUser ? 'business' : 'individual';
+        $email = strtolower($email);
+
+        $matches = array_values(array_filter($customers, function (array $customer) use ($expectedType, $email): bool {
+            $customerEmail = strtolower(trim((string) ($customer['email'] ?? '')));
+            $customerType = strtolower((string) ($customer['type'] ?? ''));
+
+            return $customerEmail === $email && ($customerType === $expectedType || $customerType === '');
+        }));
+
+        if ($matches === []) {
+            $matches = array_values(array_filter($customers, function (array $customer) use ($email): bool {
+                return strtolower(trim((string) ($customer['email'] ?? ''))) === $email;
+            }));
+        }
+
+        if ($matches === []) {
+            return null;
+        }
+
+        usort($matches, function (array $a, array $b): int {
+            $score = fn (array $customer): int => (
+                (strtolower((string) ($customer['status'] ?? '')) === 'active' ? 100 : 0)
+                + $this->bridgeCustomerEndorsementScore($customer)
+            );
+
+            return $score($b) <=> $score($a);
+        });
+
+        return $matches[0];
+    }
+
+    /**
+     * @param  array<string, mixed>  $customer
+     */
+    private function bridgeCustomerEndorsementScore(array $customer): int
+    {
+        $score = 0;
+
+        foreach ($customer['endorsements'] ?? [] as $endorsement) {
+            if (strtolower((string) ($endorsement['status'] ?? '')) === 'approved') {
+                $score += 10;
+            }
+        }
+
+        if (! empty($customer['has_accepted_terms_of_service'])) {
+            $score += 5;
+        }
+
+        return $score;
     }
 
     /**

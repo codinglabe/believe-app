@@ -477,6 +477,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setTosStatus(statusData.tos_status)
                     }
 
+                    const kybApprovedOnBridge = statusData.kyb_status === 'approved'
+                    const kycApprovedOnBridge = statusData.kyc_status === 'approved'
+                    if (
+                        isBackendAccepted &&
+                        ((statusData.verification_type === 'kyb' && kybApprovedOnBridge) ||
+                            (statusData.verification_type === 'kyc' && kycApprovedOnBridge))
+                    ) {
+                        setRequiresVerification(false)
+                    }
+
                     // If TOS is accepted, hide the iframe immediately
                     if (isBackendAccepted) {
                         setTosIframeUrl(null)
@@ -1634,6 +1644,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setVerificationType(statusData.verification_type)
                 }
 
+                const tosAccepted =
+                    statusData.tos_status === 'accepted' || statusData.tos_status === 'approved'
+                const kybApproved = statusData.kyb_status === 'approved'
+                const kycApproved = statusData.kyc_status === 'approved'
+                if (
+                    tosAccepted &&
+                    ((statusData.verification_type === 'kyb' && kybApproved) ||
+                        (statusData.verification_type === 'kyc' && kycApproved) ||
+                        (kybApproved && statusData.verification_type !== 'kyc'))
+                ) {
+                    setRequiresVerification(false)
+                }
+
                 // Load KYB step progress from backend
                 if (statusData.kyb_step && statusData.verification_type === 'kyb') {
                     // CRITICAL: Check has_control_person FIRST - same logic as checkBridgeAndFetchBalance
@@ -1793,8 +1816,20 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (data.data.kyb_status) {
                     setKybStatus(data.data.kyb_status)
                 }
-                if (data.data.requires_verification) {
-                    setRequiresVerification(data.data.requires_verification)
+                if (data.data.requires_verification !== undefined) {
+                    setRequiresVerification(Boolean(data.data.requires_verification))
+                }
+
+                const initTosAccepted =
+                    data.data.tos_status === 'accepted' || data.data.tos_status === 'approved'
+                const initKybApproved = data.data.kyb_status === 'approved'
+                const initKycApproved = data.data.kyc_status === 'approved'
+                if (
+                    initTosAccepted &&
+                    (initKybApproved || initKycApproved) &&
+                    data.data.requires_verification === false
+                ) {
+                    setRequiresVerification(false)
                 }
             }
         } catch (error) {

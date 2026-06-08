@@ -293,6 +293,14 @@ class BridgeService
     }
 
     /**
+     * Find customers by email (Bridge supports email query filter).
+     */
+    public function getCustomersByEmail(string $email): array
+    {
+        return $this->makeRequest('GET', '/customers', ['email' => trim($email)]);
+    }
+
+    /**
      * Request an endorsement for a customer
      * 
      * Per Bridge.xyz API docs: POST /customers/{customerId}/endorsements
