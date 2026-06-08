@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Plus, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ExternalAccount } from './types'
 
@@ -11,6 +11,7 @@ interface TransferFromExternalProps {
     onAccountChange: (accountId: string) => void
     onAmountChange: (amount: string) => void
     onTransfer: () => void
+    onAddBankAccount?: () => void
 }
 
 export function TransferFromExternal({
@@ -20,10 +21,41 @@ export function TransferFromExternal({
     isLoading,
     onAccountChange,
     onAmountChange,
-    onTransfer
+    onTransfer,
+    onAddBankAccount,
 }: TransferFromExternalProps) {
     const verifiedAccounts = externalAccounts.filter(acc => acc.status === 'verified')
     const isValid = selectedExternalAccount && transferAmount && parseFloat(transferAmount) > 0
+
+    if (verifiedAccounts.length === 0) {
+        return (
+            <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="p-4 space-y-4"
+            >
+                <div className="text-center py-8 border border-dashed border-border rounded-lg">
+                    <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm font-medium mb-1">No bank account linked</p>
+                    <p className="text-xs text-muted-foreground mb-4 px-4">
+                        Add a verified bank account before transferring funds from your bank.
+                    </p>
+                    {onAddBankAccount && (
+                        <Button
+                            onClick={onAddBankAccount}
+                            size="sm"
+                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                        >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Bank Account
+                        </Button>
+                    )}
+                </div>
+            </motion.div>
+        )
+    }
 
     return (
         <motion.div

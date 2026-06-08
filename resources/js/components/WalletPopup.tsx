@@ -148,6 +148,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [isSandbox, setIsSandbox] = useState(false)
     const [hasCardWallet, setHasCardWallet] = useState<boolean | null>(null)
     const [isCheckingCardWallet, setIsCheckingCardWallet] = useState(false)
+    const [hasBankAccounts, setHasBankAccounts] = useState<boolean | null>(null)
+    const [showAddBankFormOnEntry, setShowAddBankFormOnEntry] = useState(false)
     const [depositInstructions, setDepositInstructions] = useState<{
         bank_name?: string;
         bank_address?: string;
@@ -1192,15 +1194,26 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 console.log('Final accounts to set:', accounts)
                 // Use accounts as-is since backend already mapped them correctly
                 setExternalAccounts(accounts)
+                setHasBankAccounts(accounts.length > 0)
             } else {
                 console.warn('No accounts found in response:', data)
                 setExternalAccounts([])
+                setHasBankAccounts(false)
             }
         } catch (error) {
             console.error('Failed to fetch external accounts:', error)
             setExternalAccounts([])
+            setHasBankAccounts(false)
         } finally {
             setIsLoadingExternalAccounts(false)
+        }
+    }
+
+    const goToAddBankAccount = () => {
+        setShowAddBankFormOnEntry(true)
+        setActionView('external_accounts')
+        if (hasBankAccounts === null) {
+            fetchExternalAccounts()
         }
     }
 
@@ -1239,6 +1252,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             const data = await response.json()
             if (data.success) {
                 showSuccessToast('Bank account linked successfully!')
+                setShowAddBankFormOnEntry(false)
                 await fetchExternalAccounts()
                 setActionView('external_accounts')
             } else {
@@ -2876,6 +2890,30 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     useEffect(() => {
         if (actionView === 'external_accounts') {
             fetchExternalAccounts()
+        } else {
+            setShowAddBankFormOnEntry(false)
+        }
+    }, [actionView])
+
+    // Prefetch bank accounts when wallet is ready
+    useEffect(() => {
+        const walletReady = walletAddress || (bridgeInitialized && hasWallet)
+
+        if (walletReady && hasBankAccounts === null && !isLoadingExternalAccounts) {
+            fetchExternalAccounts()
+        }
+    }, [bridgeInitialized, hasWallet, walletAddress])
+
+    // Refresh bank accounts when opening flows that need them
+    useEffect(() => {
+        const walletReady = walletAddress || (bridgeInitialized && hasWallet)
+        const needsBankAccounts = actionView === 'transfer_from_external'
+            || actionView === 'withdraw_to_external'
+            || actionView === 'services_menu'
+            || actionView === 'addMoney'
+
+        if (needsBankAccounts && walletReady && hasBankAccounts === null && !isLoadingExternalAccounts) {
+            fetchExternalAccounts()
         }
     }, [actionView])
 
@@ -3472,6 +3510,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 key="external-accounts"
                                                 externalAccounts={externalAccounts}
                                                 isLoading={isLoadingExternalAccounts}
+                                                initialShowAddForm={showAddBankFormOnEntry}
                                                 onRefresh={fetchExternalAccounts}
                                                 onLinkAccount={handleLinkExternalAccount}
                                                 onWithdraw={() => {
@@ -3482,33 +3521,54 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             />
                                         )
                                     ) : !showSuccess && actionView === 'transfer_from_external' ? (
-                                        <TransferFromExternal
-                                            key="transfer-from-external"
-                                            externalAccounts={externalAccounts}
-                                            selectedExternalAccount={selectedExternalAccount}
-                                            transferAmount={transferAmount}
-                                            isLoading={isLoading}
-                                            onAccountChange={setSelectedExternalAccount}
-                                            onAmountChange={setTransferAmount}
-                                            onTransfer={handleTransferFromExternal}
-                                        />
+                                        isLoadingExternalAccounts && hasBankAccounts === null ? (
+                                            <div key="transfer-from-external-loading" className="p-4 space-y-4">
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                            </div>
+                                        ) : (
+                                            <TransferFromExternal
+                                                key="transfer-from-external"
+                                                externalAccounts={externalAccounts}
+                                                selectedExternalAccount={selectedExternalAccount}
+                                                transferAmount={transferAmount}
+                                                isLoading={isLoading}
+                                                onAccountChange={setSelectedExternalAccount}
+                                                onAmountChange={setTransferAmount}
+                                                onTransfer={handleTransferFromExternal}
+                                                onAddBankAccount={goToAddBankAccount}
+                                            />
+                                        )
                                     ) : !showSuccess && actionView === 'withdraw_to_external' ? (
-                                        <WithdrawToExternal
-                                            key="withdraw-to-external"
-                                            externalAccounts={externalAccounts}
-                                            selectedExternalAccount={selectedExternalAccount}
-                                            withdrawAmount={withdrawAmount}
-                                            walletBalance={walletBalance}
-                                            isLoading={isLoading}
-                                            onAccountChange={setSelectedExternalAccount}
-                                            onAmountChange={setWithdrawAmount}
-                                            onWithdraw={handleWithdrawToExternal}
-                                        />
+                                        isLoadingExternalAccounts && hasBankAccounts === null ? (
+                                            <div key="withdraw-to-external-loading" className="p-4 space-y-4">
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                                <Skeleton className="h-10 w-full" />
+                                            </div>
+                                        ) : (
+                                            <WithdrawToExternal
+                                                key="withdraw-to-external"
+                                                externalAccounts={externalAccounts}
+                                                selectedExternalAccount={selectedExternalAccount}
+                                                withdrawAmount={withdrawAmount}
+                                                walletBalance={walletBalance}
+                                                isLoading={isLoading}
+                                                onAccountChange={setSelectedExternalAccount}
+                                                onAmountChange={setWithdrawAmount}
+                                                onWithdraw={handleWithdrawToExternal}
+                                                onAddBankAccount={goToAddBankAccount}
+                                            />
+                                        )
                                     ) : !showSuccess && actionView === 'services_menu' ? (
                                         <ServicesMenu
                                             onNavigate={setActionView}
                                             hasCardWallet={hasCardWallet}
                                             isCheckingCardWallet={isCheckingCardWallet}
+                                            hasBankAccounts={hasBankAccounts}
+                                            isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
+                                            onAddBankAccount={goToAddBankAccount}
                                         />
                                     ) : !showSuccess && actionView === 'activity' ? (
                                         <ActivityScreen
@@ -3573,6 +3633,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 depositInstructions={depositInstructions}
                                                 selectedPaymentMethod={selectedPaymentMethod}
                                                 onPaymentMethodChange={setSelectedPaymentMethod}
+                                                hasBankAccounts={hasBankAccounts}
+                                                isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
+                                                onAddBankAccount={goToAddBankAccount}
                                             />
                                         )
                                     ) : actionView === 'main' ? (
@@ -3649,9 +3712,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 isLoading={isLoading}
                                                 copied={copied}
                                                 isSandbox={isSandbox}
+                                                hasBankAccounts={hasBankAccounts}
+                                                isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
                                                 onRefresh={handleRefresh}
                                                 onCopyAddress={handleCopyAddress}
                                                 onActionViewChange={setActionView}
+                                                onAddBankAccount={goToAddBankAccount}
                                             />
                                         ) : (() => {
                                             // PRIORITY 1: Check if account is approved but wallet doesn't exist

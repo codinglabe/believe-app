@@ -1,4 +1,5 @@
-import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Building2, CreditCard, Menu } from 'lucide-react'
+import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, Building2, Menu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { ActionView } from './types'
 import { formatCurrency } from './utils'
 
@@ -8,16 +9,22 @@ interface WalletScreenProps {
     isLoading: boolean
     copied: boolean
     isSandbox: boolean
+    hasBankAccounts?: boolean | null
+    isCheckingBankAccounts?: boolean
     onRefresh: () => void
     onCopyAddress: () => void
     onActionViewChange: (view: ActionView) => void
+    onAddBankAccount?: () => void
 }
 
 export function WalletScreen({
     walletBalance,
     isLoading,
+    hasBankAccounts,
+    isCheckingBankAccounts,
     onRefresh,
-    onActionViewChange
+    onActionViewChange,
+    onAddBankAccount,
 }: WalletScreenProps) {
     return (
         <div className="p-4 space-y-4">
@@ -89,6 +96,37 @@ export function WalletScreen({
                 </button>
             </div>
 
+            {hasBankAccounts === false && onAddBankAccount && (
+                <div className="rounded-lg border border-dashed border-border p-4 text-center space-y-3">
+                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                        <Building2 className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-sm font-medium">No bank account linked</p>
+                        <p className="text-xs text-muted-foreground">
+                            Add a bank account to withdraw funds or transfer from your bank.
+                        </p>
+                    </div>
+                    <Button
+                        onClick={onAddBankAccount}
+                        disabled={isCheckingBankAccounts}
+                        size="sm"
+                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                    >
+                        {isCheckingBankAccounts ? (
+                            <>
+                                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                Checking…
+                            </>
+                        ) : (
+                            <>
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add Bank Account
+                            </>
+                        )}
+                    </Button>
+                </div>
+            )}
 
         </div>
     )
