@@ -252,8 +252,7 @@ print_firewall_help() {
     echo "::error::Could not reach ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} (runner ${RUNNER_IP})."
   fi
   echo "::error::ONE-TIME fix (WHM -> Terminal as root):"
-  echo "::error::  curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
-  echo "::error::Add DEPLOY_RUNNER_ALLOW_TOKEN to GitHub Secrets (printed by setup script)."
+  echo "::error::  bash ${DEPLOY_PATH:-/home/believeinunity/public_html}/scripts/allow-github-actions-csf.sh"
 }
 
 connected=0

@@ -105,18 +105,12 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
           set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
-          fi
-          if [ -z "${DEPLOY_RUNNER_ALLOW_TOKEN}" ]; then
-            echo "::warning::DEPLOY_RUNNER_ALLOW_TOKEN not set — skipping HTTPS CSF preflight."
-            echo "::warning::If SSH times out, run on VPS as root:"
-            echo "::warning::  DEPLOY_USER=believeinunity DEPLOY_PATH=${DEPLOY_PATH} bash ${DEPLOY_PATH}/scripts/allow-github-actions-csf.sh"
           fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
           bash .github/scripts/setup-cpanel-ssh.sh
