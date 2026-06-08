@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -33,6 +34,65 @@ class BridgeIntegration extends Model
         'user',
         'organization',
     ];
+
+    /**
+     * Find or create the integration row for an entity, reusing an existing Bridge customer when present.
+     */
+    public static function resolveForEntity(
+        int $integratableId,
+        string $integratableType,
+        ?string $bridgeCustomerId = null,
+        ?string $kycLinkId = null,
+    ): self {
+        $byEntity = static::where('integratable_id', $integratableId)
+            ->where('integratable_type', $integratableType)
+            ->first();
+
+        $byCustomer = $bridgeCustomerId
+            ? static::where('bridge_customer_id', $bridgeCustomerId)->first()
+            : null;
+
+        $byKycLink = $kycLinkId
+            ? static::where('kyc_link_id', $kycLinkId)->first()
+            : null;
+
+        // Prefer the canonical Bridge customer row when Bridge returns an existing customer_id.
+        $integration = $byCustomer ?? $byKycLink ?? $byEntity;
+
+        if (! $integration) {
+            $integration = new static();
+        } elseif (
+            $integration->integratable_id !== $integratableId
+            || $integration->integratable_type !== $integratableType
+        ) {
+            Log::info('BridgeIntegration: re-linked existing Bridge customer to current entity', [
+                'integration_id' => $integration->id,
+                'bridge_customer_id' => $bridgeCustomerId,
+                'from_integratable_id' => $integration->integratable_id,
+                'from_integratable_type' => $integration->integratable_type,
+                'to_integratable_id' => $integratableId,
+                'to_integratable_type' => $integratableType,
+            ]);
+        }
+
+        if (
+            $byEntity
+            && $integration->id
+            && $byEntity->id !== $integration->id
+            && empty($byEntity->bridge_customer_id)
+        ) {
+            Log::info('BridgeIntegration: removing orphan integration stub', [
+                'stub_id' => $byEntity->id,
+                'kept_integration_id' => $integration->id,
+            ]);
+            $byEntity->delete();
+        }
+
+        $integration->integratable_id = $integratableId;
+        $integration->integratable_type = $integratableType;
+
+        return $integration;
+    }
 
     /**
      * Get the parent integratable model (User or Organization).
