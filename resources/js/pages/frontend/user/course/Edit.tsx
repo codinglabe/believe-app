@@ -35,6 +35,7 @@ import {
 } from "@/components/organization-primary-action-categories-field"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
+import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
 
 interface EventType {
   id: number
@@ -209,18 +210,6 @@ export default function AdminCoursesEdit() {
     if (data.type === "companion") return companionEventTypes
     return eventTypes
   }, [data.type, companionEventTypes, eventTypes])
-
-  const groupedEventTypes = useMemo(() => {
-    return topicCatalog.reduce(
-      (acc, type) => {
-        const category = type.category || "Other"
-        if (!acc[category]) acc[category] = []
-        acc[category].push(type)
-        return acc
-      },
-      {} as Record<string, EventType[]>,
-    )
-  }, [topicCatalog])
 
   useEffect(() => {
     const ids = new Set(topicCatalog.map((t) => t.id.toString()))
@@ -523,7 +512,7 @@ export default function AdminCoursesEdit() {
                 <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
                   <CardTitle className="text-lg font-semibold">{connectionHubTypeLabel(data.type)} basics</CardTitle>
                   <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                    Name, topic, pricing, causes, and description
+                    Name, topic, sub topic, pricing, causes, and description
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -566,36 +555,15 @@ export default function AdminCoursesEdit() {
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
                     </div>
 
-                    <div className="space-y-2">
-                      <label htmlFor="event_type_id" className="text-sm font-medium">
-                        Topic *
-                      </label>
-                      <Select
-                        value={data.event_type_id || ""}
-                        onValueChange={(value) => setData("event_type_id", value)}
-                      >
-                        <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
-                          <SelectValue placeholder="Select topic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(groupedEventTypes).map(([category, types]) => (
-                            <div key={category}>
-                              <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
-                                {category}
-                              </div>
-                              {types.map((t) => (
-                                <SelectItem key={t.id} value={t.id.toString()}>
-                                  {t.name}
-                                </SelectItem>
-                              ))}
-                            </div>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {errors.event_type_id && (
-                        <p className="text-sm text-destructive">{errors.event_type_id}</p>
-                      )}
-                    </div>
+                    <EventTypeTopicFields
+                      eventTypes={topicCatalog}
+                      eventTypeId={data.event_type_id}
+                      onEventTypeIdChange={(value) => setData("event_type_id", value)}
+                      error={
+                        typeof errors.event_type_id === "string" ? errors.event_type_id : undefined
+                      }
+                      labelClassName="text-sm font-medium"
+                    />
 
                     <div className="space-y-2">
                       <label htmlFor="target_audience" className="text-sm font-medium">

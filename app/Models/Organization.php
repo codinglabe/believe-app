@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class Organization extends Model
 {
@@ -462,6 +463,15 @@ class Organization extends Model
     public function currentBalance(): float
     {
         return (float) $this->balance;
+    }
+
+    public function logoUrl(): ?string
+    {
+        if (! $this->registered_user_image) {
+            return null;
+        }
+
+        return url(Storage::url($this->registered_user_image));
     }
     // }
 
