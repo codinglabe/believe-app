@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\ChatMessage;
 use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class SendChatMessageNotification implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesPushNotificationQueue;
 
     public $message;
     public $tries = 3;
@@ -25,6 +26,7 @@ class SendChatMessageNotification implements ShouldQueue
     public function __construct(ChatMessage $message)
     {
         $this->message = $message;
+        $this->configurePushNotificationQueue();
     }
 
     /**

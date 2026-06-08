@@ -14,6 +14,17 @@ const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // Re-sync every 6 hours
 let syncInFlight: Promise<string | null> | null = null;
 let refreshListenersStarted = false;
 
+function detectMobilePlatform(): string | null {
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+        return "iOS";
+    }
+    if (/Android/i.test(ua)) {
+        return "Android";
+    }
+    return null;
+}
+
 export function getWebPushDeviceInfo() {
     const nav = navigator as Navigator & {
         userAgentData?: { brands?: Array<{ brand?: string }> };
@@ -23,12 +34,14 @@ export function getWebPushDeviceInfo() {
         deviceId = `device_${Math.random().toString(36).slice(2, 11)}`;
         localStorage.setItem(DEVICE_ID_KEY, deviceId);
     }
+    const mobilePlatform = detectMobilePlatform();
     return {
         device_id: deviceId,
+        // Web FCM tokens must stay "web" so the server uses webpush delivery.
         device_type: "web" as const,
-        device_name: navigator.userAgent,
-        browser: nav.userAgentData?.brands?.[0]?.brand || "Unknown",
-        platform: navigator.platform,
+        device_name: mobilePlatform ? `${mobilePlatform} ${navigator.userAgent}` : navigator.userAgent,
+        browser: nav.userAgentData?.brands?.[0]?.brand || mobilePlatform || "Unknown",
+        platform: mobilePlatform || navigator.platform,
         user_agent: navigator.userAgent,
     };
 }

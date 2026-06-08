@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\DailyEngagementNotificationLog;
 use App\Models\User;
 use App\Notifications\DailyEngagementNotification;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 
 class SendDailyEngagementPushJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesPushNotificationQueue;
 
     public int $tries = 1;
 
@@ -26,7 +27,9 @@ class SendDailyEngagementPushJob implements ShouldQueue
         public string $body,
         public int $messageIndex,
         public string $sentOn,
-    ) {}
+    ) {
+        $this->configurePushNotificationQueue();
+    }
 
     public function handle(FirebaseService $firebase): void
     {

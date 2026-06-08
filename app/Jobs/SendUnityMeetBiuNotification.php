@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\UserLivestream;
 use App\Services\UnityMeetBiuNotifier;
 use Illuminate\Bus\Queueable;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class SendUnityMeetBiuNotification implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesPushNotificationQueue;
 
     public $tries = 3;
 
@@ -22,7 +23,9 @@ class SendUnityMeetBiuNotification implements ShouldQueue
     public function __construct(
         public int $livestreamId,
         public string $recipientEmail,
-    ) {}
+    ) {
+        $this->configurePushNotificationQueue();
+    }
 
     public function handle(UnityMeetBiuNotifier $notifier): void
     {

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\Event;
 use App\Models\User;
 use App\Services\FirebaseService;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 
 class SendEventNotification implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesPushNotificationQueue;
 
     public $event;
     public $tries = 3;
@@ -26,6 +27,7 @@ class SendEventNotification implements ShouldQueue
     public function __construct(Event $event)
     {
         $this->event = $event;
+        $this->configurePushNotificationQueue();
     }
 
     /**

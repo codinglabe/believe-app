@@ -119,6 +119,12 @@ return [
          */
         'verify_ssl' => filter_var(env('FIREBASE_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
         'cafile' => env('FIREBASE_CAFILE'),
+        /**
+         * Push alert jobs default to sync so delivery + admin logs do not depend on
+         * `php artisan queue:work`. Set PUSH_QUEUE_CONNECTION=database on servers
+         * that run a dedicated queue worker for push.
+         */
+        'queue_connection' => env('PUSH_QUEUE_CONNECTION', 'sync'),
     ],
 
     'openai' => [
