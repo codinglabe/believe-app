@@ -104,6 +104,7 @@ use App\Http\Controllers\FundraiseController;
 use App\Http\Controllers\GiftCardController;
 use App\Http\Controllers\GovernanceComplianceController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\Internal\DeployRunnerAllowController;
 use App\Http\Controllers\ImpactScoreController;
 use App\Http\Controllers\IntegrationsController;
 use App\Http\Controllers\InvestController;
@@ -198,6 +199,10 @@ Route::domain(config('merchant.domain'))->group(function () {
 Route::domain(config('livestock.domain'))->group(function () {
     require __DIR__.'/livestock.php';
 });
+
+Route::post('/internal/deploy/allow-runner-ip', DeployRunnerAllowController::class)
+    ->middleware('throttle:10,1')
+    ->name('internal.deploy.allow-runner-ip');
 
 // Route::get('/test-broadcast', function () {
 //     $message = App\Models\ChatMessage::first();
