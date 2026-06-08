@@ -98,14 +98,8 @@
                 
                 // Send message to parent to check status after hiding
                 setTimeout(() => {
-                    window.parent.postMessage({ 
-                        ...message, 
-                        action: 'checkStatus',
-                        hideSuccess: true 
-                    }, '*');
-                    
-                    // Also send close action
-                    window.parent.postMessage({ ...message, action: 'close' }, '*');
+                    window.parent.postMessage({ action: 'checkStatus' }, '*');
+                    window.parent.postMessage({ action: 'close' }, '*');
                 }, 300);
             }, 2000); // Show success for 2 seconds (reduced from 3)
         } else if (window.opener) {
@@ -119,12 +113,7 @@
                 hideSuccessScreen();
                 
                 setTimeout(() => {
-                    // Send message to opener to check status after hiding
-                    window.opener.postMessage({ 
-                        ...message, 
-                        action: 'checkStatus',
-                        hideSuccess: true 
-                    }, '*');
+                    window.opener.postMessage({ action: 'checkStatus' }, '*');
                     
                     // Reload the opener page after successful TOS acceptance
                     if (message.success) {

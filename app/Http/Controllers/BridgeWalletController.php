@@ -2218,6 +2218,18 @@ class BridgeWalletController extends Controller
                 }
             }
 
+            if (! $integration && $user && $entity && $entityType) {
+                $isOrgUserForLink = $user->hasRole(['organization', 'organization_pending']);
+                $linked = $this->linkBridgeCustomerByEmail($entity, $entityType, $user, $isOrgUserForLink, null);
+                if ($linked) {
+                    $integration = $linked;
+                    Log::info('TOS callback: Linked integration by email before accepting ToS', [
+                        'integration_id' => $integration->id,
+                        'bridge_customer_id' => $integration->bridge_customer_id,
+                    ]);
+                }
+            }
+
             if (!$integration) {
                 // Enhanced logging to help debug
                 $allIntegrations = BridgeIntegration::whereNotNull('bridge_customer_id')->get(['id', 'bridge_customer_id', 'integratable_id', 'integratable_type']);
@@ -2367,13 +2379,13 @@ class BridgeWalletController extends Controller
             }
             
             // If we still don't have a valid customer, return error
-            if (!$customerIdToUpdate || !$customerExists) {
+            if (! $customerIdToUpdate || ! $customerExists) {
                 Log::error('TOS callback: Cannot find valid customer in Bridge', [
                     'integration_id' => $integration->id,
                     'signed_agreement_id' => $signedAgreementId,
                     'customer_id_in_integration' => $integration->bridge_customer_id,
                 ]);
-                
+
                 if ($request->isMethod('GET')) {
                     return response()->view('bridge.tos-callback', [
                         'signedAgreementId' => $signedAgreementId,
@@ -2381,57 +2393,77 @@ class BridgeWalletController extends Controller
                         'error' => 'Cannot find customer in Bridge. Please contact support.',
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot find customer in Bridge'
+                    'message' => 'Cannot find customer in Bridge',
                 ], 404);
             }
 
             // ============================================
-            // KEY FIX: Update Bridge customer with signed_agreement_id
+            // Update Bridge customer with signed_agreement_id (skip if ToS already accepted)
             // ============================================
-            $updateResult = $this->bridgeService->updateCustomer(
-                $customerIdToUpdate,
-                [
-                    'signed_agreement_id' => $signedAgreementId,
-                ]
-            );
+            $customerResult = $this->bridgeService->getCustomer($customerIdToUpdate);
+            $alreadyAcceptedOnBridge = $customerResult['success']
+                && ($customerResult['data']['has_accepted_terms_of_service'] ?? false);
 
-            if (!$updateResult['success']) {
-                Log::error('TOS callback: Failed to update Bridge customer', [
+            if (! $alreadyAcceptedOnBridge) {
+                $updateResult = $this->bridgeService->updateCustomer(
+                    $customerIdToUpdate,
+                    [
+                        'signed_agreement_id' => $signedAgreementId,
+                    ]
+                );
+
+                if (! $updateResult['success']) {
+                    $recheck = $this->bridgeService->getCustomer($customerIdToUpdate);
+                    $alreadyAcceptedOnBridge = $recheck['success']
+                        && ($recheck['data']['has_accepted_terms_of_service'] ?? false);
+
+                    if ($alreadyAcceptedOnBridge) {
+                        $customerResult = $recheck;
+                        Log::info('TOS callback: updateCustomer failed but Bridge already shows ToS accepted', [
+                            'customer_id' => $customerIdToUpdate,
+                            'signed_agreement_id' => $signedAgreementId,
+                        ]);
+                    } else {
+                        Log::error('TOS callback: Failed to update Bridge customer', [
+                            'customer_id' => $customerIdToUpdate,
+                            'signed_agreement_id' => $signedAgreementId,
+                            'error' => $updateResult['error'] ?? 'Unknown error',
+                        ]);
+
+                        if ($request->isMethod('GET')) {
+                            return response()->view('bridge.tos-callback', [
+                                'signedAgreementId' => $signedAgreementId,
+                                'success' => false,
+                                'error' => 'Failed to update Bridge: ' . ($updateResult['error'] ?? 'Unknown error'),
+                            ]);
+                        }
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Failed to update Bridge customer',
+                        ], 500);
+                    }
+                } else {
+                    Log::info('TOS callback: Bridge customer updated successfully', [
+                        'customer_id' => $customerIdToUpdate,
+                        'signed_agreement_id' => $signedAgreementId,
+                    ]);
+                    $customerResult = $this->bridgeService->getCustomer($customerIdToUpdate);
+                }
+            } else {
+                Log::info('TOS callback: Skipping updateCustomer — ToS already accepted on Bridge', [
                     'customer_id' => $customerIdToUpdate,
                     'signed_agreement_id' => $signedAgreementId,
-                    'error' => $updateResult['error'] ?? 'Unknown error',
                 ]);
-
-                if ($request->isMethod('GET')) {
-                    return response()->view('bridge.tos-callback', [
-                        'signedAgreementId' => $signedAgreementId,
-                        'success' => false,
-                        'error' => 'Failed to update Bridge: ' . ($updateResult['error'] ?? 'Unknown error'),
-                    ]);
-                }
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to update Bridge customer'
-                ], 500);
             }
 
-            Log::info('TOS callback: Bridge customer updated successfully', [
+            Log::info('TOS callback: Using customer data from Bridge API', [
                 'customer_id' => $customerIdToUpdate,
                 'signed_agreement_id' => $signedAgreementId,
             ]);
-
-            // ============================================
-            // CRITICAL: Fetch FRESH customer data from Bridge API (NO CACHE)
-            // ============================================
-            Log::info('TOS callback: Fetching FRESH customer data from Bridge API (no cache)', [
-                'customer_id' => $customerIdToUpdate,
-                'signed_agreement_id' => $signedAgreementId,
-            ]);
-            
-            // Force fresh data - clear any potential cache and fetch directly from Bridge
-            $customerResult = $this->bridgeService->getCustomer($customerIdToUpdate);
             
             $tosStatus = 'approved'; // Default
             $hasAcceptedTos = false;
@@ -2453,21 +2485,28 @@ class BridgeWalletController extends Controller
                 $tosAcceptedFromBridge = false;
                 $tosStatusFromBridge = 'pending';
                 
-                if (!empty($endorsements)) {
+                if (! empty($endorsements)) {
                     foreach ($endorsements as $endorsement) {
-                        $complete = $endorsement['complete'] ?? [];
-                        $missing = $endorsement['missing'] ?? [];
-                        
-                        if (!empty($complete)) {
-                            if (in_array('terms_of_service_v1', $complete) || in_array('terms_of_service_v2', $complete)) {
+                        $complete = $endorsement['requirements']['complete'] ?? $endorsement['complete'] ?? [];
+                        $missing = $endorsement['requirements']['missing'] ?? $endorsement['missing'] ?? [];
+
+                        foreach ($complete as $item) {
+                            if (is_string($item) && str_contains($item, 'terms_of_service')) {
                                 $tosAcceptedFromBridge = true;
                                 $tosStatusFromBridge = 'accepted';
+                                break 2;
                             }
                         }
-                        
-                        if (!$tosAcceptedFromBridge && !empty($missing)) {
-                            if (in_array('terms_of_service_v1', $missing) || in_array('terms_of_service_v2', $missing)) {
-                                $tosStatusFromBridge = 'pending';
+
+                        if (! $tosAcceptedFromBridge && is_array($missing)) {
+                            $missingItems = $missing['all_of'] ?? $missing;
+                            if (is_array($missingItems)) {
+                                foreach ($missingItems as $item) {
+                                    if (is_string($item) && str_contains($item, 'terms_of_service')) {
+                                        $tosStatusFromBridge = 'pending';
+                                        break 2;
+                                    }
+                                }
                             }
                         }
                     }
@@ -2527,6 +2566,16 @@ class BridgeWalletController extends Controller
                 'tos_status' => $finalTosStatus,
                 'bridge_metadata' => $metadata,
             ]);
+
+            if ($customerResult['success'] && ! empty($customerResult['data'])) {
+                $isOrgUserForSync = $integration->integratable_type === Organization::class;
+                $this->applyBridgeCustomerSnapshot(
+                    $integration,
+                    $customerResult['data'],
+                    $isOrgUserForSync,
+                );
+                $integration->refresh();
+            }
             
             Log::info('TOS callback: Setting tos_status', [
                 'integration_id' => $integration->id,
