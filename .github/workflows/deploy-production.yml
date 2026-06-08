@@ -28,10 +28,10 @@ jobs:
       DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
       APP_URL: ${{ vars.PRODUCTION_APP_URL }}
       SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT != '' && vars.PRODUCTION_SSH_PORT || '22' }}
-      SSH_MAX_ATTEMPTS: 6
-      SSH_RETRY_SLEEP: 5
+      SSH_MAX_ATTEMPTS: 10
+      SSH_RETRY_SLEEP: 8
       SSH_USE_TCP_PROBE: false
-      SSH_USE_DEPLOY_HOST: false
+      SSH_USE_DEPLOY_HOST: true
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -93,18 +93,53 @@ jobs:
             exit 1
           fi
 
+      - name: Verify deploy secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
+            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
+            missing=1
+          fi
+          if [ -z "${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}" ]; then
+            echo "::error::Missing GitHub secret DEPLOY_RUNNER_ALLOW_TOKEN."
+            missing=1
+          fi
+          if [ "${missing}" -eq 1 ]; then
+            echo "ONE-TIME VPS fix (root): curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
+            exit 1
+          fi
+
+      - name: Preflight — open SSH for this runner
+        env:
+          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
+          APP_URL: ${{ env.APP_URL }}
+          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+        run: |
+          chmod +x .github/scripts/preflight-open-runner-ssh.sh
+          bash .github/scripts/preflight-open-runner-ssh.sh
+
       - name: Setup SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy-prod
+          DEPLOY_USER: ${{ env.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
+          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_MAX_ATTEMPTS: ${{ env.SSH_MAX_ATTEMPTS }}
+          SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
+          SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
+          SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
+          APP_URL: ${{ env.APP_URL }}
         run: |
-          set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
           fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
-          .github/scripts/setup-cpanel-ssh.sh
+          bash .github/scripts/setup-cpanel-ssh.sh
 
       - name: Cache Composer
         uses: actions/cache@v4
