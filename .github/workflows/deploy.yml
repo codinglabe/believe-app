@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, believe-vps]
+    runs-on: ubuntu-latest
 
     env:
       PHP_VERSION: '8.4'
@@ -38,8 +38,6 @@ jobs:
       SSH_RELAY_TO_C3ERS: true
       SSH_RELAY_USER: believeinunity
       SSH_RELAY_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
-      SSH_SELF_HOSTED: true
-      SERVER_INNER_KEY: /home/believeinunity/.local/share/.gconf/deploy_key
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -100,36 +98,6 @@ jobs:
             exit 1
           fi
 
-      - name: Verify deploy secrets
-        run: |
-          missing=0
-          if [ "${SSH_SELF_HOSTED}" != "true" ] && [ -z "${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}" ]; then
-            echo "::error::Missing GitHub secret CPANEL_SSH_KEY_PRODUCTION."
-            missing=1
-          fi
-          if [ "${missing}" -eq 1 ]; then
-            echo "ONE-TIME VPS fix (root): curl -fsSL https://raw.githubusercontent.com/codinglabe/believe-app/development/scripts/setup-cpanel-deploy-ssh-access.sh | bash"
-            exit 1
-          fi
-          echo "Using self-hosted VPS runner (believe-vps) for development deploy."
-
-      - name: Preflight — open SSH for this runner
-        env:
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
-          APP_URL: ${{ env.APP_URL }}
-          SSH_CONNECT_HOST: ${{ env.SSH_RELAY_HOST }}
-          SSH_PORT: ${{ env.SSH_PORT }}
-          SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
-          SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
-          SSH_SELF_HOSTED: ${{ env.SSH_SELF_HOSTED }}
-        run: |
-          if [ "${SSH_SELF_HOSTED}" = "true" ]; then
-            echo "Self-hosted runner — skipping CSF preflight."
-            exit 0
-          fi
-          chmod +x .github/scripts/preflight-open-runner-ssh.sh
-          bash .github/scripts/preflight-open-runner-ssh.sh
-
       - name: Setup SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
@@ -145,12 +113,10 @@ jobs:
           SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
           SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
           SSH_RELAY_HOST: ${{ env.SSH_RELAY_HOST }}
-          SSH_SELF_HOSTED: ${{ env.SSH_SELF_HOSTED }}
-          SERVER_INNER_KEY: ${{ env.SERVER_INNER_KEY }}
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
-          if [ "${SSH_SELF_HOSTED}" != "true" ] && [ -z "${SSH_PRIVATE_KEY}" ]; then
+          set -euo pipefail
+          if [ -z "${SSH_PRIVATE_KEY}" ]; then
             echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
           fi
@@ -167,34 +133,24 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
 
-      - name: Prepare build tools (self-hosted VPS)
-        run: |
-          set -euo pipefail
-          php --version | grep -E '^PHP 8\.(3|4)\.' || { echo "::error::PHP 8.3+ required on VPS"; exit 1; }
-          mkdir -p "${HOME}/bin"
-          if ! command -v composer >/dev/null 2>&1; then
-            curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "${HOME}/bin/composer.phar"
-            printf '%s\n' '#!/usr/bin/env bash' 'exec php "${HOME}/bin/composer.phar" "$@"' > "${HOME}/bin/composer"
-            chmod +x "${HOME}/bin/composer"
-          fi
-          echo "${HOME}/bin" >> "${GITHUB_PATH}"
-          export NVM_DIR="${HOME}/.nvm"
-          if [ ! -s "${NVM_DIR}/nvm.sh" ]; then
-            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-          fi
-          # shellcheck disable=SC1090
-          . "${NVM_DIR}/nvm.sh"
-          nvm install "${NODE_VERSION}"
-          nvm use "${NODE_VERSION}"
-          echo "NVM_DIR=${NVM_DIR}" >> "${GITHUB_ENV}"
-          node --version
-          npm --version
-          composer --version
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
 
       - name: Install PHP dependencies
         run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi --ignore-platform-req=ext-sodium
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
           mkdir -p resources/views storage/framework/views
+
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
@@ -219,9 +175,6 @@ jobs:
           APP_URL: ${{ env.APP_URL }}
         run: |
           set -euo pipefail
-          # shellcheck disable=SC1090
-          . "${NVM_DIR}/nvm.sh"
-          nvm use "${NODE_VERSION}"
           npm ci --legacy-peer-deps --no-audit --no-fund
           npm run build
           test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
