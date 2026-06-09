@@ -70,10 +70,23 @@ class PushNotificationLoggerTest extends TestCase
         });
 
         Schema::create('organizations', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('user_id')->nullable();
+                $table->string('name')->nullable();
+                $table->string('registered_user_image')->nullable();
+                $table->timestamps();
+            });
+
+        Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id')->nullable();
             $table->string('name')->nullable();
-            $table->string('registered_user_image')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('board_members', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('organization_id');
             $table->timestamps();
         });
     }
@@ -83,6 +96,8 @@ class PushNotificationLoggerTest extends TestCase
         Schema::dropIfExists('push_notification_recipients');
         Schema::dropIfExists('push_notification_logs');
         Schema::dropIfExists('user_push_tokens');
+        Schema::dropIfExists('board_members');
+        Schema::dropIfExists('users');
         Schema::dropIfExists('organizations');
         Mockery::close();
         parent::tearDown();
@@ -200,6 +215,61 @@ class PushNotificationLoggerTest extends TestCase
         $this->assertIsArray($capturedPayload);
         $this->assertStringContainsString(
             'organizations/helping-hands.png',
+            (string) ($capturedPayload['organization_logo_url'] ?? ''),
+        );
+    }
+
+    public function test_send_log_includes_organization_logo_url_from_sender_board_membership(): void
+    {
+        $senderId = \DB::table('users')->insertGetId([
+            'name' => 'Kenneth Matthews',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Organization::query()->create([
+            'user_id' => $senderId,
+            'name' => 'Stuttie Learning Inc',
+            'registered_user_image' => 'organizations/stuttie.png',
+        ]);
+
+        $capturedPayload = null;
+
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldReceive('sendToDevice')
+            ->once()
+            ->withArgs(function ($token, $title, $body, $payload) use (&$capturedPayload) {
+                $capturedPayload = $payload;
+
+                return $token === 'token-abc' && $title === 'Unity Meet invitation';
+            })
+            ->andReturn([
+                'success' => true,
+                'error_code' => null,
+                'response' => null,
+            ]);
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $log = PushNotificationLog::query()->create([
+            'module_name' => 'unity_meet',
+            'notification_title' => 'Unity Meet invitation',
+            'audience_type' => 'user',
+            'status' => PushNotificationLogStatus::Draft,
+            'created_by' => $senderId,
+        ]);
+
+        PushNotificationRecipient::query()->create([
+            'push_notification_log_id' => $log->id,
+            'device_token' => 'token-abc',
+            'status' => PushNotificationRecipientStatus::Pending,
+        ]);
+
+        $logger = app(PushNotificationLogger::class);
+        $logger->sendLog($log, []);
+
+        $this->assertIsArray($capturedPayload);
+        $this->assertStringContainsString(
+            'organizations/stuttie.png',
             (string) ($capturedPayload['organization_logo_url'] ?? ''),
         );
     }

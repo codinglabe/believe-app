@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PushNotificationModule;
+use App\Models\Organization;
 use App\Models\User;
 use App\Models\UserPushToken;
 use App\Models\PushNotificationLog;
@@ -188,12 +189,14 @@ class FirebaseService
             ],
         ];
 
+        $notificationIcon = $this->resolveNotificationIcon($fcmData);
+
         if ($deviceType === 'web') {
             $message['message']['webpush'] = [
                 'notification' => [
                     'title' => $title,
                     'body' => $body,
-                    'icon' => url('/favicon-96x96.png'),
+                    'icon' => $notificationIcon,
                 ],
                 'fcm_options' => [
                     'link' => $notificationUrl,
@@ -289,7 +292,7 @@ class FirebaseService
 
         [$moduleName, $moduleRecordId, $deepLink, $createdBy] = $this->resolveLogContext($data, $title, $body);
 
-        $organizationId = isset($data['organization_id']) ? (int) $data['organization_id'] : null;
+        $organizationId = $this->resolveOrganizationId($data, $createdBy);
 
         unset(
             $data['module_name'],
@@ -366,7 +369,7 @@ class FirebaseService
 
         [$moduleName, $moduleRecordId, $deepLink, $createdBy] = $this->resolveLogContext($data, $title, $body);
 
-        $organizationId = isset($data['organization_id']) ? (int) $data['organization_id'] : null;
+        $organizationId = $this->resolveOrganizationId($data, $createdBy);
 
         unset(
             $data['module_name'],
@@ -451,6 +454,41 @@ class FirebaseService
         }
 
         return [$moduleName, $moduleRecordId, $deepLink, $createdBy];
+    }
+
+    /**
+     * Resolve organization for a push notification: explicit organization_id, else the sender's org
+     * (owner or board member — e.g. Kenneth Matthews sending on behalf of STUTTIE LEARNING INC).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveOrganizationId(array $data, ?int $createdBy = null): ?int
+    {
+        if (isset($data['organization_id']) && (int) $data['organization_id'] > 0) {
+            return (int) $data['organization_id'];
+        }
+
+        $senderId = $createdBy
+            ?? (isset($data['created_by']) && (int) $data['created_by'] > 0 ? (int) $data['created_by'] : null)
+            ?? (isset($data['sender_id']) && (int) $data['sender_id'] > 0 ? (int) $data['sender_id'] : null);
+
+        if (! $senderId) {
+            return null;
+        }
+
+        $user = User::query()->find($senderId);
+
+        return $user ? Organization::forAuthUser($user)?->id : null;
+    }
+
+    /**
+     * @param  array<string, string>  $fcmData
+     */
+    private function resolveNotificationIcon(array $fcmData): string
+    {
+        $orgLogo = trim((string) ($fcmData['organization_logo_url'] ?? ''));
+
+        return $orgLogo !== '' ? $orgLogo : url('/favicon-96x96.png');
     }
 
     /**

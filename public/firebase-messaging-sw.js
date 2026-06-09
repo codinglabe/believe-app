@@ -79,14 +79,13 @@ function isAndroidNotificationPlatform() {
     return /android/i.test(self.navigator.userAgent);
 }
 
-/** Gmail-style on Android: manifest icon left, notification icon right (organization when available). */
+/** Prefer sender organization logo when available (org members send on behalf of their org). */
 function resolveNotificationDisplayIcon(data) {
-    const appIcon = appNotificationIconUrl();
     const orgLogo = resolveOrganizationLogoUrl(data);
-    if (isAndroidNotificationPlatform() && orgLogo) {
+    if (orgLogo) {
         return orgLogo;
     }
-    return appIcon;
+    return appNotificationIconUrl();
 }
 
 function resolveNotificationBadgeUrl() {
