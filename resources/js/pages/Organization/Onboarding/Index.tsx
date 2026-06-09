@@ -151,9 +151,10 @@ function ChecklistItem({
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block text-sm font-medium leading-snug",
+            "block text-sm font-medium leading-snug truncate",
             item.connected ? "text-emerald-800 dark:text-emerald-200" : "text-foreground"
           )}
+          title={item.label}
         >
           {item.label}
         </span>
@@ -165,6 +166,19 @@ function ChecklistItem({
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+}
+
+/** Short label for very long upload names (full name still in title tooltip). */
+function shortenFileName(name: string, maxLen = 56): string {
+  if (name.length <= maxLen) return name
+  const dot = name.lastIndexOf(".")
+  const ext = dot > 0 ? name.slice(dot) : ""
+  const base = ext ? name.slice(0, dot) : name
+  const budget = maxLen - ext.length - 1
+  if (budget < 12) return `${name.slice(0, maxLen - 1)}…`
+  const head = Math.ceil(budget * 0.55)
+  const tail = budget - head
+  return `${base.slice(0, head)}…${base.slice(-tail)}${ext}`
 }
 
 const CHECKLIST_TOP_PX = 88 // below fixed app header (4rem) + small gap
@@ -228,7 +242,7 @@ function StickyChecklistAside({ children }: { children: ReactNode }) {
       <div
         ref={panelRef}
         className={cn(
-          "rounded-2xl border border-border bg-card p-4 shadow-sm",
+          "max-w-full overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm",
           isPinned && "fixed z-20 shadow-md"
         )}
         style={
@@ -291,22 +305,22 @@ function DocumentUploadCard({
     <article
       id={item.id}
       className={cn(
-        "group scroll-mt-28 overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md",
+        "group scroll-mt-28 min-w-0 max-w-full overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md",
         item.connected
           ? "border-emerald-200/80 dark:border-emerald-800/50"
           : "border-border"
       )}
     >
-      <div className="flex items-stretch">
+      <div className="flex min-w-0 items-stretch">
         <div
           className={cn(
             "hidden sm:flex w-1.5 shrink-0",
             item.connected ? "bg-emerald-500" : "bg-gradient-to-b from-purple-500 to-blue-500"
           )}
         />
-        <div className="flex-1 p-5 md:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex gap-4 min-w-0">
+        <div className="min-w-0 flex-1 overflow-hidden p-5 md:p-6">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-1 gap-4">
               <div
                 className={cn(
                   "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm",
@@ -322,7 +336,7 @@ function DocumentUploadCard({
               >
                 {item.connected ? <CheckCircle2 className="h-6 w-6" /> : <Icon className="h-6 w-6" />}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Step {index + 1}
@@ -334,12 +348,14 @@ function DocumentUploadCard({
                     </span>
                   )}
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mt-0.5">{item.label}</h3>
-                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{item.description}</p>
+                <h3 className="text-lg font-semibold text-foreground mt-0.5 break-words">{item.label}</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed break-words">{item.description}</p>
                 {storageLabel && (
-                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+                  <p className="mt-2 flex max-w-full min-w-0 items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
                     <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">Governance Storage / {storageLabel}</span>
+                    <span className="min-w-0 truncate" title={`Governance Storage / ${storageLabel}`}>
+                      Governance Storage / {storageLabel}
+                    </span>
                   </p>
                 )}
               </div>
@@ -347,12 +363,17 @@ function DocumentUploadCard({
           </div>
 
           {item.connected ? (
-            <div className="mt-5 flex items-center gap-3 rounded-xl border border-emerald-200/60 bg-emerald-50/50 px-4 py-3 dark:border-emerald-800/40 dark:bg-emerald-950/20">
-              <FileText className="h-5 w-5 text-emerald-600 shrink-0" />
-              <div className="min-w-0">
+            <div className="mt-5 flex min-w-0 items-start gap-3 overflow-hidden rounded-xl border border-emerald-200/60 bg-emerald-50/50 px-4 py-3 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+              <FileText className="h-5 w-5 shrink-0 text-emerald-600" />
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Document on file</p>
                 {item.file_name && (
-                  <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80 truncate">{item.file_name}</p>
+                  <p
+                    className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-300/80 truncate"
+                    title={item.file_name}
+                  >
+                    {shortenFileName(item.file_name)}
+                  </p>
                 )}
               </div>
             </div>
@@ -539,7 +560,7 @@ export default function OrganizationOnboardingIndex({
             </div>
           )}
 
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+          <div className="flex min-w-0 max-w-full flex-col gap-8 overflow-x-hidden lg:flex-row lg:items-start">
             <StickyChecklistAside>
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-3">
                 Checklist
@@ -557,14 +578,14 @@ export default function OrganizationOnboardingIndex({
               </div>
             </StickyChecklistAside>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-8">
-              <section>
+            <div className="flex min-w-0 max-w-full flex-1 flex-col gap-8 overflow-hidden">
+              <section className="min-w-0 max-w-full overflow-hidden">
                 <div className="flex items-center gap-2 mb-4">
                   <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   <h2 className="text-lg font-semibold">Required documents</h2>
                   <span className="text-sm text-muted-foreground">({uploadItems.length} uploads)</span>
                 </div>
-                <div className="flex flex-col gap-5">
+                <div className="flex min-w-0 max-w-full flex-col gap-5">
                   {uploadItems.map((item, i) => (
                     <DocumentUploadCard key={item.id} item={item} index={i} onUploaded={refresh} />
                   ))}
