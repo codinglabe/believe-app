@@ -15,9 +15,9 @@ Schedule::command('irs:bmf:import --update-only --chunk=1000')
 
 Schedule::command('rss:warm-nonprofit')->everyFifteenMinutes();
 
-// Followers: in-app + push when someone they follow has a birthday (once per follower–celebrant per year)
+// Supporters: in-app + push to each favorited nonprofit (owner + board) on the celebrant's local birthday at their local send hour
 Schedule::command('supporters:notify-birthdays')
-    ->dailyAt('08:00')
+    ->hourly()
     ->withoutOverlapping();
 
 // Daily rotating engagement push for supporters and organization accounts

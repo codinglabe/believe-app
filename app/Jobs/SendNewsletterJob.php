@@ -540,6 +540,10 @@ class SendNewsletterJob implements ShouldQueue
                     [
                         'source_type' => 'newsletter',
                         'source_id' => (string) $this->newsletter->id,
+                        'organization_id' => $this->newsletter->organization_id,
+                        'module_name' => 'email',
+                        'module_record_id' => $this->newsletter->id,
+                        'deep_link' => parse_url($clickUrl, PHP_URL_PATH) ?: $clickUrl,
                         'click_action' => $clickUrl,
                     ]
                 );
