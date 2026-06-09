@@ -48,7 +48,6 @@ class OrganizationOnboardingController extends Controller
             'completed' => $completion['completed'] ?? 0,
             'total' => $completion['total'] ?? 0,
             'authorizedSigner' => is_array($org->authorized_signer_info) ? $org->authorized_signer_info : null,
-            'boardMembersHref' => route('board-members.index'),
             'storageHref' => route('governance.storage.index'),
         ]);
     }

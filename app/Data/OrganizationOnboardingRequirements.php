@@ -26,7 +26,7 @@ class OrganizationOnboardingRequirements
      *     id: string,
      *     label: string,
      *     description: string,
-     *     type: 'upload'|'form'|'board_members',
+     *     type: 'upload'|'form',
      *     storage_path: string|null,
      *     route: string
      * }>
@@ -63,10 +63,10 @@ class OrganizationOnboardingRequirements
             [
                 'id' => self::BOARD_MEMBER_LIST,
                 'label' => 'Board Member List',
-                'description' => 'Add at least one active board member for your organization.',
-                'type' => 'board_members',
+                'description' => 'Current roster of board members (PDF, spreadsheet, or official list).',
+                'type' => 'upload',
                 'storage_path' => '/Governance/Board of Directors/Director Profiles',
-                'route' => route('board-members.index'),
+                'route' => $onboardingRoute.'#'.self::BOARD_MEMBER_LIST,
             ],
             [
                 'id' => self::AUTHORIZED_SIGNER,
