@@ -24,16 +24,35 @@ SSH_ALLOW_IPV6="${SSH_ALLOW_IPV6:-false}"
 if [ "${SSH_SELF_HOSTED}" = "true" ]; then
   mkdir -p "${SSH_DIR}"
   chmod 700 "${SSH_DIR}"
-  if [ ! -f "${SERVER_INNER_KEY}" ]; then
-    echo "::error::Missing deploy key on VPS: ${SERVER_INNER_KEY}"
-    exit 1
+
+  identity_file="${SERVER_INNER_KEY}"
+  if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
+    if printf '%s' "${SSH_PRIVATE_KEY}" | grep -q '\\n'; then
+      printf '%b\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/cpanel_deploy"
+    else
+      printf '%s\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > "${SSH_DIR}/cpanel_deploy"
+    fi
+    chmod 600 "${SSH_DIR}/cpanel_deploy"
+    if ! grep -q 'BEGIN.*PRIVATE KEY' "${SSH_DIR}/cpanel_deploy"; then
+      echo "::error::CPANEL SSH key does not look like an OpenSSH private key."
+      exit 1
+    fi
+    identity_file="${SSH_DIR}/cpanel_deploy"
+    echo "Self-hosted VPS runner -> ${DEPLOY_USER}@127.0.0.1:${SSH_PORT} (deploy secret key)"
+  else
+    if [ ! -f "${SERVER_INNER_KEY}" ]; then
+      echo "::error::Missing deploy key on VPS: ${SERVER_INNER_KEY}"
+      exit 1
+    fi
+    echo "Self-hosted VPS runner -> ${DEPLOY_USER}@127.0.0.1:${SSH_PORT} (inner key)"
   fi
+
   printf '%s\n' \
     'Host cpanel-deploy' \
     '  HostName 127.0.0.1' \
     "  User ${DEPLOY_USER}" \
     "  Port ${SSH_PORT}" \
-    "  IdentityFile ${SERVER_INNER_KEY}" \
+    "  IdentityFile ${identity_file}" \
     '  IdentitiesOnly yes' \
     '  StrictHostKeyChecking accept-new' \
     '  ServerAliveInterval 15' \
@@ -47,7 +66,6 @@ if [ "${SSH_SELF_HOSTED}" = "true" ]; then
       echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -4"
     } >> "${GITHUB_ENV}"
   fi
-  echo "Self-hosted VPS runner -> ${DEPLOY_USER}@127.0.0.1:${SSH_PORT}"
   if out="$(ssh -4 -F "${SSH_DIR}/config" -o BatchMode=yes cpanel-deploy "echo SSH_OK && whoami && hostname" 2>&1)"; then
     echo "${out}"
     echo "SSH connected (self-hosted local hop)."
