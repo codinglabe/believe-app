@@ -221,6 +221,57 @@ class DropboxOrgApi
     }
 
     /**
+     * List all entries under a path recursively (files and folders).
+     *
+     * @return array<int, array{name: string, path_display: string, tag: string}>
+     */
+    public function listFolderRecursive(string $path): array
+    {
+        $path = trim($path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/'.$path;
+        }
+
+        $out = [];
+        $cursor = null;
+
+        do {
+            $body = $cursor !== null
+                ? ['cursor' => $cursor]
+                : ['path' => $path, 'recursive' => true];
+            $endpoint = $cursor !== null ? '/files/list_folder/continue' : '/files/list_folder';
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$this->accessToken,
+                'Content-Type' => 'application/json',
+            ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+                ->timeout(120)
+                ->post(self::API_URL.$endpoint, $body);
+
+            if (! $response->successful()) {
+                Log::warning('Dropbox list_folder recursive failed', [
+                    'path' => $path,
+                    'body' => $response->body(),
+                ]);
+
+                return $out;
+            }
+
+            $data = $response->json();
+            foreach ($data['entries'] ?? [] as $entry) {
+                $out[] = [
+                    'name' => $entry['name'] ?? '',
+                    'path_display' => $entry['path_display'] ?? $entry['path_lower'] ?? '',
+                    'tag' => $entry['.tag'] ?? 'file',
+                ];
+            }
+            $cursor = $data['has_more'] ? ($data['cursor'] ?? null) : null;
+        } while ($cursor);
+
+        return $out;
+    }
+
+    /**
      * Upload file contents to Dropbox (add, autorename on conflict).
      * Pass a stream resource to avoid loading large videos into memory.
      *
@@ -268,8 +319,13 @@ class DropboxOrgApi
         return is_string($display) && $display !== '' ? ['path_display' => $display] : null;
     }
 
+    /** Dropbox single-request upload limit is 150 MB; use sessions above this. */
+    private const SINGLE_UPLOAD_MAX_BYTES = 140 * 1024 * 1024;
+
+    private const UPLOAD_SESSION_CHUNK_BYTES = 8 * 1024 * 1024;
+
     /**
-     * Upload a local file path to Dropbox (streams from disk; suitable for large MP4s).
+     * Upload a local file path to Dropbox (streams from disk; uses sessions for large files).
      *
      * @return array{path_display: string}|null
      */
@@ -279,6 +335,11 @@ class DropboxOrgApi
             Log::warning('Dropbox uploadFromLocalPath: file not readable', ['path' => $absoluteLocalPath]);
 
             return null;
+        }
+
+        $size = filesize($absoluteLocalPath);
+        if ($size !== false && $size > self::SINGLE_UPLOAD_MAX_BYTES) {
+            return $this->uploadLargeFromLocalPath($dropboxPath, $absoluteLocalPath);
         }
 
         $stream = fopen($absoluteLocalPath, 'rb');
@@ -291,6 +352,154 @@ class DropboxOrgApi
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);
+            }
+        }
+    }
+
+    /**
+     * Upload large local files via Dropbox upload sessions (chunked).
+     *
+     * @return array{path_display: string}|null
+     */
+    public function uploadLargeFromLocalPath(string $dropboxPath, string $absoluteLocalPath): ?array
+    {
+        $dropboxPath = trim($dropboxPath);
+        if ($dropboxPath === '' || $dropboxPath[0] !== '/') {
+            $dropboxPath = '/'.$dropboxPath;
+        }
+
+        $handle = fopen($absoluteLocalPath, 'rb');
+        if ($handle === false) {
+            return null;
+        }
+
+        $sessionId = null;
+        $offset = 0;
+
+        try {
+            while (! feof($handle)) {
+                $chunk = fread($handle, self::UPLOAD_SESSION_CHUNK_BYTES);
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+
+                $chunkLen = strlen($chunk);
+                $isLast = feof($handle);
+
+                if ($sessionId === null) {
+                    $startArg = json_encode([
+                        'close' => $isLast,
+                        'session_type' => ['.tag' => 'sequential'],
+                    ], JSON_THROW_ON_ERROR);
+
+                    $response = Http::withHeaders([
+                        'Authorization' => 'Bearer '.$this->accessToken,
+                        'Content-Type' => 'application/octet-stream',
+                        'Dropbox-API-Arg' => $startArg,
+                    ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+                        ->timeout(7200)
+                        ->connectTimeout(60)
+                        ->withBody($chunk, 'application/octet-stream')
+                        ->post('https://content.dropboxapi.com/2/files/upload_session/start');
+
+                    if (! $response->successful()) {
+                        Log::warning('Dropbox upload_session/start failed', [
+                            'status' => $response->status(),
+                            'body' => $response->body(),
+                        ]);
+
+                        return null;
+                    }
+
+                    $sessionId = $response->json('session_id');
+                    if (! is_string($sessionId) || $sessionId === '') {
+                        return null;
+                    }
+
+                    $offset += $chunkLen;
+
+                    if ($isLast) {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                $appendArg = json_encode([
+                    'cursor' => [
+                        'session_id' => $sessionId,
+                        'offset' => $offset,
+                    ],
+                    'close' => $isLast,
+                ], JSON_THROW_ON_ERROR);
+
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer '.$this->accessToken,
+                    'Content-Type' => 'application/octet-stream',
+                    'Dropbox-API-Arg' => $appendArg,
+                ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+                    ->timeout(7200)
+                    ->connectTimeout(60)
+                    ->withBody($chunk, 'application/octet-stream')
+                    ->post('https://content.dropboxapi.com/2/files/upload_session/append_v2');
+
+                if (! $response->successful()) {
+                    Log::warning('Dropbox upload_session/append_v2 failed', [
+                        'offset' => $offset,
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+
+                    return null;
+                }
+
+                $offset += $chunkLen;
+            }
+
+            if ($sessionId === null) {
+                return null;
+            }
+
+            $finishArg = json_encode([
+                'cursor' => [
+                    'session_id' => $sessionId,
+                    'offset' => $offset,
+                ],
+                'commit' => [
+                    'path' => $dropboxPath,
+                    'mode' => 'add',
+                    'autorename' => true,
+                    'mute' => false,
+                ],
+            ], JSON_THROW_ON_ERROR);
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$this->accessToken,
+                'Content-Type' => 'application/octet-stream',
+                'Dropbox-API-Arg' => $finishArg,
+            ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+                ->timeout(7200)
+                ->connectTimeout(60)
+                ->withBody('', 'application/octet-stream')
+                ->post('https://content.dropboxapi.com/2/files/upload_session/finish');
+
+            if (! $response->successful()) {
+                Log::warning('Dropbox upload_session/finish failed', [
+                    'path' => $dropboxPath,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                return null;
+            }
+
+            $data = $response->json();
+            $display = $data['path_display'] ?? $data['path_lower'] ?? null;
+
+            return is_string($display) && $display !== '' ? ['path_display' => $display] : null;
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
             }
         }
     }

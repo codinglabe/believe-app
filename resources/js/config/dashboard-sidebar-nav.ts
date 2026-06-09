@@ -669,6 +669,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: Shield,
                 role: 'organization',
             },
+            {
+                title: 'Storage',
+                href: '/governance/storage',
+                icon: FolderOpen,
+                role: 'organization',
+            },
         ],
     },
 

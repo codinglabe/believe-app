@@ -1478,6 +1478,16 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
 
     Route::middleware('role:organization|care_alliance')->group(function () {
         Route::get('/compliance', [GovernanceComplianceController::class, 'index'])->name('governance.compliance');
+
+        Route::prefix('governance/storage')->name('governance.storage.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'index'])->name('index');
+            Route::post('/provision', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'provision'])->name('provision');
+            Route::post('/upload', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'upload'])->name('upload');
+            Route::get('/download', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'download'])->name('download');
+            Route::delete('/file', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'delete'])->name('delete');
+            Route::put('/file', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'rename'])->name('rename');
+        });
+
         Route::resource('board-members', BoardMemberController::class)
             ->only(['index', 'store', 'update', 'destroy'])
             ->shallow();

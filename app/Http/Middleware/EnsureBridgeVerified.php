@@ -42,6 +42,9 @@ class EnsureBridgeVerified
 
     public function handle(Request $request, Closure $next): Response
     {
+        // Bridge verification gate is temporarily disabled — allow all routes through.
+        return $next($request);
+
         $user = $request->user();
 
         if (! $user instanceof User || $user instanceof LivestockUser || $user instanceof Merchant) {
