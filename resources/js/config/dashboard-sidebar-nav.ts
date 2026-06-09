@@ -655,13 +655,19 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     {
         title: 'Governance',
         icon: Gavel,
-        role: 'organization',
+        role: ['organization', 'organization_pending'],
         items: [
+            {
+                title: 'Onboarding',
+                href: '/governance/onboarding',
+                icon: ClipboardList,
+                role: ['organization', 'organization_pending'],
+            },
             {
                 title: 'Board',
                 href: '/board-members',
                 icon: Users,
-                role: 'organization',
+                role: ['organization', 'organization_pending'],
             },
             {
                 title: 'Compliance',

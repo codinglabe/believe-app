@@ -20,6 +20,7 @@ use App\Models\Organization;
 use App\Models\PromotionalBanner;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
+use App\Services\OrganizationProfileCompletionService;
 use App\Services\TaxComplianceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -357,56 +358,10 @@ class DashboardController extends Controller
             ];
         }
 
-        // Profile completion (integrations) – from hub org only for plain nonprofit org users, not Care Alliance dashboard (CA uses care_alliances elsewhere).
+        // Profile completion (required onboarding documents) — hub org only, not Care Alliance dashboard.
         $profileCompletion = null;
         if ($organization && ! $isCareAllianceCreator) {
-            $hasDropbox = ! empty($organization->dropbox_refresh_token) || ! empty($organization->dropbox_access_token);
-            $hasYoutube = ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token);
-            $hasEmail = $organization->emailConnections()->where('is_active', true)->exists();
-            $socialAccounts = $organization->social_accounts ?? [];
-            $hasSocial = is_array($socialAccounts) && collect($socialAccounts)->filter(fn ($v) => is_string($v) && trim($v) !== '')->isNotEmpty();
-
-            $items = [
-                [
-                    'id' => 'email',
-                    'label' => 'Email Invites',
-                    'benefit' => 'Community Outreach',
-                    'route' => '/email-invite',
-                    'connected' => $hasEmail,
-                ],
-                [
-                    'id' => 'social',
-                    'label' => 'Social Media',
-                    'benefit' => 'Visibility Hub',
-                    'route' => route('social-media.index'),
-                    'connected' => $hasSocial,
-                ],
-                [
-                    'id' => 'youtube',
-                    'label' => 'YouTube',
-                    'benefit' => 'Broadcast Hub',
-                    'route' => route('integrations.youtube'),
-                    'connected' => $hasYoutube,
-                ],
-                [
-                    'id' => 'dropbox',
-                    'label' => 'Dropbox',
-                    'benefit' => 'Secure AI Vault',
-                    'route' => route('integrations.dropbox'),
-                    'connected' => $hasDropbox,
-                ],
-            ];
-            $completed = collect($items)->where('connected', true)->count();
-            $total = count($items);
-            $percent = $total > 0 ? (int) round(($completed / $total) * 100) : 100;
-            $missing = collect($items)->where('connected', false)->values()->all();
-            $profileCompletion = [
-                'percent' => $percent,
-                'completed' => $completed,
-                'total' => $total,
-                'missing' => $missing,
-                'completeSetupHref' => $missing[0]['route'] ?? null,
-            ];
+            $profileCompletion = OrganizationProfileCompletionService::forOrganization($organization);
         }
 
         return Inertia::render('dashboard', [

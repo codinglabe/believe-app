@@ -99,6 +99,8 @@ class Organization extends Model
         'stripe_connect_payouts_enabled',
         'dropbox_folder_name',
         'dropbox_governance_provisioned_at',
+        'authorized_signer_info',
+        'onboarding_completed_at',
     ];
 
     protected $hidden = [
@@ -124,7 +126,14 @@ class Organization extends Model
         'youtube_token_expires_at' => 'datetime',
         'dropbox_token_expires_at' => 'datetime',
         'dropbox_governance_provisioned_at' => 'datetime',
+        'authorized_signer_info' => 'array',
+        'onboarding_completed_at' => 'datetime',
     ];
+
+    public function onboardingDocuments()
+    {
+        return $this->hasMany(OrganizationOnboardingDocument::class);
+    }
 
     public function user()
     {
