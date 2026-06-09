@@ -98,6 +98,7 @@ class Organization extends Model
         'stripe_connect_charges_enabled',
         'stripe_connect_payouts_enabled',
         'dropbox_folder_name',
+        'dropbox_governance_provisioned_at',
     ];
 
     protected $hidden = [
@@ -122,6 +123,7 @@ class Organization extends Model
         'stripe_connect_payouts_enabled' => 'boolean',
         'youtube_token_expires_at' => 'datetime',
         'dropbox_token_expires_at' => 'datetime',
+        'dropbox_governance_provisioned_at' => 'datetime',
     ];
 
     public function user()

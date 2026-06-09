@@ -481,9 +481,24 @@ class IntegrationsController extends Controller
             } catch (\Throwable $e) {
                 Log::warning('Dropbox create folder after connect failed', ['error' => $e->getMessage()]);
             }
+
+            if (! $isSupporter && $organization) {
+                try {
+                    app(\App\Services\DropboxGovernanceService::class)->provisionFolders($organization, $accessToken);
+                } catch (\Throwable $e) {
+                    Log::warning('Governance folder provision after Dropbox connect failed', [
+                        'organization_id' => $organization->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
-        return redirect()->route('integrations.dropbox')->with('success', 'Dropbox connected. Meeting recordings will be saved to your Dropbox when you record in a livestream.');
+        $successMessage = $isSupporter
+            ? 'Dropbox connected. Meeting recordings will be saved to your Dropbox when you record in a livestream.'
+            : 'Dropbox connected. Meeting recordings and governance document folders have been set up in your Dropbox.';
+
+        return redirect()->route('integrations.dropbox')->with('success', $successMessage);
     }
 
     /**
@@ -509,6 +524,7 @@ class IntegrationsController extends Controller
                 'dropbox_access_token' => null,
                 'dropbox_token_expires_at' => null,
                 'dropbox_folder_name' => null,
+                'dropbox_governance_provisioned_at' => null,
             ])->save();
         }
 

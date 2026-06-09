@@ -6,6 +6,7 @@ import { registerServiceWorker } from "@/pwa/register-service-worker"
 import { router, usePage } from "@inertiajs/react"
 import { Button } from "./ui/button"
 import { showNativePushNotification } from "@/lib/firebase-push-toast"
+import { isMobilePushClient } from "@/lib/push-environment"
 
 interface PushNotificationManagerProps {
   userId?: number
@@ -78,15 +79,23 @@ export function PushNotificationManager({ userId }: PushNotificationManagerProps
     return null
   }
 
+  const isMobile = isMobilePushClient()
+
   return (
-    <div className="push-notification-manager shrink-0">
+    <div className={`push-notification-manager shrink-0 ${isMobile ? "fixed bottom-4 left-4 right-4 z-50 rounded-lg border bg-background p-3 shadow-lg sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none" : ""}`}>
+      {isMobile && (
+        <p className="mb-2 text-sm text-muted-foreground">
+          Turn on notifications to get chat, calls, and updates on this device.
+        </p>
+      )}
       {error && <div className="text-red-600 text-xs mb-1">{error}</div>}
 
       <Button
         onClick={handleEnablePushNotifications}
         disabled={isLoading}
-        size="sm"
-        variant="outline"
+        size={isMobile ? "default" : "sm"}
+        variant={isMobile ? "default" : "outline"}
+        className={isMobile ? "w-full" : undefined}
       >
         {isLoading ? "Enabling..." : "Enable notifications"}
       </Button>

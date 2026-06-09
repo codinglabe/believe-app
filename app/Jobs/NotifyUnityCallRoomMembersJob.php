@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\UnityCall;
 use App\Models\User;
 use App\Services\UnityCallNotifier;
@@ -12,12 +13,14 @@ use Illuminate\Support\Facades\Log;
 
 class NotifyUnityCallRoomMembersJob implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, UsesPushNotificationQueue;
 
     public function __construct(
         public int $callId,
         public int $callerId,
-    ) {}
+    ) {
+        $this->configurePushNotificationQueue();
+    }
 
     public function handle(UnityCallNotifier $notifier): void
     {

@@ -324,12 +324,25 @@ class PushNotificationLogger
      */
     public function dispatch(array $logData, array $userIds, array $fcmData = []): PushNotificationLog
     {
-        return DB::transaction(function () use ($logData, $userIds, $fcmData) {
+        $log = DB::transaction(function () use ($logData, $userIds) {
             $log = $this->logCreated($logData);
             $this->createRecipients($log, $userIds);
 
-            return $this->sendLog($log->fresh(), $fcmData);
+            return $log->fresh();
         });
+
+        try {
+            return $this->sendLog($log, $fcmData);
+        } catch (\Throwable $e) {
+            Log::error('Push notification send failed after log was created', [
+                'log_id' => $log->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->logFailed($log->fresh(), $e->getMessage());
+
+            throw $e;
+        }
     }
 
     public function recalculateCounts(PushNotificationLog $log): PushNotificationLog
