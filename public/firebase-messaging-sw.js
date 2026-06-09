@@ -1,4 +1,4 @@
-// @version 9f9fe7b2e3a2a745
+// @version a1b2c3d4e5f6g7h8
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -60,18 +60,36 @@ function appNotificationIconUrl() {
     return new URL("/favicon-96x96.png", self.location.origin).href;
 }
 
-function resolveNotificationBadgeUrl(data) {
+function resolveOrganizationLogoUrl(data) {
     const orgLogo =
         data && data.organization_logo_url
             ? String(data.organization_logo_url).trim()
             : "";
-    if (orgLogo) {
-        try {
-            return new URL(orgLogo, self.location.origin).href;
-        } catch (e) {
-            // Fall back to app logo when the organization logo URL is invalid.
-        }
+    if (!orgLogo) {
+        return null;
     }
+    try {
+        return new URL(orgLogo, self.location.origin).href;
+    } catch (e) {
+        return null;
+    }
+}
+
+function isAndroidNotificationPlatform() {
+    return /android/i.test(self.navigator.userAgent);
+}
+
+/** Gmail-style on Android: manifest icon left, notification icon right (organization when available). */
+function resolveNotificationDisplayIcon(data) {
+    const appIcon = appNotificationIconUrl();
+    const orgLogo = resolveOrganizationLogoUrl(data);
+    if (isAndroidNotificationPlatform() && orgLogo) {
+        return orgLogo;
+    }
+    return appIcon;
+}
+
+function resolveNotificationBadgeUrl() {
     return appNotificationIconUrl();
 }
 
@@ -103,8 +121,8 @@ function resolveClickUrl(data) {
 function buildNotificationOptions(title, body, data) {
     const clickUrl = resolveClickUrl(data);
     const tag = (data.type || "push") + ":" + (data.call_id || data.livestream_id || data.source_id || title);
-    const icon = appNotificationIconUrl();
-    const badge = resolveNotificationBadgeUrl(data);
+    const icon = resolveNotificationDisplayIcon(data);
+    const badge = resolveNotificationBadgeUrl();
     const options = {
         body: body || undefined,
         icon: icon,
@@ -236,7 +254,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-9f9fe7b2e3a2a745";
+const CACHE_NAME = "pwa-cache-a1b2c3d4e5f6g7h8";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 

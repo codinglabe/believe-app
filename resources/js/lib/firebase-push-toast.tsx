@@ -31,20 +31,50 @@ export function resolveAppNotificationIcon(origin?: string): string {
     return base ? new URL("/favicon-96x96.png", base).href : "/favicon-96x96.png"
 }
 
-export function resolveNotificationBadge(
+export function resolveOrganizationLogoUrl(
+    data: Record<string, string | undefined>,
+    origin?: string,
+): string | null {
+    const orgLogo = data.organization_logo_url?.trim()
+    if (!orgLogo) {
+        return null
+    }
+
+    try {
+        const base = origin ?? (typeof window !== "undefined" ? window.location.origin : undefined)
+        return base ? new URL(orgLogo, base).href : orgLogo
+    } catch {
+        return null
+    }
+}
+
+export function isAndroidNotificationPlatform(): boolean {
+    if (typeof navigator === "undefined") {
+        return false
+    }
+
+    return /android/i.test(navigator.userAgent)
+}
+
+/**
+ * Gmail-style layout on Android: manifest/PWA icon is left; NotificationOptions.icon is the right large icon.
+ * On desktop, icon is the main notification image and stays the app logo.
+ */
+export function resolveNotificationDisplayIcon(
     data: Record<string, string | undefined>,
     origin?: string,
 ): string {
-    const orgLogo = data.organization_logo_url?.trim()
-    if (orgLogo) {
-        try {
-            const base = origin ?? (typeof window !== "undefined" ? window.location.origin : undefined)
-            return base ? new URL(orgLogo, base).href : orgLogo
-        } catch {
-            // Fall back to app logo when the organization logo URL is invalid.
-        }
+    const appIcon = resolveAppNotificationIcon(origin)
+    const orgLogo = resolveOrganizationLogoUrl(data, origin)
+
+    if (isAndroidNotificationPlatform() && orgLogo) {
+        return orgLogo
     }
 
+    return appIcon
+}
+
+export function resolveNotificationBadge(origin?: string): string {
     return resolveAppNotificationIcon(origin)
 }
 
@@ -55,8 +85,8 @@ export function buildNativeNotificationOptions(
     const { body } = resolvePushTitleBody(detail)
     const data = detail.data ?? {}
     const clickUrl = resolvePushClickUrl(data)
-    const icon = resolveAppNotificationIcon()
-    const badge = resolveNotificationBadge(data)
+    const icon = resolveNotificationDisplayIcon(data)
+    const badge = resolveNotificationBadge()
 
     const options: NotificationOptions = {
         body: body || undefined,

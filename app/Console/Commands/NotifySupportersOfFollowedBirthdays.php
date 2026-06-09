@@ -8,18 +8,25 @@ use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Notifications\SupporterBirthdayNotification;
 use App\Services\FirebaseService;
+use App\Services\TimezoneService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 class NotifySupportersOfFollowedBirthdays extends Command
 {
-    protected $signature = 'supporters:notify-birthdays {--dry-run : Show counts only, do not notify}';
+    protected $signature = 'supporters:notify-birthdays
+                            {--dry-run : Show counts only, do not notify}
+                            {--force : Ignore the celebrant local send-hour window (for testing)}';
 
-    protected $description = 'Notify each nonprofit (owner + board) when a supporter who favorites that org has a birthday today';
+    protected $description = 'Notify each nonprofit (owner + board) when a supporter who favorites that org has a birthday today (celebrant local date + hour)';
+
+    private function celebrantTimezone(User $user): string
+    {
+        return TimezoneService::forUser($user);
+    }
 
     /**
-     * "Today" for birthday matching uses the celebrant's `timezone` when valid, otherwise app timezone.
      * Profile DOB is stored as Y-m-d with a fixed year (see UserProfileController); only month/day matter.
      */
     private function isBirthdayTodayForUser(User $user): bool
@@ -28,15 +35,23 @@ class NotifySupportersOfFollowedBirthdays extends Command
             return false;
         }
 
-        $tz = filled($user->timezone) && in_array($user->timezone, timezone_identifiers_list(), true)
-            ? $user->timezone
-            : config('app.timezone', 'UTC');
-
-        $today = now($tz);
+        $today = now($this->celebrantTimezone($user));
         $dob = Carbon::parse($user->dob);
 
         return (int) $dob->month === (int) $today->month
             && (int) $dob->day === (int) $today->day;
+    }
+
+    private function isInSendWindowForUser(User $user, bool $force): bool
+    {
+        if ($force) {
+            return true;
+        }
+
+        $sendHour = (int) config('supporter_birthday.send_hour_local', 8);
+        $localNow = now($this->celebrantTimezone($user));
+
+        return (int) $localNow->hour === $sendHour;
     }
 
     /**
@@ -58,20 +73,35 @@ class NotifySupportersOfFollowedBirthdays extends Command
 
     public function handle(): int
     {
+        if (! config('supporter_birthday.enabled', true)) {
+            $this->warn('Supporter birthday notifications are disabled (SUPPORTER_BIRTHDAY_NOTIFICATIONS_ENABLED=false).');
+
+            return self::SUCCESS;
+        }
+
         $appTz = config('app.timezone', 'UTC');
-        $year = (int) now($appTz)->year;
+        $sendHourLocal = (int) config('supporter_birthday.send_hour_local', 8);
         $dryRun = (bool) $this->option('dry-run');
+        $force = (bool) $this->option('force');
 
         $candidates = User::query()
             ->where('role', 'user')
             ->whereNotNull('dob')
             ->get(['id', 'name', 'slug', 'image', 'dob', 'role', 'timezone']);
 
-        $celebrants = $candidates->filter(fn (User $u) => $this->isBirthdayTodayForUser($u))->values();
+        $birthdayToday = $candidates->filter(fn (User $u) => $this->isBirthdayTodayForUser($u))->values();
+        $celebrants = $birthdayToday
+            ->filter(fn (User $u) => $this->isInSendWindowForUser($u, $force))
+            ->values();
 
         $this->line('App timezone: '.$appTz);
+        $this->line('Send hour (celebrant local): '.$sendHourLocal.':00');
         $this->line('Supporters with DOB set: '.$candidates->count());
-        $this->line('Whose birthday is <fg=cyan>today</> (by their timezone): '.$celebrants->count());
+        $this->line('Whose birthday is <fg=cyan>today</> (by their timezone): '.$birthdayToday->count());
+        if (! $force && $birthdayToday->count() > $celebrants->count()) {
+            $this->line('Waiting for local send hour: '.($birthdayToday->count() - $celebrants->count()));
+        }
+        $this->line('Ready to notify orgs for: '.$celebrants->count());
 
         $firebase = app(FirebaseService::class);
         $sent = 0;
@@ -80,6 +110,7 @@ class NotifySupportersOfFollowedBirthdays extends Command
         $edges = 0;
 
         foreach ($celebrants as $celebrant) {
+            $year = (int) now($this->celebrantTimezone($celebrant))->year;
             $orgIds = $this->celebrantFavoriteOrganizationIds($celebrant);
 
             if ($orgIds->isEmpty()) {
@@ -198,11 +229,17 @@ class NotifySupportersOfFollowedBirthdays extends Command
             );
         }
 
-        if ($celebrants->isEmpty()) {
+        if ($birthdayToday->isEmpty()) {
             $this->newLine();
             $this->comment(
                 'No birthday today: supporter profile DOB is month/day only (MM/DD on /profile/edit). '
-                .'It must match today\'s calendar month and day in that user\'s timezone (or app timezone if empty).'
+                .'It must match today\'s calendar month and day in that supporter\'s timezone.'
+            );
+        } elseif ($celebrants->isEmpty() && ! $force) {
+            $this->newLine();
+            $this->comment(
+                "Supporters have a birthday today but local send hour ({$sendHourLocal}:00) has not arrived yet in their timezone. "
+                .'Use --force to test immediately.'
             );
         }
 
