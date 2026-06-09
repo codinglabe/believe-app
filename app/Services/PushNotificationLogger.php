@@ -6,6 +6,7 @@ use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationRecipientStatus;
 use App\Models\Organization;
 use App\Models\PushNotificationLog;
+use App\Models\User;
 use App\Models\PushNotificationRecipient;
 use App\Models\UserPushToken;
 use Illuminate\Support\Collection;
@@ -436,12 +437,18 @@ class PushNotificationLogger
      */
     private function enrichPayloadWithOrganizationLogo(PushNotificationLog $log, array $payload): array
     {
-        if (! $log->organization_id || ! empty($payload['organization_logo_url'])) {
+        if (! empty($payload['organization_logo_url'])) {
+            return $payload;
+        }
+
+        $organizationId = $log->organization_id ?? $this->resolveOrganizationIdFromSender($log->created_by);
+
+        if (! $organizationId) {
             return $payload;
         }
 
         $logoUrl = Organization::query()
-            ->whereKey($log->organization_id)
+            ->whereKey($organizationId)
             ->first(['id', 'registered_user_image'])
             ?->logoUrl();
 
@@ -450,5 +457,16 @@ class PushNotificationLogger
         }
 
         return $payload;
+    }
+
+    private function resolveOrganizationIdFromSender(?int $userId): ?int
+    {
+        if (! $userId) {
+            return null;
+        }
+
+        $user = User::query()->find($userId);
+
+        return $user ? Organization::forAuthUser($user)?->id : null;
     }
 }

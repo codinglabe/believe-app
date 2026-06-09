@@ -57,21 +57,20 @@ export function isAndroidNotificationPlatform(): boolean {
 }
 
 /**
- * Gmail-style layout on Android: manifest/PWA icon is left; NotificationOptions.icon is the right large icon.
- * On desktop, icon is the main notification image and stays the app logo.
+ * Prefer the sender organization's logo when available (org members send on behalf of their org).
+ * On Android PWA, the manifest icon may still appear on the left; NotificationOptions.icon is the org logo.
  */
 export function resolveNotificationDisplayIcon(
     data: Record<string, string | undefined>,
     origin?: string,
 ): string {
-    const appIcon = resolveAppNotificationIcon(origin)
     const orgLogo = resolveOrganizationLogoUrl(data, origin)
 
-    if (isAndroidNotificationPlatform() && orgLogo) {
+    if (orgLogo) {
         return orgLogo
     }
 
-    return appIcon
+    return resolveAppNotificationIcon(origin)
 }
 
 export function resolveNotificationBadge(origin?: string): string {
