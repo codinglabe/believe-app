@@ -51,14 +51,12 @@ class OrganizationOnboardingService
             ? $organization->onboardingDocuments()->get()->keyBy('document_type')
             : collect();
 
-        $boardMemberCount = $organization->boardMembers()->where('is_active', true)->count();
         $signerComplete = $this->authorizedSignerIsComplete($organization);
 
         return collect(OrganizationOnboardingRequirements::all())
-            ->map(function (array $req) use ($documents, $boardMemberCount, $signerComplete) {
+            ->map(function (array $req) use ($documents, $signerComplete) {
                 $connected = match ($req['type']) {
                     'upload' => $documents->has($req['id']),
-                    'board_members' => $boardMemberCount >= 1,
                     'form' => $signerComplete,
                     default => false,
                 };
