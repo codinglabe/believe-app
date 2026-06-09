@@ -1157,7 +1157,7 @@ export default function Dashboard({
       <div className="flex flex-col gap-6 m-3 md:m-6">
         {/* Pending Unity Impact Alliance invites — org dashboard: sign in → /dashboard → this card (also linked from invitation emails) */}
         {showOrgAllianceMembershipUi && <CareAllianceOrgInvitesInline />}
-        {/* Profile completion: hub org integrations — not shown on Unity Impact Alliance dashboard (use care_alliances-driven flows only). */}
+        {/* Profile completion: required org onboarding documents — not shown on Unity Impact Alliance dashboard. */}
         {isOrgUser && profileCompletion && profileCompletion.percent < 100 && (
           <ProfileCompletionBanner profileCompletion={profileCompletion} variant="organization" />
         )}

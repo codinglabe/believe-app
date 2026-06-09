@@ -1476,6 +1476,23 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/dashboard/form1023/apply/{application}/cancel', [Form1023ApplicationController::class, 'cancel'])->name('form1023.apply.cancel');
     });
 
+    Route::middleware('role:organization|organization_pending|care_alliance')->group(function () {
+        Route::prefix('governance/onboarding')->name('governance.onboarding.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'index'])->name('index');
+            Route::post('/upload', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'upload'])->name('upload');
+            Route::post('/authorized-signer', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'storeAuthorizedSigner'])->name('authorized-signer');
+        });
+    });
+
+    Route::middleware('role:organization|organization_pending|care_alliance')->group(function () {
+        Route::resource('board-members', BoardMemberController::class)
+            ->only(['index', 'store', 'update', 'destroy'])
+            ->shallow();
+
+        Route::post('board-members/{boardMember}/status', [BoardMemberController::class, 'updateStatus'])
+            ->name('board-members.status');
+    });
+
     Route::middleware('role:organization|care_alliance')->group(function () {
         Route::get('/compliance', [GovernanceComplianceController::class, 'index'])->name('governance.compliance');
 
@@ -1488,12 +1505,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
             Route::put('/file', [\App\Http\Controllers\Organization\OrganizationStorageController::class, 'rename'])->name('rename');
         });
 
-        Route::resource('board-members', BoardMemberController::class)
-            ->only(['index', 'store', 'update', 'destroy'])
-            ->shallow();
-
-        Route::post('board-members/{boardMember}/status', [BoardMemberController::class, 'updateStatus'])
-            ->name('board-members.status');
     });
 
     // Chunked Upload Routes
