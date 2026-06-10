@@ -75,7 +75,7 @@ class MerchantAuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (Auth::guard('merchant')->attempt($request->only('email', 'password'), $request->boolean('remember'))) {
+        if (Auth::guard('merchant')->attempt($request->only('email', 'password'), $request->boolean('remember', true))) {
             $request->session()->regenerate();
 
             // Do not use intended(): it may point at the main app and breaks subdomain auth.

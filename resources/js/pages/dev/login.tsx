@@ -23,7 +23,7 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
   const { data, setData, post, processing, errors, reset } = useForm<Required<LoginForm>>({
     email: "",
     password: "",
-    remember: false,
+    remember: true,
   })
 
   const submit: FormEventHandler = (e) => {

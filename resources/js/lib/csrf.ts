@@ -78,7 +78,7 @@ export function attachCsrfToAxios(api: import("axios").AxiosInstance): void {
             if (error.response?.status === 419) {
                 syncCsrfMetaFromCookie();
             }
-            if (error.response?.status === 401) {
+            if (error.response?.status === 401 && document.querySelector('meta[name="user-id"]')?.getAttribute('content')) {
                 window.location.href = "/login";
             }
             return Promise.reject(error);
