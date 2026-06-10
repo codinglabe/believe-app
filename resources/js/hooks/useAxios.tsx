@@ -34,9 +34,7 @@ const useAxios = () => {
                     console.log('CSRF token expired, reloading page...');
                     window.location.reload();
                 }
-                if (error.response?.status === 401) {
-                    // Unauthorized - redirect to login
-                    console.log('Unauthorized, redirecting...');
+                if (error.response?.status === 401 && document.querySelector('meta[name="user-id"]')?.getAttribute('content')) {
                     window.location.href = '/login';
                 }
                 return Promise.reject(error);

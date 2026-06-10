@@ -32,7 +32,7 @@ export default function LoginPage({ seo, status, canResetPassword }: LoginProps)
     const { data, setData, post, processing, errors, reset } = useForm<Required<LoginForm>>({
             email: '',
             password: '',
-            remember: false,
+            remember: true,
         });
 
     const submit: FormEventHandler = (e) => {
