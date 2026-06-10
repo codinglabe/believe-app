@@ -191,7 +191,7 @@ if (typeof window !== 'undefined') {
             if (err.response?.status === 419) {
                 syncCsrfMetaFromCookie();
             }
-            if (err.response?.status === 401) {
+            if (err.response?.status === 401 && document.querySelector('meta[name="user-id"]')?.getAttribute('content')) {
                 window.location.href = '/login';
             }
             return Promise.reject(err);
