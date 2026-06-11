@@ -86,4 +86,62 @@ class DeviceTokenService
             ->where('status', UserPushToken::STATUS_ACTIVE)
             ->get();
     }
+
+    public function isTokenValid(?string $token, ?int $userId = null): bool
+    {
+        if ($token === null || $token === '') {
+            return false;
+        }
+
+        $query = UserPushToken::query()
+            ->where('push_token', $token)
+            ->where('is_active', true)
+            ->where('status', UserPushToken::STATUS_ACTIVE);
+
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
+        return $query->exists();
+    }
+
+    public function markTokenInactive(string $token, ?int $userId = null, ?string $reason = null): void
+    {
+        $query = UserPushToken::query()->where('push_token', $token);
+
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
+        $query->update([
+            'is_active' => false,
+            'status' => UserPushToken::STATUS_INVALID,
+            'needs_reregister' => true,
+            'last_error' => $reason,
+            'last_error_at' => now(),
+        ]);
+    }
+
+    public function tokenStatus(?string $token, ?int $userId = null): string
+    {
+        if ($token === null || $token === '') {
+            return 'missing';
+        }
+
+        $record = UserPushToken::query()
+            ->where('push_token', $token)
+            ->when($userId !== null, fn ($q) => $q->where('user_id', $userId))
+            ->orderByDesc('last_used_at')
+            ->first();
+
+        if (! $record) {
+            return 'unknown';
+        }
+
+        if ($record->isActive()) {
+            return 'active';
+        }
+
+        return $record->status === UserPushToken::STATUS_OPTED_OUT ? 'opted_out' : 'inactive';
+    }
 }
