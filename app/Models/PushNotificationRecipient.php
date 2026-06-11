@@ -23,6 +23,8 @@ class PushNotificationRecipient extends Model
         'opened_at',
         'failed_at',
         'failure_reason',
+        'attempt_count',
+        'firebase_error_code',
     ];
 
     protected $casts = [
@@ -31,6 +33,7 @@ class PushNotificationRecipient extends Model
         'failed_at' => UtcDatetime::class,
         'created_at' => UtcDatetime::class,
         'updated_at' => UtcDatetime::class,
+        'attempt_count' => 'integer',
         'status' => PushNotificationRecipientStatus::class,
     ];
 
@@ -42,5 +45,10 @@ class PushNotificationRecipient extends Model
     public function recipientUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recipient_user_id');
+    }
+
+    public function failures(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NotificationFailure::class, 'push_notification_recipient_id');
     }
 }

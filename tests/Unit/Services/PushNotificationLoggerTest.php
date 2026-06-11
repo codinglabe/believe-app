@@ -55,6 +55,22 @@ class PushNotificationLoggerTest extends TestCase
             $table->timestamp('opened_at')->nullable();
             $table->timestamp('failed_at')->nullable();
             $table->string('failure_reason', 512)->nullable();
+            $table->unsignedTinyInteger('attempt_count')->default(0);
+            $table->string('firebase_error_code', 128)->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('notification_failures', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('notification_id');
+            $table->unsignedBigInteger('push_notification_recipient_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('device_token', 512)->nullable();
+            $table->string('firebase_error_code', 128)->nullable();
+            $table->string('failure_reason', 512)->nullable();
+            $table->json('firebase_response')->nullable();
+            $table->unsignedTinyInteger('attempt_count')->default(1);
+            $table->timestamp('failed_at');
             $table->timestamps();
         });
 
@@ -65,6 +81,9 @@ class PushNotificationLoggerTest extends TestCase
             $table->string('device_type')->default('web');
             $table->boolean('is_active')->default(true);
             $table->string('status')->default('active');
+            $table->boolean('needs_reregister')->default(false);
+            $table->string('last_error')->nullable();
+            $table->timestamp('last_error_at')->nullable();
             $table->timestamp('last_used_at')->nullable();
             $table->timestamps();
         });
@@ -93,6 +112,7 @@ class PushNotificationLoggerTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('notification_failures');
         Schema::dropIfExists('push_notification_recipients');
         Schema::dropIfExists('push_notification_logs');
         Schema::dropIfExists('user_push_tokens');
@@ -164,6 +184,12 @@ class PushNotificationLoggerTest extends TestCase
             'status' => PushNotificationRecipientStatus::Pending,
         ]);
 
+        \App\Models\UserPushToken::query()->create([
+            'push_token' => 'token-abc',
+            'is_active' => true,
+            'status' => 'active',
+        ]);
+
         $logger = app(PushNotificationLogger::class);
         $result = $logger->sendLog($log, []);
 
@@ -207,6 +233,12 @@ class PushNotificationLoggerTest extends TestCase
             'push_notification_log_id' => $log->id,
             'device_token' => 'token-abc',
             'status' => PushNotificationRecipientStatus::Pending,
+        ]);
+
+        \App\Models\UserPushToken::query()->create([
+            'push_token' => 'token-abc',
+            'is_active' => true,
+            'status' => 'active',
         ]);
 
         $logger = app(PushNotificationLogger::class);
@@ -262,6 +294,12 @@ class PushNotificationLoggerTest extends TestCase
             'push_notification_log_id' => $log->id,
             'device_token' => 'token-abc',
             'status' => PushNotificationRecipientStatus::Pending,
+        ]);
+
+        \App\Models\UserPushToken::query()->create([
+            'push_token' => 'token-abc',
+            'is_active' => true,
+            'status' => 'active',
         ]);
 
         $logger = app(PushNotificationLogger::class);

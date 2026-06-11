@@ -6,10 +6,13 @@ use App\Enums\PushNotificationLogStatus;
 use App\Exports\PushNotificationLogExport;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\RepushPushNotificationRequest;
+use App\Http\Requests\Admin\RepushPushNotificationRecipientRequest;
 use App\Models\Organization;
 use App\Models\PushNotificationLog;
+use App\Models\PushNotificationRecipient;
 use App\Policies\PushNotificationLogPolicy;
 use App\Services\Admin\PushNotificationLogListFilters;
+use App\Services\DeviceTokenService;
 use App\Services\PushNotificationLogger;
 use Generator;
 use Illuminate\Http\RedirectResponse;
@@ -27,6 +30,7 @@ class PushNotificationLogController extends Controller
     public function __construct(
         private readonly PushNotificationLogListFilters $filters,
         private readonly PushNotificationLogger $logger,
+        private readonly DeviceTokenService $deviceTokenService,
     ) {}
 
     public function index(Request $request): InertiaResponse
@@ -87,6 +91,7 @@ class PushNotificationLogController extends Controller
 
         $recipientsQuery = $pushNotificationLog->recipients()
             ->with('recipientUser:id,name,email')
+            ->withCount('failures')
             ->orderByDesc('id');
 
         $recipients = $recipientsQuery
@@ -110,6 +115,17 @@ class PushNotificationLogController extends Controller
                 'opened_at' => $recipient->opened_at?->toIso8601String(),
                 'failed_at' => $recipient->failed_at?->toIso8601String(),
                 'failure_reason' => $recipient->failure_reason,
+                'firebase_error_code' => $recipient->firebase_error_code,
+                'attempt_count' => $recipient->attempt_count ?? 0,
+                'token_status' => $this->deviceTokenService->tokenStatus(
+                    $recipient->device_token,
+                    $recipient->recipient_user_id,
+                ),
+                'failure_count' => $recipient->failures_count ?? 0,
+                'can_repush' => $request->user()->can('repush', $pushNotificationLog)
+                    && $this->logger->canRepushRecipient($recipient),
+                'can_repush_override' => $request->user()->can('repush', $pushNotificationLog)
+                    && $this->logger->canRepushRecipient($recipient, manualOverride: true),
             ]);
 
         return Inertia::render('admin/push-notifications/show', [
@@ -124,9 +140,36 @@ class PushNotificationLogController extends Controller
     {
         $this->authorize('repush', $pushNotificationLog);
 
-        $this->logger->repushNotification($pushNotificationLog->id);
+        $manualOverride = $request->boolean('manual_override');
+        $result = $this->logger->repushNotification($pushNotificationLog->id, $manualOverride);
 
-        return back()->with('success', 'Notification re-push initiated.');
+        $message = sprintf(
+            'Re-push completed: %d recipient(s) retried, %d skipped.',
+            $result['repushed'],
+            $result['skipped'],
+        );
+
+        return back()->with('success', $message);
+    }
+
+    public function repushRecipient(
+        RepushPushNotificationRecipientRequest $request,
+        PushNotificationLog $pushNotificationLog,
+        PushNotificationRecipient $recipient,
+    ): RedirectResponse {
+        $this->authorize('repush', $pushNotificationLog);
+
+        if ((int) $recipient->push_notification_log_id !== (int) $pushNotificationLog->id) {
+            abort(404);
+        }
+
+        $manualOverride = $request->boolean('manual_override');
+
+        if (! $this->logger->repushRecipient($recipient, $manualOverride)) {
+            return back()->with('error', 'Recipient is not eligible for re-push (inactive token or non-retryable failure).');
+        }
+
+        return back()->with('success', 'Recipient re-push completed.');
     }
 
     public function exportCsv(Request $request): StreamedResponse

@@ -48,6 +48,12 @@ type RecipientRow = {
   opened_at: string | null;
   failed_at: string | null;
   failure_reason: string | null;
+  firebase_error_code: string | null;
+  attempt_count: number;
+  token_status: string;
+  failure_count: number;
+  can_repush: boolean;
+  can_repush_override: boolean;
 };
 
 type Paginated<T> = {
@@ -72,6 +78,14 @@ const statusStyles: Record<string, string> = {
   invalid_token: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
+const tokenStatusStyles: Record<string, string> = {
+  active: "bg-green-500/10 text-green-400 border-green-500/20",
+  inactive: "bg-red-500/10 text-red-400 border-red-500/20",
+  opted_out: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  missing: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  unknown: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+};
+
 export default function PushNotificationShow({ log, recipients, canRepush }: PageProps) {
   const breadcrumbs: BreadcrumbItem[] = [
     { title: "Dashboard", href: "/dashboard" },
@@ -79,9 +93,28 @@ export default function PushNotificationShow({ log, recipients, canRepush }: Pag
     { title: `#${log.id}`, href: "#" },
   ];
 
-  const handleRepush = () => {
-    if (!confirm("Re-push to pending/failed recipients?")) return;
-    router.post(`/admin/push-notifications/${log.id}/repush`, {}, { preserveScroll: true });
+  const handleRepush = (manualOverride = false) => {
+    const message = manualOverride
+      ? "Force re-push to all eligible recipients (including non-retryable failures)?"
+      : "Re-push to eligible failed/pending recipients?";
+    if (!confirm(message)) return;
+    router.post(
+      `/admin/push-notifications/${log.id}/repush`,
+      { manual_override: manualOverride },
+      { preserveScroll: true },
+    );
+  };
+
+  const handleRecipientRepush = (recipientId: number, manualOverride = false) => {
+    const message = manualOverride
+      ? "Force re-push to this recipient?"
+      : "Re-push to this recipient?";
+    if (!confirm(message)) return;
+    router.post(
+      `/admin/push-notifications/${log.id}/recipients/${recipientId}/repush`,
+      { manual_override: manualOverride },
+      { preserveScroll: true },
+    );
   };
 
   const fmt = (iso: string | null) => formatUtcTimestamp(iso);
@@ -106,10 +139,15 @@ export default function PushNotificationShow({ log, recipients, canRepush }: Pag
             </div>
           </div>
           {canRepush && (
-            <Button onClick={handleRepush}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Re-Push
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => handleRepush(false)}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Re-Push
+              </Button>
+              <Button variant="outline" onClick={() => handleRepush(true)}>
+                Force Re-Push
+              </Button>
+            </div>
           )}
         </div>
 
@@ -197,23 +235,26 @@ export default function PushNotificationShow({ log, recipients, canRepush }: Pag
           <CardHeader>
             <CardTitle className="text-base">Recipients</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="overflow-x-auto p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Device Token</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Token</TableHead>
+                  <TableHead>Attempts</TableHead>
                   <TableHead>Delivered At</TableHead>
-                  <TableHead>Opened At</TableHead>
                   <TableHead>Failed At</TableHead>
+                  <TableHead>Firebase Code</TableHead>
                   <TableHead>Failure Reason</TableHead>
+                  {canRepush && <TableHead>Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recipients.data.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
+                    <TableCell colSpan={canRepush ? 10 : 9} className="text-muted-foreground py-8 text-center">
                       No recipients recorded.
                     </TableCell>
                   </TableRow>
@@ -236,12 +277,49 @@ export default function PushNotificationShow({ log, recipients, canRepush }: Pag
                           {r.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={tokenStatusStyles[r.token_status] ?? ""}>
+                          {r.token_status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {r.attempt_count}
+                        {r.failure_count > 0 && (
+                          <span className="text-muted-foreground block text-xs">
+                            {r.failure_count} failure log{r.failure_count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm">{fmt(r.delivered_at)}</TableCell>
-                      <TableCell className="text-sm">{fmt(r.opened_at)}</TableCell>
                       <TableCell className="text-sm">{fmt(r.failed_at)}</TableCell>
+                      <TableCell className="font-mono text-xs">{r.firebase_error_code ?? "—"}</TableCell>
                       <TableCell className="max-w-[180px] truncate text-sm">
                         {r.failure_reason ?? "—"}
                       </TableCell>
+                      {canRepush && (
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {r.can_repush && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRecipientRepush(r.id, false)}
+                              >
+                                Repush
+                              </Button>
+                            )}
+                            {r.can_repush_override && !r.can_repush && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleRecipientRepush(r.id, true)}
+                              >
+                                Force
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

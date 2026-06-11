@@ -9,6 +9,8 @@ use App\Models\PushNotificationLog;
 use App\Models\User;
 use App\Models\PushNotificationRecipient;
 use App\Models\UserPushToken;
+use App\Services\PushNotifications\FcmErrorClassifier;
+use App\Services\PushNotifications\NotificationFailureLogger;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +20,8 @@ class PushNotificationLogger
     public function __construct(
         private readonly FirebaseService $firebaseService,
         private readonly DeviceTokenService $deviceTokenService,
+        private readonly NotificationFailureLogger $failureLogger,
+        private readonly FcmErrorClassifier $errorClassifier,
     ) {}
 
     /**
@@ -176,6 +180,18 @@ class PushNotificationLogger
             return;
         }
 
+        if (! $this->deviceTokenService->isTokenValid($recipient->device_token, $recipient->recipient_user_id)) {
+            $recipient->update([
+                'status' => PushNotificationRecipientStatus::InvalidToken,
+                'failed_at' => now(),
+                'failure_reason' => 'Device token inactive',
+                'firebase_error_code' => 'INVALID_TOKEN',
+            ]);
+            $this->recalculateCounts($log);
+
+            return;
+        }
+
         $tokenRecord = UserPushToken::query()
             ->where('push_token', $recipient->device_token)
             ->when($recipient->recipient_user_id, fn ($q) => $q->where('user_id', $recipient->recipient_user_id))
@@ -187,49 +203,96 @@ class PushNotificationLogger
             'recipient_id' => (string) $recipient->id,
         ]);
 
-        $result = $this->firebaseService->sendToDevice(
-            $recipient->device_token,
-            $title,
-            $body,
-            $recipientPayload,
-            $deviceType,
-        );
+        $maxAttempts = $this->errorClassifier->maxAttempts();
+        $attempt = 0;
+        $lastResult = null;
+        $lastFailureReason = null;
 
-        if ($result['success'] ?? false) {
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+
+            $result = $this->firebaseService->sendToDevice(
+                $recipient->device_token,
+                $title,
+                $body,
+                $recipientPayload,
+                $deviceType,
+            );
+
+            if ($result['success'] ?? false) {
+                $recipient->update([
+                    'status' => PushNotificationRecipientStatus::Delivered,
+                    'delivered_at' => now(),
+                    'failed_at' => null,
+                    'failure_reason' => null,
+                    'firebase_error_code' => null,
+                    'attempt_count' => $attempt,
+                ]);
+
+                if ($tokenRecord) {
+                    $tokenRecord->last_used_at = now();
+                    $tokenRecord->save();
+                }
+
+                $this->recalculateCounts($log);
+
+                return;
+            }
+
+            $lastResult = $result;
+            $errorCode = $this->errorClassifier->normalizeErrorCode($result['error_code'] ?? null);
+            $lastFailureReason = $this->errorClassifier->mapFailureReason($result);
+
+            $this->failureLogger->log($log, $recipient, $result, $attempt, $lastFailureReason);
+
             $recipient->update([
-                'status' => PushNotificationRecipientStatus::Delivered,
-                'delivered_at' => now(),
+                'attempt_count' => $attempt,
+                'firebase_error_code' => $errorCode !== '' ? $errorCode : null,
             ]);
 
-            if ($tokenRecord) {
-                $tokenRecord->last_used_at = now();
-                $tokenRecord->save();
+            if ($this->errorClassifier->isPermanentTokenFailure($errorCode, $result)) {
+                $this->deviceTokenService->markTokenInactive(
+                    $recipient->device_token,
+                    $recipient->recipient_user_id,
+                    $lastFailureReason,
+                );
+
+                $this->markRecipientFailed($recipient, $lastFailureReason, $errorCode);
+
+                $this->recalculateCounts($log);
+
+                return;
             }
-        } else {
-            $failureReason = $this->mapFailureReason($result);
 
-            $recipient->update([
-                'status' => $this->mapRecipientFailureStatus($failureReason),
-                'failed_at' => now(),
-                'failure_reason' => $failureReason,
-            ]);
+            if ($this->errorClassifier->isRetryable($errorCode, $lastFailureReason) && $attempt < $maxAttempts) {
+                sleep($this->errorClassifier->retryDelaySeconds($attempt));
 
-            $errorCode = strtoupper((string) ($result['error_code'] ?? ''));
-            $errorMessage = strtoupper((string) data_get($result, 'response.error.message', ''));
-            $isPermanentTokenFailure = in_array($errorCode, ['UNREGISTERED', 'NOT_FOUND'], true)
-                || ($errorCode === 'INVALID_ARGUMENT' && str_contains($errorMessage, 'SENDERID'));
-
-            if ($tokenRecord && $isPermanentTokenFailure) {
-                $tokenRecord->status = UserPushToken::STATUS_INVALID;
-                $tokenRecord->is_active = false;
-                $tokenRecord->needs_reregister = true;
-                $tokenRecord->last_error = $failureReason;
-                $tokenRecord->last_error_at = now();
-                $tokenRecord->save();
+                continue;
             }
+
+            break;
         }
 
+        $this->markRecipientFailed(
+            $recipient,
+            $lastFailureReason ?? 'Firebase rejected payload',
+            $this->errorClassifier->normalizeErrorCode($lastResult['error_code'] ?? null),
+        );
+
         $this->recalculateCounts($log);
+    }
+
+    private function markRecipientFailed(
+        PushNotificationRecipient $recipient,
+        string $failureReason,
+        ?string $errorCode = null,
+    ): void {
+        $recipient->update([
+            'status' => $this->mapRecipientFailureStatus($failureReason),
+            'failed_at' => now(),
+            'failure_reason' => $failureReason,
+            'firebase_error_code' => $errorCode !== '' && $errorCode !== null ? $errorCode : null,
+        ]);
     }
 
     public function logSent(PushNotificationLog $log): PushNotificationLog
@@ -280,9 +343,11 @@ class PushNotificationLogger
     }
 
     /**
-     * Re-push pending/failed recipients. Platform admin only (enforced by caller).
+     * Re-push eligible failed/pending recipients. Platform admin only (enforced by caller).
+     *
+     * @return array{repushed: int, skipped: int}
      */
-    public function repushNotification(int $notificationLogId): PushNotificationLog
+    public function repushNotification(int $notificationLogId, bool $manualOverride = false): array
     {
         $log = PushNotificationLog::query()->findOrFail($notificationLogId);
 
@@ -291,19 +356,95 @@ class PushNotificationLogger
             'module' => $log->module_name,
             'organization_id' => $log->organization_id,
             'triggered_by' => auth()->id(),
+            'manual_override' => $manualOverride,
         ]);
 
-        $retryable = [PushNotificationRecipientStatus::Pending, PushNotificationRecipientStatus::Failed];
+        $retryable = [
+            PushNotificationRecipientStatus::Pending,
+            PushNotificationRecipientStatus::Failed,
+            PushNotificationRecipientStatus::InvalidToken,
+        ];
+
+        $repushed = 0;
+        $skipped = 0;
 
         $log->recipients()
             ->whereIn('status', array_map(fn ($s) => $s->value, $retryable))
-            ->update([
-                'status' => PushNotificationRecipientStatus::Pending,
-                'failed_at' => null,
-                'failure_reason' => null,
-            ]);
+            ->orderBy('id')
+            ->each(function (PushNotificationRecipient $recipient) use ($log, $manualOverride, &$repushed, &$skipped) {
+                if ($this->repushRecipient($recipient, $manualOverride)) {
+                    $repushed++;
+                } else {
+                    $skipped++;
+                }
+            });
 
-        return $this->sendLog($log->fresh());
+        $log = $this->recalculateCounts($log->fresh());
+        $this->finalizeLogStatus($log);
+
+        return ['repushed' => $repushed, 'skipped' => $skipped];
+    }
+
+    public function repushRecipient(PushNotificationRecipient $recipient, bool $manualOverride = false): bool
+    {
+        if (! $this->canRepushRecipient($recipient, $manualOverride)) {
+            return false;
+        }
+
+        $recipient->update([
+            'status' => PushNotificationRecipientStatus::Pending,
+            'failed_at' => null,
+            'failure_reason' => null,
+            'firebase_error_code' => null,
+            'attempt_count' => 0,
+            'delivered_at' => null,
+        ]);
+
+        $log = $recipient->log()->firstOrFail();
+        $title = $log->notification_title;
+        $body = (string) ($log->notification_body ?? '');
+        $clickAction = $log->deep_link ? url($log->deep_link) : url('/');
+
+        $payload = $this->enrichPayloadWithOrganizationLogo(
+            $log,
+            [
+                'notification_log_id' => (string) $log->id,
+                'click_action' => $clickAction,
+                'url' => $clickAction,
+            ],
+        );
+
+        $this->sendRecipient($recipient->fresh(), $title, $body, $payload, $log);
+
+        return true;
+    }
+
+    public function canRepushRecipient(PushNotificationRecipient $recipient, bool $manualOverride = false): bool
+    {
+        if (! in_array($recipient->status, [
+            PushNotificationRecipientStatus::Failed,
+            PushNotificationRecipientStatus::InvalidToken,
+            PushNotificationRecipientStatus::Pending,
+        ], true)) {
+            return false;
+        }
+
+        if (! $recipient->device_token) {
+            return false;
+        }
+
+        if (! $this->deviceTokenService->isTokenValid($recipient->device_token, $recipient->recipient_user_id)) {
+            return false;
+        }
+
+        if ($manualOverride) {
+            return true;
+        }
+
+        return $this->errorClassifier->isRetryable(
+            $recipient->firebase_error_code,
+            $recipient->failure_reason,
+        );
     }
 
     /**
@@ -404,28 +545,10 @@ class PushNotificationLogger
         }
     }
 
-    /**
-     * @param  array{success?: bool, error_code?: ?string, response?: ?array}  $result
-     */
-    private function mapFailureReason(array $result): string
-    {
-        $code = strtoupper((string) ($result['error_code'] ?? ''));
-
-        return match (true) {
-            in_array($code, ['UNREGISTERED', 'NOT_FOUND', 'INVALID_ARGUMENT'], true) => 'Invalid device token',
-            str_contains($code, 'PAYLOAD') || str_contains($code, 'SIZE') => 'Payload too large',
-            str_contains($code, 'UNAVAILABLE') || str_contains($code, 'UNREACHABLE') => 'Device not reachable',
-            $code === 'NO_ACCESS_TOKEN' => 'Firebase rejected payload',
-            default => is_array($result['response'] ?? null)
-                ? ($result['response']['error']['message'] ?? 'Firebase rejected payload')
-                : 'Firebase rejected payload',
-        };
-    }
-
     private function mapRecipientFailureStatus(string $failureReason): PushNotificationRecipientStatus
     {
         return match ($failureReason) {
-            'Invalid device token' => PushNotificationRecipientStatus::InvalidToken,
+            'Invalid device token', 'Device token inactive' => PushNotificationRecipientStatus::InvalidToken,
             'User unsubscribed' => PushNotificationRecipientStatus::Unsubscribed,
             default => PushNotificationRecipientStatus::Failed,
         };
