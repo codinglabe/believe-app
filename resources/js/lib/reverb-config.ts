@@ -1,4 +1,5 @@
 import { echo, echoIsConfigured } from "@laravel/echo-react"
+import { getCsrfToken } from "./csrf"
 
 const LOOPBACK_HOSTS = ["127.0.0.1", "0.0.0.0", "localhost"] as const
 
@@ -70,8 +71,7 @@ export const buildReverbEchoConfig = () => {
     auth: {
       headers: {
         Accept: "application/json",
-        "X-CSRF-TOKEN":
-          document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? "",
+        "X-CSRF-TOKEN": getCsrfToken(),
         "X-Requested-With": "XMLHttpRequest",
       },
     },
@@ -85,4 +85,13 @@ export const syncEchoCsrfToken = (token: string) => {
   if (connector.pusher?.config?.auth?.headers) {
     connector.pusher.config.auth.headers["X-CSRF-TOKEN"] = token
   }
+}
+
+export const refreshEchoAuthHeaders = () => {
+  if (typeof window === "undefined" || !echoIsConfigured()) return
+
+  const token = getCsrfToken()
+  if (!token) return
+
+  syncEchoCsrfToken(token)
 }

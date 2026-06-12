@@ -50,6 +50,25 @@ function formatElapsed(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
+function UnityCallChatStatusEcho({
+  channelName,
+  visibility,
+  onStatus,
+}: {
+  channelName: string
+  visibility: "public" | "private"
+  onStatus: (payload: UnityCallStatusEvent) => void
+}) {
+  useEcho<UnityCallStatusEvent>(
+    channelName,
+    ".call.status",
+    onStatus,
+    [channelName, onStatus],
+    visibility,
+  )
+  return null
+}
+
 function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: boolean }) {
   const ref = useRef<HTMLAudioElement>(null)
 
@@ -381,16 +400,10 @@ export default function UnityCallShow({
     if (!call.chatRoomId) {
       return null
     }
-    return unityCallChatChannelName(call.chatRoomId, isGroupCall)
-  }, [call.chatRoomId, isGroupCall])
+    return unityCallChatChannelName(call.chatRoomId, isGroupCall, call.chatRoomType ?? null)
+  }, [call.chatRoomId, call.chatRoomType, isGroupCall])
 
-  useEcho<UnityCallStatusEvent>(
-    chatChannelName ?? "chat.disabled",
-    ".call.status",
-    handleCallTerminated,
-    [chatChannelName, handleCallTerminated],
-    chatChannelName?.startsWith("public-chat.") ? "public" : "private",
-  )
+  const chatChannelVisibility = chatChannelName?.startsWith("public-chat.") ? "public" : "private"
 
   useUnityCallRingTimeout({
     callId: call.id,
@@ -554,6 +567,14 @@ export default function UnityCallShow({
   return (
     <div className="fixed inset-0 z-[9998] flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
       <Head title="Audio call" />
+
+      {chatChannelName ? (
+        <UnityCallChatStatusEcho
+          channelName={chatChannelName}
+          visibility={chatChannelVisibility}
+          onStatus={handleCallTerminated}
+        />
+      ) : null}
 
       {mergedRemoteStream.getAudioTracks().length > 0 ? (
         <RemoteAudio key="merged-remote" stream={mergedRemoteStream} speakerOn={speakerOn} />

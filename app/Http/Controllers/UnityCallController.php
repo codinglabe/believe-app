@@ -227,6 +227,7 @@ class UnityCallController extends Controller
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
+                'chatRoomType' => $call->chatRoom?->type,
                 'isGroupCall' => $isGroupCall,
                 'joinUrl' => $this->callJoinPath($call),
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),

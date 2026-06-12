@@ -647,6 +647,28 @@ class UnityCallService
             ->exists();
     }
 
+    public function userCanBroadcastOnCall(User $user, int $callId): bool
+    {
+        $call = UnityCall::query()->whereKey($callId)->first();
+        if (! $call) {
+            return false;
+        }
+
+        if ((int) $call->caller_id === (int) $user->id) {
+            return true;
+        }
+
+        if ($call->participants()->where('user_id', $user->id)->exists()) {
+            return true;
+        }
+
+        if (! $call->isActive()) {
+            return false;
+        }
+
+        return $this->userCanAccess($call, $user);
+    }
+
     public function userCanAccess(UnityCall $call, User $user): bool
     {
         if ($call->participants()->where('user_id', $user->id)->exists()) {

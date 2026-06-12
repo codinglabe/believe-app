@@ -45,7 +45,7 @@ cat > /etc/coturn/turnserver.conf <<EOF
 # Believe In Unity — self-hosted TURN/STUN (${TURN_REALM})
 listening-port=3478
 tls-listening-port=5349
-listening-ip=${PUBLIC_IP}
+listening-ip=0.0.0.0
 relay-ip=${PUBLIC_IP}
 external-ip=${PUBLIC_IP}
 realm=${TURN_REALM}
@@ -64,6 +64,7 @@ bps-capacity=0
 stale-nonce=600
 log-file=/var/log/turnserver/turnserver.log
 simple-log
+verbose
 EOF
 
 mkdir -p /var/log/turnserver
@@ -76,22 +77,29 @@ elif systemctl list-unit-files | grep -q '^turnserver\.service'; then
   systemctl enable turnserver
   systemctl restart turnserver
 else
+  pkill -x turnserver 2>/dev/null || true
   turnserver -c /etc/coturn/turnserver.conf --daemon
 fi
 
 # CSF (cPanel) — open TURN ports if CSF is present
 if command -v csf >/dev/null 2>&1; then
-  for rule in \
-    "3478" "5349" "49152:65535"; do
+  for rule in "3478" "5349" "49152:65535"; do
     csf -a "${rule}" 2>/dev/null || true
   done
   csf -r 2>/dev/null || true
   echo "CSF rules added for TURN ports."
 fi
 
+sleep 1
+
 if ss -lun | grep -q ':3478 '; then
   echo "COTURN_OK: listening on UDP 3478"
+  ss -lun | grep ':3478 ' || true
 else
   echo "WARNING: coturn may not be listening on 3478 — check firewall and journalctl -u coturn"
+  journalctl -u coturn -n 20 --no-pager 2>/dev/null || journalctl -u turnserver -n 20 --no-pager 2>/dev/null || true
   exit 1
 fi
+
+echo "Test from your laptop:"
+echo "  turnutils_uclient -v -u ${TURN_USER} -w '***' ${PUBLIC_IP}"

@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\UnityCall;
 use App\Models\User;
 use App\Services\UnityCallService;
 use Illuminate\Support\Facades\Broadcast;
@@ -43,21 +42,12 @@ Broadcast::channel('presence-chat.{roomId}', function (User $user, $roomId) {
     }
 });
 
-Broadcast::channel('user.{id}', function ($user, $userId) {
+Broadcast::channel('user.{id}', function (User $user, $userId) {
     return (int) $user->id === (int) $userId;
 });
 
 Broadcast::channel('unity-call.{callId}', function (User $user, $callId) {
-    $call = UnityCall::query()->whereKey($callId)->first();
-    if (! $call) {
-        return false;
-    }
-
-    if ($call->participants()->where('user_id', $user->id)->exists()) {
-        return true;
-    }
-
-    return app(UnityCallService::class)->userCanAccess($call, $user);
+    return app(UnityCallService::class)->userCanBroadcastOnCall($user, (int) $callId);
 });
 
 Broadcast::channel('meeting.{meetingId}.participants', function (User $user, $meetingId) {
