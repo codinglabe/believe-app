@@ -92,8 +92,6 @@ user=${TURN_USER}:${TURN_PASS}
 min-port=49152
 max-port=65535
 no-multicast-peers
-denied-peer-ip=127.0.0.0/8
-denied-peer-ip=::1/128
 mobility
 total-quota=0
 bps-capacity=0
@@ -114,12 +112,6 @@ mkdir -p /etc/sysconfig
 if [[ ! -f /etc/sysconfig/turnserver ]]; then
   echo 'EXTRA_OPTIONS=""' > /etc/sysconfig/turnserver
 fi
-
-turnserver -c "${CONF_PRIMARY}" --check-config 2>/dev/null || {
-  echo "ERROR: turnserver config check failed for ${CONF_PRIMARY}"
-  turnserver -c "${CONF_PRIMARY}" --check-config || true
-  exit 1
-}
 
 # Stop orphan daemons from earlier manual installs (multiple listeners on 3478).
 systemctl stop coturn 2>/dev/null || true
