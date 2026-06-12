@@ -63,6 +63,7 @@ function buildRtcConfiguration(iceServers: RTCIceServer[]): RTCConfiguration {
     iceServers: servers,
     iceCandidatePoolSize: 10,
     bundlePolicy: "max-bundle",
+    rtcpMuxPolicy: "require",
   }
 }
 
@@ -110,6 +111,7 @@ export function useUnityCallWebRTC({
   const rtcConfiguration = useRef(buildRtcConfiguration(iceServers))
   const outboundTracksRef = useRef<Map<string, MediaStreamTrack>>(new Map())
   const processedSignals = useRef<Set<string>>(new Set())
+  const offerRequestSentFor = useRef<Set<string>>(new Set())
   const handleSignalChain = useRef<Promise<void>>(Promise.resolve())
   const handleSignalRef = useRef<(signal: WebRTCSignal) => Promise<void>>(async () => {})
 
@@ -262,6 +264,7 @@ export function useUnityCallWebRTC({
     pendingCandidates.current.delete(peerId)
     makingOffer.current.delete(peerId)
     ignoreOffer.current.delete(peerId)
+    offerRequestSentFor.current.delete(peerId)
     const cloned = outboundTracksRef.current.get(peerId)
     if (cloned) {
       cloned.stop()
@@ -306,8 +309,19 @@ export function useUnityCallWebRTC({
         if (!track || track.kind !== "audio") {
           return
         }
+
         track.enabled = true
-        registerRemoteTrack(peerId, track)
+
+        const remoteStream = event.streams[0]
+        if (remoteStream) {
+          remoteStream.getAudioTracks().forEach((audioTrack) => {
+            audioTrack.enabled = true
+            registerRemoteTrack(peerId, audioTrack)
+          })
+        } else {
+          registerRemoteTrack(peerId, track)
+        }
+
         track.onunmute = () => registerRemoteTrack(peerId, track)
       }
 
@@ -406,8 +420,18 @@ export function useUnityCallWebRTC({
         if (normalized.to !== userIdStr || !isCaller) {
           return
         }
-        resetPeerConnection(normalized.from)
-        await createHostOffer(normalized.from)
+
+        const from = normalized.from
+        const existing = peerConnections.current.get(from)
+        if (existing && isPeerConnected(existing)) {
+          return
+        }
+
+        if (!existing || existing.signalingState === "closed") {
+          resetPeerConnection(from)
+        }
+
+        await createHostOffer(from)
         return
       }
 
@@ -582,7 +606,8 @@ export function useUnityCallWebRTC({
       createPeerConnection(peerId)
       if (isCaller) {
         void createHostOffer(peerId)
-      } else {
+      } else if (!offerRequestSentFor.current.has(peerId)) {
+        offerRequestSentFor.current.add(peerId)
         sendSignal({
           type: "offer-request",
           from: userIdStr,
@@ -600,6 +625,7 @@ export function useUnityCallWebRTC({
     channelReady.current = false
     pendingSignals.current = []
     processedSignals.current.clear()
+    offerRequestSentFor.current.clear()
     handleSignalChain.current = Promise.resolve()
 
     peerConnections.current.forEach((pc) => pc.close())
@@ -622,8 +648,7 @@ export function useUnityCallWebRTC({
     setConnectionStatus("idle")
     setPermissionStatus("idle")
 
-    echo().leave(`unity-call.${callId}`)
-  }, [callId])
+  }, [])
 
   const startMedia = useCallback(async () => {
     if (mediaStarted.current || callEnded.current || !mediaActive) {
@@ -692,15 +717,36 @@ export function useUnityCallWebRTC({
     void startMedia()
   }, [startMedia])
 
+  const connectPeersRef = useRef(connectPeers)
+  const enqueueSignalRef = useRef(enqueueSignal)
+  const fetchPendingSignalsRef = useRef(fetchPendingSignals)
+  const stopMediaRef = useRef(stopMedia)
+
   useEffect(() => {
-    if (!callId || callEnded.current) {
+    connectPeersRef.current = connectPeers
+  }, [connectPeers])
+
+  useEffect(() => {
+    enqueueSignalRef.current = enqueueSignal
+  }, [enqueueSignal])
+
+  useEffect(() => {
+    fetchPendingSignalsRef.current = fetchPendingSignals
+  }, [fetchPendingSignals])
+
+  useEffect(() => {
+    stopMediaRef.current = stopMedia
+  }, [stopMedia])
+
+  useEffect(() => {
+    if (!callId) {
       return
     }
 
     const channel = echo().private(`unity-call.${callId}`) as unknown as ChannelWithListen
 
     channel.listen(".webrtc.signal", (payload) => {
-      enqueueSignal(payload as WebRTCSignal)
+      enqueueSignalRef.current(payload as WebRTCSignal)
     })
 
     channel.listen(".call.session.status", (payload) => {
@@ -709,7 +755,7 @@ export function useUnityCallWebRTC({
         statusPayload.call?.id === callId &&
         ["cancelled", "ended", "declined", "missed"].includes(statusPayload.reason)
       ) {
-        stopMedia()
+        stopMediaRef.current()
       }
     })
 
@@ -719,8 +765,8 @@ export function useUnityCallWebRTC({
         setConnectionStatus((prev) =>
           prev === "Joining call channel…" || prev === "idle" ? "Connecting audio…" : prev,
         )
-        void fetchPendingSignals().finally(() => {
-          connectPeers()
+        void fetchPendingSignalsRef.current().finally(() => {
+          connectPeersRef.current()
         })
       })
       .error((error) => {
@@ -731,10 +777,10 @@ export function useUnityCallWebRTC({
     return () => {
       channel.stopListening?.(".webrtc.signal")
       channel.stopListening?.(".call.session.status")
-      echo().leave(`unity-call.${callId}`)
       channelReady.current = false
     }
-  }, [callId, connectPeers, enqueueSignal, fetchPendingSignals, stopMedia])
+    // Keep subscription alive for the whole call — reconnecting on participant updates was dropping audio signals.
+  }, [callId])
 
   useEffect(() => {
     if (!mediaActive) {
@@ -759,11 +805,16 @@ export function useUnityCallWebRTC({
       if (mediaConnected || callEnded.current) {
         return
       }
-      connectPeers()
+
+      if (isCaller) {
+        acceptedPeerIds().forEach((peerId) => {
+          void createHostOffer(peerId)
+        })
+      }
     }, 3000)
 
     return () => window.clearInterval(intervalId)
-  }, [connectPeers, mediaActive, mediaConnected])
+  }, [acceptedPeerIds, createHostOffer, isCaller, mediaActive, mediaConnected])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {
