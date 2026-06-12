@@ -9,7 +9,6 @@ import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
   acceptUnityCall,
   isLeavingUnityCall,
-  markLeavingUnityCall,
   markUnityCallLiveOnPage,
   markUnityCallSessionActive,
   clearUnityCallLiveOnPage,
@@ -194,11 +193,14 @@ export default function UnityCallShow({
     [call.status],
   )
 
+  const exitNavigationStarted = useRef(false)
+
   const exitCallScreen = useCallback(
     (nextStatus?: string) => {
-      if (isLeavingUnityCall(call.id)) {
+      if (exitNavigationStarted.current) {
         return
       }
+      exitNavigationStarted.current = true
 
       setEnding(true)
       if (nextStatus) {
@@ -206,7 +208,10 @@ export default function UnityCallShow({
       }
       stopMedia()
       navigateAfterUnityCall(call.id, call.chatRoomId, {
-        onFinish: () => setEnding(false),
+        onFinish: () => {
+          exitNavigationStarted.current = false
+          setEnding(false)
+        },
       })
     },
     [call.chatRoomId, call.id, stopMedia],
@@ -489,10 +494,6 @@ export default function UnityCallShow({
     const wasRinging = call.status === "ringing"
     const finalStatus =
       isCaller && wasRinging ? "cancelled" : !isCaller && wasRinging ? "declined" : "ended"
-
-    setEnding(true)
-    markLeavingUnityCall(call.id)
-    stopMedia()
 
     if (isCaller && wasRinging) {
       dispatchUnityCallTerminated({

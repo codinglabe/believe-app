@@ -577,9 +577,9 @@ class UnityCallService
     public function chatRoomsForIncomingListener(User $user): array
     {
         return $user->chatRooms()
-            ->where('is_active', true)
-            ->whereIn('type', ['direct', 'private', 'public'])
-            ->orderByDesc('updated_at')
+            ->where('chat_rooms.is_active', true)
+            ->whereIn('chat_rooms.type', ['direct', 'private', 'public'])
+            ->orderByDesc('chat_rooms.updated_at')
             ->limit(64)
             ->get(['chat_rooms.id', 'chat_rooms.type'])
             ->map(fn ($room) => [
