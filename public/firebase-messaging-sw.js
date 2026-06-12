@@ -257,7 +257,7 @@ const CACHE_NAME = "pwa-cache-a1b2c3d4e5f6g7h8";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
-const noCachePaths = ["/", "/login", "/register", "/wallet", "/api/", "/sanctum/"];
+const noCachePaths = ["/", "/login", "/register", "/wallet", "/api/", "/sanctum/", "/unity-call", "/unity-calls"];
 function shouldBypassCache(url) {
     const path = new URL(url).pathname;
     return noCachePaths.some((p) => path === p || path.startsWith(p));
@@ -310,10 +310,16 @@ self.addEventListener("fetch", (event) => {
     const path = new URL(url).pathname;
     const isNavigate = event.request.mode === "navigate";
 
+    // Never proxy call pages/API through the SW — avoids FetchEvent network errors on auth/Inertia visits.
+    if (path.startsWith("/unity-call") || path.startsWith("/unity-calls")) {
+        return;
+    }
+
     // Let browser handle same-origin API/data requests without SW (avoids fetch failures)
     if (!isNavigate) {
         if (path.startsWith("/api/") || path.startsWith("/wallet/") || path.startsWith("/sanctum/") ||
-            path.startsWith("/unity-videos/") || path === "/" || path.startsWith("/login") || path.startsWith("/register")) {
+            path.startsWith("/unity-videos/") || path.startsWith("/unity-call") || path.startsWith("/unity-calls/") ||
+            path.startsWith("/broadcasting/") || path === "/" || path.startsWith("/login") || path.startsWith("/register")) {
             return; // do not call respondWith — browser handles request natively
         }
     }
