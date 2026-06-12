@@ -1,6 +1,7 @@
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 export const UNITY_CALL_INCOMING_EVENT = "unity-call-incoming"
+export const UNITY_CALL_STATUS_EVENT = "unity-call-status"
 export const UNITY_CALL_TERMINATED_EVENT = "unity-call-terminated"
 
 export const TERMINAL_UNITY_CALL_REASONS = new Set(["cancelled", "ended", "missed", "declined"])
@@ -60,11 +61,47 @@ export function buildIncomingCallFromPush(data: Record<string, string | undefine
   }
 }
 
+export function isUnityCallIncomingForUser(payload: UnityCallStatusEvent, userId: number): boolean {
+  if (payload.reason !== "incoming" || payload.call.status !== "ringing") {
+    return false
+  }
+
+  if (payload.caller?.id === userId) {
+    return false
+  }
+
+  const self = payload.participants.find((participant) => participant.userId === userId)
+  return !self || (self.role === "callee" && self.status === "ringing")
+}
+
 export function dispatchUnityCallIncoming(payload: UnityCallStatusEvent): void {
   if (typeof window === "undefined") {
     return
   }
   window.dispatchEvent(new CustomEvent(UNITY_CALL_INCOMING_EVENT, { detail: payload }))
+}
+
+export function dispatchUnityCallStatus(payload: UnityCallStatusEvent): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.dispatchEvent(new CustomEvent(UNITY_CALL_STATUS_EVENT, { detail: payload }))
+}
+
+export function subscribeUnityCallStatus(handler: (payload: UnityCallStatusEvent) => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {}
+  }
+
+  const listener = (event: Event) => {
+    const detail = (event as CustomEvent<UnityCallStatusEvent>).detail
+    if (detail) {
+      handler(detail)
+    }
+  }
+
+  window.addEventListener(UNITY_CALL_STATUS_EVENT, listener)
+  return () => window.removeEventListener(UNITY_CALL_STATUS_EVENT, listener)
 }
 
 export function subscribeUnityCallIncoming(handler: (payload: UnityCallStatusEvent) => void): () => void {

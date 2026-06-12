@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { router } from "@inertiajs/react"
-import { useEcho } from "@laravel/echo-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
 import toast from "react-hot-toast"
@@ -25,8 +24,8 @@ import {
   saveCustomCallRingtone,
   setCallRingtoneMode,
 } from "@/lib/callRingtoneSettings"
-import { subscribeUnityCallIncoming, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
-import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload, rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
+import { subscribeUnityCallIncoming, subscribeUnityCallStatus, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
@@ -54,6 +53,22 @@ function replaceRingUrlWithChat(chatRoomId: string | null): void {
   }
 }
 
+function useLiveAuthUserId(initial?: number | null | undefined): number | null {
+  const [userId, setUserId] = useState<number | null>(() => initial ?? readAuthUserId())
+
+  useEffect(() => {
+    setUserId(initial ?? readAuthUserId())
+  }, [initial])
+
+  useEffect(() => {
+    const refresh = () => setUserId(readAuthUserId())
+    refresh()
+    return router.on("success", refresh)
+  }, [])
+
+  return userId
+}
+
 export default function IncomingCallOverlay({ authUserId }: Props) {
   const [incoming, setIncoming] = useState<UnityCallStatusEvent | null>(null)
   const [blockedByActiveCall, setBlockedByActiveCall] = useState(false)
@@ -62,7 +77,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   const [ringtoneMode, setRingtoneMode] = useState<"default" | "custom">("default")
   const [ringtoneLabel, setRingtoneLabel] = useState("Default ringtone")
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const userId = authUserId ?? readAuthUserId()
+  const userId = useLiveAuthUserId(authUserId)
 
   useEffect(() => {
     setRingtoneMode(getCallRingtoneMode())
@@ -104,8 +119,6 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     if (!userId) {
       return
     }
-
-    rehydratePendingIncomingCall()
 
     const params = new URLSearchParams(window.location.search)
     const callMatch = window.location.pathname.match(/\/unity-call\/(\d+)/)
@@ -149,27 +162,6 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   }, [userId])
 
   useEffect(() => {
-    if (!userId) {
-      return
-    }
-
-    const retryDelays = [400, 1500, 3500]
-    const timers = retryDelays.map((delay) => window.setTimeout(rehydratePendingIncomingCall, delay))
-
-    const onPageShow = () => rehydratePendingIncomingCall()
-    const onFocus = () => rehydratePendingIncomingCall()
-
-    window.addEventListener("pageshow", onPageShow)
-    window.addEventListener("focus", onFocus)
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer))
-      window.removeEventListener("pageshow", onPageShow)
-      window.removeEventListener("focus", onFocus)
-    }
-  }, [userId])
-
-  useEffect(() => {
     if (!incoming) {
       return
     }
@@ -188,17 +180,6 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       void wakeLock?.release().catch(() => {})
     }
   }, [incoming])
-
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState !== "visible") {
-        return
-      }
-      rehydratePendingIncomingCall()
-    }
-    document.addEventListener("visibilitychange", onVisibility)
-    return () => document.removeEventListener("visibilitychange", onVisibility)
-  }, [])
 
   useEffect(() => {
     return subscribeUnityCallIncoming((payload) => {
@@ -259,13 +240,9 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     [userId, incoming?.call.id, showIncoming, dismiss],
   )
 
-  useEcho<UnityCallStatusEvent>(
-    userId ? `user.${userId}` : "user.disabled",
-    ".call.status",
-    onStatus,
-    [userId, onStatus],
-    "private",
-  )
+  useEffect(() => {
+    return subscribeUnityCallStatus(onStatus)
+  }, [onStatus])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {

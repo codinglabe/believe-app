@@ -95,7 +95,7 @@ class UnityCallService
 
         if (! $isDirect) {
             $this->notifier->broadcastRoomIncoming($call, $caller, $chatRoom);
-            NotifyUnityCallRoomMembersJob::dispatch($call->id, $caller->id);
+            NotifyUnityCallRoomMembersJob::dispatchSync($call->id, $caller->id);
         }
 
         $this->syncChatCallMessage($call->fresh(['participants.user', 'chatRoom', 'caller']));

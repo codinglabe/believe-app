@@ -170,10 +170,9 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
 
     if (typeof window !== "undefined" && (window as any).Echo) {
       const echo = (window as any).Echo
+      const userChannel = echo.private(`user.${userId}`)
 
-      echo
-        .private(`user.${userId}`)
-        .listen(".campaign.notification", (data: any) => {
+      userChannel.listen(".campaign.notification", (data: any) => {
           console.log("[v0] Received campaign notification:", data)
 
           const newNotification: Notification = {
@@ -225,7 +224,8 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                     },
           })
         })
-        .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
+
+      userChannel.listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
           console.log("[v0] Received Laravel notification:", data)
 
           const notificationData = parseNotificationPayload(data.data)
@@ -286,7 +286,8 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       // via PushNotificationManager / app layout after login.
 
       return () => {
-        echo.leave(`user.${userId}`)
+        userChannel.stopListening(".campaign.notification")
+        userChannel.stopListening(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated")
       }
     }
   }, [userId, emailVerified])

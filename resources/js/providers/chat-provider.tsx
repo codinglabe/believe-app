@@ -510,7 +510,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       privateChannel.stopListening(".MessageSent")
-      echoInstance.leave(`user.${currentUser.id}`)
     }
   }, [currentUser?.id, markRoomAsRead, mergeIncomingChatMessage])
 
