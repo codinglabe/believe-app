@@ -538,13 +538,25 @@ export default function UnityCallShow({
   const showRingingCalleeControls = isRingingCallee && !ringMode
   const showRejoinControls = isRejoinCallee || canAnswerLate
 
+  const mergedRemoteStream = useMemo(() => {
+    const merged = new MediaStream()
+    remoteStreams.forEach(({ stream }) => {
+      stream.getAudioTracks().forEach((track) => {
+        if (!merged.getTracks().some((item) => item.id === track.id)) {
+          merged.addTrack(track)
+        }
+      })
+    })
+    return merged
+  }, [remoteStreams])
+
   return (
     <div className="fixed inset-0 z-[9998] flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
       <Head title="Audio call" />
 
-      {remoteStreams.map(({ peerId, stream }) => (
-        <RemoteAudio key={peerId} stream={stream} speakerOn={speakerOn} />
-      ))}
+      {mergedRemoteStream.getAudioTracks().length > 0 ? (
+        <RemoteAudio key="merged-remote" stream={mergedRemoteStream} speakerOn={speakerOn} />
+      ) : null}
 
       <div className="flex flex-1 flex-col px-4 py-8">
         <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center">
