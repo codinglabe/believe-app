@@ -40,45 +40,107 @@ if ! command -v turnserver >/dev/null 2>&1; then
   dnf install -y coturn || yum install -y coturn
 fi
 
-mkdir -p /etc/coturn
-cat > /etc/coturn/turnserver.conf <<EOF
+# EPEL systemd unit reads /etc/turnserver/turnserver.conf (see coturn.service).
+CONF_PRIMARY="/etc/turnserver/turnserver.conf"
+CONF_ALT="/etc/coturn/turnserver.conf"
+mkdir -p /etc/turnserver /etc/coturn /var/log/turnserver /var/run/turnserver
+
+# Optional TLS for turns:501c3ers.com:5349 (cPanel AutoSSL / Let's Encrypt)
+TLS_CERT=""
+TLS_PKEY=""
+for cert_pair in \
+  "/var/cpanel/ssl/apache_tls/${TURN_REALM}/combined" \
+  "/etc/letsencrypt/live/${TURN_REALM}/fullchain.pem" \
+  "/etc/ssl/certs/${TURN_REALM}.crt"; do
+  if [[ -f "${cert_pair}" ]]; then
+    if [[ "${cert_pair}" == *combined ]]; then
+      TLS_CERT="${cert_pair}"
+      TLS_PKEY="/var/cpanel/ssl/apache_tls/${TURN_REALM}/${TURN_REALM}.key"
+    elif [[ "${cert_pair}" == *fullchain.pem ]]; then
+      TLS_CERT="${cert_pair}"
+      TLS_PKEY="/etc/letsencrypt/live/${TURN_REALM}/privkey.pem"
+    else
+      TLS_CERT="${cert_pair}"
+      TLS_PKEY="/etc/ssl/private/${TURN_REALM}.key"
+    fi
+    [[ -f "${TLS_PKEY}" ]] && break
+    TLS_CERT=""
+    TLS_PKEY=""
+  fi
+done
+
+TLS_LINES=""
+if [[ -n "${TLS_CERT}" && -n "${TLS_PKEY}" ]]; then
+  TLS_LINES=$'tls-listening-port=5349\ncert='"${TLS_CERT}"$'\npkey='"${TLS_PKEY}"$'\n'
+  echo "TLS enabled with cert: ${TLS_CERT}"
+else
+  echo "TLS not configured (UDP turn:3478 works without TLS)."
+fi
+
+cat > "${CONF_PRIMARY}" <<EOF
 # Believe In Unity — self-hosted TURN/STUN (${TURN_REALM})
 listening-port=3478
-tls-listening-port=5349
 listening-ip=0.0.0.0
 relay-ip=${PUBLIC_IP}
 external-ip=${PUBLIC_IP}
 realm=${TURN_REALM}
 server-name=turn.${TURN_REALM}
+pidfile=/var/run/turnserver/turnserver.pid
 fingerprint
 lt-cred-mech
 user=${TURN_USER}:${TURN_PASS}
 min-port=49152
 max-port=65535
-no-cli
 no-multicast-peers
-no-loopback-peers
+denied-peer-ip=127.0.0.0/8
+denied-peer-ip=::1/128
 mobility
 total-quota=0
 bps-capacity=0
 stale-nonce=600
 log-file=/var/log/turnserver/turnserver.log
 simple-log
-verbose
-EOF
+no-stdout-log
+${TLS_LINES}EOF
 
-mkdir -p /var/log/turnserver
-chmod 755 /var/log/turnserver
+cp -f "${CONF_PRIMARY}" "${CONF_ALT}"
+chown turnserver:turnserver "${CONF_PRIMARY}" "${CONF_ALT}" 2>/dev/null || true
+chmod 640 "${CONF_PRIMARY}" "${CONF_ALT}"
+chown -R turnserver:turnserver /var/log/turnserver /var/run/turnserver 2>/dev/null || true
+chmod 755 /var/log/turnserver /var/run/turnserver
 
-if systemctl list-unit-files | grep -q '^coturn\.service'; then
-  systemctl enable coturn
-  systemctl restart coturn
-elif systemctl list-unit-files | grep -q '^turnserver\.service'; then
-  systemctl enable turnserver
-  systemctl restart turnserver
+# Ensure systemd env file exists (coturn.service uses EnvironmentFile=-/etc/sysconfig/turnserver)
+mkdir -p /etc/sysconfig
+if [[ ! -f /etc/sysconfig/turnserver ]]; then
+  echo 'EXTRA_OPTIONS=""' > /etc/sysconfig/turnserver
+fi
+
+turnserver -c "${CONF_PRIMARY}" --check-config 2>/dev/null || {
+  echo "ERROR: turnserver config check failed for ${CONF_PRIMARY}"
+  turnserver -c "${CONF_PRIMARY}" --check-config || true
+  exit 1
+}
+
+# Stop orphan daemons from earlier manual installs (multiple listeners on 3478).
+systemctl stop coturn 2>/dev/null || true
+systemctl stop turnserver 2>/dev/null || true
+pkill -x turnserver 2>/dev/null || true
+sleep 1
+
+SERVICE=""
+if systemctl list-unit-files 2>/dev/null | grep -q '^coturn\.service'; then
+  SERVICE="coturn"
+elif systemctl list-unit-files 2>/dev/null | grep -q '^turnserver\.service'; then
+  SERVICE="turnserver"
+fi
+
+if [[ -n "${SERVICE}" ]]; then
+  systemctl daemon-reload
+  systemctl enable "${SERVICE}"
+  systemctl restart "${SERVICE}"
 else
-  pkill -x turnserver 2>/dev/null || true
-  turnserver -c /etc/coturn/turnserver.conf --daemon
+  echo "ERROR: coturn systemd unit not found after package install"
+  exit 1
 fi
 
 # CSF (cPanel) — open TURN ports if CSF is present
@@ -90,16 +152,23 @@ if command -v csf >/dev/null 2>&1; then
   echo "CSF rules added for TURN ports."
 fi
 
-sleep 1
+sleep 2
 
-if ss -lun | grep -q ':3478 '; then
-  echo "COTURN_OK: listening on UDP 3478"
-  ss -lun | grep ':3478 ' || true
-else
-  echo "WARNING: coturn may not be listening on 3478 — check firewall and journalctl -u coturn"
-  journalctl -u coturn -n 20 --no-pager 2>/dev/null || journalctl -u turnserver -n 20 --no-pager 2>/dev/null || true
+if ! systemctl is-active --quiet "${SERVICE}"; then
+  echo "ERROR: ${SERVICE} is not active — journal output:"
+  journalctl -u "${SERVICE}" -n 30 --no-pager || true
   exit 1
 fi
 
-echo "Test from your laptop:"
-echo "  turnutils_uclient -v -u ${TURN_USER} -w '***' ${PUBLIC_IP}"
+LISTENERS="$(ss -lunH sport = :3478 2>/dev/null | wc -l | tr -d ' ')"
+if [[ "${LISTENERS}" -ge 1 ]]; then
+  echo "COTURN_OK: ${SERVICE} active, UDP 3478 listener(s): ${LISTENERS}"
+  systemctl status "${SERVICE}" --no-pager -l | head -15 || true
+  ss -lun | grep ':3478 ' || true
+else
+  echo "WARNING: ${SERVICE} active but UDP 3478 not listening — check firewall"
+  journalctl -u "${SERVICE}" -n 20 --no-pager || true
+  exit 1
+fi
+
+echo "Test relay (optional): turnutils_uclient -v -u ${TURN_USER} -w '***' ${PUBLIC_IP}"
