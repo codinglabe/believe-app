@@ -258,12 +258,14 @@ jobs:
           REMOTE
 
       - name: Install coturn TURN on VPS (root)
+        continue-on-error: true
         run: |
           set -euo pipefail
           IDENTITY="${SSH_DIR}/cpanel_deploy"
           ssh -4 -i "${IDENTITY}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 \
             "${SSH_RELAY_USER}@${SSH_CONNECT_HOST}" \
-            "sudo bash ${DEPLOY_PATH}/scripts/install-coturn-vps.sh ${DEPLOY_PATH}/.env"
+            "sudo -n bash ${DEPLOY_PATH}/scripts/install-coturn-vps.sh ${DEPLOY_PATH}/.env" \
+            || echo "::warning::coturn install needs root — run scripts/install-coturn-vps.sh in Hostinger VPS terminal as root"
 
       - name: Smoke test (development URL only)
         env:
