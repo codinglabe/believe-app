@@ -30,6 +30,8 @@ jobs:
       APP_URL: ${{ vars.APP_URL }}
       PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL != '' && vars.PRODUCTION_APP_URL || 'https://believeinunity.org' }}
       DEVELOPMENT_HOSTS: ${{ vars.DEVELOPMENT_HOSTS != '' && vars.DEVELOPMENT_HOSTS || '501c3ers.com,www.501c3ers.com' }}
+      WEBRTC_TURN_API_URL: ${{ vars.WEBRTC_TURN_API_URL != '' && vars.WEBRTC_TURN_API_URL || 'https://501c3ers.metered.live' }}
+      WEBRTC_TURN_API_KEY: ${{ secrets.WEBRTC_TURN_API_KEY }}
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
       SSH_MAX_ATTEMPTS: 10
       SSH_RETRY_SLEEP: 8
@@ -228,7 +230,10 @@ jobs:
           chmod +x scripts/sync-server-env-keys.sh 2>/dev/null || true
           bash scripts/sync-server-env-keys.sh .env \
             "PRODUCTION_APP_URL=${PRODUCTION_APP_URL}" \
-            "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}"
+            "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}" \
+            "WEBRTC_TURN_API_URL=${WEBRTC_TURN_API_URL}" \
+            "WEBRTC_TURN_API_KEY=${WEBRTC_TURN_API_KEY}"
+          php artisan cache:forget webrtc:ice_servers:v1 2>/dev/null || true
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           timeout 300 php artisan migrate --force -v || {
             echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"
