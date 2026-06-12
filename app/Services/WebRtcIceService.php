@@ -18,9 +18,9 @@ class WebRtcIceService
         return Cache::remember(self::CACHE_KEY, now()->addHours(12), function () {
             $servers = $this->stunServers();
 
-            $turn = $this->turnFromMeteredApi()
-                ?? $this->turnFromEnvCredentials()
-                ?? $this->turnOpenRelayStaticFallback();
+            $turn = $this->turnFromEnvCredentials()
+                ?? $this->turnFromMeteredApi()
+                ?? ($this->shouldUseThirdPartyFallback() ? $this->turnOpenRelayStaticFallback() : []);
 
             return array_values(array_filter(
                 array_merge($servers, $turn),
@@ -45,11 +45,13 @@ class WebRtcIceService
             fn (array $entry) => $this->entryIncludesTurn($entry),
         ));
 
-        $source = 'static_fallback';
-        if (filled(config('webrtc.turn_api_key'))) {
+        $source = 'none';
+        if (filled(config('webrtc.turn_username')) && filled(config('webrtc.turn_credential'))) {
+            $source = 'self_hosted';
+        } elseif (filled(config('webrtc.turn_api_key'))) {
             $source = 'metered_api';
-        } elseif (filled(config('webrtc.turn_username')) && filled(config('webrtc.turn_credential'))) {
-            $source = 'env_credentials';
+        } elseif ($this->shouldUseThirdPartyFallback()) {
+            $source = 'static_fallback';
         }
 
         return [
@@ -61,17 +63,28 @@ class WebRtcIceService
         ];
     }
 
+    private function shouldUseThirdPartyFallback(): bool
+    {
+        return (bool) config('webrtc.use_third_party_turn_fallback', false);
+    }
+
     /**
      * @return array<int, array<string, string>>
      */
     private function stunServers(): array
     {
-        return [
+        $servers = [
             ['urls' => 'stun:stun.l.google.com:19302'],
             ['urls' => 'stun:stun1.l.google.com:19302'],
             ['urls' => 'stun:stun.cloudflare.com:3478'],
-            ['urls' => 'stun:openrelay.metered.ca:80'],
         ];
+
+        $publicIp = config('webrtc.turn_public_ip');
+        if (is_string($publicIp) && trim($publicIp) !== '') {
+            $servers[] = ['urls' => 'stun:'.trim($publicIp).':3478'];
+        }
+
+        return $servers;
     }
 
     /**
@@ -170,7 +183,7 @@ class WebRtcIceService
      */
     private function turnOpenRelayStaticFallback(): array
     {
-        Log::notice('WebRTC using static Open Relay TURN fallback — set WEBRTC_TURN_API_KEY for production calls');
+        Log::notice('WebRTC using deprecated static Open Relay TURN fallback');
 
         $username = 'openrelayproject';
         $credential = 'openrelayproject';

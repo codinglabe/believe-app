@@ -211,8 +211,6 @@ Route::post('/internal/deploy/allow-runner-ip', DeployRunnerAllowController::cla
 //     return "Event fired for message: " . $message;
 // });
 
-Broadcast::routes(['middleware' => ['auth']]);
-
 // ============================================
 // MAIN APP ROUTES - Only accessible on main domain (not livestock domain)
 // ============================================

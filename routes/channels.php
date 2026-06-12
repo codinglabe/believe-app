@@ -5,9 +5,7 @@ use App\Models\User;
 use App\Services\UnityCallService;
 use Illuminate\Support\Facades\Broadcast;
 
-Broadcast::routes(['middleware' => ['auth']]);
-
-// Public chat channels
+// Channel authorization only — routes registered in BroadcastServiceProvider.
 Broadcast::channel('public-chat.{roomId}', function (User $user, $roomId) {
     return $user->chatRooms()->where('chat_rooms.id', $roomId)->exists();
 });
@@ -53,6 +51,10 @@ Broadcast::channel('unity-call.{callId}', function (User $user, $callId) {
     $call = UnityCall::query()->whereKey($callId)->first();
     if (! $call) {
         return false;
+    }
+
+    if ($call->participants()->where('user_id', $user->id)->exists()) {
+        return true;
     }
 
     return app(UnityCallService::class)->userCanAccess($call, $user);

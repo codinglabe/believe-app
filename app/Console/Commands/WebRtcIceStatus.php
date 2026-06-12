@@ -31,9 +31,12 @@ class WebRtcIceStatus extends Command
             ],
         );
 
-        if ($diagnostics['source'] === 'static_fallback') {
-            $this->warn('Using deprecated static Open Relay credentials — calls may fail on mobile networks.');
-            $this->line('Set WEBRTC_TURN_API_KEY in .env (free at https://www.metered.ca/tools/openrelay/).');
+        if ($diagnostics['source'] === 'none') {
+            $this->warn('No TURN servers configured — set WEBRTC_TURN_URL + credentials for self-hosted coturn.');
+        } elseif ($diagnostics['source'] === 'static_fallback') {
+            $this->warn('Using deprecated third-party Open Relay fallback.');
+        } elseif ($diagnostics['source'] === 'self_hosted') {
+            $this->info('Using self-hosted TURN (coturn on VPS).');
         }
 
         if ($diagnostics['turn_count'] === 0) {

@@ -4,27 +4,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | ICE servers (STUN / TURN) for browser WebRTC
+    | Self-hosted TURN (coturn on Hostinger VPS) — preferred for Unity calls
     |--------------------------------------------------------------------------
     |
-    | Production calls on mobile/corporate networks need working TURN relay.
+    | WEBRTC_TURN_URL=turn:72.60.226.88:3478,turn:501c3ers.com:3478,turns:501c3ers.com:5349
+    | WEBRTC_TURN_USERNAME=believe501c3
+    | WEBRTC_TURN_CREDENTIAL=strong-secret
     |
-    | Recommended (free 20GB/mo): sign up at https://www.metered.ca/tools/openrelay/
-    | and set WEBRTC_TURN_API_KEY. Credentials are fetched server-side and cached.
-    |
-    | Alternative: self-hosted or other TURN — set WEBRTC_TURN_URL(S), USERNAME, CREDENTIAL.
-    |
+    | Optional Metered API fallback (leave WEBRTC_TURN_API_KEY empty to disable):
+    | WEBRTC_TURN_API_KEY=
     */
 
-    'turn_api_key' => env('WEBRTC_TURN_API_KEY'),
+    'turn_public_ip' => env('WEBRTC_TURN_PUBLIC_IP', '72.60.226.88'),
 
-    'turn_api_url' => env('WEBRTC_TURN_API_URL', 'https://openrelayproject.metered.ca'),
+    'turn_realm' => env('WEBRTC_TURN_REALM', '501c3ers.com'),
 
-    /** Comma-separated or JSON array, e.g. turn:turn.example.com:3478,turns:turn.example.com:5349 */
     'turn_urls' => env('WEBRTC_TURN_URL'),
 
     'turn_username' => env('WEBRTC_TURN_USERNAME'),
 
     'turn_credential' => env('WEBRTC_TURN_CREDENTIAL'),
+
+    'turn_api_key' => env('WEBRTC_TURN_API_KEY'),
+
+    'turn_api_url' => env('WEBRTC_TURN_API_URL', 'https://501c3ers.metered.live'),
+
+    'use_third_party_turn_fallback' => env('WEBRTC_USE_THIRD_PARTY_TURN', false),
 
 ];

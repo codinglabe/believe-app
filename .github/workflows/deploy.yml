@@ -30,8 +30,12 @@ jobs:
       APP_URL: ${{ vars.APP_URL }}
       PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL != '' && vars.PRODUCTION_APP_URL || 'https://believeinunity.org' }}
       DEVELOPMENT_HOSTS: ${{ vars.DEVELOPMENT_HOSTS != '' && vars.DEVELOPMENT_HOSTS || '501c3ers.com,www.501c3ers.com' }}
-      WEBRTC_TURN_API_URL: ${{ vars.WEBRTC_TURN_API_URL != '' && vars.WEBRTC_TURN_API_URL || 'https://501c3ers.metered.live' }}
-      WEBRTC_TURN_API_KEY: ${{ secrets.WEBRTC_TURN_API_KEY }}
+      WEBRTC_TURN_PUBLIC_IP: ${{ vars.WEBRTC_TURN_PUBLIC_IP != '' && vars.WEBRTC_TURN_PUBLIC_IP || '72.60.226.88' }}
+      WEBRTC_TURN_URL: ${{ vars.WEBRTC_TURN_URL != '' && vars.WEBRTC_TURN_URL || 'turn:72.60.226.88:3478,turn:501c3ers.com:3478,turns:501c3ers.com:5349?transport=tcp' }}
+      WEBRTC_TURN_USERNAME: ${{ vars.WEBRTC_TURN_USERNAME != '' && vars.WEBRTC_TURN_USERNAME || 'believe501c3' }}
+      WEBRTC_TURN_CREDENTIAL: ${{ secrets.WEBRTC_TURN_CREDENTIAL }}
+      WEBRTC_TURN_API_KEY: ''
+      WEBRTC_USE_THIRD_PARTY_TURN: 'false'
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
       SSH_MAX_ATTEMPTS: 10
       SSH_RETRY_SLEEP: 8
@@ -231,8 +235,12 @@ jobs:
           bash scripts/sync-server-env-keys.sh .env \
             "PRODUCTION_APP_URL=${PRODUCTION_APP_URL}" \
             "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}" \
-            "WEBRTC_TURN_API_URL=${WEBRTC_TURN_API_URL}" \
-            "WEBRTC_TURN_API_KEY=${WEBRTC_TURN_API_KEY}"
+            "WEBRTC_TURN_PUBLIC_IP=${WEBRTC_TURN_PUBLIC_IP}" \
+            "WEBRTC_TURN_URL=${WEBRTC_TURN_URL}" \
+            "WEBRTC_TURN_USERNAME=${WEBRTC_TURN_USERNAME}" \
+            "WEBRTC_TURN_CREDENTIAL=${WEBRTC_TURN_CREDENTIAL}" \
+            "WEBRTC_TURN_API_KEY=${WEBRTC_TURN_API_KEY}" \
+            "WEBRTC_USE_THIRD_PARTY_TURN=${WEBRTC_USE_THIRD_PARTY_TURN}"
           php artisan cache:forget webrtc:ice_servers:v1 2>/dev/null || true
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           timeout 300 php artisan migrate --force -v || {
@@ -248,6 +256,14 @@ jobs:
           test -L build && test -d public/build/assets
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
+
+      - name: Install coturn TURN on VPS (root)
+        run: |
+          set -euo pipefail
+          IDENTITY="${SSH_DIR}/cpanel_deploy"
+          ssh -4 -i "${IDENTITY}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 \
+            "${SSH_RELAY_USER}@${SSH_CONNECT_HOST}" \
+            "sudo bash ${DEPLOY_PATH}/scripts/install-coturn-vps.sh ${DEPLOY_PATH}/.env"
 
       - name: Smoke test (development URL only)
         env:
