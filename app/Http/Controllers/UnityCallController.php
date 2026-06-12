@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\UnityCall;
 use App\Services\UnityCallService;
+use App\Services\WebRtcIceService;
 use App\Events\UnityCallWebRTCSignal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -190,7 +191,7 @@ class UnityCallController extends Controller
         return response()->json(['signals' => $forMe]);
     }
 
-    public function show(Request $request, UnityCall $call, UnityCallService $calls): Response
+    public function show(Request $request, UnityCall $call, UnityCallService $calls, WebRtcIceService $webrtcIce): Response
     {
         $user = $request->user();
 
@@ -247,7 +248,7 @@ class UnityCallController extends Controller
             'isCaller' => $isCaller,
             'isGroupCall' => $isGroupCall,
             'participantStatus' => $participant?->status,
-            'iceServers' => config('webrtc.ice_servers', []),
+            'iceServers' => $webrtcIce->iceServers(),
             'endCallUrl' => route('unity-calls.end', $call->id),
             'cancelCallUrl' => route('unity-calls.cancel', $call->id),
             'acceptCallUrl' => route('unity-calls.accept', $call->id),
