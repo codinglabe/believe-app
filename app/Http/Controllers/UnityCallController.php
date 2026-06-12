@@ -28,6 +28,22 @@ class UnityCallController extends Controller
         ]);
     }
 
+    public function incoming(Request $request, UnityCallService $calls): JsonResponse
+    {
+        $payload = $calls->incomingCallPayloadForUser($request->user());
+
+        return response()->json([
+            'incoming' => $payload,
+        ]);
+    }
+
+    public function chatRooms(Request $request, UnityCallService $calls): JsonResponse
+    {
+        return response()->json([
+            'rooms' => $calls->chatRoomsForIncomingListener($request->user()),
+        ]);
+    }
+
     public function acceptSigned(Request $request, UnityCall $call, int $user, UnityCallService $calls): JsonResponse
     {
         if ((int) $request->user()->id !== $user) {

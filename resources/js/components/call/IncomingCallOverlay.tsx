@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { router } from "@inertiajs/react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
@@ -24,7 +25,7 @@ import {
   saveCustomCallRingtone,
   setCallRingtoneMode,
 } from "@/lib/callRingtoneSettings"
-import { subscribeUnityCallIncoming, subscribeUnityCallStatus, subscribeUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { subscribeUnityCallIncoming, subscribeUnityCallStatus, subscribeUnityCallTerminated, isUnityCallIncomingForUser, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
@@ -183,13 +184,11 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
 
   useEffect(() => {
     return subscribeUnityCallIncoming((payload) => {
-      if (payload.caller?.id === userId || payload.call.status !== "ringing") {
+      const activeUserId = userId ?? readAuthUserId()
+      if (!activeUserId || !isUnityCallIncomingForUser(payload, activeUserId)) {
         return
       }
-      const self = payload.participants.find((p) => p.userId === userId)
-      if (!self || (self.role === "callee" && self.status === "ringing")) {
-        showIncoming(payload)
-      }
+      showIncoming(payload)
     })
   }, [userId, showIncoming])
 
@@ -331,7 +330,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     return null
   }
 
-  return (
+  const overlay = (
     <AnimatePresence>
       {incoming ? (
         <motion.div
@@ -339,7 +338,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[9999] flex flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white touch-none"
+          className="fixed inset-0 z-[99999] flex flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white touch-none"
           data-incoming-call-overlay=""
         >
           <div className="flex items-center justify-between px-4 pt-4 safe-area-inset-top">
@@ -450,4 +449,10 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       ) : null}
     </AnimatePresence>
   )
+
+  if (typeof document === "undefined") {
+    return overlay
+  }
+
+  return createPortal(overlay, document.body)
 }

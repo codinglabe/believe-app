@@ -153,6 +153,7 @@ createInertiaApp({
                     const metaUserId = document.querySelector('meta[name="user-id"]')?.getAttribute('content');
                     return Boolean(metaUserId);
                 });
+                void ensureMessagingReady();
             }
         }
     },

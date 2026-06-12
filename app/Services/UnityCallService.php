@@ -520,6 +520,77 @@ class UnityCallService
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function incomingCallPayloadForUser(User $user): ?array
+    {
+        $this->finalizeStaleCallsForUser($user->id);
+
+        $call = UnityCall::query()
+            ->with(['caller', 'participants.user', 'chatRoom'])
+            ->where('status', UnityCall::STATUS_RINGING)
+            ->whereNull('ended_at')
+            ->where('caller_id', '!=', $user->id)
+            ->where(function ($query) use ($user) {
+                $query->whereHas('participants', function ($participantQuery) use ($user) {
+                    $participantQuery
+                        ->where('user_id', $user->id)
+                        ->where('role', UnityCallParticipant::ROLE_CALLEE)
+                        ->where('status', UnityCallParticipant::STATUS_RINGING);
+                })->orWhere(function ($groupQuery) use ($user) {
+                    $groupQuery
+                        ->whereHas('chatRoom', function ($roomQuery) use ($user) {
+                            $roomQuery
+                                ->where('type', '!=', 'direct')
+                                ->where('is_active', true)
+                                ->whereHas('members', fn ($memberQuery) => $memberQuery->where('users.id', $user->id));
+                        })
+                        ->whereDoesntHave('participants', fn ($participantQuery) => $participantQuery
+                            ->where('user_id', $user->id)
+                            ->whereIn('status', [
+                                UnityCallParticipant::STATUS_DECLINED,
+                                UnityCallParticipant::STATUS_MISSED,
+                                UnityCallParticipant::STATUS_ACCEPTED,
+                            ]));
+                });
+            })
+            ->latest('id')
+            ->first();
+
+        if (! $call || ! $call->caller) {
+            return null;
+        }
+
+        if ($call->chatRoom?->type === 'direct') {
+            $participant = $call->participantForUser($user->id);
+            if (! $participant || $participant->status !== UnityCallParticipant::STATUS_RINGING) {
+                return null;
+            }
+        }
+
+        return $this->notifier->payloadForUser($call, $call->caller, 'incoming');
+    }
+
+    /**
+     * @return array<int, array{id: int, type: string}>
+     */
+    public function chatRoomsForIncomingListener(User $user): array
+    {
+        return $user->chatRooms()
+            ->where('is_active', true)
+            ->whereIn('type', ['direct', 'private', 'public'])
+            ->orderByDesc('updated_at')
+            ->limit(64)
+            ->get(['chat_rooms.id', 'chat_rooms.type'])
+            ->map(fn ($room) => [
+                'id' => (int) $room->id,
+                'type' => (string) $room->type,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * True when the user is ringing or already connected on any active call.
      */
     public function userIsBusyOnCall(int $userId): bool

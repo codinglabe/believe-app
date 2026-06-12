@@ -1,4 +1,4 @@
-import type { UnityCallPayload, UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
+import type { UnityCallPayload, UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { router } from "@inertiajs/react"
 
 function getCsrfToken(): string {
@@ -324,6 +324,46 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
     throw new Error(message)
   }
   return ok && data ? data : null
+}
+
+async function getUnityCallJson<T>(url: string): Promise<{ ok: boolean; data: T | null }> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRF-TOKEN": getCsrfToken(),
+      },
+      credentials: "same-origin",
+    })
+
+    const data = (await res.json().catch(() => null)) as T | null
+    return { ok: res.ok, data: res.ok ? data : null }
+  } catch {
+    return { ok: false, data: null }
+  }
+}
+
+export async function fetchIncomingUnityCall(): Promise<UnityCallStatusEvent | null> {
+  const { ok, data } = await getUnityCallJson<{ incoming?: UnityCallStatusEvent | null }>(
+    route("unity-calls.incoming"),
+  )
+
+  return ok && data?.incoming ? data.incoming : null
+}
+
+export type UnityCallChatRoomChannel = {
+  id: number
+  type: "direct" | "private" | "public" | string
+}
+
+export async function fetchUnityCallChatRooms(): Promise<UnityCallChatRoomChannel[]> {
+  const { ok, data } = await getUnityCallJson<{ rooms?: UnityCallChatRoomChannel[] }>(
+    route("unity-calls.chat-rooms"),
+  )
+
+  return ok && data?.rooms ? data.rooms : []
 }
 
 export async function expireUnityCallRinging(
