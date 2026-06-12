@@ -9,8 +9,11 @@ import toast from "react-hot-toast"
 import { Button } from "@/components/ui/button"
 import {
   acceptUnityCall,
-  isUserOnLiveUnityCall,
+  clearUnityCallSessionActive,
+  isUserBusyWithUnityCall,
   markUnityCallAcceptedLocally,
+  markUnityCallSessionActive,
+  markLeavingUnityCall,
   terminateUnityCall,
   toInternalAppPath,
   unityCallShowPath,
@@ -67,11 +70,14 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
 
   const dismiss = useCallback(() => {
     stopCallRingtone()
+    if (incoming?.call.id) {
+      clearUnityCallSessionActive(incoming.call.id)
+    }
     setIncoming(null)
     setBlockedByActiveCall(false)
     setShowRingtoneSettings(false)
     void clearAnyPendingIncomingCall()
-  }, [])
+  }, [incoming?.call.id])
 
   const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
     const self = payload.participants.find((p) => p.userId === userId)
@@ -82,13 +88,14 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       return
     }
 
-    if (isUserOnLiveUnityCall(payload.call.id)) {
+    if (isUserBusyWithUnityCall(payload.call.id)) {
       setBlockedByActiveCall(true)
       setIncoming(payload)
       return
     }
 
     setBlockedByActiveCall(false)
+    markUnityCallSessionActive(payload.call.id)
     setIncoming((current) => (current?.call.id === payload.call.id ? current : payload))
     void startCallRingtone()
   }, [userId])
@@ -303,24 +310,26 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     router.visit(joinUrl)
   }
 
-  const handleDecline = async () => {
+  const handleDecline = () => {
     if (!incoming) {
       return
     }
-    setBusy(true)
+
+    const snapshot = incoming
     stopCallRingtone()
-    const { ok, message } = await terminateUnityCall({
-      callId: incoming.call.id,
-      isCaller: false,
-      callStatus: incoming.call.status,
-      selfStatus: "ringing",
-    })
-    setBusy(false)
-    if (!ok) {
-      toast.error(message?.trim() || "Could not decline the call. Please try again.")
-      return
-    }
+    markLeavingUnityCall(snapshot.call.id)
     dismiss()
+
+    void terminateUnityCall({
+      callId: snapshot.call.id,
+      isCaller: false,
+      callStatus: snapshot.call.status,
+      selfStatus: "ringing",
+    }).then(({ ok, message }) => {
+      if (!ok) {
+        toast.error(message?.trim() || "Could not decline the call.")
+      }
+    })
   }
 
   const handleRingtoneFile = async (event: React.ChangeEvent<HTMLInputElement>) => {

@@ -43,6 +43,14 @@ class UnityCallService
                     'chat_room_id' => __('No one else is in this chat to call.'),
                 ]);
             }
+
+            if ($this->userIsBusyOnCall($callee->id)) {
+                throw ValidationException::withMessages([
+                    'chat_room_id' => __(':name is already on another call. Try again in a moment.', [
+                        'name' => $callee->name,
+                    ]),
+                ]);
+            }
         } elseif (! $chatRoom->members()->where('users.id', '!=', $caller->id)->exists()) {
             throw ValidationException::withMessages([
                 'chat_room_id' => __('No one else is in this chat to call.'),
@@ -97,9 +105,9 @@ class UnityCallService
 
     public function accept(UnityCall $call, User $user): UnityCall
     {
-        if ($this->userHasConflictingAcceptedCall($user->id, $call->id)) {
+        if ($this->userIsBusyOnOtherCall($user->id, $call->id)) {
             throw ValidationException::withMessages([
-                'call' => __('You are already in another call. End it before joining this one.'),
+                'call' => __('You are already on another call. End it before joining this one.'),
             ]);
         }
 
@@ -258,7 +266,7 @@ class UnityCallService
         }
 
         if ($call->status !== UnityCall::STATUS_RINGING) {
-            throw ValidationException::withMessages(['call' => __('This call can no longer be cancelled.')]);
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         }
 
         $call->update([
@@ -509,6 +517,45 @@ class UnityCallService
             ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * True when the user is ringing or already connected on any active call.
+     */
+    public function userIsBusyOnCall(int $userId): bool
+    {
+        $this->finalizeStaleCallsForUser($userId);
+
+        return UnityCall::query()
+            ->whereIn('status', [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED])
+            ->whereNull('ended_at')
+            ->whereHas('participants', fn ($q) => $q
+                ->where('user_id', $userId)
+                ->whereIn('status', [
+                    UnityCallParticipant::STATUS_RINGING,
+                    UnityCallParticipant::STATUS_ACCEPTED,
+                ]))
+            ->exists();
+    }
+
+    /**
+     * True when the user is ringing or connected on a different active call.
+     */
+    public function userIsBusyOnOtherCall(int $userId, int $exceptCallId): bool
+    {
+        $this->finalizeStaleCallsForUser($userId, $exceptCallId);
+
+        return UnityCall::query()
+            ->whereIn('status', [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED])
+            ->whereNull('ended_at')
+            ->whereKeyNot($exceptCallId)
+            ->whereHas('participants', fn ($q) => $q
+                ->where('user_id', $userId)
+                ->whereIn('status', [
+                    UnityCallParticipant::STATUS_RINGING,
+                    UnityCallParticipant::STATUS_ACCEPTED,
+                ]))
+            ->exists();
     }
 
     /**

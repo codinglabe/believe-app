@@ -9,8 +9,11 @@ import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
   acceptUnityCall,
   isLeavingUnityCall,
+  markLeavingUnityCall,
   markUnityCallLiveOnPage,
+  markUnityCallSessionActive,
   clearUnityCallLiveOnPage,
+  clearUnityCallSessionActive,
   navigateAfterUnityCall,
   terminateUnityCall,
   unityCallChatChannelName,
@@ -401,7 +404,15 @@ export default function UnityCallShow({
   }, [call.status, call.id, ending, exitCallScreen, isTerminalCallStatus])
 
   useEffect(() => {
-    if (!callLive || !callConnected || ending || isTerminalCallStatus) {
+    if (ending || isLeavingUnityCall(call.id) || isTerminalCallStatus) {
+      clearUnityCallSessionActive(call.id)
+      clearUnityCallLiveOnPage(call.id)
+      return
+    }
+
+    markUnityCallSessionActive(call.id)
+
+    if (!callLive || !callConnected) {
       clearUnityCallLiveOnPage(call.id)
       return
     }
@@ -411,6 +422,14 @@ export default function UnityCallShow({
       clearUnityCallLiveOnPage(call.id)
     }
   }, [call.id, callConnected, callLive, ending, isTerminalCallStatus])
+
+  useEffect(() => {
+    return () => {
+      if (!isLeavingUnityCall(call.id)) {
+        clearUnityCallSessionActive(call.id)
+      }
+    }
+  }, [call.id])
 
   useEffect(() => {
     if (!callLive || !call.answeredAt) {
@@ -462,29 +481,18 @@ export default function UnityCallShow({
     }
   }
 
-  const handleEnd = async () => {
+  const handleEnd = () => {
     if (ending || isLeavingUnityCall(call.id)) {
       return
     }
 
-    setEnding(true)
-
     const wasRinging = call.status === "ringing"
-    const { ok, message } = await terminateUnityCall({
-      callId: call.id,
-      isCaller,
-      callStatus: call.status,
-      selfStatus,
-    })
-
-    if (!ok) {
-      setEnding(false)
-      toast.error(message?.trim() || "Could not end the call. Please try again.")
-      return
-    }
-
     const finalStatus =
       isCaller && wasRinging ? "cancelled" : !isCaller && wasRinging ? "declined" : "ended"
+
+    setEnding(true)
+    markLeavingUnityCall(call.id)
+    stopMedia()
 
     if (isCaller && wasRinging) {
       dispatchUnityCallTerminated({
@@ -510,6 +518,17 @@ export default function UnityCallShow({
     }
 
     exitCallScreen(finalStatus)
+
+    void terminateUnityCall({
+      callId: call.id,
+      isCaller,
+      callStatus: call.status,
+      selfStatus,
+    }).then(({ ok, message }) => {
+      if (!ok) {
+        toast.error(message?.trim() || "Could not end the call.")
+      }
+    })
   }
 
   const isRingingCallee =

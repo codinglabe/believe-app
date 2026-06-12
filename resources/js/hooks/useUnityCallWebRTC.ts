@@ -86,7 +86,9 @@ function isPeerConnected(pc: RTCPeerConnection): boolean {
 function peerHasLiveOutgoingAudio(pc: RTCPeerConnection): boolean {
   return pc.getSenders().some(
     (sender) =>
-      sender.track?.kind === "audio" && sender.track.enabled && sender.track.readyState === "live",
+      sender.track?.kind === "audio" &&
+      sender.track.enabled &&
+      (sender.track.readyState === "live" || sender.track.readyState === "new"),
   )
 }
 
@@ -264,7 +266,7 @@ export function useUnityCallWebRTC({
 
       source.enabled = true
 
-      if (!isCaller) {
+      if (!isCaller || !isGroupCall) {
         return source
       }
 
@@ -278,7 +280,7 @@ export function useUnityCallWebRTC({
       cloned.enabled = source.enabled
       return cloned
     },
-    [isCaller],
+    [isCaller, isGroupCall],
   )
 
   const clearProcessedSignalsForPeer = useCallback((peerId: string) => {
@@ -296,28 +298,33 @@ export function useUnityCallWebRTC({
         return false
       }
 
-      const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio")
-      if (audioSender) {
-        if (audioSender.track?.id !== track.id) {
-          await audioSender.replaceTrack(track)
+      let audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio")
+      if (!audioSender) {
+        const audioTransceiver = pc.getTransceivers().find(
+          (item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio",
+        )
+        if (audioTransceiver?.sender) {
+          audioSender = audioTransceiver.sender
+        } else {
+          audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender
         }
-        return true
       }
 
-      const audioTransceiver = pc.getTransceivers().find(
-        (item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio",
-      )
-      if (audioTransceiver?.sender) {
-        await audioTransceiver.sender.replaceTrack(track)
+      if (audioSender.track?.id !== track.id) {
+        await audioSender.replaceTrack(track)
+      }
+
+      for (const transceiver of pc.getTransceivers()) {
+        if (transceiver.sender.track?.kind !== "audio" && transceiver.receiver.track?.kind !== "audio") {
+          continue
+        }
         try {
-          audioTransceiver.direction = "sendrecv"
+          transceiver.direction = "sendrecv"
         } catch {
-          // ignore
+          // ignore read-only direction in some browsers
         }
-        return true
       }
 
-      pc.addTrack(track, new MediaStream([track]))
       return true
     },
     [resolveOutgoingAudioTrack],
@@ -462,15 +469,14 @@ export function useUnityCallWebRTC({
 
   const sendOfferToPeer = useCallback(
     (peerId: string, pc: RTCPeerConnection) => {
-      if (!peerHasLiveOutgoingAudio(pc)) {
-        console.warn("[UnityCallWebRTC] Refusing to send offer without outgoing audio track", peerId)
+      const description = normalizeSessionDescription(pc.localDescription ?? undefined)
+      if (!description) {
+        if (!peerHasLiveOutgoingAudio(pc)) {
+          console.warn("[UnityCallWebRTC] Offer missing — no local description or outgoing audio", peerId)
+        }
         return
       }
 
-      const description = normalizeSessionDescription(pc.localDescription ?? undefined)
-      if (!description) {
-        return
-      }
       sendSignal({
         type: "offer",
         offer: description,
@@ -505,7 +511,9 @@ export function useUnityCallWebRTC({
       try {
         makingOffer.current.set(peerId, true)
         const offer = await pc.createOffer(
-          pc.currentRemoteDescription ? { iceRestart: true } : undefined,
+          pc.currentRemoteDescription
+            ? { iceRestart: true, offerToReceiveAudio: true }
+            : { offerToReceiveAudio: true },
         )
         const normalized = normalizeSessionDescription(offer)
         if (!normalized) {
@@ -574,7 +582,7 @@ export function useUnityCallWebRTC({
 
       try {
         makingOffer.current.set(peerId, true)
-        const offer = await pc.createOffer()
+        const offer = await pc.createOffer({ offerToReceiveAudio: true })
         const normalized = normalizeSessionDescription(offer)
         if (!normalized) {
           return
@@ -648,6 +656,9 @@ export function useUnityCallWebRTC({
       let pc = peerConnections.current.get(from)
       if (!pc) {
         pc = createPeerConnection(from)
+        if (localStreamRef.current) {
+          await attachOutgoingAudioToPeer(from, pc)
+        }
       }
 
       if (normalized.type === "answer" && isPeerNegotiationSettled(pc) && pc.signalingState === "stable") {
@@ -678,6 +689,20 @@ export function useUnityCallWebRTC({
               await pc.setLocalDescription({ type: "rollback" })
             }
 
+            if (localStreamRef.current) {
+              await attachOutgoingAudioToPeer(from, pc)
+            } else if (
+              !pc
+                .getTransceivers()
+                .some((item) => item.receiver.track?.kind === "audio" || item.sender.track?.kind === "audio")
+            ) {
+              try {
+                pc.addTransceiver("audio", { direction: "recvonly" })
+              } catch {
+                // ignore
+              }
+            }
+
             await pc.setRemoteDescription(remoteOffer)
             const pending = pendingCandidates.current.get(from) ?? []
             for (const candidate of pending) {
@@ -686,10 +711,6 @@ export function useUnityCallWebRTC({
             pendingCandidates.current.delete(from)
 
             pushRemoteStreamFromPeer(from, pc)
-
-            if (localStreamRef.current) {
-              await attachOutgoingAudioToPeer(from, pc)
-            }
 
             const answer = await pc.createAnswer()
             const normalizedAnswer = normalizeSessionDescription(answer)

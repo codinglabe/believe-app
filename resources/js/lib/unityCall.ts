@@ -111,6 +111,31 @@ export function markUnityCallLiveOnPage(callId: number): void {
 
   try {
     sessionStorage.setItem(`unity_call_live_${callId}`, "1")
+    markUnityCallSessionActive(callId)
+  } catch {
+    // ignore
+  }
+}
+
+export function markUnityCallSessionActive(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+
+  try {
+    sessionStorage.setItem(`unity_call_active_${callId}`, "1")
+  } catch {
+    // ignore
+  }
+}
+
+export function clearUnityCallSessionActive(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+
+  try {
+    sessionStorage.removeItem(`unity_call_active_${callId}`)
   } catch {
     // ignore
   }
@@ -123,9 +148,47 @@ export function clearUnityCallLiveOnPage(callId: number): void {
 
   try {
     sessionStorage.removeItem(`unity_call_live_${callId}`)
+    clearUnityCallSessionActive(callId)
   } catch {
     // ignore
   }
+}
+
+export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  const pageCallId = getActiveUnityCallIdFromPage()
+  if (pageCallId && !isLeavingUnityCall(pageCallId) && pageCallId !== excludeCallId) {
+    return true
+  }
+
+  try {
+    for (let index = 0; index < sessionStorage.length; index += 1) {
+      const key = sessionStorage.key(index)
+      if (!key?.startsWith("unity_call_active_")) {
+        continue
+      }
+
+      const callId = Number(key.replace("unity_call_active_", ""))
+      if (!Number.isFinite(callId) || callId <= 0 || callId === excludeCallId) {
+        continue
+      }
+
+      if (isLeavingUnityCall(callId)) {
+        continue
+      }
+
+      if (sessionStorage.getItem(key) === "1") {
+        return true
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return false
 }
 
 export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
@@ -134,19 +197,41 @@ export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
   }
 
   const pageCallId = getActiveUnityCallIdFromPage()
-  if (!pageCallId || isLeavingUnityCall(pageCallId)) {
-    return false
-  }
-
-  if (excludeCallId && pageCallId === excludeCallId) {
-    return false
+  if (pageCallId && !isLeavingUnityCall(pageCallId) && pageCallId !== excludeCallId) {
+    try {
+      if (sessionStorage.getItem(`unity_call_live_${pageCallId}`) === "1") {
+        return true
+      }
+    } catch {
+      // ignore
+    }
   }
 
   try {
-    return sessionStorage.getItem(`unity_call_live_${pageCallId}`) === "1"
+    for (let index = 0; index < sessionStorage.length; index += 1) {
+      const key = sessionStorage.key(index)
+      if (!key?.startsWith("unity_call_live_")) {
+        continue
+      }
+
+      const callId = Number(key.replace("unity_call_live_", ""))
+      if (!Number.isFinite(callId) || callId <= 0 || callId === excludeCallId) {
+        continue
+      }
+
+      if (isLeavingUnityCall(callId)) {
+        continue
+      }
+
+      if (sessionStorage.getItem(key) === "1") {
+        return true
+      }
+    }
   } catch {
-    return false
+    // ignore
   }
+
+  return false
 }
 
 export function navigateAfterUnityCall(
@@ -228,6 +313,10 @@ export async function postUnityCallJson<T = unknown>(
 }
 
 export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitResponse | null> {
+  if (isUserBusyWithUnityCall()) {
+    throw new Error("You are already on a call. End it before starting another.")
+  }
+
   const { ok, data, message } = await postUnityCallJson<UnityCallInitResponse>(route("unity-calls.store"), {
     chat_room_id: chatRoomId,
   })
@@ -286,7 +375,11 @@ function isRecoverableTerminateMessage(message?: string): boolean {
     normalized.includes("no longer") ||
     normalized.includes("not part of this call") ||
     normalized.includes("already") ||
-    normalized.includes("can only leave an active call")
+    normalized.includes("can only leave an active call") ||
+    normalized.includes("only the caller can cancel") ||
+    normalized.includes("only callees can decline") ||
+    normalized.includes("cannot be cancelled") ||
+    normalized.includes("cannot be declined")
   )
 }
 
