@@ -2397,6 +2397,8 @@ export default function OrganizationPage({
                     )}
                   </div>
                 )}
+                  </>
+                )}
               </section>
 
               {/* Right Sidebar */}
