@@ -46,6 +46,8 @@ interface ProfileOrganizationPickerProps {
   placeholder?: string
   className?: string
   compactTrigger?: boolean
+  /** Outline action button for card actions (e.g. Primary org "Change"). */
+  actionTrigger?: boolean
   /** For <Label htmlFor> accessibility */
   triggerId?: string
 }
@@ -63,6 +65,7 @@ export function ProfileOrganizationPicker({
   placeholder = "Select organization",
   className,
   compactTrigger = false,
+  actionTrigger = false,
   triggerId,
 }: ProfileOrganizationPickerProps) {
   const pickerTarget = variant === "primary" ? "primary" : "secondary"
@@ -201,10 +204,12 @@ export function ProfileOrganizationPicker({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            compactTrigger
-              ? "h-7 min-w-[10rem] flex-1 justify-start border-0 bg-transparent px-1 shadow-none ring-0 hover:bg-transparent dark:hover:bg-transparent [&_svg]:hidden font-normal text-gray-900 dark:text-gray-100"
+            actionTrigger
+              ? "h-9 shrink-0 border-purple-500/40 bg-slate-900/50 px-4 text-slate-100 shadow-sm hover:border-purple-400 hover:bg-purple-500/10"
+              : compactTrigger
+              ? "h-7 w-auto shrink-0 justify-center border-0 bg-transparent px-2 shadow-none ring-0 hover:bg-transparent dark:hover:bg-transparent [&_svg]:hidden font-normal text-gray-900 dark:text-gray-100"
               : "w-full justify-between h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200",
-            compactTrigger && !triggerLabel?.includes("…") && triggerLabel === placeholder && "text-muted-foreground",
+            compactTrigger && !actionTrigger && !triggerLabel?.includes("…") && triggerLabel === placeholder && "text-muted-foreground",
             className,
           )}
         >
@@ -224,9 +229,9 @@ export function ProfileOrganizationPicker({
               <span className="truncate">{selectedOrganization.name}</span>
             </span>
           ) : (
-            <span className={cn("truncate text-left", compactTrigger && "text-sm")}>{triggerLabel}</span>
+            <span className={cn("truncate text-left", compactTrigger && !actionTrigger && "text-sm")}>{triggerLabel}</span>
           )}
-          {!compactTrigger ? <ChevronsUpDown className="ml-2 h-5 w-5 shrink-0 opacity-50" /> : null}
+          {!compactTrigger && !actionTrigger ? <ChevronsUpDown className="ml-2 h-5 w-5 shrink-0 opacity-50" /> : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent
