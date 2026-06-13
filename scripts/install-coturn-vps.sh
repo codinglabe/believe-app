@@ -144,6 +144,15 @@ if command -v csf >/dev/null 2>&1; then
   echo "CSF rules added for TURN ports."
 fi
 
+# firewalld (AlmaLinux 9 Hostinger VPS) — required for external TURN relay
+if command -v firewall-cmd >/dev/null 2>&1; then
+  firewall-cmd --permanent --add-port=3478/udp 2>/dev/null || true
+  firewall-cmd --permanent --add-port=3478/tcp 2>/dev/null || true
+  firewall-cmd --permanent --add-port=49152-65535/udp 2>/dev/null || true
+  firewall-cmd --reload 2>/dev/null || true
+  echo "firewalld TURN ports opened (3478 udp/tcp, 49152-65535 udp)."
+fi
+
 sleep 2
 
 if ! systemctl is-active --quiet "${SERVICE}"; then

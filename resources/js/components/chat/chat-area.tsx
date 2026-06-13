@@ -11,7 +11,7 @@ import { Button } from "@/components/chat/ui/button"
 import { ChevronLeft, InfoIcon, Phone, SettingsIcon } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/chat/ui/sheet"
 import { ChatDetailsPanel } from "@/components/chat/chat-details-panel"
-import { Link, router } from "@inertiajs/react"
+import { Link } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { chatAccentText, chatGradientBg, chatGradientBgHover, chatGradientText, chatInputBarBg, chatMobileDivider } from "./chat-brand"
 import { cn } from "@/lib/utils"
@@ -132,11 +132,8 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
                 requestCallPermissionsPrompt()
               }
               setStartingCall(true)
-              void startAudioCall(activeRoom.id).then((joinUrl) => {
+              void startAudioCall(activeRoom.id).finally(() => {
                 setStartingCall(false)
-                if (joinUrl) {
-                  router.visit(joinUrl)
-                }
               })
             }}
           >

@@ -15,6 +15,19 @@ export function unityCallShowPath(callId: number): string {
   return `/unity-call/${callId}`
 }
 
+/** Full page load — avoids Inertia XHR JSON errors on /unity-call/* (Reverb/WebRTC need a clean page). */
+export function navigateToUnityCall(pathOrUrl: string, options?: { replace?: boolean }): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  const path = toInternalAppPath(pathOrUrl)
+  if (options?.replace) {
+    window.location.replace(path)
+  } else {
+    window.location.assign(path)
+  }
+}
+
 /** Inertia visits must use same-origin paths — not absolute APP_URL from the server. */
 export function toInternalAppPath(urlOrPath: string): string {
   if (!urlOrPath) {

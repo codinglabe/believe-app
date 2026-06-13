@@ -90,19 +90,25 @@ function isPeerConnected(pc: RTCPeerConnection): boolean {
   return ice === "connected" || ice === "completed" || conn === "connected"
 }
 
-function sdpOffersOutboundAudio(sdp: string | undefined): boolean {
-  if (!sdp) {
-    return false
+function waitForIceGathering(pc: RTCPeerConnection, timeoutMs = 4000): Promise<void> {
+  if (pc.iceGatheringState === "complete") {
+    return Promise.resolve()
   }
 
-  const sections = sdp.split(/m=audio/)
-  for (let index = 1; index < sections.length; index += 1) {
-    if (/a=sendrecv|a=sendonly/i.test(sections[index])) {
-      return true
+  return new Promise((resolve) => {
+    const finish = () => {
+      pc.removeEventListener("icegatheringstatechange", onChange)
+      clearTimeout(timer)
+      resolve()
     }
-  }
-
-  return false
+    const onChange = () => {
+      if (pc.iceGatheringState === "complete") {
+        finish()
+      }
+    }
+    pc.addEventListener("icegatheringstatechange", onChange)
+    const timer = window.setTimeout(finish, timeoutMs)
+  })
 }
 
 function hasAudioSender(pc: RTCPeerConnection): boolean {
@@ -157,18 +163,12 @@ export function useUnityCallWebRTC({
         return hubId !== userIdStr ? [hubId] : []
       }
 
-      const accepted = participants
-        .filter((p) => p.userId !== userId && p.status === "accepted")
+      const callees = participants
+        .filter((p) => p.userId !== userId && p.role === "callee")
         .map((p) => String(p.userId))
 
-      if (accepted.length > 0) {
-        return accepted
-      }
-
-      if (callStatus === "accepted") {
-        return participants
-          .filter((p) => p.userId !== userId && p.role === "callee")
-          .map((p) => String(p.userId))
+      if (callees.length > 0) {
+        return callees
       }
 
       return []
@@ -182,7 +182,7 @@ export function useUnityCallWebRTC({
       .filter((p) => p.userId !== userId && p.role === "callee" && p.status === "accepted")
       .map((p) => String(p.userId))
       .slice(0, MAX_GROUP_HOST_PEERS)
-  }, [participants, userId, userIdStr, isGroupCall, isCaller, callerId, callStatus])
+  }, [participants, userId, userIdStr, isGroupCall, isCaller, callerId])
 
   const updateMediaConnected = useCallback(() => {
     const expectedPeers = acceptedPeerIds()
@@ -412,17 +412,13 @@ export function useUnityCallWebRTC({
         }
 
         if (pc.signalingState === "have-local-offer" && pc.localDescription) {
-          if (sdpOffersOutboundAudio(pc.localDescription.sdp)) {
-            sendSignal({
-              type: "offer",
-              offer: normalizeSessionDescription(pc.localDescription) ?? pc.localDescription,
-              from: userIdStr,
-              to: peerId,
-            })
-            return
-          }
-
-          await pc.setLocalDescription({ type: "rollback" })
+          sendSignal({
+            type: "offer",
+            offer: normalizeSessionDescription(pc.localDescription) ?? pc.localDescription,
+            from: userIdStr,
+            to: peerId,
+          })
+          return
         }
 
         if (pc.signalingState !== "stable") {
@@ -431,10 +427,11 @@ export function useUnityCallWebRTC({
 
         const offer = await pc.createOffer({ offerToReceiveAudio: true })
         const normalized = normalizeSessionDescription(offer)
-        if (!normalized || !sdpOffersOutboundAudio(normalized.sdp)) {
+        if (!normalized) {
           return
         }
         await pc.setLocalDescription(normalized)
+        await waitForIceGathering(pc)
         sendSignal({
           type: "offer",
           offer: normalizeSessionDescription(pc.localDescription ?? undefined) ?? normalized,
@@ -449,6 +446,51 @@ export function useUnityCallWebRTC({
       }
     },
     [addLocalAudioToPeer, createPeerConnection, isCaller, resetPeerConnection, sendSignal, userIdStr],
+  )
+
+  /** 1:1 fallback when caller offer never arrives (signaling delay / Echo miss). */
+  const createDirectCalleeOffer = useCallback(
+    async (peerId: string) => {
+      if (callEnded.current || isCaller || isGroupCall || !localStreamRef.current || peerId === userIdStr) {
+        return
+      }
+
+      if (peerId !== String(callerId)) {
+        return
+      }
+
+      const pc = peerConnections.current.get(peerId) ?? createPeerConnection(peerId)
+      if (pc.signalingState !== "stable" || pc.remoteDescription || pc.localDescription) {
+        return
+      }
+
+      makingOffer.current.set(peerId, true)
+      try {
+        const attached = await addLocalAudioToPeer(peerId, pc)
+        if (!attached || !hasAudioSender(pc)) {
+          return
+        }
+
+        const offer = await pc.createOffer({ offerToReceiveAudio: true })
+        const normalized = normalizeSessionDescription(offer)
+        if (!normalized) {
+          return
+        }
+        await pc.setLocalDescription(normalized)
+        await waitForIceGathering(pc)
+        sendSignal({
+          type: "offer",
+          offer: normalizeSessionDescription(pc.localDescription ?? undefined) ?? normalized,
+          from: userIdStr,
+          to: peerId,
+        })
+      } catch (error) {
+        console.error("[UnityCallWebRTC] Failed to create callee offer:", error)
+      } finally {
+        makingOffer.current.set(peerId, false)
+      }
+    },
+    [addLocalAudioToPeer, callerId, createPeerConnection, isCaller, isGroupCall, sendSignal, userIdStr],
   )
 
   const handleSignal = useCallback(
@@ -534,6 +576,7 @@ export function useUnityCallWebRTC({
               return
             }
             await pc.setLocalDescription(normalizedAnswer)
+            await waitForIceGathering(pc)
             sendSignal({
               type: "answer",
               answer: normalizeSessionDescription(pc.localDescription ?? undefined) ?? normalizedAnswer,
@@ -873,6 +916,26 @@ export function useUnityCallWebRTC({
 
     return () => window.clearInterval(intervalId)
   }, [mediaActive, mediaConnected])
+
+  useEffect(() => {
+    if (!mediaActive || !mediaStarted.current || mediaConnected || callEnded.current || isCaller || isGroupCall) {
+      return
+    }
+
+    const peerId = String(callerId)
+    const intervalId = window.setInterval(() => {
+      if (mediaConnected || callEnded.current) {
+        return
+      }
+      const pc = peerConnections.current.get(peerId)
+      if (pc?.remoteDescription || pc?.localDescription) {
+        return
+      }
+      void createDirectCalleeOffer(peerId)
+    }, 2500)
+
+    return () => window.clearInterval(intervalId)
+  }, [callerId, createDirectCalleeOffer, isCaller, isGroupCall, mediaActive, mediaConnected])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {

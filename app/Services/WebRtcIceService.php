@@ -173,7 +173,25 @@ class WebRtcIceService
             'urls' => $url,
             'username' => trim($username),
             'credential' => trim($credential),
-        ], $urlList);
+        ], $this->filterTurnUrls($urlList));
+    }
+
+    /**
+     * Skip TURNS URLs unless TLS is configured on coturn (broken TURNS breaks ICE discovery).
+     *
+     * @param  array<int, string>  $urls
+     * @return array<int, string>
+     */
+    private function filterTurnUrls(array $urls): array
+    {
+        if ((bool) config('webrtc.turn_tls_enabled', false)) {
+            return $urls;
+        }
+
+        return array_values(array_filter(
+            $urls,
+            fn (string $url) => ! str_starts_with(strtolower($url), 'turns:'),
+        ));
     }
 
     /**

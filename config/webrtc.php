@@ -31,4 +31,6 @@ return [
 
     'use_third_party_turn_fallback' => env('WEBRTC_USE_THIRD_PARTY_TURN', false),
 
+    'turn_tls_enabled' => env('WEBRTC_TURNS_ENABLED', false),
+
 ];

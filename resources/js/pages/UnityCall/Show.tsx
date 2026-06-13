@@ -358,6 +358,11 @@ export default function UnityCallShow({
       setCall(payload.call)
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
+      if (payload.reason === "accepted") {
+        unlockRemotePlayback()
+        return
+      }
+
       if (payload.reason === "participant_left" || payload.reason === "participant_declined") {
         const self = payload.participants.find((p) => p.userId === authUserId)
         if (self?.status === "left" || self?.status === "declined") {
@@ -381,7 +386,7 @@ export default function UnityCallShow({
         }
       }
     },
-    [authUserId, call.id, exitCallScreen, isCaller],
+    [authUserId, call.id, exitCallScreen, isCaller, unlockRemotePlayback],
   )
 
   const onStatus = handleCallTerminated

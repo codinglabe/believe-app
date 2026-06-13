@@ -2,11 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { router } from "@inertiajs/react"
-import { AnimatePresence, motion } from "framer-motion"
-import { Music, Phone, PhoneOff, Settings2, User } from "lucide-react"
-import toast from "react-hot-toast"
-import { Button } from "@/components/ui/button"
 import {
   acceptUnityCall,
   clearUnityCallSessionActive,
@@ -14,6 +9,7 @@ import {
   markUnityCallAcceptedLocally,
   markUnityCallSessionActive,
   markLeavingUnityCall,
+  navigateToUnityCall,
   terminateUnityCall,
   toInternalAppPath,
   unityCallShowPath,
@@ -100,7 +96,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     if (self?.role === "callee" && self.status === "accepted") {
       stopCallRingtone()
       const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(payload.call.id))
-      router.visit(joinUrl)
+      navigateToUnityCall(joinUrl)
       return
     }
 
@@ -131,7 +127,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     const callerId = Number(params.get("caller_id"))
 
     if (Number.isFinite(callerId) && callerId === userId) {
-      router.visit(unityCallShowPath(callId), { replace: true })
+      navigateToUnityCall(unityCallShowPath(callId), { replace: true })
       return
     }
 
@@ -218,7 +214,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
           dismiss()
           const onCallPage = window.location.pathname === unityCallShowPath(payload.call.id)
           if (!onCallPage || new URLSearchParams(window.location.search).get("ring") === "1") {
-            router.visit(joinUrl)
+            navigateToUnityCall(joinUrl)
           }
           return
         }
@@ -283,7 +279,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     markUnityCallAcceptedLocally(incoming.call.id)
     const joinUrl = toInternalAppPath(incoming.call.joinUrl || unityCallShowPath(incoming.call.id))
     dismiss()
-    router.visit(joinUrl)
+    navigateToUnityCall(joinUrl)
   }
 
   const handleDecline = () => {
