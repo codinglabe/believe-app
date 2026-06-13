@@ -70,6 +70,11 @@ class PushNotificationLog extends Model
         return $this->hasMany(PushNotificationRecipient::class);
     }
 
+    public function notificationFailures(): HasMany
+    {
+        return $this->hasMany(NotificationFailure::class, 'notification_id');
+    }
+
     public function moduleLabel(): string
     {
         return PushNotificationLogMetadata::moduleLabel($this);

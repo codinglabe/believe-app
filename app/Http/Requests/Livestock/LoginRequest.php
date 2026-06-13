@@ -43,7 +43,7 @@ class LoginRequest extends FormRequest
 
         $credentials = $this->only('email', 'password');
 
-        if (! Auth::guard('livestock')->attempt($credentials, $this->boolean('remember'))) {
+        if (! Auth::guard('livestock')->attempt($credentials, $this->boolean('remember', true))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([

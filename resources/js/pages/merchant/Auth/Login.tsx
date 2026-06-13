@@ -19,7 +19,7 @@ export default function MerchantLogin({ status, canResetPassword }: LoginProps) 
   const { data, setData, post, processing, errors, reset } = useForm({
     email: '',
     password: '',
-    remember: false,
+    remember: true,
   })
 
   const submit: FormEventHandler = (e) => {

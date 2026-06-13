@@ -4,7 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class RepushPushNotificationRequest extends FormRequest
+class RepushPushNotificationRecipientRequest extends FormRequest
 {
     public function authorize(): bool
     {

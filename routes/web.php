@@ -2107,6 +2107,7 @@ Route::prefix('admin/push-notifications')
         Route::get('/export/excel', [PushNotificationLogController::class, 'exportExcel'])->name('export.excel');
         Route::get('/{pushNotificationLog}', [PushNotificationLogController::class, 'show'])->name('show');
         Route::post('/{pushNotificationLog}/repush', [PushNotificationLogController::class, 'repush'])->name('repush');
+        Route::post('/{pushNotificationLog}/recipients/{recipient}/repush', [PushNotificationLogController::class, 'repushRecipient'])->name('recipients.repush');
     });
 
 Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin|'])->group(function () {
