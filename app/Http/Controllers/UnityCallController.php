@@ -197,6 +197,8 @@ class UnityCallController extends Controller
 
         if ($request->query('ring') === '1') {
             $call = $calls->prepareCalleeForIncomingRing($call, $user);
+        } elseif ((int) $call->caller_id !== (int) $user->id && $call->isActive()) {
+            $call = $calls->prepareCalleeForIncomingRing($call, $user);
         }
 
         if (! $calls->userCanAccess($call, $user)) {
@@ -265,7 +267,7 @@ class UnityCallController extends Controller
 
     private function authorizeCall(Request $request, UnityCall $call): void
     {
-        if (! app(UnityCallService::class)->userCanAccess($call, $request->user())) {
+        if (! app(UnityCallService::class)->userCanBroadcastOnCall($request->user(), (int) $call->id)) {
             abort(403);
         }
     }

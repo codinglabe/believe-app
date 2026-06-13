@@ -669,6 +669,31 @@ class UnityCallService
         return $this->userCanAccess($call, $user);
     }
 
+    /**
+     * Authorize Echo/Reverb chat room channels (mirrors ChatController message access).
+     */
+    public function userCanListenOnChatRoom(User $user, int $roomId, ?string $expectedType = null): bool
+    {
+        $chatRoom = ChatRoom::query()->find($roomId);
+        if (! $chatRoom || ! $chatRoom->is_active) {
+            return false;
+        }
+
+        if ($expectedType !== null && $chatRoom->type !== $expectedType) {
+            return false;
+        }
+
+        if ($chatRoom->members()->where('users.id', $user->id)->exists()) {
+            return true;
+        }
+
+        if ($chatRoom->type === 'public') {
+            return $this->ensurePublicChatRoomMember($chatRoom, $user);
+        }
+
+        return false;
+    }
+
     public function userCanAccess(UnityCall $call, User $user): bool
     {
         if ($call->participants()->where('user_id', $user->id)->exists()) {
@@ -688,7 +713,7 @@ class UnityCallService
         }
 
         if ($chatRoom->type === 'direct') {
-            return false;
+            return $chatRoom->members()->where('users.id', $user->id)->exists();
         }
 
         if ($chatRoom->members()->where('users.id', $user->id)->exists()) {

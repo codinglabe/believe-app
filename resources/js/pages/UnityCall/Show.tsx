@@ -23,7 +23,7 @@ import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnity
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
-import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 type Props = {
   call: UnityCallPayload
@@ -162,6 +162,10 @@ export default function UnityCallShow({
       return false
     }
     return new URLSearchParams(window.location.search).get("ring") === "1"
+  }, [])
+
+  useEffect(() => {
+    refreshEchoAuthHeaders()
   }, [])
 
   const selfStatus = useMemo(

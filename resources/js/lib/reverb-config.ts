@@ -75,6 +75,7 @@ export const buildReverbEchoConfig = () => {
         "X-Requested-With": "XMLHttpRequest",
       },
     },
+    withCredentials: true,
   }
 }
 
