@@ -22,6 +22,10 @@ import {
   SavedPaymentMethodSelector,
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
+import {
+  LockedPrimaryOrganizationFilter,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter"
 
 /** Matches `DonationController@index` `feePreview` prop (same rules as checkout). */
 type FeePreviewRail = "card" | "bank"
@@ -129,6 +133,7 @@ interface DonatePageProps extends InertiaPageProps {
   feePreview?: FeePreviewFromServer | null
   /** Checkout total for each rail (same gift + “Make Full Impact” as active preview). */
   feePreviewCheckoutTotalsByRail?: { card: number; bank: number } | null
+  organizationFilterLock?: OrganizationFilterLock | null
 }
 
 const amountConfig = [
@@ -194,6 +199,7 @@ export default function DonatePage({
   thisYearDonated = 0,
   givingGoal = 1000,
   topOrganizations = [],
+  organizationFilterLock = null,
 }: DonatePageProps) {
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
   const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
@@ -266,6 +272,10 @@ export default function DonatePage({
       const q: Record<string, string | number> = {}
       const sq = searchQuery.trim()
       if (sq) q.search = sq
+      if (!organizationFilterLock?.locked) {
+        const orgParam = new URLSearchParams(window.location.search).get("organization_id")
+        if (orgParam) q.organization_id = orgParam
+      }
       const baseUsd = (selectedAmount ?? Number.parseFloat(customAmount)) || 0
       if (paymentMethod === "stripe" && baseUsd > 0) {
         q.fee_preview_amount = baseUsd
@@ -290,7 +300,7 @@ export default function DonatePage({
       })
     }, 300)
     return () => clearTimeout(t)
-  }, [searchQuery, selectedAmount, customAmount, paymentMethod, donorCoversProcessingFees, feePreviewRail])
+  }, [searchQuery, selectedAmount, customAmount, paymentMethod, donorCoversProcessingFees, feePreviewRail, organizationFilterLock?.locked])
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -617,6 +627,15 @@ export default function DonatePage({
               <div className="p-5 space-y-5 rounded-b-2xl">
                 <p className="text-sm text-slate-600 dark:text-white/70">Choose amount to donate.</p>
                 {/* Org search */}
+                <LockedPrimaryOrganizationFilter
+                  lock={organizationFilterLock}
+                  onUnlock={() => {
+                    const q: Record<string, string> = { organization_id: "all" }
+                    const sq = searchQuery.trim()
+                    if (sq) q.search = sq
+                    router.get(route("donate"), q, { preserveState: false })
+                  }}
+                >
                 <div className="relative" ref={searchContainerRef}>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-500/70 dark:text-purple-300/70" />
@@ -737,6 +756,7 @@ export default function DonatePage({
                     </div>
                   )}
                 </div>
+                </LockedPrimaryOrganizationFilter>
                 {/* Amount buttons */}
                 <div className="grid grid-cols-3 gap-2">
                   {amountConfig.map(({ amount, badge, impact }) => (
@@ -1158,6 +1178,15 @@ export default function DonatePage({
                     ))}
                   </select>
                 </div>
+                <LockedPrimaryOrganizationFilter
+                  lock={organizationFilterLock}
+                  onUnlock={() => {
+                    const q: Record<string, string> = { organization_id: "all" }
+                    const sq = searchQuery.trim()
+                    if (sq) q.search = sq
+                    router.get(route("donate"), q, { preserveState: false })
+                  }}
+                >
                 <div className="relative" ref={nonCashOrgSearchRef}>
                   <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Preferred Receiving Organization</Label>
                   <div className="relative">
@@ -1218,6 +1247,7 @@ export default function DonatePage({
                     </div>
                   )}
                 </div>
+                </LockedPrimaryOrganizationFilter>
                 <label className="flex items-center gap-2 cursor-pointer text-slate-700/80 dark:text-white/80 text-sm">
                   <input
                     type="checkbox"
