@@ -31,6 +31,7 @@ use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
 use App\Services\KioskProviderAiIngestService;
 use App\Services\PrintifyService;
+use App\Services\SupporterPrimaryOrganizationService;
 use App\Services\YouTubeService;
 use App\Support\DigitalProductDelivery;
 use App\Support\ProfileReligions;
@@ -49,8 +50,10 @@ class UserProfileController extends Controller
 {
     protected $impactScoreService;
 
-    public function __construct(ImpactScoreService $impactScoreService)
-    {
+    public function __construct(
+        ImpactScoreService $impactScoreService,
+        private readonly SupporterPrimaryOrganizationService $primaryOrgService,
+    ) {
         $this->impactScoreService = $impactScoreService;
     }
 
@@ -134,9 +137,15 @@ class UserProfileController extends Controller
     public function edit(Request $request)
     {
         $user = auth()->user();
+        if (($user->role ?? null) === 'user' && $user->primary_organization_id && ! $user->primary_organization_locked) {
+            $user->forceFill(['primary_organization_locked' => true])->save();
+            $user->refresh();
+        }
+
         $user->load([
             'supporterPositions',
             'supporterInterestCategories',
+            'primaryOrganization:id,name,registered_user_image',
             'favoriteOrganizations' => function ($q) {
                 $q->select('organizations.id', 'organizations.name', 'organizations.user_id')
                     ->with(['user:id,image']);
@@ -234,6 +243,8 @@ class UserProfileController extends Controller
                 'zipcode' => $user->zipcode,
                 'religion' => $user->religion,
                 'primary_organization_id' => $user->primary_organization_id ? (int) $user->primary_organization_id : null,
+                'primary_organization' => $this->organizationPickerRow($user->primaryOrganization),
+                'primary_organization_locked' => (bool) $user->primary_organization_locked,
                 'secondary_organization_ids' => $secondaryOrgIds,
                 'unity_meeting_id' => $unityMeetingId,
                 'account_visibility' => in_array((string) ($user->account_visibility ?? 'public'), ['public', 'private'], true)
@@ -259,6 +270,24 @@ class UserProfileController extends Controller
     }
 
     /**
+     * @return array{id: int, name: string, image: string|null}|null
+     */
+    private function organizationPickerRow(?Organization $organization): ?array
+    {
+        if ($organization === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $organization->id,
+            'name' => (string) $organization->name,
+            'image' => $organization->registered_user_image
+                ? Storage::url($organization->registered_user_image)
+                : null,
+        ];
+    }
+
+    /**
      * Paginated organization list for profile edit pickers (Inertia partial reload only).
      *
      * @return array{target: string, items: array<int, array{id: int, name: string, image: string|null}>, has_more: bool, page: int, search: string}
@@ -275,13 +304,8 @@ class UserProfileController extends Controller
         $page = (int) $validated['org_picker_page'];
         $perPage = 30;
         $search = trim((string) ($validated['org_picker_q'] ?? ''));
-        $excludeRaw = (string) ($validated['org_picker_exclude'] ?? '');
-        $excludeIds = collect(explode(',', $excludeRaw))
-            ->map(fn ($v) => (int) trim((string) $v))
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
+        $target = $validated['org_picker_target'];
+        $excludeIds = $this->organizationPickerExcludeIds($request, $target);
 
         $query = Organization::query()
             ->active()
@@ -304,12 +328,53 @@ class UserProfileController extends Controller
         })->values()->all();
 
         return [
-            'target' => $validated['org_picker_target'],
+            'target' => $target,
             'items' => $items,
             'has_more' => $paginator->hasMorePages(),
             'page' => $paginator->currentPage(),
             'search' => $search,
         ];
+    }
+
+    /**
+     * IDs to omit from picker results (saved profile + client query exclusions).
+     *
+     * @return list<int>
+     */
+    private function organizationPickerExcludeIds(Request $request, string $target): array
+    {
+        $fromRequest = collect(explode(',', (string) $request->input('org_picker_exclude', '')))
+            ->map(fn ($v) => (int) trim((string) $v))
+            ->filter(fn ($id) => $id > 0);
+
+        $user = $request->user();
+        $fromProfile = collect();
+
+        if (($user->role ?? null) === 'user') {
+            $primaryId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
+
+            if ($target === 'primary' && $primaryId) {
+                $fromProfile->push($primaryId);
+            }
+
+            if ($target === 'secondary') {
+                if ($primaryId) {
+                    $fromProfile->push($primaryId);
+                }
+
+                $secondaryIds = $user->secondary_organization_ids ?? [];
+                if (is_array($secondaryIds)) {
+                    foreach ($secondaryIds as $id) {
+                        $id = (int) $id;
+                        if ($id > 0) {
+                            $fromProfile->push($id);
+                        }
+                    }
+                }
+            }
+        }
+
+        return $fromRequest->merge($fromProfile)->unique()->values()->all();
     }
 
     public function update(Request $request)
@@ -323,6 +388,18 @@ class UserProfileController extends Controller
 
         if ($request->has('religion') && $request->input('religion') === '') {
             $request->merge(['religion' => null]);
+        }
+
+        if ($request->has('proximity_notifications_enabled')) {
+            $request->merge([
+                'proximity_notifications_enabled' => $request->boolean('proximity_notifications_enabled'),
+            ]);
+        }
+
+        if ($request->has('_supporter_interests_touched')) {
+            $request->merge([
+                '_supporter_interests_touched' => $request->boolean('_supporter_interests_touched'),
+            ]);
         }
 
         $validated = $request->validate([
@@ -376,6 +453,16 @@ class UserProfileController extends Controller
                 ->pluck('organizations.id')
                 ->map(fn ($id) => (int) $id)
                 ->all();
+
+            if ($user->primary_organization_locked) {
+                $currentPrimary = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
+                if ($primaryOrganizationId !== null && $primaryOrganizationId !== $currentPrimary) {
+                    return back()->withErrors([
+                        'primary_organization_id' => 'Your primary organization is locked. Use the Change button to update it with a reason.',
+                    ])->withInput();
+                }
+                $primaryOrganizationId = $currentPrimary;
+            }
 
             if (count($favoriteOrganizationIds) > 0 && $primaryOrganizationId === null) {
                 return back()->withErrors([
@@ -460,6 +547,10 @@ class UserProfileController extends Controller
             }
             $updateData['secondary_organization_ids'] = $secondaryIds;
 
+            if ($primaryOrganizationId !== null) {
+                $updateData['primary_organization_locked'] = true;
+            }
+
             if (array_key_exists('account_visibility', $validated)) {
                 $updateData['account_visibility'] = $validated['account_visibility'];
             }
@@ -527,7 +618,41 @@ class UserProfileController extends Controller
             app(\App\Services\CauseGroupChatService::class)->ensureForUserAndCategoryIds($user, $ids);
         }
 
-        return back()->with('success', 'Profile updated successfully!');
+        return to_route('user.profile.edit')->with('success', 'Profile updated successfully!');
+    }
+
+    public function changePrimaryOrganization(Request $request)
+    {
+        $user = $request->user();
+
+        if (($user->role ?? null) !== 'user') {
+            abort(403);
+        }
+
+        if (! $user->primary_organization_locked) {
+            return back()->withErrors([
+                'primary_organization_id' => 'Your primary organization is not locked. You can change it directly on your profile.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'primary_organization_id' => ['required', 'integer', Rule::exists('organizations', 'id')],
+            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+        ]);
+
+        try {
+            $this->primaryOrgService->changeLockedPrimaryOrganization(
+                $user,
+                (int) $validated['primary_organization_id'],
+                trim($validated['reason'])
+            );
+        } catch (\InvalidArgumentException $e) {
+            return back()->withErrors([
+                'primary_organization_change' => $e->getMessage(),
+            ]);
+        }
+
+        return back()->with('success', 'Primary organization updated successfully.');
     }
 
     /**
@@ -2080,7 +2205,7 @@ class UserProfileController extends Controller
     {
         $user = User::where('slug', $slug)
             ->orWhere('id', $slug)
-            ->with(['supporterPositions'])
+            ->with(['supporterPositions', 'primaryOrganization:id,name', 'favoriteOrganizations:id,name'])
             ->first();
 
         if (! $user) {
@@ -2221,7 +2346,19 @@ class UserProfileController extends Controller
             'phone' => $user->phone,
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
-            'is_own_profile' => $isOwnProfile,
+            'primary_organization' => $user->primaryOrganization ? [
+                'id' => (int) $user->primaryOrganization->id,
+                'name' => (string) $user->primaryOrganization->name,
+            ] : null,
+            'primary_organization_locked' => (bool) $user->primary_organization_locked,
+            'followed_organizations' => $user->favoriteOrganizations
+                ->map(fn (Organization $org) => [
+                    'id' => (int) $org->id,
+                    'name' => (string) $org->name,
+                    'organization_status' => $user->primary_organization_id === $org->id ? 'primary' : 'secondary',
+                ])
+                ->values()
+                ->all(),
             'reward_points' => $isOwnProfile ? (float) ($user->reward_points ?? 0) : 0,
         ];
 

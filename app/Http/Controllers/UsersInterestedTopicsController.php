@@ -10,11 +10,32 @@ class UsersInterestedTopicsController extends Controller
 {
     public function userSelect()
     {
+        $topics = ChatTopic::query()
+            ->active()
+            ->with(['chatRooms' => function ($query) {
+                $query->where('is_active', true)->orderBy('id');
+            }])
+            ->orderBy('id')
+            ->get()
+            ->map(function (ChatTopic $topic) {
+                $room = $topic->chatRooms->firstWhere('type', 'public')
+                    ?? $topic->chatRooms->first();
+
+                return [
+                    'id' => $topic->id,
+                    'name' => $topic->name,
+                    'description' => $topic->description,
+                    'chat_room_id' => $room?->id,
+                ];
+            })
+            ->values();
+
         return Inertia::render('frontend/user-profile/interested-topic', [
-            'topics' => ChatTopic::active()->get(), // or ->get() if you want all
+            'topics' => $topics,
             'initialSelected' => auth()->user()
-                ->interestedTopics
-                ->pluck('id')
+                ->interestedTopics()
+                ->orderBy('chat_topics.id')
+                ->pluck('chat_topics.id')
                 ->toArray(),
         ]);
     }
@@ -39,19 +60,30 @@ class UsersInterestedTopicsController extends Controller
             'topics.*.exists' => 'One or more selected topics are invalid.',
         ]);
 
-        auth()->user()->interestedTopics()->sync($request->topics);
+        $user = auth()->user();
+        $hadTopics = $user->interestedTopics()->exists();
+
+        $user->interestedTopics()->sync($request->topics);
+
+        $successMessage = 'Your group chat interests have been updated.';
 
         $intended = $request->session()->pull('url.intended');
         if (is_string($intended) && $intended !== '') {
             $host = parse_url($intended, PHP_URL_HOST);
             if ($host === null || $host === $request->getHost()) {
                 return redirect()->to($intended)
-                    ->with('success', 'Your interests have been updated successfully!');
+                    ->with('success', $successMessage);
             }
         }
 
+        if ($hadTopics) {
+            return redirect()
+                ->route('topics.select')
+                ->with('success', $successMessage);
+        }
+
         return redirect()
-            ->to(\App\Http\Helpers\AuthRedirectHelper::defaultRedirectForUser(auth()->user()))
-            ->with('success', 'Your interests have been updated successfully!');
+            ->to(\App\Http\Helpers\AuthRedirectHelper::defaultRedirectForUser($user))
+            ->with('success', $successMessage);
     }
 }
