@@ -413,6 +413,24 @@ export default function ProfileEdit() {
     [setData, isPrimaryLocked],
   )
 
+  const applyUnlockedPrimaryChange = () => {
+    if (!changePrimaryOrgId) {
+      toast.error("Select a primary organization.")
+      return
+    }
+    const newId = Number(changePrimaryOrgId)
+    const selectedOrg =
+      orgCache[newId] ??
+      resolvedOrganizations.find((o) => o.id === newId) ??
+      (user.primary_organization?.id === newId ? user.primary_organization : null)
+    if (selectedOrg) {
+      mergeOrg(selectedOrg)
+    }
+    handlePrimaryOrganizationChange(changePrimaryOrgId)
+    setChangePrimaryOpen(false)
+    toast.success("Primary organization updated. Save your profile to keep other changes.")
+  }
+
   const submitPrimaryOrganizationChange = () => {
     if (!changePrimaryOrgId || changeReason.trim().length < 10) {
       toast.error("Select a new organization and provide a reason (at least 10 characters).")
@@ -935,7 +953,11 @@ export default function ProfileEdit() {
                         type="button"
                         variant="outline"
                         className="shrink-0 border-purple-500/40 bg-slate-900/50 text-slate-100 hover:border-purple-400 hover:bg-purple-500/10"
-                        onClick={() => setChangePrimaryOpen(true)}
+                        onClick={() => {
+                          setChangePrimaryOrgId(primaryOrgIdNum ? String(primaryOrgIdNum) : "")
+                          setChangeReason("")
+                          setChangePrimaryOpen(true)
+                        }}
                       >
                         Change
                       </Button>
@@ -972,20 +994,18 @@ export default function ProfileEdit() {
                           </p>
                         </div>
                       </div>
-                      <ProfileOrganizationPicker
-                        key={`${primaryPickerExcludeIds.join(",")}-change`}
-                        variant="primary"
-                        triggerId="primary_organization_change"
-                        excludeIds={primaryPickerExcludeIds}
-                        primaryValue={String(primaryOrgIdNum)}
-                        selectedOrganization={undefined}
-                        actionTrigger
-                        onPrimaryChange={(value, org) => {
-                          if (org) mergeOrg(org)
-                          handlePrimaryOrganizationChange(value)
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="shrink-0 border-purple-500/40 bg-slate-900/50 text-slate-100 hover:border-purple-400 hover:bg-purple-500/10"
+                        onClick={() => {
+                          setChangePrimaryOrgId(primaryOrgIdNum ? String(primaryOrgIdNum) : "")
+                          setChangeReason("")
+                          setChangePrimaryOpen(true)
                         }}
-                        placeholder="Change"
-                      />
+                      >
+                        Change
+                      </Button>
                     </div>
                   </div>
                 ) : (
@@ -1017,12 +1037,14 @@ export default function ProfileEdit() {
                   <DialogHeader>
                     <DialogTitle>Change primary organization</DialogTitle>
                     <DialogDescription className="text-slate-400">
-                      Select your new primary organization and share a brief reason for the change.
+                      {isPrimaryLocked
+                        ? "Select your new primary organization and share a brief reason for the change."
+                        : "Select your new primary organization."}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
                     <div className="space-y-2">
-                      <Label className="text-slate-200">New primary organization</Label>
+                      <Label className="text-slate-200">Primary organization</Label>
                       <ProfileOrganizationPicker
                         key={changePrimaryExcludeIds.join(",")}
                         variant="primary"
@@ -1042,28 +1064,40 @@ export default function ProfileEdit() {
                         className="border-slate-600 bg-slate-800 text-slate-100"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-200">Reason for change</Label>
-                      <Textarea
-                        value={changeReason}
-                        onChange={(e) => setChangeReason(e.target.value)}
-                        placeholder="Tell your organization why you are changing..."
-                        className="min-h-[100px] border-slate-600 bg-slate-800 text-slate-100"
-                      />
-                    </div>
+                    {isPrimaryLocked ? (
+                      <div className="space-y-2">
+                        <Label className="text-slate-200">Reason for change</Label>
+                        <Textarea
+                          value={changeReason}
+                          onChange={(e) => setChangeReason(e.target.value)}
+                          placeholder="Tell your organization why you are changing..."
+                          className="min-h-[100px] border-slate-600 bg-slate-800 text-slate-100"
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   <DialogFooter>
                     <Button type="button" variant="ghost" onClick={() => setChangePrimaryOpen(false)}>
                       Cancel
                     </Button>
-                    <Button
-                      type="button"
-                      disabled={changingPrimary}
-                      className="bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                      onClick={submitPrimaryOrganizationChange}
-                    >
-                      {changingPrimary ? "Saving..." : "Save change"}
-                    </Button>
+                    {isPrimaryLocked ? (
+                      <Button
+                        type="button"
+                        disabled={changingPrimary}
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                        onClick={submitPrimaryOrganizationChange}
+                      >
+                        {changingPrimary ? "Saving..." : "Save change"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                        onClick={applyUnlockedPrimaryChange}
+                      >
+                        Apply
+                      </Button>
+                    )}
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
