@@ -284,13 +284,9 @@ export default function ProfileEdit() {
       forceFormData: hasImageUpload,
       onSuccess: (page) => {
         const savedUser = (page.props as ProfileEditPageProps).user
-        if (savedUser) {
-          setData({
-            positions: savedUser.positions ?? [],
-            supporter_interests: savedUser.supporter_interests ?? [],
-            secondary_organization_ids: savedUser.secondary_organization_ids ?? [],
-            primary_organization_id: savedUser.primary_organization_id ?? "",
-          })
+        setData("image", null)
+        if (savedUser?.image) {
+          setPreviewUrl(savedUser.image)
         }
         updateAppearance(data.preferred_theme)
         toast.success("Profile updated successfully!")
@@ -406,15 +402,15 @@ export default function ProfileEdit() {
       if (isPrimaryLocked) return
       const nextPrimary = value === "__none__" ? "" : value
       const pid = nextPrimary ? Number(nextPrimary) : null
-      setData({
-        ...data,
+      setData((current) => ({
+        ...current,
         primary_organization_id: nextPrimary === "" ? "" : nextPrimary,
         secondary_organization_ids: pid
-          ? secondaryOrgIds.filter((sid) => sid !== pid)
-          : secondaryOrgIds,
-      })
+          ? (current.secondary_organization_ids ?? []).filter((sid) => sid !== pid)
+          : current.secondary_organization_ids ?? [],
+      }))
     },
-    [data, secondaryOrgIds, setData, isPrimaryLocked],
+    [setData, isPrimaryLocked],
   )
 
   const submitPrimaryOrganizationChange = () => {
@@ -441,10 +437,11 @@ export default function ProfileEdit() {
           if (selectedOrg) {
             setOrgCache((prev) => ({ ...prev, [selectedOrg.id]: selectedOrg }))
           }
-          setData({
+          setData((current) => ({
+            ...current,
             primary_organization_id: newId,
-            secondary_organization_ids: secondaryOrgIds.filter((sid) => sid !== newId),
-          })
+            secondary_organization_ids: (current.secondary_organization_ids ?? []).filter((sid) => sid !== newId),
+          }))
           setChangePrimaryOpen(false)
           setChangeReason("")
           setChangePrimaryOrgId("")
