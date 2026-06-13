@@ -7,11 +7,178 @@ use App\Models\Organization;
 use App\Models\SupporterPrimaryOrganizationChange;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 class SupporterPrimaryOrganizationService
 {
+    /**
+     * Default organization filter for listing pages (jobs, events, etc.) — not profile editing.
+     */
+    public function defaultOrganizationFilterId(?User $user): ?int
+    {
+        if ($user === null || ($user->role ?? '') !== 'user') {
+            return null;
+        }
+
+        $id = $user->primary_organization_id;
+
+        return $id !== null && (int) $id > 0 ? (int) $id : null;
+    }
+
+    public function defaultOrganizationFilterSlug(?User $user): ?string
+    {
+        $id = $this->defaultOrganizationFilterId($user);
+        if ($id === null) {
+            return null;
+        }
+
+        $org = Organization::query()->with('user:id,slug')->find($id);
+
+        $slug = $org?->user?->slug;
+
+        return is_string($slug) && $slug !== '' ? $slug : null;
+    }
+
+    /**
+     * Listing filters: use the query param when the user chose one; otherwise primary org.
+     */
+    public function resolveListingOrganizationFilterId(Request $request, string $key = 'organization_id'): ?int
+    {
+        if ($request->has($key)) {
+            $value = $request->input($key);
+            if ($value === null || $value === '' || $value === 'all') {
+                return null;
+            }
+
+            $id = (int) $value;
+
+            return $id > 0 ? $id : null;
+        }
+
+        return $this->defaultOrganizationFilterId($request->user());
+    }
+
+    public function resolveListingOrganizationSlugFilter(Request $request, string $key = 'organization'): ?string
+    {
+        if ($request->has($key)) {
+            $value = $request->input($key);
+            if ($value === null || $value === '' || $value === 'all') {
+                return null;
+            }
+
+            return (string) $value;
+        }
+
+        return $this->defaultOrganizationFilterSlug($request->user());
+    }
+
+    /**
+     * Marketplace-style comma-separated org ids. URL filter only — never updates profile or sends mail.
+     *
+     * @return array<int, int>
+     */
+    public function resolveListingOrganizationIdsCsv(Request $request, string $key = 'organizations'): array
+    {
+        if ($request->has($key)) {
+            $raw = trim((string) $request->input($key, ''));
+            if ($raw === '' || $raw === 'all') {
+                return [];
+            }
+
+            return array_values(array_filter(
+                array_map('intval', explode(',', $raw)),
+                fn (int $id) => $id > 0
+            ));
+        }
+
+        $defaultId = $this->defaultOrganizationFilterId($request->user());
+
+        return $defaultId ? [$defaultId] : [];
+    }
+
+    /**
+     * Connection Hub courses use `courses.organization_id` = the org owner's user id.
+     * Listing filter: explicit slug in URL, or primary org when the param is absent.
+     */
+    public function resolveListingCourseOwnerUserId(Request $request, string $key = 'organization'): ?int
+    {
+        if ($request->has($key)) {
+            $value = $request->input($key);
+            if ($value === null || $value === '' || $value === 'all') {
+                return null;
+            }
+
+            $userId = User::query()->where('slug', (string) $value)->value('id');
+
+            return $userId && (int) $userId > 0 ? (int) $userId : null;
+        }
+
+        $primaryId = $this->defaultOrganizationFilterId($request->user());
+        if ($primaryId === null) {
+            return null;
+        }
+
+        $userId = Organization::query()->where('id', $primaryId)->value('user_id');
+
+        return $userId && (int) $userId > 0 ? (int) $userId : null;
+    }
+
+    /**
+     * True when the listing uses the supporter's primary org as default (no org param in URL yet).
+     *
+     * @return array{locked: bool, primary_id: ?int, primary_name: ?string, primary_slug: ?string}
+     */
+    public function listingFilterLockState(Request $request, string $paramKey = 'organization_id'): array
+    {
+        $primaryId = $this->defaultOrganizationFilterId($request->user());
+        $locked = $primaryId !== null && ! $request->has($paramKey);
+
+        $primaryName = null;
+        $primarySlug = null;
+        if ($primaryId !== null) {
+            $org = Organization::query()->with('user:id,slug')->find($primaryId);
+            $primaryName = $org?->name;
+            $primarySlug = $org?->user?->slug;
+        }
+
+        return [
+            'locked' => $locked,
+            'primary_id' => $primaryId,
+            'primary_name' => $primaryName,
+            'primary_slug' => $primarySlug,
+        ];
+    }
+
+    /**
+     * Profile edit only: audit log + email to the previous primary org when it changes.
+     */
+    public function recordProfilePrimaryOrganizationChange(
+        User $supporter,
+        ?int $previousOrganizationId,
+        ?int $newOrganizationId,
+        ?string $reason = null
+    ): void {
+        if ($previousOrganizationId === $newOrganizationId) {
+            return;
+        }
+
+        $change = SupporterPrimaryOrganizationChange::create([
+            'user_id' => $supporter->id,
+            'previous_organization_id' => $previousOrganizationId,
+            'new_organization_id' => $newOrganizationId,
+            'notified_organization_id' => $previousOrganizationId,
+            'reason' => $reason,
+        ]);
+
+        if ($previousOrganizationId !== null) {
+            $previousOrg = Organization::query()->find($previousOrganizationId);
+            if ($previousOrg !== null) {
+                $this->notifyOrganizationOfChange($previousOrg, $supporter, $change);
+            }
+        }
+    }
     /**
      * Resolve a registered, approved organization owned by a referrer user.
      */
@@ -116,20 +283,12 @@ class SupporterPrimaryOrganizationService
                 'secondary_organization_ids' => $secondaryIds,
             ])->save();
 
-            $change = SupporterPrimaryOrganizationChange::create([
-                'user_id' => $supporter->id,
-                'previous_organization_id' => $previousOrganizationId,
-                'new_organization_id' => $organization->id,
-                'notified_organization_id' => $previousOrganizationId,
-                'reason' => $reason,
-            ]);
-
-            if ($previousOrganizationId !== null) {
-                $previousOrg = Organization::query()->find($previousOrganizationId);
-                if ($previousOrg !== null) {
-                    $this->notifyOrganizationOfChange($previousOrg, $supporter, $change);
-                }
-            }
+            $this->recordProfilePrimaryOrganizationChange(
+                $supporter,
+                $previousOrganizationId,
+                $organization->id,
+                $reason
+            );
         });
     }
 

@@ -22,6 +22,10 @@ import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, Mes
 import toast from "react-hot-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { cn } from "@/lib/utils"
+import {
+  LockedPrimaryOrganizationFilter,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter"
 
 interface VideoItem {
   id: number | string
@@ -86,6 +90,7 @@ interface Props {
   authUserChannelSlug?: string | null
   userOrgHasYoutube?: boolean
   userOrgCanConnect?: boolean
+  organizationFilterLock?: OrganizationFilterLock | null
 }
 
 function formatCount(n: number) {
@@ -208,7 +213,7 @@ function VideoHubActionBar({
   )
 }
 
-export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false }: Props) {
+export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
   const defaultHub = "all"
   const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [featuredVideo, setFeaturedVideo] = useState<VideoItem | null>(initialFeatured)
@@ -458,11 +463,17 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       const params: Record<string, string> = {}
       if (search !== defaultSearch) params.search = search
       if (tab !== defaultTab) params.tab = tab
-      if (tab === "nonprofits" && org !== defaultOrg) params.org = org
+      if (tab === "nonprofits") {
+        if (updates.org !== undefined) {
+          params.org = org
+        } else if (!organizationFilterLock?.locked && org !== defaultOrg) {
+          params.org = org
+        }
+      }
       if (hub !== defaultHub) params.hub = hub
       router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.tab, filters.org, filters.hub]
+    [filters.search, filters.tab, filters.org, filters.hub, organizationFilterLock?.locked]
   )
 
   // Debounced search: apply filters automatically after user stops typing (400ms)
@@ -793,6 +804,12 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               </button>
             ))}
             {activeTab === "nonprofits" ? (
+              <LockedPrimaryOrganizationFilter
+                lock={organizationFilterLock}
+                label="Organization"
+                className="shrink-0"
+                onUnlock={() => applyFilters({ org: "all" })}
+              >
               <Popover
                 open={orgDropdownOpen}
                 onOpenChange={(open) => {
@@ -883,6 +900,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   </Command>
                 </PopoverContent>
               </Popover>
+              </LockedPrimaryOrganizationFilter>
             ) : null}
             <span className="text-sm text-neutral-500 dark:text-gray-500 ml-auto">
               ► {stats.total_videos} Imported Videos · {stats.livestream_replays} Livestream Replays

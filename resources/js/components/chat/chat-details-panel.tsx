@@ -5,7 +5,7 @@ import { ChatRoom } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { Button } from "@/components/chat/ui/button"
 import { LogOutIcon, UserPlusIcon } from "lucide-react"
-import { useChat } from "@/providers/chat-provider"
+import { useChat } from "@/providers/chat-context"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { Checkbox } from "@/components/chat/ui/checkbox"
 import {

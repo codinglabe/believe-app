@@ -137,10 +137,6 @@ class UserProfileController extends Controller
     public function edit(Request $request)
     {
         $user = auth()->user();
-        if (($user->role ?? null) === 'user' && $user->primary_organization_id && ! $user->primary_organization_locked) {
-            $user->forceFill(['primary_organization_locked' => true])->save();
-            $user->refresh();
-        }
 
         $user->load([
             'supporterPositions',
@@ -448,6 +444,10 @@ class UserProfileController extends Controller
             ? (int) $validated['primary_organization_id']
             : null;
 
+        $previousPrimaryOrganizationId = $isSupporter && $user->primary_organization_id
+            ? (int) $user->primary_organization_id
+            : null;
+
         if ($isSupporter) {
             $favoriteOrganizationIds = $user->favoriteOrganizations()
                 ->pluck('organizations.id')
@@ -547,10 +547,6 @@ class UserProfileController extends Controller
             }
             $updateData['secondary_organization_ids'] = $secondaryIds;
 
-            if ($primaryOrganizationId !== null) {
-                $updateData['primary_organization_locked'] = true;
-            }
-
             if (array_key_exists('account_visibility', $validated)) {
                 $updateData['account_visibility'] = $validated['account_visibility'];
             }
@@ -580,6 +576,15 @@ class UserProfileController extends Controller
         }
 
         $user->update($updateData);
+
+        if ($isSupporter && ! $user->primary_organization_locked) {
+            $this->primaryOrgService->recordProfilePrimaryOrganizationChange(
+                $user->fresh(),
+                $previousPrimaryOrganizationId,
+                $primaryOrganizationId,
+                null
+            );
+        }
 
         if (
             $isSupporter

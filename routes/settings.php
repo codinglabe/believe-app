@@ -5,12 +5,18 @@ use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\Settings\DonateWidgetController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\ProfileSettingsEntryController;
 use App\Http\Controllers\Settings\ReferralLinkController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|care_alliance'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::redirect('settings', 'settings/profile');
+
+    Route::get('settings/profile', [ProfileSettingsEntryController::class, 'show'])->name('profile.edit');
+});
+
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|care_alliance'])->group(function () {
 
     // Admin-only settings (outside topics.selected middleware)
     Route::middleware('role:admin')->group(function () {
@@ -22,7 +28,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
     });
 
     Route::middleware('topics.selected')->group(function () {
-        Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
         Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
         Route::get('settings/financial', [ProfileController::class, 'editFinancial'])
             ->name('profile.financial.edit')

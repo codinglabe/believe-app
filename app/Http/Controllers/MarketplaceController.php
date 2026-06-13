@@ -9,6 +9,7 @@ use App\Models\OrganizationProduct;
 use App\Models\Product;
 use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
+use App\Services\SupporterPrimaryOrganizationService;
 use App\Support\OrganizationCatalogRetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -36,10 +37,8 @@ class MarketplaceController extends Controller
             fn (int $id) => $id > 0
         ));
 
-        $organizationIds = array_values(array_filter(
-            array_map('intval', explode(',', (string) $request->input('organizations', ''))),
-            fn (int $id) => $id > 0
-        ));
+        $organizationIds = app(SupporterPrimaryOrganizationService::class)
+            ->resolveListingOrganizationIdsCsv($request);
 
         $search = $request->input('search');
 
@@ -182,6 +181,8 @@ class MarketplaceController extends Controller
             'selectedCategories' => $categoryIds,
             'selectedOrganizations' => $organizationIds,
             'search' => $search,
+            'organizationFilterLock' => app(SupporterPrimaryOrganizationService::class)
+                ->listingFilterLockState($request, 'organizations'),
         ]);
     }
 

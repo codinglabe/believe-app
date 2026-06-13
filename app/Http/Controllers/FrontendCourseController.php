@@ -13,6 +13,7 @@ use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
 use App\Support\ConnectionHubType;
 use App\Support\SessionDurationMinutes;
+use App\Services\SupporterPrimaryOrganizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,13 @@ class FrontendCourseController extends BaseController
     public function publicIndex(Request $request)
     {
         $filters = $request->only(['search', 'topic_id', 'format', 'pricing_type', 'organization']);
+        $resolvedOrgSlug = app(SupporterPrimaryOrganizationService::class)
+            ->resolveListingOrganizationSlugFilter($request);
+        if ($resolvedOrgSlug !== null) {
+            $filters['organization'] = $resolvedOrgSlug;
+        } elseif ($request->has('organization')) {
+            $filters['organization'] = $request->input('organization');
+        }
 
         $courses = Course::query()
             ->with(['topic', 'organization.organization', 'creator'])
@@ -91,6 +99,8 @@ class FrontendCourseController extends BaseController
             'topics' => $topics,
             'organizations' => $organizations,
             'filters' => $filters,
+            'organizationFilterLock' => app(SupporterPrimaryOrganizationService::class)
+                ->listingFilterLockState($request, 'organization'),
         ]);
     }
 

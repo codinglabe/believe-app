@@ -14,6 +14,10 @@ import { Label } from "@/components/frontend/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/frontend/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/frontend/ui/command";
 import { cn } from "@/lib/utils";
+import {
+  LockedPrimaryOrganizationFilter,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter";
 
 interface JobPost {
   id: number;
@@ -67,7 +71,9 @@ function volunteerOpportunitiesQuery(base: PickerBaseParams): Record<string, str
   if (base.city) o.city = base.city
   if (base.state) o.state = base.state
   if (base.position_category_id) o.position_category_id = base.position_category_id
-  if (base.organization_id) o.organization_id = base.organization_id
+  if (base.organization_id) {
+    o.organization_id = base.organization_id === "all" ? "all" : base.organization_id
+  }
   if (base.position_id) o.position_id = base.position_id
   if (base.position_ids && base.position_ids.length > 0) o.position_ids = base.position_ids
   if (base.page > 1) o.page = base.page
@@ -111,6 +117,7 @@ interface VolunteerOpportunitiesProps {
     position_id?: string;
     position_ids?: string[] | string;
   };
+  organizationFilterLock?: OrganizationFilterLock | null;
   auth?: {
     user: {
       role: string;
@@ -657,6 +664,7 @@ export default function VolunteerOpportunities({
   positions: initialPositions,
   positionLabels,
   filters,
+  organizationFilterLock,
   auth,
 }: VolunteerOpportunitiesProps) {
   const [search, setSearch] = useState(filters.search || '');
@@ -697,7 +705,11 @@ export default function VolunteerOpportunities({
       city: city || undefined,
       state: state || undefined,
       position_category_id: positionCategoryId || undefined,
-      organization_id: organizationId || undefined,
+      organization_id: organizationFilterLock?.locked
+        ? undefined
+        : organizationId
+          ? organizationId
+          : undefined,
       position_id: positionId || undefined,
       position_ids: positionIds.length > 0 ? positionIds : undefined,
       page: currentPage,
@@ -712,6 +724,7 @@ export default function VolunteerOpportunities({
       positionId,
       positionIds,
       currentPage,
+      organizationFilterLock?.locked,
     ],
   );
 
@@ -817,7 +830,7 @@ export default function VolunteerOpportunities({
             setOrgLabelExtras({});
             setState("");
     setCurrentPage(1);
-            router.get(route("volunteer-opportunities.index"), {}, { preserveState: false });
+            router.get(route("volunteer-opportunities.index"), { organization_id: "all" }, { preserveState: false });
           },
         },
       );
@@ -834,6 +847,7 @@ export default function VolunteerOpportunities({
     setOrgLabelExtras({})
     setState("")
     setCurrentPage(1)
+    router.get(route("volunteer-opportunities.index"), { organization_id: "all" }, { preserveState: false })
   };
 
   const handleSavePreferredPositions = () => {
@@ -1172,20 +1186,28 @@ export default function VolunteerOpportunities({
                   )}
 
                   {/* Organization Filter — search + scroll (Inertia), only orgs with volunteer listings */}
-                  <div>
-                    <Label htmlFor="organization-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Organization</Label>
-                    <SearchableOrganizationPicker
-                      id="organization-filter"
-                      label="Filter by organization"
-                      pickerBase={pickerVisitBase}
-                      organizationId={organizationId}
-                      onSelectOrg={handleOrganizationFromPicker}
-                      labelMap={organizationLabelMap}
-                    />
-                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Search or scroll to load more. Only organizations with volunteer roles are listed.
-                    </p>
-                  </div>
+                  <LockedPrimaryOrganizationFilter
+                    lock={organizationFilterLock}
+                    onUnlock={() => {
+                      setOrganizationId("all")
+                      router.get(route("volunteer-opportunities.index"), { organization_id: "all" }, { preserveState: false })
+                    }}
+                  >
+                    <div>
+                      <Label htmlFor="organization-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Organization</Label>
+                      <SearchableOrganizationPicker
+                        id="organization-filter"
+                        label="Filter by organization"
+                        pickerBase={pickerVisitBase}
+                        organizationId={organizationId}
+                        onSelectOrg={handleOrganizationFromPicker}
+                        labelMap={organizationLabelMap}
+                      />
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Search or scroll to load more. Only organizations with volunteer roles are listed.
+                      </p>
+                    </div>
+                  </LockedPrimaryOrganizationFilter>
 
                   {/* Location Filters */}
                   <div className="space-y-2">
