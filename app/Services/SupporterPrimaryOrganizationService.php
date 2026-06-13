@@ -237,14 +237,10 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
-     * Change primary organization for a locked supporter (immediate, stays locked).
+     * Change primary organization from profile (locked or unlocked) with audit reason.
      */
-    public function changeLockedPrimaryOrganization(User $supporter, int $newOrganizationId, string $reason): void
+    public function changePrimaryOrganizationWithReason(User $supporter, int $newOrganizationId, string $reason): void
     {
-        if (! $supporter->primary_organization_locked) {
-            throw new \InvalidArgumentException('Primary organization is not locked for this supporter.');
-        }
-
         $organization = Organization::query()
             ->active()
             ->excludingCareAllianceHubs()
@@ -270,18 +266,25 @@ class SupporterPrimaryOrganizationService
             $this->ensureFavoriteOrganization($supporter, $organization);
         }
 
-        DB::transaction(function () use ($supporter, $organization, $previousOrganizationId, $reason) {
+        $wasLocked = (bool) $supporter->primary_organization_locked;
+
+        DB::transaction(function () use ($supporter, $organization, $previousOrganizationId, $reason, $wasLocked) {
             $secondaryIds = collect($supporter->secondary_organization_ids ?? [])
                 ->map(fn ($id) => (int) $id)
                 ->filter(fn (int $id) => $id > 0 && $id !== $organization->id)
                 ->values()
                 ->all();
 
-            $supporter->forceFill([
+            $updates = [
                 'primary_organization_id' => $organization->id,
-                'primary_organization_locked' => true,
                 'secondary_organization_ids' => $secondaryIds,
-            ])->save();
+            ];
+
+            if ($wasLocked) {
+                $updates['primary_organization_locked'] = true;
+            }
+
+            $supporter->forceFill($updates)->save();
 
             $this->recordProfilePrimaryOrganizationChange(
                 $supporter,
@@ -290,6 +293,18 @@ class SupporterPrimaryOrganizationService
                 $reason
             );
         });
+    }
+
+    /**
+     * Change primary organization for a locked supporter (immediate, stays locked).
+     */
+    public function changeLockedPrimaryOrganization(User $supporter, int $newOrganizationId, string $reason): void
+    {
+        if (! $supporter->primary_organization_locked) {
+            throw new \InvalidArgumentException('Primary organization is not locked for this supporter.');
+        }
+
+        $this->changePrimaryOrganizationWithReason($supporter, $newOrganizationId, $reason);
     }
 
     public function notifyOrganizationOfChange(

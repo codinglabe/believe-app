@@ -54,8 +54,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+} from "@/components/frontend/ui/dialog"
+import { Textarea } from "@/components/frontend/ui/textarea"
 
 interface AffiliatedOrg {
   id: number
@@ -412,24 +412,6 @@ export default function ProfileEdit() {
     },
     [setData, isPrimaryLocked],
   )
-
-  const applyUnlockedPrimaryChange = () => {
-    if (!changePrimaryOrgId) {
-      toast.error("Select a primary organization.")
-      return
-    }
-    const newId = Number(changePrimaryOrgId)
-    const selectedOrg =
-      orgCache[newId] ??
-      resolvedOrganizations.find((o) => o.id === newId) ??
-      (user.primary_organization?.id === newId ? user.primary_organization : null)
-    if (selectedOrg) {
-      mergeOrg(selectedOrg)
-    }
-    handlePrimaryOrganizationChange(changePrimaryOrgId)
-    setChangePrimaryOpen(false)
-    toast.success("Primary organization updated. Save your profile to keep other changes.")
-  }
 
   const submitPrimaryOrganizationChange = () => {
     if (!changePrimaryOrgId || changeReason.trim().length < 10) {
@@ -1037,9 +1019,7 @@ export default function ProfileEdit() {
                   <DialogHeader>
                     <DialogTitle>Change primary organization</DialogTitle>
                     <DialogDescription className="text-slate-400">
-                      {isPrimaryLocked
-                        ? "Select your new primary organization and share a brief reason for the change."
-                        : "Select your new primary organization."}
+                      Select your new primary organization and share a brief reason for the change.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
@@ -1064,40 +1044,28 @@ export default function ProfileEdit() {
                         className="border-slate-600 bg-slate-800 text-slate-100"
                       />
                     </div>
-                    {isPrimaryLocked ? (
-                      <div className="space-y-2">
-                        <Label className="text-slate-200">Reason for change</Label>
-                        <Textarea
-                          value={changeReason}
-                          onChange={(e) => setChangeReason(e.target.value)}
-                          placeholder="Tell your organization why you are changing..."
-                          className="min-h-[100px] border-slate-600 bg-slate-800 text-slate-100"
-                        />
-                      </div>
-                    ) : null}
+                    <div className="space-y-2">
+                      <Label className="text-slate-200">Reason for change</Label>
+                      <Textarea
+                        value={changeReason}
+                        onChange={(e) => setChangeReason(e.target.value)}
+                        placeholder="Tell your organization why you are changing..."
+                        className="min-h-[100px] border-slate-600 bg-slate-800 text-slate-100"
+                      />
+                    </div>
                   </div>
                   <DialogFooter>
                     <Button type="button" variant="ghost" onClick={() => setChangePrimaryOpen(false)}>
                       Cancel
                     </Button>
-                    {isPrimaryLocked ? (
-                      <Button
-                        type="button"
-                        disabled={changingPrimary}
-                        className="bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                        onClick={submitPrimaryOrganizationChange}
-                      >
-                        {changingPrimary ? "Saving..." : "Save change"}
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        className="bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                        onClick={applyUnlockedPrimaryChange}
-                      >
-                        Apply
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      disabled={changingPrimary}
+                      className="bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                      onClick={submitPrimaryOrganizationChange}
+                    >
+                      {changingPrimary ? "Saving..." : "Save change"}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
