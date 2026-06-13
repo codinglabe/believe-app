@@ -979,13 +979,12 @@ export default function ProfileEdit() {
                         excludeIds={primaryPickerExcludeIds}
                         primaryValue={String(primaryOrgIdNum)}
                         selectedOrganization={undefined}
-                        compactTrigger
+                        actionTrigger
                         onPrimaryChange={(value, org) => {
                           if (org) mergeOrg(org)
                           handlePrimaryOrganizationChange(value)
                         }}
                         placeholder="Change"
-                        className="shrink-0 border-purple-500/40 text-slate-100"
                       />
                     </div>
                   </div>
