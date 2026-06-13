@@ -2,14 +2,13 @@
 
 namespace App\Services;
 
-use App\Mail\SupporterPrimaryOrganizationChangedMail;
+use App\Jobs\SendSupporterPrimaryOrganizationChangedEmail;
 use App\Models\Organization;
 use App\Models\SupporterPrimaryOrganizationChange;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 
 class SupporterPrimaryOrganizationService
 {
@@ -173,9 +172,12 @@ class SupporterPrimaryOrganizationService
         ]);
 
         if ($previousOrganizationId !== null) {
-            $previousOrg = Organization::query()->find($previousOrganizationId);
+            $previousOrg = Organization::query()->with('user:id,email')->find($previousOrganizationId);
             if ($previousOrg !== null) {
-                $this->notifyOrganizationOfChange($previousOrg, $supporter, $change);
+                $changeId = $change->id;
+                DB::afterCommit(function () use ($changeId) {
+                    SendSupporterPrimaryOrganizationChangedEmail::dispatch($changeId);
+                });
             }
         }
     }
@@ -307,21 +309,15 @@ class SupporterPrimaryOrganizationService
         $this->changePrimaryOrganizationWithReason($supporter, $newOrganizationId, $reason);
     }
 
+    /**
+     * @deprecated Dispatched via {@see SendSupporterPrimaryOrganizationChangedEmail} on the mail queue.
+     */
     public function notifyOrganizationOfChange(
         Organization $organization,
         User $supporter,
         SupporterPrimaryOrganizationChange $change
     ): void {
-        $recipient = $organization->email ?: $organization->user?->email;
-        if ($recipient === null || $recipient === '') {
-            return;
-        }
-
-        $dashboardUrl = route('organization.supporters.index');
-
-        Mail::to($recipient)->queue(
-            new SupporterPrimaryOrganizationChangedMail($organization, $supporter, $change, $dashboardUrl)
-        );
+        SendSupporterPrimaryOrganizationChangedEmail::dispatch($change->id);
     }
 
   /**
