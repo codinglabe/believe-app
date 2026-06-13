@@ -157,10 +157,15 @@ class SupporterPrimaryOrganizationService
         User $supporter,
         ?int $previousOrganizationId,
         ?int $newOrganizationId,
-        ?string $reason = null
+        string $reason
     ): void {
         if ($previousOrganizationId === $newOrganizationId) {
             return;
+        }
+
+        $reason = trim($reason);
+        if (strlen($reason) < 10) {
+            throw new \InvalidArgumentException('A reason of at least 10 characters is required when changing your primary organization.');
         }
 
         $change = SupporterPrimaryOrganizationChange::create([

@@ -397,25 +397,9 @@ export default function ProfileEdit() {
     [secondaryOrgIds, setData],
   )
 
-  const handlePrimaryOrganizationChange = useCallback(
-    (value: string) => {
-      if (isPrimaryLocked) return
-      const nextPrimary = value === "__none__" ? "" : value
-      const pid = nextPrimary ? Number(nextPrimary) : null
-      setData((current) => ({
-        ...current,
-        primary_organization_id: nextPrimary === "" ? "" : nextPrimary,
-        secondary_organization_ids: pid
-          ? (current.secondary_organization_ids ?? []).filter((sid) => sid !== pid)
-          : current.secondary_organization_ids ?? [],
-      }))
-    },
-    [setData, isPrimaryLocked],
-  )
-
   const submitPrimaryOrganizationChange = () => {
     if (!changePrimaryOrgId || changeReason.trim().length < 10) {
-      toast.error("Select a new organization and provide a reason (at least 10 characters).")
+      toast.error("Select an organization and provide a reason (at least 10 characters).")
       return
     }
     const newId = Number(changePrimaryOrgId)
@@ -449,7 +433,11 @@ export default function ProfileEdit() {
           router.reload({ preserveScroll: true })
         },
         onError: (errs) => {
-          const msg = errs.primary_organization_change ?? errs.primary_organization_id ?? "Could not update primary organization."
+          const msg =
+            errs.primary_organization_change ??
+            errs.reason ??
+            errs.primary_organization_id ??
+            "Could not update primary organization."
           toast.error(String(msg))
         },
         onFinish: () => setChangingPrimary(false),
@@ -999,8 +987,11 @@ export default function ProfileEdit() {
                     primaryValue="__none__"
                     selectedOrganization={undefined}
                     onPrimaryChange={(value, org) => {
+                      if (value === "__none__") return
                       if (org) mergeOrg(org)
-                      handlePrimaryOrganizationChange(value)
+                      setChangePrimaryOrgId(value)
+                      setChangeReason("")
+                      setChangePrimaryOpen(true)
                     }}
                     placeholder="Select organization"
                     className="border-slate-600 bg-slate-800 text-slate-100"
@@ -1017,9 +1008,13 @@ export default function ProfileEdit() {
               <Dialog open={changePrimaryOpen} onOpenChange={setChangePrimaryOpen}>
                 <DialogContent className="border-slate-700 bg-slate-900 text-slate-100 sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Change primary organization</DialogTitle>
+                    <DialogTitle>
+                      {primaryOrganizationDisplay ? "Change primary organization" : "Set primary organization"}
+                    </DialogTitle>
                     <DialogDescription className="text-slate-400">
-                      Select your new primary organization and share a brief reason for the change.
+                      {primaryOrganizationDisplay
+                        ? "Select your new primary organization and share a brief reason for the change."
+                        : "Select your primary organization and share a brief reason for your choice."}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
@@ -1045,13 +1040,16 @@ export default function ProfileEdit() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-slate-200">Reason for change</Label>
+                      <Label className="text-slate-200">Reason for change *</Label>
                       <Textarea
                         value={changeReason}
                         onChange={(e) => setChangeReason(e.target.value)}
                         placeholder="Tell your organization why you are changing..."
                         className="min-h-[100px] border-slate-600 bg-slate-800 text-slate-100"
+                        required
+                        minLength={10}
                       />
+                      <p className="text-xs text-slate-500">Required — at least 10 characters.</p>
                     </div>
                   </div>
                   <DialogFooter>

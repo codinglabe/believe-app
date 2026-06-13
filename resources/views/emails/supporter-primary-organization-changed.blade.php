@@ -33,7 +33,6 @@
             {{ $change->reason }}
         </div>
     </div>
-
     <div class="content">
         This is an informational notice. No approval is required — the change has already been applied.
     </div>
