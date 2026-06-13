@@ -448,6 +448,12 @@ class UserProfileController extends Controller
             ? (int) $user->primary_organization_id
             : null;
 
+        if ($isSupporter && $primaryOrganizationId !== $previousPrimaryOrganizationId) {
+            return back()->withErrors([
+                'primary_organization_id' => 'To change your primary organization, use Change and provide a reason.',
+            ])->withInput();
+        }
+
         if ($isSupporter) {
             $favoriteOrganizationIds = $user->favoriteOrganizations()
                 ->pluck('organizations.id')
@@ -576,15 +582,6 @@ class UserProfileController extends Controller
         }
 
         $user->update($updateData);
-
-        if ($isSupporter && ! $user->primary_organization_locked) {
-            $this->primaryOrgService->recordProfilePrimaryOrganizationChange(
-                $user->fresh(),
-                $previousPrimaryOrganizationId,
-                $primaryOrganizationId,
-                null
-            );
-        }
 
         if (
             $isSupporter
