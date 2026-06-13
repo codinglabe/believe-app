@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useChat } from "@/providers/chat-provider"
+import { useChat } from "@/providers/chat-context"
 import { motion } from "framer-motion"
 import { chatGradientText, chatMobileDivider } from "./chat-brand"
 import { cn } from "@/lib/utils"

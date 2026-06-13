@@ -5,16 +5,13 @@ import { ChatHeader } from "./chat-header"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/frontend/ui/resizable"
 import { Menu, MessageCircle, Sparkles } from "lucide-react"
-import { useChat } from "@/providers/chat-provider"
-import { useChatInitialization } from "@/hooks/use-chat-initialization"
+import { useChat } from "@/providers/chat-context"
 import { motion } from "framer-motion"
 import { chatAmbientBg, chatGradientBg, chatGradientText } from "./chat-brand"
 
 export function ChatLayout() {
   const isMobile = useIsMobile()
   const { activeRoom, setActiveRoom } = useChat()
-
-  useChatInitialization()
 
   const WelcomeScreen = () => (
     <div

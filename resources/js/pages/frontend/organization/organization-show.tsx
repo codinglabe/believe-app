@@ -9,6 +9,7 @@ import {
   MapPin,
   Zap,
   Users,
+  UserCheck,
   Mail,
   Heart,
   MoreHorizontal,
@@ -114,6 +115,10 @@ interface OrganizationPageProps {
   supportersCount?: number
   jobsCount?: number
   supporters?: any[]
+  primarySupporters?: any[]
+  secondarySupporters?: any[]
+  primarySupportersCount?: number
+  secondarySupportersCount?: number
   peopleYouMayKnow?: any[]
   trendingOrganizations?: any[]
   products?: any[]
@@ -156,6 +161,10 @@ export default function OrganizationPage({
   supportersCount = 0,
   jobsCount = 0,
   supporters = [],
+  primarySupporters = [],
+  secondarySupporters = [],
+  primarySupportersCount = 0,
+  secondarySupportersCount = 0,
   peopleYouMayKnow = [],
   trendingOrganizations = [],
   products = [],
@@ -2228,85 +2237,165 @@ export default function OrganizationPage({
 
                 {/* Supporters Tab Content - For both registered and unregistered organizations */}
                 {activeTab === "Supporters" && !organization.is_care_alliance_public && (
-                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
-                        <Users className="w-6 h-6" />
-                        Supporters
-                      </h2>
-                      <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                        {supporters?.length || supportersCount || 0} Supporters
-                      </Badge>
-                    </div>
-                    {Array.isArray(supporters) && supporters.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                        {supporters.map((supporter: any, index: number) => {
-                          const userSlug = supporter.user?.slug || supporter.user?.id
-                          const orgPubSlug = supporter.organization_public_slug
-                          const userRoute = supporter.is_partner_organization && orgPubSlug
-                            ? route('organizations.show', orgPubSlug)
-                            : userSlug
-                              ? route('users.show', userSlug)
-                              : null
-
-                          return (
-                            <Link
-                              key={supporter.id || supporter.user_id || `supporter-${index}`}
-                              href={userRoute || '#'}
-                              onClick={(e) => {
-                                if (!userRoute) {
-                                  e.preventDefault()
-                                }
-                              }}
-                              className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all cursor-pointer block"
-                            >
-                              <div className="flex items-center gap-3 mb-3">
-                                <Avatar className="w-12 h-12 flex-shrink-0">
-                                  <AvatarImage
-                                    src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"}
-                                  />
-                                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-sm">
-                                    {supporter.user?.name
-                                      ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                                      : supporter.name
-                                      ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                                      : 'U'}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="font-semibold truncate text-gray-900 dark:text-white">
-                                    {supporter.user?.name || supporter.name || 'Anonymous'}
-                                  </h3>
-                                  <SupporterAccountTypeBadge supporter={supporter} variant="supporters" />
-              </div>
-                              </div>
-                              <div className="space-y-2">
-                                {supporter.joined_at && (
-                                  <p className="text-xs text-gray-500 dark:text-gray-500">
-                                    Joined {new Date(supporter.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                                  </p>
-                                )}
-                                {supporter.notifications && (
-                                  <Badge className="bg-green-600/20 text-green-400 text-xs inline-flex items-center gap-1">
-                                    <Bell className="w-3 h-3" />
-                                    Notifications On
-                                  </Badge>
-                                )}
-                              </div>
-                            </Link>
-                          )
-                        })}
-                  </div>
-                ) : (
-                      <div className="text-center py-12">
-                        <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-600 dark:text-gray-400">No supporters yet.</p>
-                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Be the first to support this organization!</p>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                    {organization.is_registered ? (
+                      <>
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                              <UserCheck className="w-5 h-5" />
+                              Primary Supporters (Members)
+                            </h2>
+                            <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                              {primarySupportersCount || 0}
+                            </Badge>
+                          </div>
+                          {primarySupporters.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                              {primarySupporters.map((supporter: any, index: number) => {
+                                const userSlug = supporter.user?.slug || supporter.slug || supporter.user?.id
+                                const userRoute = userSlug ? route('users.show', userSlug) : null
+                                const displayName = supporter.user?.name || supporter.name || 'Anonymous'
+                                const avatarFile = supporter.user?.image || supporter.image
+                                return (
+                                  <Link
+                                    key={supporter.user_id || supporter.id || `primary-${index}`}
+                                    href={userRoute || '#'}
+                                    onClick={(e) => { if (!userRoute) e.preventDefault() }}
+                                    className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all block"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Avatar className="w-10 h-10">
+                                        <AvatarImage src={avatarFile ? `/storage/${avatarFile}` : '/placeholder.svg'} />
+                                        <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-xs">
+                                          {displayName.split(/\s+/).slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0">
+                                        <p className="font-semibold truncate text-gray-900 dark:text-white">{displayName}</p>
+                                        <Badge variant="outline" className="mt-1 text-[10px]">Primary</Badge>
+                                      </div>
+                                    </div>
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">No primary supporters yet.</p>
+                          )}
                         </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                              <Users className="w-5 h-5" />
+                              Secondary Supporters
+                            </h2>
+                            <Badge variant="secondary">
+                              {secondarySupportersCount || 0}
+                            </Badge>
+                          </div>
+                          {secondarySupporters.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                              {secondarySupporters.map((supporter: any, index: number) => {
+                                const userSlug = supporter.user?.slug || supporter.slug || supporter.user?.id
+                                const userRoute = userSlug ? route('users.show', userSlug) : null
+                                const displayName = supporter.user?.name || supporter.name || 'Anonymous'
+                                const avatarFile = supporter.user?.image || supporter.image
+                                return (
+                                  <Link
+                                    key={supporter.user_id || supporter.id || `secondary-${index}`}
+                                    href={userRoute || '#'}
+                                    onClick={(e) => { if (!userRoute) e.preventDefault() }}
+                                    className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-indigo-500/50 transition-all block"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Avatar className="w-10 h-10">
+                                        <AvatarImage src={avatarFile ? `/storage/${avatarFile}` : '/placeholder.svg'} />
+                                        <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-violet-500 text-xs">
+                                          {displayName.split(/\s+/).slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0">
+                                        <p className="font-semibold truncate text-gray-900 dark:text-white">{displayName}</p>
+                                        <Badge variant="outline" className="mt-1 text-[10px]">Secondary</Badge>
+                                      </div>
+                                    </div>
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">No secondary supporters yet.</p>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-6">
+                          <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                            <Users className="w-6 h-6" />
+                            Supporters
+                          </h2>
+                          <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                            {supporters?.length || supportersCount || 0} Supporters
+                          </Badge>
+                        </div>
+                        {Array.isArray(supporters) && supporters.length > 0 ? (
+                          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                            {supporters.map((supporter: any, index: number) => {
+                              const userSlug = supporter.user?.slug || supporter.user?.id
+                              const orgPubSlug = supporter.organization_public_slug
+                              const userRoute = supporter.is_partner_organization && orgPubSlug
+                                ? route('organizations.show', orgPubSlug)
+                                : userSlug
+                                  ? route('users.show', userSlug)
+                                  : null
+
+                              return (
+                                <Link
+                                  key={supporter.id || supporter.user_id || `supporter-${index}`}
+                                  href={userRoute || '#'}
+                                  onClick={(e) => {
+                                    if (!userRoute) {
+                                      e.preventDefault()
+                                    }
+                                  }}
+                                  className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all cursor-pointer block"
+                                >
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <Avatar className="w-12 h-12 flex-shrink-0">
+                                      <AvatarImage
+                                        src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"}
+                                      />
+                                      <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-sm">
+                                        {supporter.user?.name
+                                          ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                          : supporter.name
+                                          ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                          : 'U'}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                      <h3 className="font-semibold truncate text-gray-900 dark:text-white">
+                                        {supporter.user?.name || supporter.name || 'Anonymous'}
+                                      </h3>
+                                      <SupporterAccountTypeBadge supporter={supporter} variant="supporters" />
+                                    </div>
+                                  </div>
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-center py-12">
+                            <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                            <p className="text-gray-600 dark:text-gray-400">No supporters yet.</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
-                )}
-                  </>
                 )}
               </section>
 

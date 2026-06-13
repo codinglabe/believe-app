@@ -7,8 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Input } from "@/components/frontend/ui/input"
 import { Link, router, usePage } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
+import {
+  LockedPrimaryOrganizationFilter,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter"
 import MarketplaceSavingsHighlight from "@/components/frontend/MarketplaceSavingsHighlight"
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import debounce from "lodash.debounce"
 import pickBy from "lodash.pickby"
 import { Badge } from "@/components/frontend/ui/badge"
@@ -84,6 +88,7 @@ interface PageProps {
     cart?: Cart;
     total?: number;
     itemCount?: number;
+    organizationFilterLock?: OrganizationFilterLock | null;
 }
 
 export default function Marketplace({
@@ -93,7 +98,8 @@ export default function Marketplace({
     purchaseOrganizationIds = [],
     selectedCategories,
     selectedOrganizations,
-    search
+    search,
+    organizationFilterLock,
 }: PageProps) {
     const page = usePage<PageProps>()
     const purchaseOrganizationIdsResolved = page.props.purchaseOrganizationIds ?? purchaseOrganizationIds
@@ -168,14 +174,33 @@ export default function Marketplace({
         []
     )
 
+    const isInitialMount = useRef(true)
+
     useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false
+            return
+        }
+
+        const orgValue = organizationFilterLock?.locked
+            ? ''
+            : filters.organizations.length > 0
+              ? filters.organizations.join(',')
+              : 'all'
+
         const query: Record<string, string> = {
             search: filters.search,
             categories: filters.categories.length > 0 ? filters.categories.join(',') : '',
-            organizations: filters.organizations.length > 0 ? filters.organizations.join(',') : '',
+            organizations: orgValue,
         }
         debouncedFilter(pickBy(query))
-    }, [filters])
+    }, [filters, organizationFilterLock?.locked, debouncedFilter])
+
+    const handleUnlockOrganizationFilter = () => {
+        setFilters((prev) => ({ ...prev, organizations: [] }))
+        setCurrentProductPage(1)
+        router.get('/marketplace', { organizations: 'all' }, { preserveState: false, replace: true })
+    }
 
     const handleProductPageChange = (page: number) => {
         setCurrentProductPage(page);
@@ -345,31 +370,38 @@ export default function Marketplace({
                                                 transition={{ duration: 0.3 }}
                                                 className="overflow-hidden"
                                             >
-                                                <CardContent className="space-y-3 pt-4" style={{ height: '240px', maxHeight: '240px' }}>
-                                                    <div className="overflow-y-auto h-full pr-2 space-y-3" style={{ maxHeight: '240px' }}>
-                                                        {marketplacePurchaseOrgsFirst.length > 0 && (
-                                                            <div>
-                                                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 pb-1">
-                                                                    You&apos;ve purchased from
-                                                                </p>
-                                                                <div className="space-y-0">
-                                                                    {marketplacePurchaseOrgsFirst.map((organization: any) => renderOrgCheckboxRow(organization))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {marketplaceOrganizationsRest.length > 0 && (
-                                                            <div>
+                                                <CardContent className="space-y-3 pt-4">
+                                                    <LockedPrimaryOrganizationFilter
+                                                        lock={organizationFilterLock}
+                                                        onUnlock={handleUnlockOrganizationFilter}
+                                                    >
+                                                        <div style={{ height: '240px', maxHeight: '240px' }}>
+                                                            <div className="overflow-y-auto h-full pr-2 space-y-3" style={{ maxHeight: '240px' }}>
                                                                 {marketplacePurchaseOrgsFirst.length > 0 && (
-                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 pb-1 pt-1 border-t border-gray-100 dark:border-gray-600">
-                                                                        All organizations
-                                                                    </p>
+                                                                    <div>
+                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 pb-1">
+                                                                            You&apos;ve purchased from
+                                                                        </p>
+                                                                        <div className="space-y-0">
+                                                                            {marketplacePurchaseOrgsFirst.map((organization: any) => renderOrgCheckboxRow(organization))}
+                                                                        </div>
+                                                                    </div>
                                                                 )}
-                                                                <div className="space-y-0">
-                                                                    {marketplaceOrganizationsRest.map((organization: any) => renderOrgCheckboxRow(organization))}
-                                                                </div>
+                                                                {marketplaceOrganizationsRest.length > 0 && (
+                                                                    <div>
+                                                                        {marketplacePurchaseOrgsFirst.length > 0 && (
+                                                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 pb-1 pt-1 border-t border-gray-100 dark:border-gray-600">
+                                                                                All organizations
+                                                                            </p>
+                                                                        )}
+                                                                        <div className="space-y-0">
+                                                                            {marketplaceOrganizationsRest.map((organization: any) => renderOrgCheckboxRow(organization))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        )}
-                                                    </div>
+                                                        </div>
+                                                    </LockedPrimaryOrganizationFilter>
                                                 </CardContent>
                                             </motion.div>
                                         )}

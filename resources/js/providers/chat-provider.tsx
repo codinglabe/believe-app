@@ -1,6 +1,6 @@
 "use client"
 import type React from "react"
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import axios from "axios"
 import { usePage } from "@inertiajs/react"
 import toast from "react-hot-toast"
@@ -11,6 +11,9 @@ import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPa
 import { dispatchUnityCallIncoming, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
+import { ChatContext } from "@/providers/chat-context"
+
+export { useChat } from "@/providers/chat-context"
 
 // Dedicated axios for chat — must send CSRF on every POST (chat page has no AppLayout).
 const api = axios.create({
@@ -143,7 +146,7 @@ export interface ChatRoom {
 const sortMessagesByTime = (messages: ChatMessage[]): ChatMessage[] =>
   [...messages].sort((a, b) => chatTimestampMs(a.created_at) - chatTimestampMs(b.created_at))
 
-interface ChatContextType {
+export interface ChatContextType {
   chatRooms: ChatRoom[]
   setChatRooms: React.Dispatch<React.SetStateAction<ChatRoom[]>>
   activeRoom: ChatRoom | null
@@ -188,8 +191,6 @@ export interface ChatTopic {
   description?: string
   primary_action_category_id?: number | null
 }
-
-const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
 function syncChatRoomUrl(roomId: number | null): void {
   if (typeof window === "undefined") {
@@ -911,6 +912,37 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const timer = setTimeout(async () => {
+      try {
+        const raw = sessionStorage.getItem("chat_initiation")
+        if (!raw || cancelled) {
+          return
+        }
+
+        const data = JSON.parse(raw) as { seller_id?: number }
+        const sellerId = Number(data.seller_id)
+        if (!Number.isFinite(sellerId) || sellerId <= 0) {
+          return
+        }
+
+        await createDirectChat(sellerId)
+        if (!cancelled) {
+          sessionStorage.removeItem("chat_initiation")
+        }
+      } catch (error) {
+        console.error("[Chat] Failed to initialize chat with seller:", error)
+      }
+    }, 500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [createDirectChat])
+
   const sendMessage = useCallback(
     async (message: string, attachments: File[] = [], replyToMessageId?: number) => {
       if (!activeRoom) return
@@ -1133,12 +1165,4 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </ChatContext.Provider>
   )
-}
-
-export const useChat = () => {
-  const context = useContext(ChatContext)
-  if (!context) {
-    throw new Error("useChat must be used within a ChatProvider")
-  }
-  return context
 }

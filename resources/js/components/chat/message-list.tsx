@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useCallback, useState } from "react"
-import { useChat } from "@/providers/chat-provider"
+import { useChat } from "@/providers/chat-context"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { ChatMessage } from "@/components/chat/chat-message"
 import { ChatCallMessage } from "@/components/chat/chat-call-message"
