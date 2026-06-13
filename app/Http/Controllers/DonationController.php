@@ -16,6 +16,7 @@ use App\Services\DonationStripePaymentCompletion;
 use App\Services\UserStripePaymentMethodService;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
+use App\Services\SupporterPrimaryOrganizationService;
 use App\Services\StripeConfigService;
 use App\Services\StripeConnectOrganizationService;
 use App\Services\StripeEnvironmentSyncService;
@@ -199,12 +200,17 @@ class DonationController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $primaryOrgService = app(SupporterPrimaryOrganizationService::class);
+        $organizationFilterId = $primaryOrgService->resolveListingOrganizationFilterId($request, 'organization_id');
 
         $search = $request->input('search');
         $hasSearch = $search !== null && $search !== '';
 
         // Approved nonprofits available for donations
         $orgQuery = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs();
+        if ($organizationFilterId !== null) {
+            $orgQuery->where('id', $organizationFilterId);
+        }
         if ($hasSearch) {
             $orgQuery->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%'.$search.'%')
@@ -242,9 +248,12 @@ class DonationController extends Controller
         }
 
         $publicPage = app(CareAlliancePublicPageService::class);
-        $allianceRows = $allianceQuery->orderBy('name')->get()->map(function (CareAlliance $alliance) use ($publicPage) {
+        $allianceRows = $allianceQuery->orderBy('name')->get()->map(function (CareAlliance $alliance) use ($publicPage, $organizationFilterId) {
             $recipient = $publicPage->donationRecipientOrganizationForAlliance($alliance);
             if ($recipient === null) {
+                return null;
+            }
+            if ($organizationFilterId !== null && (int) $recipient->id !== $organizationFilterId) {
                 return null;
             }
 
@@ -369,6 +378,13 @@ class DonationController extends Controller
             $donatedCauses = [];
         }
 
+        if ($organizationFilterId !== null) {
+            $donatedCauses = array_values(array_filter(
+                $donatedCauses,
+                fn (array $cause) => (int) ($cause['organization_id'] ?? 0) === $organizationFilterId
+            ));
+        }
+
         $feePreview = null;
         $feePreviewCheckoutTotalsByRail = null;
         if ($request->filled('fee_preview_amount')) {
@@ -407,6 +423,7 @@ class DonationController extends Controller
             'donatedCauses' => $donatedCauses,
             'feePreview' => $feePreview,
             'feePreviewCheckoutTotalsByRail' => $feePreviewCheckoutTotalsByRail,
+            'organizationFilterLock' => $primaryOrgService->listingFilterLockState($request, 'organization_id'),
         ]);
     }
 
