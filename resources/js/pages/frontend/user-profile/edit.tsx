@@ -256,22 +256,16 @@ export default function ProfileEdit() {
   useEffect(() => {
     if (!user) return
     setData("primary_organization_id", user.primary_organization_id ?? "")
-    setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
     if (user.primary_organization) {
       setOrgCache((prev) => ({ ...prev, [user.primary_organization!.id]: user.primary_organization! }))
     }
-  }, [
-    user?.primary_organization_id,
-    user?.secondary_organization_ids,
-    user?.primary_organization?.id,
-  ])
+  }, [user?.primary_organization_id, user?.primary_organization?.id, setData])
 
   useEffect(() => {
     if (!user) return
     setData("positions", user.positions ?? [])
     setData("supporter_interests", user.supporter_interests ?? [])
-    setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
-  }, [user?.positions, user?.supporter_interests, user?.secondary_organization_ids, setData])
+  }, [user?.positions, user?.supporter_interests, setData])
 
   const profileUpdateErrorMessage = (errs: Record<string, string | string[]>) => {
     const first = Object.values(errs)[0]
@@ -325,6 +319,9 @@ export default function ProfileEdit() {
         setData("image", null)
         if (savedUser?.image) {
           setPreviewUrl(savedUser.image)
+        }
+        if (savedUser) {
+          setData("secondary_organization_ids", savedUser.secondary_organization_ids ?? [])
         }
         updateAppearance(data.preferred_theme)
         toast.success("Profile updated successfully!")
@@ -426,10 +423,20 @@ export default function ProfileEdit() {
     setChangePrimaryOpen(true)
   }, [primaryOrgIdNum])
 
-  const selectedSecondaryOrganizations = useMemo(
-    () => resolvedOrganizations.filter((o) => secondaryOrgIds.includes(o.id)),
-    [resolvedOrganizations, secondaryOrgIds],
-  )
+  const selectedSecondaryOrganizations = useMemo(() => {
+    const rows: OrgRow[] = []
+    const seen = new Set<number>()
+    for (const id of secondaryOrgIds) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      const org =
+        resolvedOrganizations.find((o) => o.id === id) ??
+        orgCache[id] ??
+        null
+      if (org) rows.push(org)
+    }
+    return rows
+  }, [secondaryOrgIds, resolvedOrganizations, orgCache])
 
   const addSecondaryOrganization = useCallback(
     (id: number) => {
@@ -1158,46 +1165,71 @@ export default function ProfileEdit() {
                 </DialogContent>
               </Dialog>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Label className="text-slate-200">Secondary Organizations</Label>
                 <p className="text-sm text-slate-400">Select additional organizations you are affiliated with.</p>
-                <div
-                  role="group"
-                  aria-label="Secondary organizations"
-                  className="flex min-h-10 w-full flex-wrap items-center gap-1 rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-sm"
-                >
-                  {selectedSecondaryOrganizations.map((org) => (
-                    <span
-                      key={org.id}
-                      className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/20 bg-gradient-to-r from-purple-600 to-blue-600 px-2 py-0.5 text-[13px] text-white shadow-md"
-                    >
-                      <span className="truncate">{org.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeSecondaryOrganization(org.id)}
-                        className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-white/90 hover:bg-white/20"
-                        aria-label={`Remove ${org.name}`}
+
+                <ProfileOrganizationPicker
+                  key={secondaryExcludeIds.join(",")}
+                  variant="secondary-add"
+                  triggerId="secondary-org-add"
+                  excludeIds={secondaryExcludeIds}
+                  placeholder="Add organization"
+                  className="h-11 border-slate-600 bg-slate-800 text-slate-100"
+                  onSecondaryAdd={(org) => {
+                    mergeOrg(org)
+                    addSecondaryOrganization(org.id)
+                  }}
+                />
+
+                {selectedSecondaryOrganizations.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedSecondaryOrganizations.map((org) => (
+                      <div
+                        key={org.id}
+                        className="relative overflow-hidden rounded-xl border border-purple-500/25 bg-gradient-to-br from-purple-600/[0.08] via-slate-800/80 to-blue-600/[0.08]"
                       >
-                        <X className="h-2.5 w-2.5" strokeWidth={2.5} />
-                      </button>
-                    </span>
-                  ))}
-                  <label className="sr-only" htmlFor="secondary-org-add">
-                    Add secondary organization
-                  </label>
-                  <ProfileOrganizationPicker
-                    key={secondaryExcludeIds.join(",")}
-                    variant="secondary-add"
-                    triggerId="secondary-org-add"
-                    excludeIds={secondaryExcludeIds}
-                    compactTrigger
-                    placeholder="Add organization…"
-                    onSecondaryAdd={(org) => {
-                      mergeOrg(org)
-                      addSecondaryOrganization(org.id)
-                    }}
-                  />
-                </div>
+                        <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                          <div className="flex min-w-0 items-center gap-4">
+                            {org.image ? (
+                              <img
+                                src={org.image}
+                                alt=""
+                                className="h-14 w-14 shrink-0 rounded-xl object-cover ring-2 ring-white/10"
+                              />
+                            ) : (
+                              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-lg font-bold text-white ring-2 ring-white/10">
+                                {orgInitial(org.name)}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                                Secondary organization
+                              </p>
+                              <p className="mt-1 truncate text-lg font-semibold text-slate-50">{org.name}</p>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0 text-slate-400 hover:bg-white/10 hover:text-red-300"
+                            onClick={() => removeSecondaryOrganization(org.id)}
+                            aria-label={`Remove ${org.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-6 text-center text-sm text-slate-400">
+                    No secondary organizations added yet.
+                  </div>
+                )}
+
                 {errors.secondary_organization_ids && (
                   <p className="text-sm text-red-400">{errors.secondary_organization_ids}</p>
                 )}

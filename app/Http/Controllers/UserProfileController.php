@@ -473,16 +473,25 @@ class UserProfileController extends Controller
                 fn (int $id) => $id > 0
             )));
             foreach ($secondaryIds as $sid) {
-                if (! in_array($sid, $favoriteOrganizationIds, true)) {
-                    return back()->withErrors([
-                        'secondary_organization_ids' => 'Secondary organizations must be organizations you follow.',
-                    ])->withInput();
-                }
                 if ($primaryOrganizationId !== null && $sid === $primaryOrganizationId) {
                     return back()->withErrors([
                         'secondary_organization_ids' => 'Secondary organizations cannot include your primary organization.',
                     ])->withInput();
                 }
+
+                $organization = Organization::query()
+                    ->active()
+                    ->excludingCareAllianceHubs()
+                    ->whereKey($sid)
+                    ->first();
+
+                if ($organization === null) {
+                    return back()->withErrors([
+                        'secondary_organization_ids' => 'One or more secondary organizations are not available.',
+                    ])->withInput();
+                }
+
+                $this->primaryOrgService->ensureFavoriteOrganization($user, $organization);
             }
         }
 
