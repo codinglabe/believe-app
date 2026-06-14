@@ -2,7 +2,7 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState, useMemo, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Heart, CreditCard, Shield, Search, X, Loader2, Coins, Lock, ChevronRight, Building2, UtensilsCrossed, Brain, Check, CheckCircle, Gift, Wrench, TrendingUp, Car, Package, FileText, Camera, ArrowLeft, Landmark } from "lucide-react"
+import { Heart, CreditCard, Shield, Search, X, Loader2, Coins, Lock, ChevronRight, Building2, UtensilsCrossed, Brain, Check, CheckCircle, Gift, Wrench, TrendingUp, Car, Package, FileText, Camera, ArrowLeft, Landmark, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,6 +22,11 @@ import {
   SavedPaymentMethodSelector,
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
+import {
+  LockedPrimaryOrganizationFilter,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 /** Matches `DonationController@index` `feePreview` prop (same rules as checkout). */
 type FeePreviewRail = "card" | "bank"
@@ -129,6 +134,11 @@ interface DonatePageProps extends InertiaPageProps {
   feePreview?: FeePreviewFromServer | null
   /** Checkout total for each rail (same gift + “Make Full Impact” as active preview). */
   feePreviewCheckoutTotalsByRail?: { card: number; bank: number } | null
+  organizationFilterLock?: OrganizationFilterLock | null
+  /** Profile setting: primary org cannot be changed except via My Profile. */
+  primaryOrganizationLocked?: boolean
+  /** Secondary orgs from profile — always available for instant toggle-off UI. */
+  secondaryOrganizations?: DonateCause[]
 }
 
 const amountConfig = [
@@ -153,6 +163,9 @@ const DONATE_SEARCH_INPUT =
 
 const DONATE_DROPDOWN =
   "absolute left-0 right-0 top-full z-50 mt-1.5 rounded-xl border border-purple-200/60 bg-white/95 shadow-xl shadow-purple-600/10 backdrop-blur-xl overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(192_132_252_/_0.55)_rgb(250_245_255_/_0.6)] dark:[scrollbar-color:rgb(147_51_234_/_0.55)_rgb(59_7_100_/_0.45)] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-purple-50/70 dark:[&::-webkit-scrollbar-track]:bg-purple-950/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-purple-400/80 [&::-webkit-scrollbar-thumb]:to-blue-500/80 dark:[&::-webkit-scrollbar-thumb]:from-purple-500/80 dark:[&::-webkit-scrollbar-thumb]:to-blue-600/80 [&::-webkit-scrollbar-thumb:hover]:from-purple-500 [&::-webkit-scrollbar-thumb:hover]:to-blue-600 dark:border-purple-700/45 dark:bg-purple-950/95 dark:shadow-purple-950/40"
+
+const DONATE_LOCKED_PRIMARY_PANEL =
+  "mt-1.5 rounded-xl border border-purple-200/60 bg-white/95 shadow-xl shadow-purple-600/10 backdrop-blur-xl overflow-hidden dark:border-purple-700/45 dark:bg-purple-950/95 dark:shadow-purple-950/40"
 
 const DONATE_DROPDOWN_SECTION =
   "sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-purple-700 bg-gradient-to-r from-purple-50 to-blue-50/90 border-b border-purple-100/80 dark:text-purple-200/90 dark:from-purple-900/70 dark:to-blue-950/50 dark:border-purple-800/35"
@@ -194,6 +207,9 @@ export default function DonatePage({
   thisYearDonated = 0,
   givingGoal = 1000,
   topOrganizations = [],
+  organizationFilterLock = null,
+  primaryOrganizationLocked = false,
+  secondaryOrganizations: initialSecondaryOrganizations = [],
 }: DonatePageProps) {
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
   const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
@@ -237,6 +253,9 @@ export default function DonatePage({
   const paymentMethodsUrl =
     pageProps.paymentMethodsUrl ?? route("user.profile.payment-methods.index")
   const donatedCauses = (pageProps.donatedCauses as DonateCause[] | undefined) ?? initialDonatedCauses
+  const organizations = (pageProps.organizations as DonateCause[] | undefined) ?? initialOrganizations
+  const secondaryOrganizations =
+    (pageProps.secondaryOrganizations as DonateCause[] | undefined) ?? initialSecondaryOrganizations
   const currentBalance = parseFloat(authUser?.believe_points || '0') || 0
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery) // Initialize with prop from Laravel
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -245,9 +264,22 @@ export default function DonatePage({
   const [isSearchingOrganizations, setIsSearchingOrganizations] = useState(false)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
-  const donatePartialReloadSkipRef = useRef(true)
+  const [donateToPrimary, setDonateToPrimary] = useState(() => {
+    if (!organizationFilterLock?.primary_id) return false
+    return organizationFilterLock.locked !== false
+  })
 
-  // Donor Information States, pre-filled if user prop is provided
+  const effectiveLock = useMemo((): OrganizationFilterLock | null => {
+    if (!organizationFilterLock) return null
+    return {
+      ...organizationFilterLock,
+      locked: donateToPrimary,
+    }
+  }, [organizationFilterLock, donateToPrimary])
+
+  const listingFilterLocked = donateToPrimary && Boolean(organizationFilterLock?.primary_name)
+
+  const donatePartialReloadSkipRef = useRef(true)
   const [name, setName] = useState(user?.name || "")
   const [email, setEmail] = useState(user?.email || "")
   const [phone, setPhone] = useState("")
@@ -266,6 +298,10 @@ export default function DonatePage({
       const q: Record<string, string | number> = {}
       const sq = searchQuery.trim()
       if (sq) q.search = sq
+      if (!listingFilterLocked) {
+        const orgParam = new URLSearchParams(window.location.search).get("organization_id")
+        if (orgParam) q.organization_id = orgParam
+      }
       const baseUsd = (selectedAmount ?? Number.parseFloat(customAmount)) || 0
       if (paymentMethod === "stripe" && baseUsd > 0) {
         q.fee_preview_amount = baseUsd
@@ -278,7 +314,7 @@ export default function DonatePage({
         preserveScroll: true,
         preserveState: true,
         replace: true,
-        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail"],
+        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail", "secondaryOrganizations"],
         onFinish: () => {
           setFeePreviewLoading(false)
           setIsSearchingOrganizations(false)
@@ -290,7 +326,7 @@ export default function DonatePage({
       })
     }, 300)
     return () => clearTimeout(t)
-  }, [searchQuery, selectedAmount, customAmount, paymentMethod, donorCoversProcessingFees, feePreviewRail])
+  }, [searchQuery, selectedAmount, customAmount, paymentMethod, donorCoversProcessingFees, feePreviewRail, listingFilterLocked])
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -339,34 +375,117 @@ export default function DonatePage({
 
   const selectedCause = useMemo(() => {
     if (!selectedCauseId) return undefined
-    return (
-      initialOrganizations.find((cause) => cause.id === selectedCauseId) ??
-      donatedCauses.find((cause) => cause.id === selectedCauseId)
-    )
-  }, [selectedCauseId, initialOrganizations, donatedCauses])
+    const pools = [organizations, donatedCauses, secondaryOrganizations]
+    for (const pool of pools) {
+      const found = pool.find((cause) => cause.id === selectedCauseId)
+      if (found) return found
+    }
+    return undefined
+  }, [selectedCauseId, organizations, donatedCauses, secondaryOrganizations])
 
-  const donatedCausesFiltered = useMemo(
-    () => donatedCauses.filter((c) => causeMatchesSearch(c, searchQuery)),
-    [donatedCauses, searchQuery],
-  )
-  const allOrganizationsFiltered = useMemo(() => {
-    const matched = initialOrganizations.filter((c) => causeMatchesSearch(c, searchQuery))
-    const donatedIds = new Set(donatedCausesFiltered.map((c) => c.id))
-    return matched.filter((c) => !donatedIds.has(c.id))
-  }, [initialOrganizations, searchQuery, donatedCausesFiltered])
+  const primaryCause = useMemo(() => {
+    const primaryId = organizationFilterLock?.primary_id
+    if (!primaryId) return undefined
+    return (
+      organizations.find((c) => c.organization_id === primaryId) ??
+      donatedCauses.find((c) => c.organization_id === primaryId) ??
+      secondaryOrganizations.find((c) => c.organization_id === primaryId) ??
+      (organizations.length === 1 ? organizations[0] : undefined)
+    )
+  }, [organizationFilterLock?.primary_id, organizations, donatedCauses, secondaryOrganizations])
+
+  const primaryCauseForDropdown = useMemo((): DonateCause | undefined => {
+    if (primaryCause) return primaryCause
+    const primaryId = organizationFilterLock?.primary_id
+    const name = organizationFilterLock?.primary_name
+    if (!primaryId || !name) return undefined
+    return {
+      id: `org-${primaryId}`,
+      kind: "organization",
+      organization_id: primaryId,
+      name,
+      description: "No description available.",
+      image: null,
+      raised: 0,
+      goal: 0,
+      supporters: 0,
+    }
+  }, [primaryCause, organizationFilterLock?.primary_id, organizationFilterLock?.primary_name])
+
+  const donateToPrimaryOrganization = listingFilterLocked
+
+  const primaryDisplayName =
+    primaryCause?.name ?? organizationFilterLock?.primary_name ?? ""
+
+  useEffect(() => {
+    if (donateToPrimaryOrganization && primaryCause) {
+      setSelectedCauseId(primaryCause.id)
+      setIsSearchFocused(false)
+    }
+  }, [donateToPrimaryOrganization, primaryCause?.id])
+
+  const handleDonateToPrimaryToggle = (checked: boolean) => {
+    setDonateToPrimary(checked)
+
+    if (checked) {
+      if (primaryCause) {
+        setSelectedCauseId(primaryCause.id)
+      }
+      setSearchQuery("")
+      setIsSearchFocused(false)
+      router.get(route("donate"), {}, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        only: ["organizations", "donatedCauses", "organizationFilterLock", "secondaryOrganizations"],
+      })
+      return
+    }
+
+    setSelectedCauseId(null)
+    setSearchQuery("")
+    setIsSearchFocused(true)
+    router.get(route("donate"), { organization_id: "all" }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      only: ["organizations", "donatedCauses", "organizationFilterLock", "secondaryOrganizations"],
+    })
+  }
+
+  const primaryCausesFiltered = useMemo(() => {
+    if (!primaryCauseForDropdown) return []
+    if (!searchQuery.trim()) return [primaryCauseForDropdown]
+    return causeMatchesSearch(primaryCauseForDropdown, searchQuery) ? [primaryCauseForDropdown] : []
+  }, [primaryCauseForDropdown, searchQuery])
+
+  const secondaryCausesFiltered = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return secondaryOrganizations
+    }
+    return secondaryOrganizations.filter((c) => causeMatchesSearch(c, searchQuery))
+  }, [secondaryOrganizations, searchQuery])
+
+
+  const donatedCausesFiltered = useMemo(() => {
+    const primaryOrgId = organizationFilterLock?.primary_id
+    return donatedCauses
+      .filter((c) => causeMatchesSearch(c, searchQuery))
+      .filter((c) => !primaryOrgId || c.organization_id !== primaryOrgId)
+  }, [donatedCauses, searchQuery, organizationFilterLock?.primary_id])
 
   const donationSubscriptionModalRecipientKind = useMemo((): "organization" | "care_alliance" => {
     if (selectedCause?.kind === "care_alliance") {
       return "care_alliance"
     }
     if (donationMode === "non_cash" && nonCashPreferredOrgId != null) {
-      const row = initialOrganizations.find((o) => o.organization_id === nonCashPreferredOrgId)
+      const row = organizations.find((o) => o.organization_id === nonCashPreferredOrgId)
       if (row?.kind === "care_alliance") {
         return "care_alliance"
       }
     }
     return "organization"
-  }, [selectedCause, donationMode, nonCashPreferredOrgId, initialOrganizations])
+  }, [selectedCause, donationMode, nonCashPreferredOrgId, organizations])
 
   const handleCauseSelect = (id: string) => {
     setSelectedCauseId(id)
@@ -615,20 +734,81 @@ export default function DonatePage({
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Select Your Donation</h2>
               </div>
               <div className="p-5 space-y-5 rounded-b-2xl">
-                <p className="text-sm text-slate-600 dark:text-white/70">Choose amount to donate.</p>
-                {/* Org search */}
+                {organizationFilterLock?.primary_id ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <label
+                          htmlFor="donate-to-primary-toggle"
+                          className="text-sm font-semibold text-slate-900 dark:text-white"
+                        >
+                          Donate to my Primary Organization
+                        </label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 text-slate-500 hover:text-purple-600 dark:text-white/50 dark:hover:text-purple-300"
+                              aria-label="About primary organization donations"
+                            >
+                              <Info className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            {primaryOrganizationLocked
+                              ? "Your primary organization is set in My Profile and stays locked here so your impact and rewards stay consistent."
+                              : "Donations go to your primary organization by default. Turn off to search and choose another nonprofit."}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <Switch
+                        id="donate-to-primary-toggle"
+                        checked={donateToPrimaryOrganization}
+                        onCheckedChange={handleDonateToPrimaryToggle}
+                        aria-label="Donate to my Primary Organization"
+                      />
+                    </div>
+                    {primaryOrganizationLocked ? (
+                      <p className="text-xs text-slate-600 dark:text-white/60">
+                        Your primary organization is locked in profile settings, but you can turn this off to donate
+                        to your secondary organizations.{" "}
+                        <Link
+                          href={route("user.profile.edit")}
+                          className="font-medium text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+                        >
+                          Manage in My Profile
+                        </Link>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-600 dark:text-white/60">
+                        Turn off to donate to your secondary organizations saved in My Profile.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-white/70">Choose amount to donate.</p>
+                )}
+
                 <div className="relative" ref={searchContainerRef}>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-500/70 dark:text-purple-300/70" />
                     <Input
                       type="text"
-                      placeholder="Search for non-profit organisation..."
-                      value={searchQuery}
+                      placeholder="Search for non-profit organization..."
+                      value={donateToPrimaryOrganization ? "" : searchQuery}
+                      readOnly={donateToPrimaryOrganization}
+                      disabled={donateToPrimaryOrganization}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      onFocus={() => setIsSearchFocused(true)}
-                      className={cn(DONATE_SEARCH_INPUT, "pl-10 h-11 text-sm")}
+                      onFocus={() => {
+                        if (!donateToPrimaryOrganization) setIsSearchFocused(true)
+                      }}
+                      className={cn(
+                        DONATE_SEARCH_INPUT,
+                        "pl-10 h-11 text-sm",
+                        donateToPrimaryOrganization && "cursor-not-allowed opacity-90",
+                      )}
                     />
-                    {searchQuery && (
+                    {!donateToPrimaryOrganization && searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery("")}
@@ -639,44 +819,143 @@ export default function DonatePage({
                       </button>
                     )}
                   </div>
-                  <AnimatePresence>
-                    {selectedCause && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className={DONATE_SELECTED_ORG}
+
+                  {donateToPrimaryOrganization && primaryCauseForDropdown ? (
+                    <div className={DONATE_LOCKED_PRIMARY_PANEL}>
+                      <div className={DONATE_DROPDOWN_SECTION}>
+                        Your primary organization
+                        {primaryOrganizationLocked ? " (locked)" : ""}
+                      </div>
+                      <div
+                        className={cn(
+                          DONATE_DROPDOWN_ITEM,
+                          "pointer-events-none cursor-default border-b-0",
+                        )}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <CauseAvatar name={selectedCause.name} src={selectedCause.image} className="h-8 w-8" />
-                          <div className="min-w-0 flex flex-col gap-1">
-                            <span className="font-medium text-slate-900 truncate dark:text-white">{selectedCause.name}</span>
-                            <CauseKindBadge kind={selectedCause.kind} />
-                          </div>
+                        <CauseAvatar
+                          name={primaryDisplayName}
+                          src={primaryCauseForDropdown.image}
+                          shape="square"
+                          className="h-9 w-9"
+                        />
+                        <div className="min-w-0 flex flex-1 flex-col gap-1">
+                          <div className="font-medium text-sm truncate">{primaryDisplayName}</div>
+                          <Badge className="inline-flex w-fit items-center gap-1 border-0 bg-gradient-to-r from-purple-600 to-blue-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm hover:from-purple-600 hover:to-blue-600">
+                            <Building2 className="h-3 w-3 shrink-0" aria-hidden />
+                            Primary Organization
+                          </Badge>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 h-8 w-8 text-slate-700/80 hover:text-slate-900 hover:bg-white/80 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10"
-                          onClick={handleClearCauseSelection}
+                        <Lock
+                          className="h-5 w-5 shrink-0 text-slate-600 dark:text-white/75"
+                          aria-hidden
+                        />
+                      </div>
+                      {primaryOrganizationLocked && (
+                        <div className="flex gap-3 border-t border-purple-100/80 bg-blue-50/80 p-3 dark:border-purple-800/35 dark:bg-blue-950/30">
+                          <Shield className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+                          <p className="text-sm text-slate-700 dark:text-white/80">
+                            Your primary organization is locked in your profile. To change it, go to{" "}
+                            <Link
+                              href={route("user.profile.edit")}
+                              className="font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                            >
+                              My Profile
+                            </Link>
+                            .
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {!donateToPrimaryOrganization && (
+                    <AnimatePresence>
+                      {selectedCause && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className={DONATE_SELECTED_ORG}
                         >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  {isSearchFocused &&
+                          <div className="flex items-center gap-2 min-w-0">
+                            <CauseAvatar name={selectedCause.name} src={selectedCause.image} className="h-8 w-8" />
+                            <div className="min-w-0 flex flex-col gap-1">
+                              <span className="font-medium text-slate-900 truncate dark:text-white">{selectedCause.name}</span>
+                              <CauseKindBadge kind={selectedCause.kind} />
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 h-8 w-8 text-slate-700/80 hover:text-slate-900 hover:bg-white/80 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10"
+                            onClick={handleClearCauseSelection}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  )}
+                  {!donateToPrimaryOrganization &&
+                    isSearchFocused &&
                     !selectedCause &&
-                    (searchQuery || initialOrganizations.length > 0 || donatedCauses.length > 0) && (
+                    (searchQuery ||
+                      donatedCauses.length > 0 ||
+                      secondaryOrganizations.length > 0 ||
+                      primaryCauseForDropdown) && (
                     <div className={cn(DONATE_DROPDOWN, "max-h-72")}>
                       {isSearchingOrganizations ? (
                         <div className="p-3 text-center text-sm text-purple-700/70 dark:text-purple-200/70 flex items-center justify-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin text-purple-600 dark:text-purple-400" /> Searching...
                         </div>
-                      ) : donatedCausesFiltered.length === 0 && allOrganizationsFiltered.length === 0 ? (
+                      ) : donatedCausesFiltered.length === 0 &&
+                        secondaryCausesFiltered.length === 0 &&
+                        primaryCausesFiltered.length === 0 ? (
                         <p className="p-3 text-sm text-gray-500 dark:text-purple-200/60">No organizations found.</p>
                       ) : (
                         <>
+                          {primaryCausesFiltered.length > 0 && (
+                            <div role="group" aria-label="Your primary organization">
+                              <div className={DONATE_DROPDOWN_SECTION}>
+                                Your primary organization
+                              </div>
+                              {primaryCausesFiltered.map((cause) => (
+                                <button
+                                  key={cause.id}
+                                  type="button"
+                                  className={DONATE_DROPDOWN_ITEM}
+                                  onClick={() => handleCauseSelect(cause.id)}
+                                >
+                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                                  <div className="min-w-0 flex flex-col gap-1">
+                                    <div className="font-medium text-sm truncate">{cause.name}</div>
+                                    <CauseKindBadge kind={cause.kind} />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {secondaryCausesFiltered.length > 0 && (
+                            <div role="group" aria-label="Your secondary organizations">
+                              <div className={DONATE_DROPDOWN_SECTION}>
+                                Your secondary organizations
+                              </div>
+                              {secondaryCausesFiltered.map((cause) => (
+                                <button
+                                  key={cause.id}
+                                  type="button"
+                                  className={DONATE_DROPDOWN_ITEM}
+                                  onClick={() => handleCauseSelect(cause.id)}
+                                >
+                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                                  <div className="min-w-0 flex flex-col gap-1">
+                                    <div className="font-medium text-sm truncate">{cause.name}</div>
+                                    <CauseKindBadge kind={cause.kind} />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           {donatedCausesFiltered.length > 0 && (
                             <div role="group" aria-label="Organizations you have donated to">
                               <div className={DONATE_DROPDOWN_SECTION}>
@@ -704,29 +983,6 @@ export default function DonatePage({
                                         </span>
                                       )}
                                     </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          {allOrganizationsFiltered.length > 0 && (
-                            <div role="group" aria-label="All organizations">
-                              {donatedCausesFiltered.length > 0 && (
-                                <div className={DONATE_DROPDOWN_SECTION}>
-                                  All organizations
-                                </div>
-                              )}
-                              {allOrganizationsFiltered.map((cause) => (
-                                <button
-                                  key={cause.id}
-                                  type="button"
-                                  className={cn(DONATE_DROPDOWN_ITEM, "last:border-b-0")}
-                                  onClick={() => handleCauseSelect(cause.id)}
-                                >
-                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
-                                  <div className="min-w-0 flex flex-col gap-1">
-                                    <div className="font-medium text-sm truncate">{cause.name}</div>
-                                    <CauseKindBadge kind={cause.kind} />
                                   </div>
                                 </button>
                               ))}
@@ -1158,6 +1414,22 @@ export default function DonatePage({
                     ))}
                   </select>
                 </div>
+                <LockedPrimaryOrganizationFilter
+                  lock={effectiveLock}
+                  onUnlock={() => {
+                    setDonateToPrimary(false)
+                    setIsSearchFocused(true)
+                    const q: Record<string, string> = { organization_id: "all" }
+                    const sq = searchQuery.trim()
+                    if (sq) q.search = sq
+                    router.get(route("donate"), q, {
+                      preserveState: true,
+                      preserveScroll: true,
+                      replace: true,
+                      only: ["organizations", "donatedCauses", "organizationFilterLock", "secondaryOrganizations"],
+                    })
+                  }}
+                >
                 <div className="relative" ref={nonCashOrgSearchRef}>
                   <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Preferred Receiving Organization</Label>
                   <div className="relative">
@@ -1168,7 +1440,7 @@ export default function DonatePage({
                       value={
                         nonCashSearchQuery ||
                         (nonCashPreferredOrgId
-                          ? initialOrganizations.find((o) => o.organization_id === nonCashPreferredOrgId)?.name ?? ""
+                          ? organizations.find((o) => o.organization_id === nonCashPreferredOrgId)?.name ?? ""
                           : "")
                       }
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1194,7 +1466,7 @@ export default function DonatePage({
                   </div>
                   {nonCashSearchFocused && (
                     <div className={cn(DONATE_DROPDOWN, "max-h-48")}>
-                      {initialOrganizations
+                      {organizations
                         .filter((o) => !nonCashSearchQuery || o.name.toLowerCase().includes(nonCashSearchQuery.toLowerCase()))
                         .slice(0, 8)
                         .map((org) => (
@@ -1218,6 +1490,7 @@ export default function DonatePage({
                     </div>
                   )}
                 </div>
+                </LockedPrimaryOrganizationFilter>
                 <label className="flex items-center gap-2 cursor-pointer text-slate-700/80 dark:text-white/80 text-sm">
                   <input
                     type="checkbox"

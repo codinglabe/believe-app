@@ -29,9 +29,10 @@ interface UserRegisterPageProps {
   seo?: { title: string; description?: string }
   referralCode?: string
   positions: { id: number; name: string }[]
+  lockOrganization?: { id: number; name: string } | null
 }
 
-export default function UserRegisterPage({ seo, referralCode = '', positions }: UserRegisterPageProps) {
+export default function UserRegisterPage({ seo, referralCode = '', positions, lockOrganization = null }: UserRegisterPageProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   //   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -164,7 +165,18 @@ export default function UserRegisterPage({ seo, referralCode = '', positions }: 
             </div>
               <CardContent className="p-6 sm:p-8">
                 <form onSubmit={submit} className="space-y-6">
-                  {referralCode && (
+                  {lockOrganization && (
+                    <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+                      <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">
+                        Primary organization: {lockOrganization.name}
+                      </p>
+                      <p className="mt-1 text-sm text-purple-700 dark:text-purple-300">
+                        After registration, this organization will be set as your locked primary organization.
+                      </p>
+                    </div>
+                  )}
+
+                  {referralCode && !lockOrganization && (
                     <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                       <div className="flex items-center justify-center gap-2 mb-1">
                         <ShieldCheck className="h-5 w-5 text-green-600" />

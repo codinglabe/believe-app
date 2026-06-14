@@ -94,6 +94,7 @@ use App\Http\Controllers\Facebook\PostController;
 use App\Http\Controllers\FindCareAlliancesController;
 use App\Http\Controllers\FindSupportersController;
 use App\Http\Controllers\FollowerController;
+use App\Http\Controllers\Organization\OrganizationSupportersController;
 use App\Http\Controllers\Form1023ApplicationController;
 use App\Http\Controllers\FractionalCertificateController;
 use App\Http\Controllers\FractionalOwnershipController;
@@ -948,6 +949,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
     Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('profile.edit');
     Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/primary-organization/change', [UserProfileController::class, 'changePrimaryOrganization'])->name('profile.primary-organization.change');
     Route::post('/profile/timezone', [UserProfileController::class, 'updateTimezone'])->name('profile.timezone');
 
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
@@ -1291,6 +1293,21 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
     Route::prefix('organization')->group(function () {
         Route::get('/followers', [FollowerController::class, 'index'])
             ->name('organization.followers.index');
+
+        Route::get('/supporters', [OrganizationSupportersController::class, 'index'])
+            ->name('organization.supporters.index');
+
+        Route::get('/supporters/{supporter}', [OrganizationSupportersController::class, 'show'])
+            ->whereNumber('supporter')
+            ->name('organization.supporters.show');
+
+        Route::get('/supporters/{supporter}/contact', [OrganizationSupportersController::class, 'contact'])
+            ->whereNumber('supporter')
+            ->name('organization.supporters.contact');
+
+        Route::get('/supporters/export/{format}', [OrganizationSupportersController::class, 'export'])
+            ->where('format', 'csv|xlsx|pdf')
+            ->name('organization.supporters.export');
 
         Route::post(
             '/followers/{follower}/toggle-notifications',

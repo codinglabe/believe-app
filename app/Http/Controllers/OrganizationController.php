@@ -2510,6 +2510,10 @@ class OrganizationController extends BaseController
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        $primarySupporters = [];
+        $secondarySupporters = [];
+        $primarySupportersCount = 0;
+        $secondarySupportersCount = 0;
 
         // Get organization ID (excel_data_id for unregistered, organization id for registered)
         $orgId = $registeredOrg ? $registeredOrg->id : null;
@@ -2521,32 +2525,16 @@ class OrganizationController extends BaseController
                 + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
-            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $supportersPayload = app(\App\Services\SupporterPrimaryOrganizationService::class)
+                ->supportersPayloadForOrganization($registeredOrg, 50);
+            $supportersCount = $supportersPayload['primary_count'] + $supportersPayload['secondary_count'];
             $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
 
-            // Only load supporters data for supporters tab (limit to 50 for performance)
-            $supporters = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
-                ->with('user:id,name,email,image,slug,role')
-                ->latest()
-                ->limit(50)
-                ->get()
-                ->map(function ($favorite) {
-                    return [
-                        'id' => $favorite->id,
-                        'user_id' => $favorite->user_id,
-                        'user' => $favorite->user ? [
-                            'id' => $favorite->user->id,
-                            'slug' => $favorite->user->slug,
-                            'name' => $favorite->user->name,
-                            'email' => $favorite->user->email,
-                            'image' => $favorite->user->image,
-                            'role' => $favorite->user->role,
-                        ] : null,
-                        'notifications' => $favorite->notifications ?? false,
-                        'joined_at' => $favorite->created_at?->toIso8601String(),
-                    ];
-                })
-                ->toArray();
+            $supporters = $supportersPayload['secondary'];
+            $primarySupporters = $supportersPayload['primary'];
+            $secondarySupporters = $supportersPayload['secondary'];
+            $primarySupportersCount = $supportersPayload['primary_count'];
+            $secondarySupportersCount = $supportersPayload['secondary_count'];
         } else {
             // For unregistered organizations, get supporters by excel_data_id
             $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
@@ -2594,6 +2582,10 @@ class OrganizationController extends BaseController
             'supportersCount' => $supportersCount,
             'jobsCount' => $jobsCount,
             'supporters' => $supporters,
+            'primarySupporters' => $primarySupporters,
+            'secondarySupporters' => $secondarySupporters,
+            'primarySupportersCount' => $primarySupportersCount,
+            'secondarySupportersCount' => $secondarySupportersCount,
             'currentPage' => 'supporters',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
             'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),

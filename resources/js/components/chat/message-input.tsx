@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/chat/ui/button"
 import { PaperclipIcon, SendIcon, XIcon, ReplyIcon } from "lucide-react"
-import { useChat } from "@/providers/chat-provider"
+import { useChat } from "@/providers/chat-context"
 import { Textarea } from "@/components/chat/ui/textarea"
 import { cn } from "@/lib/utils"
 import { chatAccentText, chatGradientBg, chatGradientBgHover, chatSendButtonActive } from "./chat-brand"

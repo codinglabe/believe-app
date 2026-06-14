@@ -32,23 +32,32 @@ Route::middleware('guest')->group(function () {
             ->get(['id', 'name']);
 
         $seo = SeoService::forPage('register_user');
+        $referralCode = null;
+        $lockOrganization = null;
 
         if ($request->has('ref')) {
-            $user = User::where('referral_code', $request->ref)->first();
-            if (! $user) {
+            $referrer = User::where('referral_code', $request->ref)->first();
+            if (! $referrer) {
                 return redirect()->route('register')->with('error', 'Invalid referral code');
             }
 
-            return Inertia::render('frontend/register/user', [
-                'seo' => $seo,
-                'referralCode' => $user->referral_code,
-                'positions' => $positions,
-            ]);
+            $referralCode = $referrer->referral_code;
+            $lockOrg = app(\App\Services\SupporterPrimaryOrganizationService::class)
+                ->registeredOrganizationForReferrer($referrer);
+
+            if ($lockOrg !== null) {
+                $lockOrganization = [
+                    'id' => $lockOrg->id,
+                    'name' => $lockOrg->name,
+                ];
+            }
         }
 
         return Inertia::render('frontend/register/user', [
             'seo' => $seo,
+            'referralCode' => $referralCode ?? '',
             'positions' => $positions,
+            'lockOrganization' => $lockOrganization,
         ]);
     })->name('register.user');
 

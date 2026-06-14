@@ -24,6 +24,11 @@ import {
 } from "lucide-react"
 import { Link, router } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
+import {
+  LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter"
 
 interface EventType {
   id: number
@@ -140,6 +145,7 @@ interface EventsPageProps {
     zipFilter?: string;
     dateFilter?: string;
     sort?: string;
+    organizationFilterLock?: OrganizationFilterLock | null;
 }
 
 export default function EventsPage({
@@ -159,7 +165,10 @@ export default function EventsPage({
     zipFilter,
     dateFilter,
     sort: sortProp,
+    organizationFilterLock,
 }: EventsPageProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const totalEvents = events?.total || 0
   const totalPages = events?.last_page || 1
   const currentPage = events?.current_page || 1
@@ -181,7 +190,10 @@ export default function EventsPage({
         search: search || '',
         status: status || 'all',
         event_type_id: eventTypeId || 'all',
-        organization_id: organizationId || 'all',
+        organization_id:
+            organizationFilterLock?.locked && organizationFilterLock.primary_id
+                ? String(organizationFilterLock.primary_id)
+                : organizationId || 'all',
         city_filter: cityFilter || 'all',
         state_filter: stateFilter || 'all',
         zip_filter: zipFilter || 'all',
@@ -223,7 +235,7 @@ export default function EventsPage({
             date_filter: '',
             sort: DEFAULT_SORT,
         })
-        router.get(route("alleventsPage"), {}, { preserveState: true, preserveScroll: true, replace: true })
+        router.get(route("alleventsPage"), { organization_id: "all" }, { preserveState: true, preserveScroll: true, replace: true })
     }
 
   const handleOrganizationChange = (value: string) => {
@@ -261,16 +273,34 @@ export default function EventsPage({
         }))
     }
 
-  const cleanFilterQuery = (query: Record<string, string>) => {
+  const cleanFilterQuery = useCallback((query: Record<string, string>) => {
     const out = Object.fromEntries(
-      Object.entries(query).filter(
-        ([_, value]) => value != null && value !== "all" && value !== ""
-      )
+      Object.entries(query).filter(([key, value]) => {
+        if (value == null || value === "") return false
+        if (key === "organization_id") {
+          if (listingFilterLocked && value !== "all") return false
+          return true
+        }
+        return value !== "all"
+      })
     )
     if (out.sort === DEFAULT_SORT) {
       delete out.sort
     }
     return out
+  }, [listingFilterLocked])
+
+  const handleUnlockOrganizationFilter = () => {
+    unlockListingFilter()
+    setFilters((prev) => ({
+      ...prev,
+      organization_id: "all",
+    }))
+    router.get(
+      route("alleventsPage"),
+      cleanFilterQuery({ ...filters, organization_id: "all" }),
+      { preserveState: false, preserveScroll: true, replace: true },
+    )
   }
 
   const goToPage = (page: number) => {
@@ -291,10 +321,22 @@ export default function EventsPage({
         replace: true,
       })
     }, 300),
-    [],
+    [cleanFilterQuery],
   )
 
   const isInitialMount = useRef(true)
+  useEffect(() => {
+    const nextOrganizationId =
+      listingFilterLocked && organizationFilterLock?.primary_id
+        ? String(organizationFilterLock.primary_id)
+        : organizationId || "all"
+    setFilters((prev) =>
+      prev.organization_id === nextOrganizationId
+        ? prev
+        : { ...prev, organization_id: nextOrganizationId },
+    )
+  }, [organizationId, listingFilterLocked, organizationFilterLock?.primary_id])
+
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false
@@ -311,7 +353,7 @@ export default function EventsPage({
     filters.search ||
     filters.status !== "all" ||
     filters.event_type_id !== "all" ||
-    filters.organization_id !== "all" ||
+    (!listingFilterLocked && filters.organization_id !== "all") ||
     filters.city_filter !== "all" ||
     filters.state_filter !== "all" ||
     filters.zip_filter !== "all" ||
@@ -411,6 +453,10 @@ export default function EventsPage({
                                     </div>
 
                                     {/* Organization */}
+                                    <LockedPrimaryOrganizationFilter
+                                        lock={effectiveLock}
+                                        onUnlock={handleUnlockOrganizationFilter}
+                                    >
                                     <div className="space-y-1.5">
                                         <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Organization</label>
                                         <Select value={filters.organization_id} onValueChange={handleOrganizationChange}>
@@ -427,6 +473,7 @@ export default function EventsPage({
                                     </SelectContent>
                                 </Select>
                             </div>
+                                    </LockedPrimaryOrganizationFilter>
 
                                     {/* City */}
                                     <div className="space-y-1.5">
