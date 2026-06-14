@@ -1,10 +1,11 @@
 "use client"
 
 import { FormEventHandler } from "react"
-import { Head, useForm } from "@inertiajs/react"
+import { Head, Link, useForm, usePage } from "@inertiajs/react"
 import { ExternalLink, LoaderCircle, Lock, User } from "lucide-react"
 import InputError from "@/components/input-error"
 import { PageHead } from "@/components/frontend/PageHead"
+import type { SharedData } from "@/types"
 
 type LoginForm = {
   email: string
@@ -20,6 +21,9 @@ interface DevLoginProps {
 }
 
 export default function DevLoginPage({ seo, status, devHost, productionUrl }: DevLoginProps) {
+  const { auth } = usePage<SharedData>().props
+  const signedInUser = auth.user
+
   const { data, setData, post, processing, errors, reset } = useForm<Required<LoginForm>>({
     email: "",
     password: "",
@@ -99,6 +103,30 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
             </div>
           )}
 
+          {signedInUser ? (
+            <div className="mt-8 space-y-4 text-left">
+              <div className="rounded-lg border border-purple-400/30 bg-purple-500/10 px-4 py-3 text-sm text-purple-100">
+                Signed in as{" "}
+                <span className="font-medium text-white">
+                  {signedInUser.name?.trim() || signedInUser.email}
+                </span>
+              </div>
+              <Link
+                href={route("dashboard")}
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-purple-600 text-base font-semibold text-white transition hover:bg-purple-500"
+              >
+                Continue to development app
+              </Link>
+              <Link
+                href={route("logout")}
+                method="post"
+                as="button"
+                className="flex h-12 w-full items-center justify-center rounded-lg border border-white/20 bg-transparent text-sm font-medium text-white/90 transition hover:border-white/35 hover:bg-white/5"
+              >
+                Sign out
+              </Link>
+            </div>
+          ) : (
           <form className="mt-8 space-y-4 text-left" onSubmit={submit}>
             <div>
               <label htmlFor="email" className="sr-only">
@@ -156,6 +184,7 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
               )}
             </button>
           </form>
+          )}
 
           <div className="my-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-white/15" />
