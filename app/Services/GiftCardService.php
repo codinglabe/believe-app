@@ -181,6 +181,151 @@ class GiftCardService
     }
 
     /**
+     * Fetch live prefunded balance from Phaze for admin reconciliation (read-only).
+     *
+     * @return array{
+     *     available: float|null,
+     *     currency: string,
+     *     fetched_at: string|null,
+     *     error: string|null,
+     *     variance: float|null
+     * }
+     */
+    public function getLivePrefundedBalance(?float $internalBalance = null): array
+    {
+        $status = $this->getAccountStatus();
+
+        if ($status === null) {
+            return [
+                'available' => null,
+                'currency' => 'USD',
+                'fetched_at' => now()->toIso8601String(),
+                'error' => 'Unable to reach Phaze account status API.',
+                'variance' => null,
+            ];
+        }
+
+        if (isset($status['httpStatusCode']) && (int) $status['httpStatusCode'] >= 400) {
+            return [
+                'available' => null,
+                'currency' => 'USD',
+                'fetched_at' => now()->toIso8601String(),
+                'error' => (string) ($status['error'] ?? 'Phaze account status request failed.'),
+                'variance' => null,
+            ];
+        }
+
+        $available = $this->extractBalanceFromAccountStatus($status);
+        $currency = $this->extractCurrencyFromAccountStatus($status) ?? 'USD';
+
+        if ($available === null) {
+            return [
+                'available' => null,
+                'currency' => $currency,
+                'fetched_at' => now()->toIso8601String(),
+                'error' => 'Phaze account status did not include a recognizable balance field.',
+                'variance' => null,
+            ];
+        }
+
+        $variance = $internalBalance !== null
+            ? round($available - $internalBalance, 2)
+            : null;
+
+        return [
+            'available' => round($available, 2),
+            'currency' => $currency,
+            'fetched_at' => now()->toIso8601String(),
+            'error' => null,
+            'variance' => $variance,
+        ];
+    }
+
+    public function isPurchaseSuccessful(?array $result): bool
+    {
+        if ($result === null || $result === []) {
+            return false;
+        }
+
+        if (isset($result['error']) && $result['error'] !== '') {
+            return false;
+        }
+
+        if (isset($result['httpStatusCode']) && (int) $result['httpStatusCode'] >= 400) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function extractBalanceFromAccountStatus(array $payload): ?float
+    {
+        $candidateKeys = [
+            'balance',
+            'availableBalance',
+            'available_balance',
+            'prefundedBalance',
+            'prefunded_balance',
+            'accountBalance',
+            'account_balance',
+            'funds',
+            'availableFunds',
+            'available_funds',
+            'remainingBalance',
+            'remaining_balance',
+            'credit',
+            'credits',
+        ];
+
+        foreach ($candidateKeys as $key) {
+            if (isset($payload[$key]) && is_numeric($payload[$key])) {
+                return (float) $payload[$key];
+            }
+        }
+
+        foreach (['data', 'account', 'wallet', 'result', 'accountStatus', 'account_status'] as $nestedKey) {
+            if (! isset($payload[$nestedKey]) || ! is_array($payload[$nestedKey])) {
+                continue;
+            }
+
+            $nestedBalance = $this->extractBalanceFromAccountStatus($payload[$nestedKey]);
+            if ($nestedBalance !== null) {
+                return $nestedBalance;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function extractCurrencyFromAccountStatus(array $payload): ?string
+    {
+        foreach (['currency', 'baseCurrency', 'base_currency'] as $key) {
+            if (! empty($payload[$key]) && is_string($payload[$key])) {
+                return strtoupper($payload[$key]);
+            }
+        }
+
+        foreach (['data', 'account', 'wallet', 'result'] as $nestedKey) {
+            if (! isset($payload[$nestedKey]) || ! is_array($payload[$nestedKey])) {
+                continue;
+            }
+
+            $currency = $this->extractCurrencyFromAccountStatus($payload[$nestedKey]);
+            if ($currency !== null) {
+                return $currency;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Create a disbursement (gift card purchase) via Phaze API
      */
     public function createDisbursement(array $data): ?array

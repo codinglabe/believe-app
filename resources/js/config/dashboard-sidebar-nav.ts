@@ -787,6 +787,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'admin',
                     },
                     {
+                        title: 'Phaze balance',
+                        href: '/admin/phaze-balance',
+                        icon: Landmark,
+                        role: 'admin',
+                        permission: 'phaze.balance.read',
+                    },
+                    {
                         title: 'IRS members',
                         href: '/admin/irs-members',
                         icon: FileText,

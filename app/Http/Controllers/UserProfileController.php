@@ -32,6 +32,7 @@ use App\Services\ImpactScoreService;
 use App\Services\KioskProviderAiIngestService;
 use App\Services\PrintifyService;
 use App\Services\SupporterPrimaryOrganizationService;
+use App\Services\TimezoneService;
 use App\Services\YouTubeService;
 use App\Support\DigitalProductDelivery;
 use App\Support\ProfileReligions;
@@ -886,6 +887,7 @@ class UserProfileController extends Controller
     public function donations(Request $request)
     {
         $user = auth()->user();
+        $viewerTimezone = TimezoneService::requestTimezone($request);
 
         // Get search and filter parameters
         $search = $request->get('search', '');
@@ -916,7 +918,7 @@ class UserProfileController extends Controller
         $donationsPaginated = $query->paginate($perPage);
 
         // Transform donations
-        $donations = $donationsPaginated->getCollection()->map(function ($donation) {
+        $donations = $donationsPaginated->getCollection()->map(function ($donation) use ($viewerTimezone) {
             // Map status correctly - 'active' for recurring donations should be shown as 'completed'
             $displayStatus = $donation->status;
             if ($donation->status === 'active') {
@@ -928,11 +930,13 @@ class UserProfileController extends Controller
                 $displayStatus = 'completed';
             }
 
+            $donatedAt = $donation->donation_date ?? $donation->created_at;
+
             return [
                 'id' => $donation->id,
                 'organization_name' => $donation->organization->name ?? 'Unknown Organization',
                 'amount' => number_format($donation->amount, 2),
-                'date' => $donation->donation_date ? $donation->donation_date->toDateString() : $donation->created_at->toDateString(),
+                'date' => TimezoneService::formatUtcForTimezone($donatedAt, $viewerTimezone, 'M j, Y'),
                 'status' => $displayStatus,
                 'frequency' => $donation->frequency ?? 'one-time',
                 'payment_method' => $donation->payment_method ?? null,
@@ -940,6 +944,8 @@ class UserProfileController extends Controller
                 'receipt_url' => null, // Add receipt URL if available
             ];
         });
+
+        $currentYearInViewerTz = Carbon::now($viewerTimezone)->year;
 
         // Calculate stats (always from all donations, not filtered)
         // Include both 'completed' and 'active' statuses as successful donations
@@ -949,8 +955,13 @@ class UserProfileController extends Controller
 
         $thisYearDonated = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
-            ->whereYear('donation_date', now()->year)
-            ->sum('amount');
+            ->get(['amount', 'donation_date', 'created_at'])
+            ->reduce(function (float $sum, Donation $donation) use ($viewerTimezone, $currentYearInViewerTz): float {
+                $donatedAt = $donation->donation_date ?? $donation->created_at;
+                $localYear = Carbon::parse($donatedAt, 'UTC')->timezone($viewerTimezone)->year;
+
+                return $sum + ($localYear === $currentYearInViewerTz ? (float) $donation->amount : 0.0);
+            }, 0.0);
 
         $organizationsSupported = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
