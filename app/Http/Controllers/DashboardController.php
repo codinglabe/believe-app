@@ -21,6 +21,7 @@ use App\Models\PromotionalBanner;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Services\OrganizationProfileCompletionService;
+use App\Services\PhazeBalanceService;
 use App\Services\TaxComplianceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -30,7 +31,10 @@ use Spatie\Permission\Models\Role;
 
 class DashboardController extends Controller
 {
-    public function __construct(private TaxComplianceService $taxComplianceService) {}
+    public function __construct(
+        private TaxComplianceService $taxComplianceService,
+        private PhazeBalanceService $phazeBalanceService,
+    ) {}
 
     public function index(Request $request)
     {
@@ -209,6 +213,7 @@ class DashboardController extends Controller
                 'paymentStats' => $paymentStats,
                 'recentTransactions' => $recentTransactions,
                 'monthlyRevenue' => $monthlyRevenue,
+                'phazeBalanceSummary' => $this->phazeBalanceService->getSummary(fetchLivePhazeBalance: true),
                 'promotionalBanner' => null,
                 'promotionalBanners' => null,
             ]);
@@ -587,5 +592,4 @@ class DashboardController extends Controller
             $user->save();
         }
     }
-
 }

@@ -149,6 +149,9 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Gift Card Management
             // 'gift.card' => ['read', 'create', 'edit', 'update', 'delete', 'manage', 'purchase', 'view.purchases'],
+
+            // Phaze prefunded balance (gift card provider funding)
+            'phaze.balance' => ['read', 'manage', 'top_up', 'adjust'],
         ];
 
         // Create all permissions
