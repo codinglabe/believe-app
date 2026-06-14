@@ -424,6 +424,7 @@ class DonationController extends Controller
             'feePreview' => $feePreview,
             'feePreviewCheckoutTotalsByRail' => $feePreviewCheckoutTotalsByRail,
             'organizationFilterLock' => $primaryOrgService->listingFilterLockState($request, 'organization_id'),
+            'primaryOrganizationLocked' => $user ? (bool) $user->primary_organization_locked : false,
         ]);
     }
 

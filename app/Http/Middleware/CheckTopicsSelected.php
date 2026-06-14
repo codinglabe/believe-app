@@ -4,6 +4,8 @@ namespace App\Http\Middleware;
 
 use App\Models\Organization;
 use Closure;
+use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -12,12 +14,59 @@ class CheckTopicsSelected
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response|\Illuminate\Contracts\Support\Responsable)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
+        if ($this->userMustSelectTopics($request)) {
+            $user = $request->user();
+
+            if ($this->wantsJsonTopicBlock($request)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please select your topics to continue.',
+                    'redirect' => $user->role === 'organization'
+                        ? route('auth.topics.select')
+                        : route('user.topics.select'),
+                ], 403);
+            }
+
+            if ($user->role === 'organization') {
+                return redirect()->route('auth.topics.select');
+            }
+            if ($user->role === 'user') {
+                return redirect()->route('user.topics.select');
+            }
+        }
+
+        return $this->normalizeResponse($request, $next($request));
+    }
+
+    /**
+     * Redirect supporters/orgs without selected topics to onboarding, or null to continue.
+     */
+    public function topicSelectionRedirect(Request $request): ?RedirectResponse
+    {
+        if (! $this->userMustSelectTopics($request)) {
+            return null;
+        }
+
+        $user = $request->user();
+
+        if ($user->role === 'organization') {
+            return redirect()->route('auth.topics.select');
+        }
+        if ($user->role === 'user') {
+            return redirect()->route('user.topics.select');
+        }
+
+        return null;
+    }
+
+    private function userMustSelectTopics(Request $request): bool
+    {
         if (! config('app.require_topics_selection', true)) {
-            return $next($request);
+            return false;
         }
 
         $route = $request->route();
@@ -34,10 +83,9 @@ class CheckTopicsSelected
         ];
 
         if ($routeName !== null && in_array($routeName, $excludedRoutes, true)) {
-            return $next($request);
+            return false;
         }
 
-        // Topic onboarding pages (route names differ between user vs org).
         if ($request->is(
             'profile/topics/select',
             'group-topics/select',
@@ -45,55 +93,55 @@ class CheckTopicsSelected
             'unity-call/*',
             'unity-calls/*',
         )) {
-            return $next($request);
+            return false;
         }
 
         $user = $request->user();
 
-        // Allow admin users to bypass topic selection requirement
         if ($user && $user->role === 'admin') {
-            return $next($request);
+            return false;
         }
 
-        // Legacy Care Alliance accounts without an organization profile (before unified org provisioning)
         if ($user && $user->hasRole('care_alliance') && ! Organization::forAuthUser($user)) {
-            return $next($request);
+            return false;
         }
 
-        // organization_pending: do NOT require topic select yet — they must complete org onboarding (Form 1023 etc.) first. After they become "organization", topic select will be required.
         if ($user && $user->role === 'organization_pending') {
-            return $next($request);
+            return false;
         }
 
         if ($user && ! $user->interestedTopics()->exists()) {
-            // No topics in DB — cannot complete onboarding; do not trap users in a redirect loop.
-            $hasSelectableTopics = \App\Models\ChatTopic::query()->exists();
-            if (! $hasSelectableTopics) {
-                return $next($request);
+            if (! \App\Models\ChatTopic::query()->exists()) {
+                return false;
             }
 
-            // For JSON/API requests, return JSON response instead of redirecting
-            if ($request->expectsJson() || $request->wantsJson() || $request->is('api/*') || $request->header('Accept') === 'application/json') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please select your topics to continue.',
-                    'redirect' => $user->role === 'organization'
-                        ? route('auth.topics.select')
-                        : route('user.topics.select'),
-                ], 403);
-            }
-
-            // Require topic select only for organization (approved) and user roles
-            if ($user->role === 'organization') {
-                return redirect()->route('auth.topics.select');
-            }
-            if ($user->role === 'user') {
-                return redirect()->route('user.topics.select');
-            }
-
-            return $next($request);
+            return in_array($user->role, ['organization', 'user'], true);
         }
 
-        return $next($request);
+        return false;
+    }
+
+    private function wantsJsonTopicBlock(Request $request): bool
+    {
+        return $request->expectsJson()
+            || $request->wantsJson()
+            || $request->is('api/*')
+            || $request->header('Accept') === 'application/json';
+    }
+
+    /**
+     * @param  Response|Responsable  $response
+     */
+    private function normalizeResponse(Request $request, mixed $response): Response
+    {
+        if ($response instanceof Response) {
+            return $response;
+        }
+
+        if ($response instanceof Responsable) {
+            return $response->toResponse($request);
+        }
+
+        throw new \InvalidArgumentException('Middleware closure must return a Symfony or Responsable response.');
     }
 }

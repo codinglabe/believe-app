@@ -16,6 +16,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { cn } from "@/lib/utils";
 import {
   LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
   type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter";
 
@@ -667,6 +668,8 @@ export default function VolunteerOpportunities({
   organizationFilterLock,
   auth,
 }: VolunteerOpportunitiesProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
   const [city, setCity] = useState(filters.city || '');
@@ -705,7 +708,7 @@ export default function VolunteerOpportunities({
       city: city || undefined,
       state: state || undefined,
       position_category_id: positionCategoryId || undefined,
-      organization_id: organizationFilterLock?.locked
+      organization_id: listingFilterLocked
         ? undefined
         : organizationId
           ? organizationId
@@ -724,7 +727,7 @@ export default function VolunteerOpportunities({
       positionId,
       positionIds,
       currentPage,
-      organizationFilterLock?.locked,
+      listingFilterLocked,
     ],
   );
 
@@ -1187,8 +1190,9 @@ export default function VolunteerOpportunities({
 
                   {/* Organization Filter — search + scroll (Inertia), only orgs with volunteer listings */}
                   <LockedPrimaryOrganizationFilter
-                    lock={organizationFilterLock}
+                    lock={effectiveLock}
                     onUnlock={() => {
+                      unlockListingFilter()
                       setOrganizationId("all")
                       router.get(route("volunteer-opportunities.index"), { organization_id: "all" }, { preserveState: false })
                     }}

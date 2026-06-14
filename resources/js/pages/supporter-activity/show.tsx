@@ -18,6 +18,7 @@ interface Props {
     organization: { id: number; name: string };
     supporter: { id: number; name: string };
     timeline: TimelineRow[];
+    ledgerShowUrl?: string;
     isAdmin: boolean;
     dashboardPeriod: '7' | '30' | 'all';
     periodLabels: Record<'7' | '30' | 'all', string>;
@@ -27,6 +28,7 @@ export default function SupporterActivityShow({
     organization,
     supporter,
     timeline,
+    ledgerShowUrl,
     isAdmin,
     dashboardPeriod,
     periodLabels,
@@ -65,9 +67,16 @@ export default function SupporterActivityShow({
                         {supporter.name}
                     </h1>
                     <p className="text-muted-foreground mt-1">
-                        Activity timeline · {organization.name} · list uses {periodLabels[dashboardPeriod]} context for
-                        navigation only
+                        Usage dashboard activity · {organization.name}
                     </p>
+                    {ledgerShowUrl ? (
+                        <Link
+                            href={ledgerShowUrl}
+                            className="mt-3 inline-flex text-sm font-medium text-purple-700 hover:underline dark:text-purple-300"
+                        >
+                            Open full supporter ledger record →
+                        </Link>
+                    ) : null}
                 </div>
 
                 <Card>

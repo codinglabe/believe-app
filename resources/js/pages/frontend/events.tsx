@@ -26,6 +26,7 @@ import { Link, router } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
   type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter"
 
@@ -166,6 +167,8 @@ export default function EventsPage({
     sort: sortProp,
     organizationFilterLock,
 }: EventsPageProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const totalEvents = events?.total || 0
   const totalPages = events?.last_page || 1
   const currentPage = events?.current_page || 1
@@ -270,12 +273,12 @@ export default function EventsPage({
         }))
     }
 
-  const cleanFilterQuery = (query: Record<string, string>) => {
+  const cleanFilterQuery = useCallback((query: Record<string, string>) => {
     const out = Object.fromEntries(
       Object.entries(query).filter(([key, value]) => {
         if (value == null || value === "") return false
         if (key === "organization_id") {
-          if (organizationFilterLock?.locked && value !== "all") return false
+          if (listingFilterLocked && value !== "all") return false
           return true
         }
         return value !== "all"
@@ -285,9 +288,10 @@ export default function EventsPage({
       delete out.sort
     }
     return out
-  }
+  }, [listingFilterLocked])
 
   const handleUnlockOrganizationFilter = () => {
+    unlockListingFilter()
     setFilters((prev) => ({
       ...prev,
       organization_id: "all",
@@ -317,13 +321,13 @@ export default function EventsPage({
         replace: true,
       })
     }, 300),
-    [],
+    [cleanFilterQuery],
   )
 
   const isInitialMount = useRef(true)
   useEffect(() => {
     const nextOrganizationId =
-      organizationFilterLock?.locked && organizationFilterLock.primary_id
+      listingFilterLocked && organizationFilterLock?.primary_id
         ? String(organizationFilterLock.primary_id)
         : organizationId || "all"
     setFilters((prev) =>
@@ -331,7 +335,7 @@ export default function EventsPage({
         ? prev
         : { ...prev, organization_id: nextOrganizationId },
     )
-  }, [organizationId, organizationFilterLock?.locked, organizationFilterLock?.primary_id])
+  }, [organizationId, listingFilterLocked, organizationFilterLock?.primary_id])
 
   useEffect(() => {
     if (isInitialMount.current) {
@@ -349,7 +353,7 @@ export default function EventsPage({
     filters.search ||
     filters.status !== "all" ||
     filters.event_type_id !== "all" ||
-    (!organizationFilterLock?.locked && filters.organization_id !== "all") ||
+    (!listingFilterLocked && filters.organization_id !== "all") ||
     filters.city_filter !== "all" ||
     filters.state_filter !== "all" ||
     filters.zip_filter !== "all" ||
@@ -450,7 +454,7 @@ export default function EventsPage({
 
                                     {/* Organization */}
                                     <LockedPrimaryOrganizationFilter
-                                        lock={organizationFilterLock}
+                                        lock={effectiveLock}
                                         onUnlock={handleUnlockOrganizationFilter}
                                     >
                                     <div className="space-y-1.5">
