@@ -1,0 +1,75 @@
+# One-time / manual: backfill admin transaction ledger on production (adds/updates rows only — no deletes).
+name: Sync ledger (production)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sync-ledger-production
+  cancel-in-progress: false
+
+jobs:
+  sync-ledger:
+    runs-on: ubuntu-latest
+
+    env:
+      DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      SSH_CONNECT_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+      APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+      SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT != '' && vars.PRODUCTION_SSH_PORT || '22' }}
+      SSH_MAX_ATTEMPTS: 10
+      SSH_RETRY_SLEEP: 8
+      SSH_USE_TCP_PROBE: false
+      SSH_USE_DEPLOY_HOST: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
+          SSH_DIR: ${{ github.workspace }}/.ssh-deploy-prod
+          DEPLOY_USER: ${{ env.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
+          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_MAX_ATTEMPTS: ${{ env.SSH_MAX_ATTEMPTS }}
+          SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
+          SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
+          SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
+          APP_URL: ${{ env.APP_URL }}
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/setup-cpanel-ssh.sh
+          bash .github/scripts/setup-cpanel-ssh.sh
+
+      - name: "1/6 donations:ledger-audit (read-only)"
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan donations:ledger-audit"
+
+      - name: "2/6 donations:ledger-audit --fix (add missing rows)"
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan donations:ledger-audit --fix"
+
+      - name: "3/6 fundme:sync-ledger"
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan fundme:sync-ledger"
+
+      - name: "4/6 believe-points:sync-ledger"
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan believe-points:sync-ledger"
+
+      - name: "5/6 ledger:refresh-donation-deposit-meta"
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan ledger:refresh-donation-deposit-meta"
+
+      - name: "6/6 ledger:refresh-selling-meta"
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan ledger:refresh-selling-meta"
+
+      - name: Ledger row counts
+        run: |
+          ${SSH_CMD} cpanel-deploy "cd '${DEPLOY_PATH}' && php artisan tinker --execute=\"echo 'transactions: '.DB::table('transactions')->count().PHP_EOL;\""
