@@ -335,13 +335,13 @@ export default function OrganizationSupportersIndex({
 
             <div className="space-y-6 p-4 md:p-6">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
+                                    <div>
                         <h1 className="text-2xl font-bold tracking-tight">Supporter Ledger</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
                             Accounting-style report for {organization.name} — track membership, donations,
                             purchases, and engagement. Export for your records.
-                        </p>
-                    </div>
+                                        </p>
+                                    </div>
                     <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => download(exportUrls.csv)}>
                             <Download className="mr-2 h-4 w-4" />
@@ -361,7 +361,7 @@ export default function OrganizationSupportersIndex({
                             PDF
                         </Button>
                     </div>
-                </div>
+                                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                     <Card>
@@ -393,15 +393,15 @@ export default function OrganizationSupportersIndex({
                             <CardDescription>Purchases (filtered)</CardDescription>
                             <CardTitle className="text-xl">{money(ledger.summary.total_purchases)}</CardTitle>
                         </CardHeader>
-                    </Card>
+                        </Card>
                 </div>
 
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-lg">Filters</CardTitle>
                         <CardDescription>Narrow the ledger before viewing or exporting.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
+                            </CardHeader>
+                            <CardContent className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                             <div className="space-y-1.5">
                                 <Label>Search</Label>
@@ -508,18 +508,18 @@ export default function OrganizationSupportersIndex({
                                     onChange={(e) => setLocalFilters((f) => ({ ...f, max_donation: e.target.value }))}
                                     onBlur={() => applyFilters({ max_donation: localFilters.max_donation })}
                                 />
-                            </div>
+                                    </div>
                             <div className="space-y-1.5">
                                 <Label>Min purchases ($)</Label>
-                                <Input
+                                    <Input
                                     type="number"
                                     min="0"
                                     step="0.01"
                                     value={localFilters.min_purchases}
                                     onChange={(e) => setLocalFilters((f) => ({ ...f, min_purchases: e.target.value }))}
                                     onBlur={() => applyFilters({ min_purchases: localFilters.min_purchases })}
-                                />
-                            </div>
+                                    />
+                                </div>
                             <div className="space-y-1.5">
                                 <Label>Max purchases ($)</Label>
                                 <Input
@@ -531,9 +531,9 @@ export default function OrganizationSupportersIndex({
                                     onBlur={() => applyFilters({ max_purchases: localFilters.max_purchases })}
                                 />
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                                    </div>
+                            </CardContent>
+                        </Card>
 
                 <Card className="overflow-hidden border-border/70 shadow-sm">
                     <CardHeader className="border-b bg-muted/20 pb-4">
@@ -544,8 +544,8 @@ export default function OrganizationSupportersIndex({
                         </CardTitle>
                         <CardDescription className="mt-1">
                             {ledger.total} supporter{ledger.total === 1 ? '' : 's'} matching your filters
-                        </CardDescription>
-                    </CardHeader>
+                                </CardDescription>
+                            </CardHeader>
                     <CardContent className="p-0">
                         {ledger.rows.length === 0 ? (
                             <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
@@ -678,7 +678,7 @@ export default function OrganizationSupportersIndex({
                                             </TableBody>
                                         </table>
                                     </div>
-                                </div>
+                                                        </div>
 
                                 <div className="space-y-4 p-4 md:hidden">
                                     {ledger.rows.map((row) => (
@@ -770,10 +770,10 @@ export default function OrganizationSupportersIndex({
                                         <ChevronRight className="h-4 w-4" />
                                     </Button>
                                 </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
             </div>
         </AppLayout>
     );

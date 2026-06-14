@@ -41,6 +41,32 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
+     * Stored secondary org IDs, or followed orgs (minus primary) when none are saved yet.
+     *
+     * @return list<int>
+     */
+    public function resolveSecondaryOrganizationIds(User $user): array
+    {
+        $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
+        $storedSecondary = $user->secondary_organization_ids;
+
+        if (is_array($storedSecondary) && count($storedSecondary) > 0) {
+            return array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
+        }
+
+        if (! $user->relationLoaded('favoriteOrganizations')) {
+            $user->load(['favoriteOrganizations' => function ($q) {
+                $q->select('organizations.id');
+            }]);
+        }
+
+        return array_values(array_filter(
+            $user->favoriteOrganizations->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            fn (int $id) => $primaryOrgId === null || $id !== $primaryOrgId
+        ));
+    }
+
+    /**
      * Listing filters: use the query param when the user chose one; otherwise primary org.
      */
     public function resolveListingOrganizationFilterId(Request $request, string $key = 'organization_id'): ?int

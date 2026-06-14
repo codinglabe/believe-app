@@ -178,17 +178,7 @@ class UserProfileController extends Controller
             ->values()
             ->all();
 
-        $favoriteOrgIds = $user->favoriteOrganizations->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
-        $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
-        $storedSecondary = $user->secondary_organization_ids;
-        if (is_array($storedSecondary) && count($storedSecondary) > 0) {
-            $secondaryOrgIds = array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
-        } else {
-            $secondaryOrgIds = array_values(array_filter(
-                $favoriteOrgIds,
-                fn (int $id) => $primaryOrgId === null || $id !== $primaryOrgId
-            ));
-        }
+        $secondaryOrgIds = $this->primaryOrgService->resolveSecondaryOrganizationIds($user);
 
         $slugPart = trim((string) ($user->slug ?? ''));
         if ($slugPart === '') {
@@ -198,7 +188,7 @@ class UserProfileController extends Controller
 
         $seedIds = array_values(array_unique(array_filter(array_merge(
             [$user->primary_organization_id],
-            $user->secondary_organization_ids ?? [],
+            $secondaryOrgIds,
         ))));
 
         $organizationOptions = [];
@@ -346,7 +336,7 @@ class UserProfileController extends Controller
         $user = $request->user();
         $fromProfile = collect();
 
-        if (($user->role ?? null) === 'user') {
+        if ($user->canFollowOrganizations()) {
             $primaryId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
 
             if ($target === 'primary' && $primaryId) {
@@ -358,13 +348,9 @@ class UserProfileController extends Controller
                     $fromProfile->push($primaryId);
                 }
 
-                $secondaryIds = $user->secondary_organization_ids ?? [];
-                if (is_array($secondaryIds)) {
-                    foreach ($secondaryIds as $id) {
-                        $id = (int) $id;
-                        if ($id > 0) {
-                            $fromProfile->push($id);
-                        }
+                foreach ($this->primaryOrgService->resolveSecondaryOrganizationIds($user) as $id) {
+                    if ($id > 0) {
+                        $fromProfile->push($id);
                     }
                 }
             }

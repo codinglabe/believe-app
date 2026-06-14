@@ -411,6 +411,7 @@ class DonationController extends Controller
         return Inertia::render('frontend/donate', [
             'seo' => SeoService::forPage('donate'),
             'organizations' => $organizations->values(),
+            'secondaryOrganizations' => $this->secondaryDonateCausesForUser($user),
             'message' => 'Please log in to view your donations.',
             'user' => $user ? [
                 'name' => $user->name,
@@ -426,6 +427,53 @@ class DonationController extends Controller
             'organizationFilterLock' => $primaryOrgService->listingFilterLockState($request, 'organization_id'),
             'primaryOrganizationLocked' => $user ? (bool) $user->primary_organization_locked : false,
         ]);
+    }
+
+    /**
+     * Supporter profile secondary orgs — always returned for instant donate-page toggle UX.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function secondaryDonateCausesForUser(?User $user): array
+    {
+        if ($user === null) {
+            return [];
+        }
+
+        $primaryOrgService = app(SupporterPrimaryOrganizationService::class);
+        $primaryId = (int) ($user->primary_organization_id ?? 0);
+        $ids = collect($primaryOrgService->resolveSecondaryOrganizationIds($user))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0 && ($primaryId === 0 || $id !== $primaryId))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return Organization::query()
+            ->whereIn('id', $ids)
+            ->where('registration_status', 'approved')
+            ->excludingCareAllianceHubs()
+            ->orderBy('name')
+            ->get()
+            ->map(function (Organization $org) {
+                return [
+                    'id' => 'org-'.$org->id,
+                    'kind' => 'organization',
+                    'organization_id' => $org->id,
+                    'name' => $org->name,
+                    'description' => $org->description ?? $org->mission ?? 'No description available.',
+                    'image' => $org->registered_user_image ? asset('storage/'.$org->registered_user_image) : null,
+                    'raised' => (float) ($org->balance ?? 0),
+                    'goal' => 0,
+                    'supporters' => $org->donations()->distinct('user_id')->count('user_id'),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /**
