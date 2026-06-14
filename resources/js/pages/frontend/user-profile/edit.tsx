@@ -545,18 +545,33 @@ export default function ProfileEdit() {
     [supporterInterests, setData],
   )
 
+  const cardClass =
+    "border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/40"
+  const inputClass =
+    "mt-1 border-gray-300 bg-white text-gray-900 focus-visible:ring-purple-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+  const labelClass = "text-gray-700 dark:text-gray-200"
+  const helperClass = "text-sm text-gray-500 dark:text-gray-400"
+  const orgPanelClass =
+    "relative overflow-hidden rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 shadow-sm dark:border-purple-500/30 dark:from-purple-600/[0.12] dark:via-gray-900/80 dark:to-blue-600/[0.12]"
+  const orgPanelAccent = "absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600"
+  const radioOptionClass =
+    "flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-3 transition-colors hover:border-purple-400/60 dark:border-gray-600 dark:bg-gray-800/50 dark:hover:border-purple-500/40"
+  const emptyStateClass =
+    "rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800/40 dark:text-gray-400"
+  const changeOrgButtonClass =
+    "w-full shrink-0 border-purple-300 bg-white text-gray-900 hover:border-purple-400 hover:bg-purple-50 sm:w-auto dark:border-purple-500/40 dark:bg-gray-900/50 dark:text-gray-100 dark:hover:bg-purple-500/10"
+
   const sectionTitle = (icon: React.ReactNode, n: number, title: string) => (
-    <CardTitle className="flex items-center gap-2 text-lg text-slate-100">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-300">
+    <CardTitle className="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-900 sm:text-lg dark:text-white">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-100 to-blue-100 text-purple-600 dark:from-purple-600/25 dark:to-blue-600/25 dark:text-purple-300">
         {icon}
       </span>
-      <span>
-        <span className="text-indigo-300">{n}.</span> {title}
+      <span className="min-w-0">
+        <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">{n}.</span>{" "}
+        {title}
       </span>
     </CardTitle>
   )
-
-  const cardClass = "border-indigo-500/30 bg-slate-900/70 text-slate-100"
 
   return (
     <ProfileLayout
@@ -564,7 +579,7 @@ export default function ProfileEdit() {
       description="Manage your personal information, account settings, and organization affiliations."
     >
       {!profileReady ? (
-        <div className="rounded-xl border border-indigo-500/20 bg-slate-950/60 p-8 text-center text-slate-400">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center text-gray-500 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
           Loading profile…
         </div>
       ) : (
@@ -576,17 +591,13 @@ export default function ProfileEdit() {
         leave="transition ease-in-out"
         leaveTo="opacity-0"
       >
-        <Alert className="mb-2 border-green-800 bg-green-950/80 dark:border-green-800">
-          <CheckCircle className="h-4 w-4 text-green-400" />
-          <AlertDescription className="text-green-200">Profile updated successfully!</AlertDescription>
+        <Alert className="mb-2 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/80">
+          <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+          <AlertDescription className="text-green-800 dark:text-green-200">Profile updated successfully!</AlertDescription>
         </Alert>
       </Transition>
 
-      <form
-        onSubmit={handleSubmit}
-        noValidate
-        className="space-y-6 rounded-xl border border-indigo-500/20 bg-slate-950/60 p-4 md:p-6"
-      >
+      <form onSubmit={handleSubmit} noValidate className="min-w-0 w-full space-y-6">
         {/* 1. Personal Information */}
         <Card className={cardClass}>
           <CardHeader className="pb-4">{sectionTitle(<User className="h-5 w-5" />, 1, "Personal Information")}</CardHeader>
@@ -596,38 +607,38 @@ export default function ProfileEdit() {
                 <img
                   src={previewUrl || "/placeholder.svg?height=80&width=80"}
                   alt="Profile"
-                  className="h-20 w-20 rounded-full border-2 border-indigo-400/40 object-cover"
+                  className="h-20 w-20 rounded-full border-2 border-purple-300 object-cover dark:border-purple-500/40"
                 />
               </div>
-              <div>
-                <Label htmlFor="image" className="cursor-pointer text-slate-200">
-                  <div className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+              <div className="min-w-0">
+                <Label htmlFor="image" className={cn("cursor-pointer", labelClass)}>
+                  <div className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 text-white hover:from-purple-700 hover:to-blue-700">
                     <Upload className="h-4 w-4" />
                     Upload photo
                   </div>
                   <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </Label>
-                <p className="mt-2 text-sm text-slate-400">JPG, PNG or GIF. Max 2MB.</p>
+                <p className={cn("mt-2", helperClass)}>JPG, PNG or GIF. Max 2MB.</p>
                 {errors.image && <p className="mt-1 text-sm text-red-400">{errors.image}</p>}
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <Label htmlFor="name" className="text-slate-200">
+                <Label htmlFor="name" className={labelClass}>
                   Full Name *
                 </Label>
                 <Input
                   id="name"
                   value={data.name}
                   onChange={(e) => setData("name", e.target.value)}
-                  className="mt-1 border-slate-600 bg-slate-800 text-slate-100"
+                  className={inputClass}
                   required
                 />
                 {errors.name && <p className="mt-1 text-sm text-red-400">{errors.name}</p>}
               </div>
               <div className="sm:col-span-2">
-                <Label htmlFor="email" className="text-slate-200">
+                <Label htmlFor="email" className={labelClass}>
                   Email Address *
                 </Label>
                 <Input
@@ -635,13 +646,13 @@ export default function ProfileEdit() {
                   type="email"
                   value={data.email}
                   onChange={(e) => setData("email", e.target.value)}
-                  className="mt-1 border-slate-600 bg-slate-800 text-slate-100"
+                  className={inputClass}
                   required
                 />
                 {errors.email && <p className="mt-1 text-sm text-red-400">{errors.email}</p>}
               </div>
               <div>
-                <Label htmlFor="phone" className="text-slate-200">
+                <Label htmlFor="phone" className={labelClass}>
                   Phone Number
                 </Label>
                 <Input
@@ -649,24 +660,24 @@ export default function ProfileEdit() {
                   type="tel"
                   value={data.phone}
                   onChange={(e) => setData("phone", e.target.value)}
-                  className="mt-1 border-slate-600 bg-slate-800 text-slate-100"
+                  className={inputClass}
                   placeholder="+1 (555) 123-4567"
                 />
                 {errors.phone && <p className="mt-1 text-sm text-red-400">{errors.phone}</p>}
               </div>
               <div>
-                <Label htmlFor="dob" className="text-slate-200">
+                <Label htmlFor="dob" className={labelClass}>
                   Date of Birth (MM/DD) *
                 </Label>
                 <div className="relative mt-1">
-                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <Input
                     id="dob"
                     type="text"
                     inputMode="numeric"
                     value={data.dob ?? ""}
                     onChange={(e) => setData("dob", formatMmDdInput(e.target.value))}
-                    className="border-slate-600 bg-slate-800 pl-10 text-slate-100"
+                    className="border-gray-300 bg-white pl-10 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                     placeholder="MM/DD"
                     maxLength={5}
                   />
@@ -674,15 +685,15 @@ export default function ProfileEdit() {
                 {errors.dob && <p className="mt-1 text-sm text-red-400">{errors.dob}</p>}
               </div>
               <div className="sm:col-span-2">
-                <Label htmlFor="religion" className="text-slate-200">
+                <Label htmlFor="religion" className={labelClass}>
                   Major World Religions (Optional)
                 </Label>
-                <p className="mb-2 mt-1 text-sm text-slate-400">Optional — choose the tradition that best describes you.</p>
+                <p className={cn("mb-2 mt-1", helperClass)}>Optional — choose the tradition that best describes you.</p>
                 <Select
                   value={data.religion ? data.religion : "__none__"}
                   onValueChange={(v) => setData("religion", v === "__none__" ? "" : v)}
                 >
-                  <SelectTrigger id="religion" className="border-slate-600 bg-slate-800 text-slate-100">
+                  <SelectTrigger id="religion" className="border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
                     <SelectValue placeholder="Select…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -698,43 +709,43 @@ export default function ProfileEdit() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <Label htmlFor="city" className="text-slate-200">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+              <div className="min-w-0 sm:col-span-2 md:col-span-1">
+                <Label htmlFor="city" className={labelClass}>
                   City *
                 </Label>
                 <Input
                   id="city"
                   value={data.city}
                   onChange={(e) => setData("city", e.target.value)}
-                  className="mt-1 border-slate-600 bg-slate-800 text-slate-100"
+                  className={inputClass}
                   required
                 />
                 {errors.city && <p className="mt-1 text-sm text-red-400">{errors.city}</p>}
               </div>
-              <div>
-                <Label htmlFor="state" className="text-slate-200">
+              <div className="min-w-0">
+                <Label htmlFor="state" className={labelClass}>
                   State *
                 </Label>
                 <Input
                   id="state"
                   value={data.state}
                   onChange={(e) => setData("state", e.target.value.toUpperCase())}
-                  className="mt-1 border-slate-600 bg-slate-800 text-slate-100"
+                  className={inputClass}
                   maxLength={2}
                   required
                 />
                 {errors.state && <p className="mt-1 text-sm text-red-400">{errors.state}</p>}
               </div>
-              <div>
-                <Label htmlFor="zipcode" className="text-slate-200">
+              <div className="min-w-0">
+                <Label htmlFor="zipcode" className={labelClass}>
                   Zip Code *
                 </Label>
                 <Input
                   id="zipcode"
                   value={data.zipcode}
                   onChange={(e) => setData("zipcode", e.target.value)}
-                  className="mt-1 border-slate-600 bg-slate-800 text-slate-100"
+                  className={inputClass}
                   maxLength={10}
                   required
                 />
@@ -742,18 +753,18 @@ export default function ProfileEdit() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-indigo-500/25 bg-slate-800/50 p-4">
-              <div className="mb-2 flex items-center gap-2 text-slate-200">
-                <Info className="h-4 w-4 text-indigo-300" />
+            <div className="rounded-lg border border-purple-200/80 bg-gradient-to-br from-purple-50/80 to-blue-50/50 p-4 dark:border-purple-500/25 dark:from-gray-800/50 dark:to-gray-800/50">
+              <div className="mb-2 flex items-center gap-2 text-gray-800 dark:text-gray-200">
+                <Info className="h-4 w-4 text-purple-600 dark:text-purple-300" />
                 <span className="font-medium">Unity Meeting ID</span>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Input
                   readOnly
                   value={user?.unity_meeting_id ?? ""}
-                  className="font-mono text-sm border-slate-600 bg-slate-900 text-slate-200 sm:flex-1"
+                  className="min-w-0 font-mono text-sm border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 sm:flex-1"
                 />
-                <Button type="button" variant="secondary" className="shrink-0" onClick={copyUnityId}>
+                <Button type="button" variant="secondary" className="w-full shrink-0 sm:w-auto" onClick={copyUnityId}>
                   {copiedUnity ? (
                     <>
                       <CheckCircle className="mr-2 h-4 w-4" />
@@ -767,7 +778,7 @@ export default function ProfileEdit() {
                   )}
                 </Button>
               </div>
-              <p className="mt-2 text-xs text-slate-400">
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 Your unique identity for Unity Meet (video meetings and events).
               </p>
             </div>
@@ -779,7 +790,7 @@ export default function ProfileEdit() {
           <CardHeader className="pb-4">{sectionTitle(<Briefcase className="h-5 w-5" />, 2, "Roles & Interests")}</CardHeader>
           <CardContent className="space-y-6">
             <div>
-              <Label className="mb-2 block text-slate-200">Supporter Positions</Label>
+              <Label className={cn("mb-2 block", labelClass)}>Supporter Positions</Label>
               <MultiSelect
                 options={positionOptions}
                 selected={positions.map(String)}
@@ -787,13 +798,13 @@ export default function ProfileEdit() {
                 placeholder="Select your supporter role(s)"
               />
               {errors.positions && <p className="mt-2 text-sm text-red-400">{errors.positions}</p>}
-              <p className="mt-2 text-sm text-slate-400">You can select multiple roles (e.g., Doctor + Volunteer)</p>
+              <p className={cn("mt-2", helperClass)}>You can select multiple roles (e.g., Doctor + Volunteer)</p>
             </div>
 
             <div className="min-w-0 space-y-2">
-              <Label className="text-sm font-medium text-slate-200">Cause groups</Label>
-              <p className="text-xs text-slate-500">
-                Each cause is its own group. When you pick one here, you <span className="font-medium text-slate-400">join</span> that
+              <Label className={cn("text-sm font-medium", labelClass)}>Cause groups</Label>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Each cause is its own group. When you pick one here, you <span className="font-medium text-gray-600 dark:text-gray-400">join</span> that
                 group (same categories as on organization profiles).
               </p>
               {availableSupporterInterests.length === 0 ? (
@@ -808,7 +819,7 @@ export default function ProfileEdit() {
                 <div
                   role="group"
                   aria-label="Cause groups you have joined"
-                  className="flex min-h-10 w-full flex-wrap items-center gap-1 rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-100"
+                  className="flex min-h-10 w-full min-w-0 flex-wrap items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                 >
                   {selectedSupporterInterestCategories.map((c) => (
                     <span
@@ -839,7 +850,7 @@ export default function ProfileEdit() {
                       >
                         <SelectTrigger
                           id="supporter-interest-add"
-                          className="tagify__input h-7 min-w-[7rem] flex-1 justify-start border-0 bg-transparent px-1 py-0.5 text-sm text-slate-400 shadow-none [&_svg]:hidden"
+                          className="tagify__input h-7 min-w-[7rem] flex-1 justify-start border-0 bg-transparent px-1 py-0.5 text-sm text-gray-500 shadow-none [&_svg]:hidden dark:text-gray-400"
                         >
                           <SelectValue placeholder="Add a group…" />
                         </SelectTrigger>
@@ -853,14 +864,14 @@ export default function ProfileEdit() {
                       </Select>
                     </>
                   ) : selectedSupporterInterestCategories.length > 0 ? (
-                    <span className="px-1 text-xs text-slate-400">{"You're in every available cause group"}</span>
+                    <span className="px-1 text-xs text-gray-500 dark:text-gray-400">{"You're in every available cause group"}</span>
                   ) : null}
                 </div>
               )}
               {errors.supporter_interests && (
                 <p className="text-sm text-red-400">{errors.supporter_interests}</p>
               )}
-              <p className="text-sm text-slate-400">
+              <p className={helperClass}>
                 Saving your profile updates which groups you belong to (Housing, Food, Mental Health, Education, and more
                 as admins add them).
               </p>
@@ -869,29 +880,29 @@ export default function ProfileEdit() {
         </Card>
 
         {/* 3 & 4 */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
           <Card className={cardClass}>
             <CardHeader className="pb-4">{sectionTitle(<Shield className="h-5 w-5" />, 3, "Account Settings")}</CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
-                <Label className="text-slate-200">Account Visibility</Label>
+                <Label className={labelClass}>Account Visibility</Label>
                 <RadioGroup
                   value={data.account_visibility}
                   onValueChange={(v) => setData("account_visibility", v as "public" | "private")}
                   className="space-y-3"
                 >
-                  <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-600/80 bg-slate-800/40 p-3 hover:border-indigo-500/40">
-                    <RadioGroupItem value="public" id="vis-public" className="mt-1" />
-                    <div>
-                      <div className="font-medium text-slate-100">Public Account</div>
-                      <p className="text-sm text-slate-400">Anyone can follow you and see your public content.</p>
+                  <label className={radioOptionClass}>
+                    <RadioGroupItem value="public" id="vis-public" className="mt-1 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-gray-100">Public Account</div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Anyone can follow you and see your public content.</p>
                     </div>
                   </label>
-                  <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-600/80 bg-slate-800/40 p-3 hover:border-indigo-500/40">
-                    <RadioGroupItem value="private" id="vis-private" className="mt-1" />
-                    <div>
-                      <div className="font-medium text-slate-100">Private Account</div>
-                      <p className="text-sm text-slate-400">
+                  <label className={radioOptionClass}>
+                    <RadioGroupItem value="private" id="vis-private" className="mt-1 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-gray-100">Private Account</div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
                         You approve follow requests. Only approved followers can see your content.
                       </p>
                     </div>
@@ -903,7 +914,7 @@ export default function ProfileEdit() {
               </div>
 
               <div className="space-y-3">
-                <Label className="text-slate-200">Who can message me?</Label>
+                <Label className={labelClass}>Who can message me?</Label>
                 <RadioGroup
                   value={data.messaging_policy ?? "everyone"}
                   onValueChange={(v) =>
@@ -926,14 +937,11 @@ export default function ProfileEdit() {
                       ["no_one", "No One", "No one can message you."],
                     ] as const
                   ).map(([value, title, help]) => (
-                    <label
-                      key={value}
-                      className="flex cursor-pointer gap-3 rounded-lg border border-slate-600/80 bg-slate-800/40 p-3 hover:border-indigo-500/40"
-                    >
-                      <RadioGroupItem value={value} id={`msg-${value}`} className="mt-1" />
-                      <div>
-                        <div className="font-medium text-slate-100">{title}</div>
-                        <p className="text-sm text-slate-400">{help}</p>
+                    <label key={value} className={radioOptionClass}>
+                      <RadioGroupItem value={value} id={`msg-${value}`} className="mt-1 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">{title}</div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{help}</p>
                       </div>
                     </label>
                   ))}
@@ -947,12 +955,12 @@ export default function ProfileEdit() {
             <CardHeader className="pb-4">{sectionTitle(<Building2 className="h-5 w-5" />, 4, "Organization Affiliation")}</CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="primary_organization" className="text-slate-200">
+                <Label htmlFor="primary_organization" className={labelClass}>
                   Primary Organization *
                 </Label>
                 {isPrimaryLocked && primaryOrganizationDisplay ? (
-                  <div className="relative overflow-hidden rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-600/[0.12] via-slate-800/90 to-blue-600/[0.12] shadow-md shadow-purple-900/20">
-                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                  <div className={cn(orgPanelClass, "shadow-md shadow-purple-900/10 dark:shadow-purple-900/20")}>
+                    <div className={orgPanelAccent} />
                     <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                       <div className="flex min-w-0 items-center gap-4">
                         {primaryOrganizationDisplay.image ? (
@@ -970,15 +978,15 @@ export default function ProfileEdit() {
                         )}
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
                               Primary organization
                             </span>
-                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[10px] font-medium text-purple-200">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-300 bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/15 dark:text-purple-200">
                               <Lock className="h-3 w-3" aria-hidden />
                               Locked
                             </span>
                           </div>
-                          <p className="mt-1 truncate text-lg font-semibold text-slate-50">
+                          <p className="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-slate-50">
                             {primaryOrganizationDisplay.name}
                           </p>
                         </div>
@@ -986,7 +994,7 @@ export default function ProfileEdit() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="shrink-0 border-purple-500/40 bg-slate-900/50 text-slate-100 hover:border-purple-400 hover:bg-purple-500/10"
+                        className={changeOrgButtonClass}
                         onClick={openChangePrimaryModal}
                       >
                         Change
@@ -994,12 +1002,12 @@ export default function ProfileEdit() {
                     </div>
                   </div>
                 ) : isPrimaryLocked ? (
-                  <div className="rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-6 text-center text-sm text-slate-400">
+                  <div className={emptyStateClass}>
                     No primary organization selected.
                   </div>
                 ) : primaryOrganizationDisplay ? (
-                  <div className="relative overflow-hidden rounded-xl border border-purple-500/25 bg-gradient-to-br from-purple-600/[0.08] via-slate-800/80 to-blue-600/[0.08]">
-                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                  <div className={orgPanelClass}>
+                    <div className={orgPanelAccent} />
                     <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                       <div className="flex min-w-0 items-center gap-4">
                         {primaryOrganizationDisplay.image ? (
@@ -1016,10 +1024,10 @@ export default function ProfileEdit() {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
                             Primary organization
                           </p>
-                          <p className="mt-1 truncate text-lg font-semibold text-slate-50">
+                          <p className="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-slate-50">
                             {primaryOrganizationDisplay.name}
                           </p>
                         </div>
@@ -1027,7 +1035,7 @@ export default function ProfileEdit() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="shrink-0 border-purple-500/40 bg-slate-900/50 text-slate-100 hover:border-purple-400 hover:bg-purple-500/10"
+                        className={changeOrgButtonClass}
                         onClick={openChangePrimaryModal}
                       >
                         Change
@@ -1050,11 +1058,10 @@ export default function ProfileEdit() {
                       setChangePrimaryOpen(true)
                     }}
                     placeholder="Select organization"
-                    className="border-slate-600 bg-slate-800 text-slate-100"
                   />
                 )}
                 {!isPrimaryLocked && !primaryOrganizationDisplay ? (
-                  <p className="text-sm text-slate-400">Select the organization you primarily represent.</p>
+                  <p className={helperClass}>Select the organization you primarily represent.</p>
                 ) : null}
                 {errors.primary_organization_id && (
                   <p className="text-sm text-red-400">{errors.primary_organization_id}</p>
@@ -1064,15 +1071,15 @@ export default function ProfileEdit() {
               <Dialog open={changePrimaryOpen} onOpenChange={setChangePrimaryOpen}>
                 <DialogContent
                   className={cn(
-                    "gap-5 rounded-2xl border border-slate-700/80 bg-[#0B1120] p-8 text-slate-100 shadow-2xl sm:max-w-[640px]",
-                    "[&>button]:text-slate-400 [&>button]:hover:text-white",
+                    "max-h-[90vh] w-[calc(100vw-2rem)] gap-5 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-2xl dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 sm:max-w-[640px] sm:p-8",
+                    "[&>button]:text-gray-500 [&>button]:hover:text-gray-900 dark:[&>button]:text-gray-400 dark:[&>button]:hover:text-white",
                   )}
                 >
                   <DialogHeader className="space-y-2 text-left">
-                    <DialogTitle className="text-xl font-bold tracking-normal text-white">
+                    <DialogTitle className="text-xl font-bold tracking-normal text-gray-900 dark:text-white">
                       {primaryOrganizationDisplay ? "Change primary organization" : "Set primary organization"}
                     </DialogTitle>
-                    <DialogDescription className="text-sm leading-relaxed text-slate-400">
+                    <DialogDescription className="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                       {primaryOrganizationDisplay
                         ? "Select your new primary organization and choose a reason for the change."
                         : "Select your primary organization and choose a reason for your choice."}
@@ -1081,7 +1088,7 @@ export default function ProfileEdit() {
 
                   <div className="space-y-5">
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-white">Primary organization</Label>
+                      <Label className="text-sm font-semibold text-gray-900 dark:text-white">Primary organization</Label>
                       <ProfileOrganizationPicker
                         key={changePrimaryExcludeIds.join(",")}
                         variant="primary"
@@ -1094,14 +1101,12 @@ export default function ProfileEdit() {
                           setChangePrimaryOrgId(value === "__none__" ? "" : value)
                         }}
                         placeholder="Select organization"
-                        modalTrigger
-                        className="h-11 rounded-lg border-slate-600/90 bg-[#0f172a] px-3 text-sm font-medium text-white hover:bg-[#131c31] focus-visible:ring-1 focus-visible:ring-blue-500/40"
                       />
                     </div>
 
                     <div className="space-y-3">
-                      <Label className="text-sm font-semibold text-white">
-                        Reason for change <span className="text-white">*</span>
+                      <Label className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Reason for change <span className="text-purple-600 dark:text-purple-400">*</span>
                       </Label>
                       <RadioGroup
                         value={changeReasonOption}
@@ -1117,21 +1122,21 @@ export default function ProfileEdit() {
                             <RadioGroupItem
                               value={reason.id}
                               id={`primary-change-reason-${reason.id}`}
-                              className="mt-1 h-4 w-4 shrink-0 border-slate-500 text-purple-600 data-[state=checked]:border-purple-600 data-[state=checked]:text-purple-600"
-                            />
+                            className="mt-1 h-4 w-4 shrink-0 border-gray-400 text-purple-600 data-[state=checked]:border-purple-600 data-[state=checked]:text-purple-600 dark:border-gray-500"
+                          />
                             <div className="min-w-0">
-                              <p className="text-sm font-medium leading-snug text-white">{reason.title}</p>
-                              <p className="mt-0.5 text-sm leading-snug text-slate-400">{reason.description}</p>
+                              <p className="text-sm font-medium leading-snug text-gray-900 dark:text-white">{reason.title}</p>
+                              <p className="mt-0.5 text-sm leading-snug text-gray-500 dark:text-gray-400">{reason.description}</p>
                             </div>
                           </label>
                         ))}
                       </RadioGroup>
                     </div>
 
-                    <div className="flex gap-3 rounded-lg border border-blue-500/30 bg-blue-500/[0.08] px-4 py-3">
-                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-400" aria-hidden />
-                      <p className="text-sm leading-relaxed text-slate-400">
-                        <span className="font-semibold text-white">Important:</span> Changing your Primary
+                    <div className="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-500/30 dark:bg-blue-500/[0.08]">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+                      <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                        <span className="font-semibold text-gray-900 dark:text-white">Important:</span> Changing your Primary
                         Organization will affect where future supporter benefits, purchases, rewards, and default
                         donations are directed. Previous donations and transactions will remain with the organizations
                         that originally received them.
@@ -1139,11 +1144,11 @@ export default function ProfileEdit() {
                     </div>
                   </div>
 
-                  <DialogFooter className="gap-3 pt-1 sm:justify-end">
+                  <DialogFooter className="flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-10 px-4 text-white hover:bg-transparent hover:text-white/80"
+                      className="h-10 w-full px-4 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 sm:w-auto"
                       onClick={() => setChangePrimaryOpen(false)}
                     >
                       Cancel
@@ -1156,7 +1161,7 @@ export default function ProfileEdit() {
                         !changeReasonOption ||
                         (primaryOrgIdNum !== null && Number(changePrimaryOrgId) === primaryOrgIdNum)
                       }
-                      className="h-10 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-6 text-sm font-medium text-white shadow-none hover:from-purple-500 hover:to-blue-500 disabled:opacity-50"
+                      className="h-10 w-full rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-6 text-sm font-medium text-white shadow-none hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 sm:w-auto"
                       onClick={submitPrimaryOrganizationChange}
                     >
                       {changingPrimary ? "Saving..." : "Save change"}
@@ -1166,8 +1171,8 @@ export default function ProfileEdit() {
               </Dialog>
 
               <div className="space-y-3">
-                <Label className="text-slate-200">Secondary Organizations</Label>
-                <p className="text-sm text-slate-400">Select additional organizations you are affiliated with.</p>
+                <Label className={labelClass}>Secondary Organizations</Label>
+                <p className={helperClass}>Select additional organizations you are affiliated with.</p>
 
                 <ProfileOrganizationPicker
                   key={secondaryExcludeIds.join(",")}
@@ -1175,7 +1180,6 @@ export default function ProfileEdit() {
                   triggerId="secondary-org-add"
                   excludeIds={secondaryExcludeIds}
                   placeholder="Add organization"
-                  className="h-11 border-slate-600 bg-slate-800 text-slate-100"
                   onSecondaryAdd={(org) => {
                     mergeOrg(org)
                     addSecondaryOrganization(org.id)
@@ -1185,11 +1189,8 @@ export default function ProfileEdit() {
                 {selectedSecondaryOrganizations.length > 0 ? (
                   <div className="space-y-3">
                     {selectedSecondaryOrganizations.map((org) => (
-                      <div
-                        key={org.id}
-                        className="relative overflow-hidden rounded-xl border border-purple-500/25 bg-gradient-to-br from-purple-600/[0.08] via-slate-800/80 to-blue-600/[0.08]"
-                      >
-                        <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                      <div key={org.id} className={orgPanelClass}>
+                        <div className={orgPanelAccent} />
                         <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                           <div className="flex min-w-0 items-center gap-4">
                             {org.image ? (
@@ -1204,17 +1205,17 @@ export default function ProfileEdit() {
                               </div>
                             )}
                             <div className="min-w-0">
-                              <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
                                 Secondary organization
                               </p>
-                              <p className="mt-1 truncate text-lg font-semibold text-slate-50">{org.name}</p>
+                              <p className="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-slate-50">{org.name}</p>
                             </div>
                           </div>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 shrink-0 text-slate-400 hover:bg-white/10 hover:text-red-300"
+                            className="h-9 w-9 shrink-0 self-end text-gray-500 hover:bg-gray-100 hover:text-red-600 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-red-300 sm:self-auto"
                             onClick={() => removeSecondaryOrganization(org.id)}
                             aria-label={`Remove ${org.name}`}
                           >
@@ -1225,7 +1226,7 @@ export default function ProfileEdit() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-6 text-center text-sm text-slate-400">
+                  <div className={emptyStateClass}>
                     No secondary organizations added yet.
                   </div>
                 )}
@@ -1235,15 +1236,15 @@ export default function ProfileEdit() {
                 )}
               </div>
 
-              <div className="rounded-lg border border-dashed border-indigo-400/40 bg-slate-800/30 p-4 text-center">
+              <div className="rounded-lg border border-dashed border-purple-300/70 bg-purple-50/50 p-4 text-center dark:border-purple-500/40 dark:bg-purple-950/20">
                 <Link
                   href={route("organizations")}
-                  className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-blue-400 hover:text-blue-300 hover:underline"
+                  className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-purple-700 hover:text-purple-800 hover:underline dark:text-purple-300 dark:hover:text-purple-200"
                 >
                   <Plus className="h-4 w-4" aria-hidden />
                   Request to Join Organization
                 </Link>
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                   Can&apos;t find your organization? Browse organizations and connect from the directory.
                 </p>
               </div>
@@ -1257,7 +1258,7 @@ export default function ProfileEdit() {
             {sectionTitle(<Monitor className="h-5 w-5" />, 5, "Preferences (Global Settings)")}
           </CardHeader>
           <CardContent className="space-y-3">
-            <Label className="text-slate-200">Scene View (Theme)</Label>
+            <Label className={labelClass}>Scene View (Theme)</Label>
             <div className="mt-1 flex flex-wrap gap-2">
               {(
                 [
@@ -1271,10 +1272,10 @@ export default function ProfileEdit() {
                   type="button"
                   onClick={() => setPreferredTheme(mode)}
                   className={cn(
-                    "inline-flex min-w-[8rem] flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all sm:flex-none",
+                    "inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all sm:min-w-[8rem] sm:flex-none sm:px-4",
                     data.preferred_theme === mode
                       ? "border-transparent bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md"
-                      : "border-slate-600 bg-slate-800/80 text-slate-200 hover:border-indigo-500/40 hover:bg-slate-800",
+                      : "border-gray-300 bg-white text-gray-700 hover:border-purple-400/60 hover:bg-purple-50 dark:border-gray-600 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:border-purple-500/40 dark:hover:bg-gray-800",
                   )}
                 >
                   {icon}
@@ -1282,31 +1283,31 @@ export default function ProfileEdit() {
                 </button>
               ))}
             </div>
-            <p className="text-sm text-slate-400">These settings apply across the entire BIU platform.</p>
+            <p className={helperClass}>These settings apply across the entire BIU platform.</p>
             {errors.preferred_theme && <p className="text-sm text-red-400">{errors.preferred_theme}</p>}
 
-            <div className="mt-6 border-t border-slate-700/60 pt-5">
+            <div className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-700/60">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-600/20 to-blue-600/20 text-purple-300">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-100 to-blue-100 text-purple-600 dark:from-purple-600/20 dark:to-blue-600/20 dark:text-purple-300">
                   <MapPin className="h-4 w-4" aria-hidden />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-100">Nearby organization alerts</p>
-                      <p className="mt-1 text-sm text-slate-400">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 dark:text-gray-100">Nearby organization alerts</p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                         Alerts are on when you use the app. Your browser may ask for location access on visit. Turn this
                         off to stop nearby alerts.
                       </p>
                     </div>
-                    <label className="relative inline-flex cursor-pointer items-center">
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center self-start sm:self-center">
                       <input
                         type="checkbox"
                         className="peer sr-only"
                         checked={data.proximity_notifications_enabled !== false}
                         onChange={(e) => setData("proximity_notifications_enabled", e.target.checked)}
                       />
-                      <span className="peer h-6 w-11 rounded-full bg-slate-600 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-blue-600 peer-checked:after:translate-x-full" />
+                      <span className="peer h-6 w-11 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-blue-600 peer-checked:after:translate-x-full dark:bg-gray-600" />
                     </label>
                   </div>
                   {errors.proximity_notifications_enabled ? (
@@ -1318,18 +1319,22 @@ export default function ProfileEdit() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="outline"
             onClick={handleCancel}
             disabled={processing}
-            className="border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700"
+            className="w-full border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-auto"
           >
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
-          <Button type="submit" disabled={processing} className="bg-blue-600 text-white hover:bg-blue-700">
+          <Button
+            type="submit"
+            disabled={processing}
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 sm:w-auto"
+          >
             <Save className="mr-2 h-4 w-4" />
             {processing ? "Saving..." : "Save Changes"}
           </Button>
