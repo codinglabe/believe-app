@@ -41,7 +41,8 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
-     * Stored secondary org IDs, or followed orgs (minus primary) when none are saved yet.
+     * Stored secondary org IDs. When null (never saved), derive from follows minus primary.
+     * An empty array means the supporter explicitly cleared secondaries.
      *
      * @return list<int>
      */
@@ -50,7 +51,7 @@ class SupporterPrimaryOrganizationService
         $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
         $storedSecondary = $user->secondary_organization_ids;
 
-        if (is_array($storedSecondary) && count($storedSecondary) > 0) {
+        if ($storedSecondary !== null && is_array($storedSecondary)) {
             return array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
         }
 
