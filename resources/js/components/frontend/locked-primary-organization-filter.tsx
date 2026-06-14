@@ -1,5 +1,5 @@
 import { Lock } from "lucide-react"
-import type { ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 
 import { Button } from "@/components/frontend/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -20,7 +20,41 @@ type LockedPrimaryOrganizationFilterProps = {
 }
 
 /**
- * Listing pages only: first visit defaults to primary org and shows a locked control until the user chooses "View all".
+ * Listing pages: default to primary org until the user chooses "Change" (browse all).
+ * `browseAll` is set synchronously on unlock so debounced filter requests keep `organization_id=all`
+ * before the next Inertia response arrives.
+ */
+export function useOrganizationListingFilterLock(lock?: OrganizationFilterLock | null) {
+  const [browseAll, setBrowseAll] = useState(() => !(lock?.locked ?? false))
+
+  useEffect(() => {
+    setBrowseAll(!(lock?.locked ?? false))
+  }, [lock?.locked])
+
+  const unlockListingFilter = useCallback(() => {
+    setBrowseAll(true)
+  }, [])
+
+  const effectiveLock = useMemo((): OrganizationFilterLock | null => {
+    if (!lock) return null
+    if (browseAll) {
+      return { ...lock, locked: false }
+    }
+    return lock
+  }, [lock, browseAll])
+
+  const listingFilterLocked = Boolean(effectiveLock?.locked && effectiveLock?.primary_name)
+
+  return {
+    browseAll,
+    unlockListingFilter,
+    effectiveLock,
+    listingFilterLocked,
+  }
+}
+
+/**
+ * Listing pages only: first visit defaults to primary org and shows a locked control until the user chooses "Change".
  */
 export function LockedPrimaryOrganizationFilter({
   lock,
@@ -55,7 +89,7 @@ export function LockedPrimaryOrganizationFilter({
             className="shrink-0 text-purple-700 hover:bg-purple-500/10 hover:text-purple-800 dark:text-purple-300"
             onClick={onUnlock}
           >
-            View all
+            Change
           </Button>
         </div>
       </div>

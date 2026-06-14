@@ -24,6 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/av
 import { cn } from "@/lib/utils"
 import {
   LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
   type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter"
 
@@ -214,6 +215,8 @@ function VideoHubActionBar({
 }
 
 export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const defaultHub = "all"
   const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [featuredVideo, setFeaturedVideo] = useState<VideoItem | null>(initialFeatured)
@@ -466,14 +469,14 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       if (tab === "nonprofits") {
         if (updates.org !== undefined) {
           params.org = org
-        } else if (!organizationFilterLock?.locked && org !== defaultOrg) {
+        } else if (!listingFilterLocked && org !== defaultOrg) {
           params.org = org
         }
       }
       if (hub !== defaultHub) params.hub = hub
       router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.tab, filters.org, filters.hub, organizationFilterLock?.locked]
+    [filters.search, filters.tab, filters.org, filters.hub, listingFilterLocked]
   )
 
   // Debounced search: apply filters automatically after user stops typing (400ms)
@@ -805,10 +808,12 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             ))}
             {activeTab === "nonprofits" ? (
               <LockedPrimaryOrganizationFilter
-                lock={organizationFilterLock}
-                label="Organization"
+                lock={effectiveLock}
                 className="shrink-0"
-                onUnlock={() => applyFilters({ org: "all" })}
+                onUnlock={() => {
+                  unlockListingFilter()
+                  applyFilters({ org: "all" })
+                }}
               >
               <Popover
                 open={orgDropdownOpen}

@@ -22,6 +22,7 @@ import { Badge } from "@/components/frontend/ui/badge";
 import axios from "axios";
 import {
   LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
   type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter";
 
@@ -85,6 +86,8 @@ interface JobsIndexProps {
 }
 
 export default function JobsIndex({ seo, jobs, organizations, positionCategories,positions: initialPositions, filters, organizationFilterLock, auth }: JobsIndexProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
     const [jobType, setJobType] = useState(filters.type || '');
@@ -111,7 +114,7 @@ const [positions, setPositions] = useState<Record<string, string>>({});
         position_id: positionId,
         page: currentPage,
       };
-      if (!organizationFilterLock?.locked) {
+      if (!listingFilterLocked) {
         query.organization_id = organizationId;
       }
       router.get('/jobs', query, {
@@ -122,7 +125,7 @@ const [positions, setPositions] = useState<Record<string, string>>({});
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, locationType, jobType, city, state, positionCategoryId, organizationId, positionId, currentPage, organizationFilterLock?.locked]);
+  }, [search, locationType, jobType, city, state, positionCategoryId, organizationId, positionId, currentPage, listingFilterLocked]);
 
     // Add this effect to load positions when category changes
 // useEffect(() => {
@@ -472,8 +475,9 @@ const [positions, setPositions] = useState<Record<string, string>>({});
 
                   {/* Organization Filter */}
                   <LockedPrimaryOrganizationFilter
-                    lock={organizationFilterLock}
+                    lock={effectiveLock}
                     onUnlock={() => {
+                      unlockListingFilter()
                       setOrganizationId("all")
                       router.get(route("jobs.index"), { organization_id: "all" }, { preserveState: false })
                     }}

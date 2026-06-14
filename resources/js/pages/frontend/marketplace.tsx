@@ -8,8 +8,9 @@ import { Input } from "@/components/frontend/ui/input"
 import { Link, router, usePage } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
-  LockedPrimaryOrganizationFilter,
-  type OrganizationFilterLock,
+    LockedPrimaryOrganizationFilter,
+    useOrganizationListingFilterLock,
+    type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter"
 import MarketplaceSavingsHighlight from "@/components/frontend/MarketplaceSavingsHighlight"
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
@@ -101,6 +102,8 @@ export default function Marketplace({
     search,
     organizationFilterLock,
 }: PageProps) {
+    const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+        useOrganizationListingFilterLock(organizationFilterLock)
     const page = usePage<PageProps>()
     const purchaseOrganizationIdsResolved = page.props.purchaseOrganizationIds ?? purchaseOrganizationIds
     const [currentProductPage, setCurrentProductPage] = useState(1)
@@ -182,7 +185,7 @@ export default function Marketplace({
             return
         }
 
-        const orgValue = organizationFilterLock?.locked
+        const orgValue = listingFilterLocked
             ? ''
             : filters.organizations.length > 0
               ? filters.organizations.join(',')
@@ -194,9 +197,10 @@ export default function Marketplace({
             organizations: orgValue,
         }
         debouncedFilter(pickBy(query))
-    }, [filters, organizationFilterLock?.locked, debouncedFilter])
+    }, [filters, listingFilterLocked, debouncedFilter])
 
     const handleUnlockOrganizationFilter = () => {
+        unlockListingFilter()
         setFilters((prev) => ({ ...prev, organizations: [] }))
         setCurrentProductPage(1)
         router.get('/marketplace', { organizations: 'all' }, { preserveState: false, replace: true })
@@ -372,7 +376,7 @@ export default function Marketplace({
                                             >
                                                 <CardContent className="space-y-3 pt-4">
                                                     <LockedPrimaryOrganizationFilter
-                                                        lock={organizationFilterLock}
+                                                        lock={effectiveLock}
                                                         onUnlock={handleUnlockOrganizationFilter}
                                                     >
                                                         <div style={{ height: '240px', maxHeight: '240px' }}>

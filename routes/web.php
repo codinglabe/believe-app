@@ -1295,6 +1295,18 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
         Route::get('/supporters', [OrganizationSupportersController::class, 'index'])
             ->name('organization.supporters.index');
 
+        Route::get('/supporters/{supporter}', [OrganizationSupportersController::class, 'show'])
+            ->whereNumber('supporter')
+            ->name('organization.supporters.show');
+
+        Route::get('/supporters/{supporter}/contact', [OrganizationSupportersController::class, 'contact'])
+            ->whereNumber('supporter')
+            ->name('organization.supporters.contact');
+
+        Route::get('/supporters/export/{format}', [OrganizationSupportersController::class, 'export'])
+            ->where('format', 'csv|xlsx|pdf')
+            ->name('organization.supporters.export');
+
         Route::post(
             '/followers/{follower}/toggle-notifications',
             [FollowerController::class, 'toggleNotifications']

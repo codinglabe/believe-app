@@ -34,10 +34,12 @@ class ProfileSettingsEntryController extends Controller
             in_array($role, ['organization', 'admin', 'care_alliance'], true)
             || $user->hasAnyRole(['organization', 'admin', 'care_alliance'])
         ) {
-            return app(CheckTopicsSelected::class)->handle(
-                $request,
-                fn (Request $req) => app(ProfileController::class)->edit($req),
-            );
+            $topicsRedirect = app(CheckTopicsSelected::class)->topicSelectionRedirect($request);
+            if ($topicsRedirect !== null) {
+                return $topicsRedirect;
+            }
+
+            return app(ProfileController::class)->edit($request);
         }
 
         return redirect()->route('dashboard');

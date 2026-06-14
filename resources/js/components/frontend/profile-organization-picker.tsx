@@ -50,6 +50,8 @@ interface ProfileOrganizationPickerProps {
   actionTrigger?: boolean
   /** For <Label htmlFor> accessibility */
   triggerId?: string
+  /** Dark modal dropdown (Change primary organization). */
+  modalTrigger?: boolean
 }
 
 /**
@@ -67,6 +69,7 @@ export function ProfileOrganizationPicker({
   compactTrigger = false,
   actionTrigger = false,
   triggerId,
+  modalTrigger = false,
 }: ProfileOrganizationPickerProps) {
   const pickerTarget = variant === "primary" ? "primary" : "secondary"
 
@@ -214,24 +217,36 @@ export function ProfileOrganizationPicker({
           )}
         >
           {variant === "primary" && selectedOrganization && primarySelectedValue !== "__none__" ? (
-            <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-left">
+            <span className="flex min-w-0 flex-1 items-center gap-3 truncate text-left">
               {selectedOrganization.image ? (
                 <img
                   src={selectedOrganization.image}
                   alt=""
-                  className="h-7 w-7 shrink-0 rounded-full object-cover"
+                  className={cn(
+                    "shrink-0 rounded-full object-cover",
+                    modalTrigger ? "h-8 w-8" : "h-7 w-7",
+                  )}
                 />
               ) : (
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-xs font-semibold text-white">
+                <span
+                  className={cn(
+                    "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-xs font-semibold text-white",
+                    modalTrigger ? "h-8 w-8" : "h-7 w-7",
+                  )}
+                >
                   {selectedOrganization.name.slice(0, 1)}
                 </span>
               )}
-              <span className="truncate">{selectedOrganization.name}</span>
+              <span className={cn("truncate", modalTrigger && "text-sm font-medium uppercase tracking-wide")}>
+                {selectedOrganization.name}
+              </span>
             </span>
           ) : (
             <span className={cn("truncate text-left", compactTrigger && !actionTrigger && "text-sm")}>{triggerLabel}</span>
           )}
-          {!compactTrigger && !actionTrigger ? <ChevronsUpDown className="ml-2 h-5 w-5 shrink-0 opacity-50" /> : null}
+          {!compactTrigger && !actionTrigger ? (
+            <ChevronsUpDown className={cn("ml-2 h-4 w-4 shrink-0", modalTrigger ? "text-slate-400" : "opacity-50")} />
+          ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent

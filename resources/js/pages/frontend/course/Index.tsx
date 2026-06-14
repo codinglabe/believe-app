@@ -22,6 +22,7 @@ import { useNotification } from "@/components/frontend/notification-provider"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
   type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter"
 import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
@@ -271,6 +272,8 @@ export default function FrontendCoursesListPage({
   companionLiveCourses = [],
   companionStats = null,
 }: FrontendCoursesListPageProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const flash = usePage().props
   const { showNotification } = useNotification()
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
@@ -322,7 +325,7 @@ export default function FrontendCoursesListPage({
       if (pricing !== "all") params.pricing_type = pricing
       if (eventTypeId) params.event_type_id = eventTypeId
       if (filters.view === "catalog") params.view = "catalog"
-      if (!organizationFilterLock?.locked) {
+      if (!listingFilterLocked) {
         if (organization && organization !== "all") {
           params.organization = organization
         } else {
@@ -343,7 +346,7 @@ export default function FrontendCoursesListPage({
         onFinish: () => setIsSearching(false),
       })
     },
-    [filters.view, organizationFilterLock?.locked],
+    [filters.view, listingFilterLocked],
   )
 
   useEffect(() => {
@@ -404,6 +407,7 @@ export default function FrontendCoursesListPage({
   }
 
   const handleUnlockOrganizationFilter = () => {
+    unlockListingFilter()
     setSelectedOrganization("all")
     const params: Record<string, string> = { organization: "all", page: "1" }
     if (filters.view === "catalog") params.view = "catalog"
@@ -417,7 +421,7 @@ export default function FrontendCoursesListPage({
     selectedCauseId != null ||
     selectedPricing !== "all" ||
     selectedEventTypeId !== "" ||
-    (!organizationFilterLock?.locked && selectedOrganization !== "all")
+    (!listingFilterLocked && selectedOrganization !== "all")
 
   const shellClass =
     "relative isolate min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B0E14] dark:text-slate-100"
@@ -589,7 +593,7 @@ export default function FrontendCoursesListPage({
                     className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-5 dark:border-slate-800"
                   >
                     <LockedPrimaryOrganizationFilter
-                      lock={organizationFilterLock}
+                      lock={effectiveLock}
                       onUnlock={handleUnlockOrganizationFilter}
                     >
                     <div>
