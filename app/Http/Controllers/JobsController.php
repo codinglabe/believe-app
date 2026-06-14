@@ -9,18 +9,22 @@ use App\Models\Organization;
 use App\Models\PositionCategory;
 use App\Models\User;
 use App\Services\SeoService;
+use App\Services\SupporterPrimaryOrganizationService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class JobsController extends Controller
 {
-    public function __construct()
-    {
+    public function __construct(
+        private readonly SupporterPrimaryOrganizationService $primaryOrgService,
+    ) {
         $this->middleware(['auth', 'role:user'])->except(['index', 'volunteerOpportunities', 'getJobPositions', 'show']);
     }
 
     public function index(Request $request)
     {
+        $organizationFilterId = $this->primaryOrgService->resolveListingOrganizationFilterId($request);
+
         $jobs = JobPost::query()
             ->with(['organization', 'position'])
             ->whereIn('status', ['open', 'filled', 'closed'])
@@ -50,7 +54,7 @@ class JobsController extends Controller
             ->when($request->position_id, function ($query, $positionId) {
                 $query->where('position_id', $positionId);
             })
-            ->when($request->organization_id, function ($query, $organizationId) {
+            ->when($organizationFilterId, function ($query, $organizationId) {
                 $query->where('organization_id', $organizationId);
             })
             ->when(auth()->check(), function ($query) {
@@ -78,22 +82,28 @@ class JobsController extends Controller
             ->pluck('name', 'id')
             ->toArray();
 
+        $filters = $request->only([
+            'search',
+            'location_type',
+            'type',
+            'city',
+            'state',
+            'organization_id',
+            'position_category_id',
+            'position_id',
+        ]);
+        if (! $request->has('organization_id') && $organizationFilterId) {
+            $filters['organization_id'] = (string) $organizationFilterId;
+        }
+
         return Inertia::render('frontend/jobs/index', [
             'seo' => SeoService::forPage('jobs'),
             'jobs' => $jobs,
             'organizations' => $organizations,
             'positionCategories' => $positionCategories,
             'positions' => $positions,
-            'filters' => $request->only([
-                'search',
-                'location_type',
-                'type',
-                'city',
-                'state',
-                'organization_id',
-                'position_category_id',
-                'position_id',
-            ]),
+            'filters' => $filters,
+            'organizationFilterLock' => $this->primaryOrgService->listingFilterLockState($request),
         ]);
     }
 
@@ -115,6 +125,8 @@ class JobsController extends Controller
         $positionIds = count($positionIdsFromRequest) > 0
             ? $positionIdsFromRequest
             : $savedVolunteerPositionIds;
+
+        $organizationFilterId = $this->primaryOrgService->resolveListingOrganizationFilterId($request);
 
         $jobs = JobPost::query()
             ->with(['organization', 'position'])
@@ -146,7 +158,7 @@ class JobsController extends Controller
             ->when(count($positionIds) > 0, function ($query) use ($positionIds) {
                 $query->whereIn('position_id', $positionIds);
             })
-            ->when($request->organization_id, function ($query, $organizationId) {
+            ->when($organizationFilterId, function ($query, $organizationId) {
                 $query->where('organization_id', $organizationId);
             })
             ->when(auth()->check(), function ($query) {
@@ -186,7 +198,13 @@ class JobsController extends Controller
 
         // Resolve label for active organization filter (picker loads options via Inertia `organizationPicker`)
         $organizations = [];
-        if ($request->filled('organization_id')) {
+        if ($organizationFilterId) {
+            $oid = $organizationFilterId;
+            $n = Organization::query()->where('id', $oid)->value('name');
+            if (is_string($n) && $n !== '') {
+                $organizations[$oid] = $n;
+            }
+        } elseif ($request->filled('organization_id')) {
             $oid = (int) $request->organization_id;
             if ($oid > 0) {
                 $n = Organization::query()->where('id', $oid)->value('name');
@@ -236,6 +254,9 @@ class JobsController extends Controller
             'position_id',
         ]);
         $filters['position_ids'] = array_map(static fn (int $id) => (string) $id, $positionIds);
+        if (! $request->has('organization_id') && $organizationFilterId) {
+            $filters['organization_id'] = (string) $organizationFilterId;
+        }
 
         return Inertia::render('frontend/jobs/volunteer-opportunities', [
             'seo' => SeoService::forPage('volunteer_opportunities'),
@@ -247,6 +268,7 @@ class JobsController extends Controller
             'positionPicker' => $positionPicker,
             'organizationPicker' => $organizationPicker,
             'filters' => $filters,
+            'organizationFilterLock' => $this->primaryOrgService->listingFilterLockState($request),
         ]);
     }
 

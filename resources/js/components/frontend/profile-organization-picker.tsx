@@ -1,6 +1,6 @@
 "use client"
 
-import { router } from "@inertiajs/react"
+import { router, usePage } from "@inertiajs/react"
 import { Check, ChevronsUpDown, Search, X } from "lucide-react"
 import {
   useCallback,
@@ -46,8 +46,12 @@ interface ProfileOrganizationPickerProps {
   placeholder?: string
   className?: string
   compactTrigger?: boolean
+  /** Outline action button for card actions (e.g. Primary org "Change"). */
+  actionTrigger?: boolean
   /** For <Label htmlFor> accessibility */
   triggerId?: string
+  /** Dark modal dropdown (Change primary organization). */
+  modalTrigger?: boolean
 }
 
 /**
@@ -63,9 +67,14 @@ export function ProfileOrganizationPicker({
   placeholder = "Select organization",
   className,
   compactTrigger = false,
+  actionTrigger = false,
   triggerId,
+  modalTrigger = false,
 }: ProfileOrganizationPickerProps) {
   const pickerTarget = variant === "primary" ? "primary" : "secondary"
+  const { organizationPicker: pageOrganizationPicker } = usePage<{
+    organizationPicker?: OrganizationPickerPayload | null
+  }>().props
 
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -78,11 +87,41 @@ export function ProfileOrganizationPicker({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastRequestedSearch = useRef("")
   const firstOpenLoadRef = useRef(true)
+  const requestIdRef = useRef(0)
+  const lastAppliedPickerPage = useRef(0)
 
   const excludeParam = useMemo(() => excludeIds.filter((id) => id > 0).join(","), [excludeIds])
 
+  const applyPickerPayload = useCallback(
+    (raw: OrganizationPickerPayload, mode: "reset" | "append") => {
+      if (raw.target !== pickerTarget) return
+
+      if (mode === "reset" || raw.page <= 1) {
+        setItems(raw.items)
+      } else {
+        setItems((prev) => {
+          const seen = new Set(prev.map((x) => x.id))
+          const next = [...prev]
+          for (const row of raw.items) {
+            if (!seen.has(row.id)) {
+              seen.add(row.id)
+              next.push(row)
+            }
+          }
+          return next
+        })
+      }
+      setHasMore(raw.has_more)
+      setLoadedPage(raw.page)
+      lastRequestedSearch.current = raw.search
+      lastAppliedPickerPage.current = raw.page
+    },
+    [pickerTarget],
+  )
+
   const visitPicker = useCallback(
     (page: number, q: string, mode: "reset" | "append") => {
+      const rid = ++requestIdRef.current
       const params: Record<string, string> = {
         org_picker_page: String(page),
         org_picker_q: q,
@@ -96,44 +135,58 @@ export function ProfileOrganizationPicker({
         preserveUrl: true,
         replace: true,
         onStart: () => {
+          if (rid !== requestIdRef.current) return
           if (mode === "reset") setLoading(true)
           else setLoadingMore(true)
         },
-        onFinish: () => {
+        onCancel: () => {
+          if (rid !== requestIdRef.current) return
           setLoading(false)
           setLoadingMore(false)
         },
+        onFinish: () => {
+          if (rid !== requestIdRef.current) return
+          setLoading(false)
+          setLoadingMore(false)
+        },
+        onError: () => {
+          if (rid !== requestIdRef.current) return
+          if (mode === "reset") setItems([])
+          setHasMore(false)
+        },
         onSuccess: (pageResult) => {
+          if (rid !== requestIdRef.current) return
           const raw = (pageResult.props as { organizationPicker?: OrganizationPickerPayload | null })
             .organizationPicker
-          if (!raw || raw.target !== pickerTarget) return
-          if (mode === "reset") {
-            setItems(raw.items)
-          } else {
-            setItems((prev) => {
-              const seen = new Set(prev.map((x) => x.id))
-              const next = [...prev]
-              for (const row of raw.items) {
-                if (!seen.has(row.id)) {
-                  seen.add(row.id)
-                  next.push(row)
-                }
-              }
-              return next
-            })
+          if (!raw) {
+            if (mode === "reset") setItems([])
+            setHasMore(false)
+            return
           }
-          setHasMore(raw.has_more)
-          setLoadedPage(raw.page)
-          lastRequestedSearch.current = q
+          applyPickerPayload(raw, mode)
         },
       })
     },
-    [excludeParam, pickerTarget],
+    [applyPickerPayload, excludeParam, pickerTarget],
   )
+
+  useEffect(() => {
+    if (!open || !pageOrganizationPicker) return
+    if (pageOrganizationPicker.target !== pickerTarget) return
+    if (pageOrganizationPicker.page === lastAppliedPickerPage.current && pageOrganizationPicker.search === lastRequestedSearch.current) {
+      return
+    }
+    applyPickerPayload(
+      pageOrganizationPicker,
+      pageOrganizationPicker.page <= 1 ? "reset" : "append",
+    )
+  }, [applyPickerPayload, open, pageOrganizationPicker, pickerTarget])
 
   useEffect(() => {
     if (!open) {
       firstOpenLoadRef.current = true
+      requestIdRef.current += 1
+      lastAppliedPickerPage.current = 0
       setItems([])
       setLoadedPage(0)
       setHasMore(false)
@@ -201,32 +254,46 @@ export function ProfileOrganizationPicker({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            compactTrigger
-              ? "h-7 min-w-[10rem] flex-1 justify-start border-0 bg-transparent px-1 shadow-none ring-0 hover:bg-transparent dark:hover:bg-transparent [&_svg]:hidden font-normal text-gray-900 dark:text-gray-100"
+            actionTrigger
+              ? "h-9 shrink-0 border-purple-500/40 bg-slate-900/50 px-4 text-slate-100 shadow-sm hover:border-purple-400 hover:bg-purple-500/10"
+              : compactTrigger
+              ? "h-7 w-auto shrink-0 justify-center border-0 bg-transparent px-2 shadow-none ring-0 hover:bg-transparent dark:hover:bg-transparent [&_svg]:hidden font-normal text-gray-900 dark:text-gray-100"
               : "w-full justify-between h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200",
-            compactTrigger && !triggerLabel?.includes("…") && triggerLabel === placeholder && "text-muted-foreground",
+            compactTrigger && !actionTrigger && !triggerLabel?.includes("…") && triggerLabel === placeholder && "text-muted-foreground",
             className,
           )}
         >
           {variant === "primary" && selectedOrganization && primarySelectedValue !== "__none__" ? (
-            <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-left">
+            <span className="flex min-w-0 flex-1 items-center gap-3 truncate text-left">
               {selectedOrganization.image ? (
                 <img
                   src={selectedOrganization.image}
                   alt=""
-                  className="h-7 w-7 shrink-0 rounded-full object-cover"
+                  className={cn(
+                    "shrink-0 rounded-full object-cover",
+                    modalTrigger ? "h-8 w-8" : "h-7 w-7",
+                  )}
                 />
               ) : (
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-xs font-semibold text-white">
+                <span
+                  className={cn(
+                    "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-xs font-semibold text-white",
+                    modalTrigger ? "h-8 w-8" : "h-7 w-7",
+                  )}
+                >
                   {selectedOrganization.name.slice(0, 1)}
                 </span>
               )}
-              <span className="truncate">{selectedOrganization.name}</span>
+              <span className={cn("truncate", modalTrigger && "text-sm font-medium uppercase tracking-wide")}>
+                {selectedOrganization.name}
+              </span>
             </span>
           ) : (
-            <span className={cn("truncate text-left", compactTrigger && "text-sm")}>{triggerLabel}</span>
+            <span className={cn("truncate text-left", compactTrigger && !actionTrigger && "text-sm")}>{triggerLabel}</span>
           )}
-          {!compactTrigger ? <ChevronsUpDown className="ml-2 h-5 w-5 shrink-0 opacity-50" /> : null}
+          {!compactTrigger && !actionTrigger ? (
+            <ChevronsUpDown className={cn("ml-2 h-4 w-4 shrink-0", modalTrigger ? "text-slate-400" : "opacity-50")} />
+          ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent

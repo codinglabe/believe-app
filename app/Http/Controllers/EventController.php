@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Organization;
 use App\Services\SeoService;
+use App\Services\SupporterPrimaryOrganizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -313,10 +314,15 @@ class EventController extends BaseController
 
     public function alleventsPage(Request $request): Response
     {
+        $user = Auth::user();
         $search = $request->input('search');
         $status = $request->input('status');
         $eventTypeId = $request->input('event_type_id');
-        $organizationId = $request->input('organization_id');
+        $orgFilterId = app(SupporterPrimaryOrganizationService::class)
+            ->resolveListingOrganizationFilterId($request);
+        $organizationId = $orgFilterId !== null
+            ? (string) $orgFilterId
+            : ($request->input('organization_id') ?? 'all');
         $cityFilter = $request->input('city_filter');
         $stateFilter = $request->input('state_filter');
         $zipFilter = $request->input('zip_filter');
@@ -329,7 +335,6 @@ class EventController extends BaseController
             $sort = 'most_recent';
         }
 
-        $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
         $organizations = Organization::query()
             ->whereHas('events', function ($q) use ($user) {
@@ -341,12 +346,14 @@ class EventController extends BaseController
             ->get();
 
         $validOrgIds = $organizations->pluck('id')->map(fn ($id) => (string) $id)->all();
+        // Only reject invalid explicit URL choices — keep primary-org default even if the org has no public events yet.
         if (
-            filled($organizationId)
+            $request->has('organization_id')
+            && filled($organizationId)
             && $organizationId !== 'all'
             && ! in_array((string) $organizationId, $validOrgIds, true)
         ) {
-            $organizationId = null;
+            $organizationId = 'all';
         }
 
         // Get unique values for filters
@@ -468,6 +475,8 @@ class EventController extends BaseController
             'zipFilter' => $zipFilter,
             'dateFilter' => $dateFilter,
             'sort' => $sort,
+            'organizationFilterLock' => app(SupporterPrimaryOrganizationService::class)
+                ->listingFilterLockState($request),
         ]);
     }
 

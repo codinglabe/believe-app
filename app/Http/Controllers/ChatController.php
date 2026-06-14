@@ -44,6 +44,31 @@ class ChatController extends Controller
             return redirect('/chat');
         }
 
+        $topicId = (int) $request->query('topic', 0);
+        if ($topicId > 0) {
+            $topic = ChatTopic::query()->active()->with([
+                'chatRooms' => fn ($query) => $query->where('is_active', true)->orderBy('id'),
+            ])->find($topicId);
+
+            if ($topic) {
+                $user->interestedTopics()->syncWithoutDetaching([$topic->id]);
+
+                $room = $topic->chatRooms->firstWhere('type', 'public')
+                    ?? $topic->chatRooms->first();
+
+                if ($room) {
+                    if (! $room->members()->where('user_id', $user->id)->exists()) {
+                        $room->members()->attach($user->id);
+                        broadcast(new MemberJoined($room, $user));
+                    }
+
+                    return redirect('/chat?room='.$room->id);
+                }
+            }
+
+            return redirect('/chat');
+        }
+
         // Get user's interested topic IDs (after possible attachment above)
         $interestedTopicIds = $user->interestedTopics()->pluck('chat_topics.id')->toArray();
 

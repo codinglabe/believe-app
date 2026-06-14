@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Organization;
 use App\Models\SupporterActivity;
 use App\Models\User;
+use App\Services\OrganizationSupporterLedgerService;
 use App\Services\TimezoneService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -14,6 +15,10 @@ use Inertia\Response;
 
 class SupporterActivityController extends BaseController
 {
+    public function __construct(
+        private readonly OrganizationSupporterLedgerService $ledgerService,
+    ) {}
+
     /** @var list<string> */
     private const PERIODS = ['7', '30', 'all'];
 
@@ -99,39 +104,13 @@ class SupporterActivityController extends BaseController
         $this->authorizePermission($request, 'dashboard.read');
 
         $organization = $this->resolveOrganization($request);
-        if (!$organization) {
+        if (! $organization) {
             abort(404);
         }
 
-        $orgId = $organization->id;
-
-        $exists = SupporterActivity::where('organization_id', $orgId)
-            ->where('supporter_id', $supporterId)
-            ->exists();
-
-        if (!$exists) {
-            abort(404);
-        }
+        $detail = $this->ledgerService->supporterDetail($organization, $supporterId);
 
         $dashboardPeriod = $this->normalizePeriod($request->query('period'));
-
-        $supporter = User::findOrFail($supporterId);
-
-        $timeline = SupporterActivity::where('organization_id', $orgId)
-            ->where('supporter_id', $supporterId)
-            ->orderByDesc('created_at')
-            ->get(['id', 'event_type', 'created_at', 'amount_cents', 'believe_points'])
-            ->map(function (SupporterActivity $row) {
-                return [
-                    'id' => $row->id,
-                    'event_type' => $row->event_type,
-                    'created_at' => $row->created_at?->toIso8601String(),
-                    'money_display' => $this->formatMoneyFromCents($row->amount_cents),
-                    'believe_points' => $row->believe_points,
-                ];
-            })
-            ->values()
-            ->all();
 
         return Inertia::render('supporter-activity/show', [
             'organization' => [
@@ -139,10 +118,11 @@ class SupporterActivityController extends BaseController
                 'name' => $organization->name,
             ],
             'supporter' => [
-                'id' => $supporter->id,
-                'name' => $supporter->name,
+                'id' => (int) $detail['row']['supporter_id'],
+                'name' => (string) $detail['row']['name'],
             ],
-            'timeline' => $timeline,
+            'timeline' => $detail['timeline'],
+            'ledgerShowUrl' => route('organization.supporters.show', $supporterId),
             'isAdmin' => $request->user()->hasRole('admin'),
             'dashboardPeriod' => $dashboardPeriod,
             'periodLabels' => [

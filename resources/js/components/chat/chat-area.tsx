@@ -2,7 +2,7 @@
 
 import React from "react"
 import { callNotificationsEnabled, requestCallPermissionsPrompt } from "@/lib/call-permissions"
-import { useChat } from "@/providers/chat-provider"
+import { useChat } from "@/providers/chat-context"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
 import { UserAvatar } from "@/components/chat/user-avatar"

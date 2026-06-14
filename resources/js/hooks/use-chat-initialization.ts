@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { useChat } from "@/providers/chat-provider"
+import { useChat } from "@/providers/chat-context"
 
 interface ChatInitiation {
     seller_id: number

@@ -25,8 +25,9 @@ import {
   Info,
   MapPin,
   Plus,
+  Lock,
 } from "lucide-react"
-import { Link, useForm, usePage } from "@inertiajs/react"
+import { Link, useForm, usePage, router } from "@inertiajs/react"
 import { toast } from "sonner"
 import { Transition } from "@headlessui/react"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
@@ -44,8 +45,55 @@ import {
   type ProfileOrgOption,
 } from "@/components/frontend/profile-organization-picker"
 import { useAppearance, type Appearance } from "@/hooks/use-appearance"
-import { cn } from "@/lib/utils"
+import { cn, formatMmDdInput, isValidMmDd, normalizeMmDd } from "@/lib/utils"
 import type { SharedData } from "@/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
+
+const PRIMARY_ORG_CHANGE_REASONS = [
+  {
+    id: "more_involved",
+    title: "I am more actively involved with this organization now",
+    description: "Volunteering, attending events, or participating more frequently.",
+    reasonText:
+      "I am more actively involved with this organization now — Volunteering, attending events, or participating more frequently.",
+  },
+  {
+    id: "aligned_interests",
+    title: "This organization better aligns with my current interests or causes",
+    description: "My priorities have changed.",
+    reasonText:
+      "This organization better aligns with my current interests or causes — My priorities have changed.",
+  },
+  {
+    id: "personal_connection",
+    title: "I have a personal connection to this organization",
+    description: "Family member, friend, church, school, team, or community involvement.",
+    reasonText:
+      "I have a personal connection to this organization — Family member, friend, church, school, team, or community involvement.",
+  },
+  {
+    id: "future_benefits",
+    title: "I want my future rewards, purchases, and donations to primarily benefit this organization",
+    description: "I am intentionally choosing this organization as my primary beneficiary.",
+    reasonText:
+      "I want my future rewards, purchases, and donations to primarily benefit this organization — I am intentionally choosing this organization as my primary beneficiary.",
+  },
+  {
+    id: "other",
+    title: "Other / Prefer not to say",
+    description: "No additional explanation required.",
+    reasonText: "Other / Prefer not to say — No additional explanation required.",
+  },
+] as const
+
+type PrimaryOrgChangeReasonId = (typeof PRIMARY_ORG_CHANGE_REASONS)[number]["id"]
 
 interface AffiliatedOrg {
   id: number
@@ -70,6 +118,8 @@ interface ProfileEditPageProps {
     zipcode?: string
     religion?: string | null
     primary_organization_id?: number | null
+    primary_organization?: OrgRow | null
+    primary_organization_locked?: boolean
     secondary_organization_ids?: number[]
     unity_meeting_id?: string
     account_visibility?: "public" | "private"
@@ -91,48 +141,94 @@ interface ProfileEditPageProps {
   } | null
 }
 
+const EMPTY_PROFILE_USER: ProfileEditPageProps["user"] = {
+  id: 0,
+  name: "",
+  email: "",
+  positions: [],
+  supporter_interests: [],
+  secondary_organization_ids: [],
+  account_visibility: "public",
+  messaging_policy: "everyone",
+  preferred_theme: "system",
+  proximity_notifications_enabled: true,
+}
+
+function orgInitial(name: string) {
+  return name.trim().slice(0, 1).toUpperCase() || "O"
+}
+
 export default function ProfileEdit() {
-  const { user, availablePositions, availableSupporterInterests, religionOptions, organizations = [] } =
-    usePage<SharedData & ProfileEditPageProps>().props
+  const pageProps = usePage<SharedData & ProfileEditPageProps>().props
+  const user = pageProps.user ?? EMPTY_PROFILE_USER
+  const availablePositions = pageProps.availablePositions ?? []
+  const availableSupporterInterests = pageProps.availableSupporterInterests ?? []
+  const religionOptions = pageProps.religionOptions ?? []
+  const organizations = pageProps.organizations ?? []
+  const profileReady = Boolean(pageProps.user)
 
   const { updateAppearance } = useAppearance()
 
   const inertiaForm = useForm({
-    name: user?.name || "",
-    email: user?.email || "",
-    phone: user?.phone || "",
-    dob: user?.dob || "",
+    name: user.name || "",
+    email: user.email || "",
+    phone: user.phone || "",
+    dob: user.dob || "",
     image: null as File | null,
-    positions: user?.positions || [],
-    supporter_interests: user?.supporter_interests || [],
+    positions: user.positions ?? [],
+    supporter_interests: user.supporter_interests ?? [],
     _supporter_interests_touched: true,
-    city: user?.city || "",
-    state: user?.state || "",
-    zipcode: user?.zipcode || "",
-    religion: user?.religion || "",
-    account_visibility: (user?.account_visibility === "private" ? "private" : "public") as "public" | "private",
-    messaging_policy: (user?.messaging_policy ?? "everyone") as ProfileEditPageProps["user"]["messaging_policy"],
-    primary_organization_id: user?.primary_organization_id ?? "",
-    secondary_organization_ids: user?.secondary_organization_ids ?? [],
-    preferred_theme: ((user?.preferred_theme as Appearance) ?? "system") as Appearance,
-    proximity_notifications_enabled: user?.proximity_notifications_enabled !== false,
+    city: user.city || "",
+    state: user.state || "",
+    zipcode: user.zipcode || "",
+    religion: user.religion || "",
+    account_visibility: (user.account_visibility === "private" ? "private" : "public") as "public" | "private",
+    messaging_policy: (user.messaging_policy ?? "everyone") as ProfileEditPageProps["user"]["messaging_policy"],
+    primary_organization_id: user.primary_organization_id ?? "",
+    secondary_organization_ids: user.secondary_organization_ids ?? [],
+    preferred_theme: ((user.preferred_theme as Appearance) ?? "system") as Appearance,
+    proximity_notifications_enabled: user.proximity_notifications_enabled !== false,
   })
 
-  inertiaForm.transform((payload) => ({
-    ...payload,
-    primary_organization_id:
-      payload.primary_organization_id === "" || payload.primary_organization_id === undefined
-        ? null
-        : typeof payload.primary_organization_id === "number"
-          ? payload.primary_organization_id
-          : Number(payload.primary_organization_id),
-  }))
+  inertiaForm.transform((payload) => {
+    const next: Record<string, unknown> = {
+      ...payload,
+      dob: normalizeMmDd(String(payload.dob ?? "")),
+      primary_organization_id:
+        payload.primary_organization_id === "" || payload.primary_organization_id === undefined
+          ? null
+          : typeof payload.primary_organization_id === "number"
+            ? payload.primary_organization_id
+            : Number(payload.primary_organization_id),
+    }
+
+    if (!(payload.image instanceof File)) {
+      delete next.image
+    }
+
+    next.positions = Array.isArray(payload.positions) ? payload.positions : []
+    next.supporter_interests = Array.isArray(payload.supporter_interests) ? payload.supporter_interests : []
+    next.secondary_organization_ids = Array.isArray(payload.secondary_organization_ids)
+      ? payload.secondary_organization_ids
+      : []
+
+    return next
+  })
 
   const { data, setData, post, processing, errors, reset, recentlySuccessful } = inertiaForm
 
-  const [previewUrl, setPreviewUrl] = useState(user?.image || null)
+  const positions = data.positions ?? []
+  const supporterInterests = data.supporter_interests ?? []
+  const secondaryOrgIds = data.secondary_organization_ids ?? []
+
+  const [previewUrl, setPreviewUrl] = useState(user.image || null)
   const [copiedUnity, setCopiedUnity] = useState(false)
   const [orgCache, setOrgCache] = useState<Record<number, OrgRow>>({})
+  const [changePrimaryOpen, setChangePrimaryOpen] = useState(false)
+  const [changePrimaryOrgId, setChangePrimaryOrgId] = useState("")
+  const [changeReasonOption, setChangeReasonOption] = useState<PrimaryOrgChangeReasonId | "">("")
+  const [changingPrimary, setChangingPrimary] = useState(false)
+  const isPrimaryLocked = Boolean(user.primary_organization_locked)
 
   useEffect(() => {
     if (!user) return
@@ -157,17 +253,85 @@ export default function ProfileEdit() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync form when loaded user identity changes, not on every prop churn
   }, [user?.id])
 
+  useEffect(() => {
+    if (!user) return
+    setData("primary_organization_id", user.primary_organization_id ?? "")
+    setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
+    if (user.primary_organization) {
+      setOrgCache((prev) => ({ ...prev, [user.primary_organization!.id]: user.primary_organization! }))
+    }
+  }, [
+    user?.primary_organization_id,
+    user?.secondary_organization_ids,
+    user?.primary_organization?.id,
+  ])
+
+  useEffect(() => {
+    if (!user) return
+    setData("positions", user.positions ?? [])
+    setData("supporter_interests", user.supporter_interests ?? [])
+    setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
+  }, [user?.positions, user?.supporter_interests, user?.secondary_organization_ids, setData])
+
+  const profileUpdateErrorMessage = (errs: Record<string, string | string[]>) => {
+    const first = Object.values(errs)[0]
+    if (Array.isArray(first)) {
+      return first[0] ?? "Failed to update profile. Please check the form."
+    }
+    return typeof first === "string" ? first : "Failed to update profile. Please check the form."
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    const normalizedDob = normalizeMmDd(data.dob ?? "")
+    if (!isValidMmDd(normalizedDob)) {
+      toast.error("Enter a valid date of birth (MM/DD).")
+      return
+    }
+
+    if (!data.name.trim()) {
+      toast.error("Full name is required.")
+      return
+    }
+
+    if (!data.email.trim()) {
+      toast.error("Email address is required.")
+      return
+    }
+
+    if (!data.city.trim()) {
+      toast.error("City is required.")
+      return
+    }
+
+    if (!data.state.trim()) {
+      toast.error("State is required.")
+      return
+    }
+
+    if (!data.zipcode.trim()) {
+      toast.error("Zip code is required.")
+      return
+    }
+
+    const hasImageUpload = data.image instanceof File
+
     post(route("user.profile.update"), {
       preserveScroll: true,
-      onSuccess: () => {
+      forceFormData: hasImageUpload,
+      onSuccess: (page) => {
+        const savedUser = (page.props as ProfileEditPageProps).user
+        setData("image", null)
+        if (savedUser?.image) {
+          setPreviewUrl(savedUser.image)
+        }
         updateAppearance(data.preferred_theme)
         toast.success("Profile updated successfully!")
       },
       onError: (errs) => {
         console.error("Update errors:", errs)
-        toast.error("Failed to update profile. Please check the form.")
+        toast.error(profileUpdateErrorMessage(errs))
       },
     })
   }
@@ -221,52 +385,122 @@ export default function ProfileEdit() {
 
   const primaryOrganizationDisplay = useMemo(() => {
     if (primaryOrgIdNum === null) return null
-    return resolvedOrganizations.find((o) => o.id === primaryOrgIdNum) ?? null
-  }, [resolvedOrganizations, primaryOrgIdNum])
+    const fromList = resolvedOrganizations.find((o) => o.id === primaryOrgIdNum)
+    if (fromList) return fromList
+    if (user.primary_organization?.id === primaryOrgIdNum) {
+      return user.primary_organization
+    }
+    return null
+  }, [resolvedOrganizations, primaryOrgIdNum, user.primary_organization])
 
   const secondaryExcludeIds = useMemo(() => {
-    const ids = [...data.secondary_organization_ids]
+    const ids = [...secondaryOrgIds]
     if (primaryOrgIdNum) ids.push(primaryOrgIdNum)
     return [...new Set(ids)]
-  }, [data.secondary_organization_ids, primaryOrgIdNum])
+  }, [secondaryOrgIds, primaryOrgIdNum])
+
+  const primaryPickerExcludeIds = useMemo(() => {
+    if (primaryOrgIdNum === null) return []
+    return [primaryOrgIdNum]
+  }, [primaryOrgIdNum])
+
+  const changePrimaryExcludeIds = useMemo(() => {
+    if (primaryOrgIdNum) return [primaryOrgIdNum]
+    return []
+  }, [primaryOrgIdNum])
+
+  const changePrimarySelectedOrg = useMemo(() => {
+    if (!changePrimaryOrgId) return undefined
+    const id = Number(changePrimaryOrgId)
+    if (!Number.isFinite(id) || id <= 0) return undefined
+    return (
+      resolvedOrganizations.find((o) => o.id === id) ??
+      (user.primary_organization?.id === id ? user.primary_organization : undefined) ??
+      (primaryOrganizationDisplay?.id === id ? primaryOrganizationDisplay : undefined)
+    )
+  }, [changePrimaryOrgId, resolvedOrganizations, user.primary_organization, primaryOrganizationDisplay])
+
+  const openChangePrimaryModal = useCallback(() => {
+    setChangePrimaryOrgId(primaryOrgIdNum ? String(primaryOrgIdNum) : "")
+    setChangeReasonOption("")
+    setChangePrimaryOpen(true)
+  }, [primaryOrgIdNum])
 
   const selectedSecondaryOrganizations = useMemo(
-    () => resolvedOrganizations.filter((o) => data.secondary_organization_ids.includes(o.id)),
-    [resolvedOrganizations, data.secondary_organization_ids],
+    () => resolvedOrganizations.filter((o) => secondaryOrgIds.includes(o.id)),
+    [resolvedOrganizations, secondaryOrgIds],
   )
 
   const addSecondaryOrganization = useCallback(
     (id: number) => {
       if (primaryOrgIdNum && id === primaryOrgIdNum) return
-      if (data.secondary_organization_ids.includes(id)) return
-      setData("secondary_organization_ids", [...data.secondary_organization_ids, id])
+      if (secondaryOrgIds.includes(id)) return
+      setData("secondary_organization_ids", [...secondaryOrgIds, id])
     },
-    [data.secondary_organization_ids, primaryOrgIdNum, setData],
+    [secondaryOrgIds, primaryOrgIdNum, setData],
   )
 
   const removeSecondaryOrganization = useCallback(
     (id: number) =>
       setData(
         "secondary_organization_ids",
-        data.secondary_organization_ids.filter((x) => x !== id),
+        secondaryOrgIds.filter((x) => x !== id),
       ),
-    [data.secondary_organization_ids, setData],
+    [secondaryOrgIds, setData],
   )
 
-  const handlePrimaryOrganizationChange = useCallback(
-    (value: string) => {
-      const nextPrimary = value === "__none__" ? "" : value
-      const pid = nextPrimary ? Number(nextPrimary) : null
-      setData({
-        ...data,
-        primary_organization_id: nextPrimary === "" ? "" : nextPrimary,
-        secondary_organization_ids: pid
-          ? data.secondary_organization_ids.filter((sid) => sid !== pid)
-          : data.secondary_organization_ids,
-      })
-    },
-    [data, setData],
-  )
+  const submitPrimaryOrganizationChange = () => {
+    const reasonEntry = PRIMARY_ORG_CHANGE_REASONS.find((entry) => entry.id === changeReasonOption)
+    if (!changePrimaryOrgId || !reasonEntry) {
+      toast.error("Select an organization and a reason for the change.")
+      return
+    }
+    const newId = Number(changePrimaryOrgId)
+    if (primaryOrgIdNum && newId === primaryOrgIdNum) {
+      toast.error("Select a different organization to change your primary.")
+      return
+    }
+    const selectedOrg =
+      orgCache[newId] ??
+      resolvedOrganizations.find((o) => o.id === newId) ??
+      (user.primary_organization?.id === newId ? user.primary_organization : null)
+
+    setChangingPrimary(true)
+    router.post(
+      route("user.profile.primary-organization.change"),
+      {
+        primary_organization_id: newId,
+        reason: reasonEntry.reasonText,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => {
+          if (selectedOrg) {
+            setOrgCache((prev) => ({ ...prev, [selectedOrg.id]: selectedOrg }))
+          }
+          setData((current) => ({
+            ...current,
+            primary_organization_id: newId,
+            secondary_organization_ids: (current.secondary_organization_ids ?? []).filter((sid) => sid !== newId),
+          }))
+          setChangePrimaryOpen(false)
+          setChangeReasonOption("")
+          setChangePrimaryOrgId("")
+          toast.success("Primary organization updated.")
+          router.reload({ preserveScroll: true })
+        },
+        onError: (errs) => {
+          const msg =
+            errs.primary_organization_change ??
+            errs.reason ??
+            errs.primary_organization_id ??
+            "Could not update primary organization."
+          toast.error(String(msg))
+        },
+        onFinish: () => setChangingPrimary(false),
+      },
+    )
+  }
 
   const setPreferredTheme = useCallback(
     (mode: Appearance) => {
@@ -277,31 +511,31 @@ export default function ProfileEdit() {
   )
 
   const selectedSupporterInterestCategories = useMemo(
-    () => availableSupporterInterests.filter((c) => data.supporter_interests.includes(c.id)),
-    [availableSupporterInterests, data.supporter_interests],
+    () => availableSupporterInterests.filter((c) => supporterInterests.includes(c.id)),
+    [availableSupporterInterests, supporterInterests],
   )
 
   const remainingSupporterInterestCategories = useMemo(
-    () => availableSupporterInterests.filter((c) => !data.supporter_interests.includes(c.id)),
-    [availableSupporterInterests, data.supporter_interests],
+    () => availableSupporterInterests.filter((c) => !supporterInterests.includes(c.id)),
+    [availableSupporterInterests, supporterInterests],
   )
 
   const addSupporterInterestTag = useCallback(
     (id: number) => {
-      if (data.supporter_interests.includes(id)) return
-      setData("supporter_interests", [...data.supporter_interests, id])
+      if (supporterInterests.includes(id)) return
+      setData("supporter_interests", [...supporterInterests, id])
     },
-    [data.supporter_interests, setData],
+    [supporterInterests, setData],
   )
 
   const removeSupporterInterestTag = useCallback(
     (id: number) => {
       setData(
         "supporter_interests",
-        data.supporter_interests.filter((x) => x !== id),
+        supporterInterests.filter((x) => x !== id),
       )
     },
-    [data.supporter_interests, setData],
+    [supporterInterests, setData],
   )
 
   const sectionTitle = (icon: React.ReactNode, n: number, title: string) => (
@@ -322,6 +556,12 @@ export default function ProfileEdit() {
       title="Profile Settings"
       description="Manage your personal information, account settings, and organization affiliations."
     >
+      {!profileReady ? (
+        <div className="rounded-xl border border-indigo-500/20 bg-slate-950/60 p-8 text-center text-slate-400">
+          Loading profile…
+        </div>
+      ) : (
+        <>
       <Transition
         show={recentlySuccessful}
         enter="transition ease-in-out"
@@ -337,6 +577,7 @@ export default function ProfileEdit() {
 
       <form
         onSubmit={handleSubmit}
+        noValidate
         className="space-y-6 rounded-xl border border-indigo-500/20 bg-slate-950/60 p-4 md:p-6"
       >
         {/* 1. Personal Information */}
@@ -415,12 +656,12 @@ export default function ProfileEdit() {
                   <Input
                     id="dob"
                     type="text"
-                    value={data.dob}
-                    onChange={(e) => setData("dob", e.target.value)}
+                    inputMode="numeric"
+                    value={data.dob ?? ""}
+                    onChange={(e) => setData("dob", formatMmDdInput(e.target.value))}
                     className="border-slate-600 bg-slate-800 pl-10 text-slate-100"
                     placeholder="MM/DD"
-                    pattern="^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$"
-                    required
+                    maxLength={5}
                   />
                 </div>
                 {errors.dob && <p className="mt-1 text-sm text-red-400">{errors.dob}</p>}
@@ -534,7 +775,7 @@ export default function ProfileEdit() {
               <Label className="mb-2 block text-slate-200">Supporter Positions</Label>
               <MultiSelect
                 options={positionOptions}
-                selected={data.positions.map(String)}
+                selected={positions.map(String)}
                 onChange={(selected) => setData("positions", selected.map(Number))}
                 placeholder="Select your supporter role(s)"
               />
@@ -584,7 +825,7 @@ export default function ProfileEdit() {
                         Add another cause group
                       </label>
                       <Select
-                        key={data.supporter_interests.join(",")}
+                        key={supporterInterests.join(",")}
                         onValueChange={(v) => {
                           if (v) addSupporterInterestTag(Number(v))
                         }}
@@ -702,27 +943,220 @@ export default function ProfileEdit() {
                 <Label htmlFor="primary_organization" className="text-slate-200">
                   Primary Organization *
                 </Label>
-                <ProfileOrganizationPicker
-                  variant="primary"
-                  triggerId="primary_organization"
-                  primaryValue={
-                    data.primary_organization_id === "" || data.primary_organization_id === undefined
-                      ? "__none__"
-                      : String(data.primary_organization_id)
-                  }
-                  selectedOrganization={primaryOrganizationDisplay ?? undefined}
-                  onPrimaryChange={(value, org) => {
-                    if (org) mergeOrg(org)
-                    handlePrimaryOrganizationChange(value)
-                  }}
-                  placeholder="Select organization"
-                  className="border-slate-600 bg-slate-800 text-slate-100"
-                />
-                <p className="text-sm text-slate-400">Select the organization you primarily represent.</p>
+                {isPrimaryLocked && primaryOrganizationDisplay ? (
+                  <div className="relative overflow-hidden rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-600/[0.12] via-slate-800/90 to-blue-600/[0.12] shadow-md shadow-purple-900/20">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                    <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                      <div className="flex min-w-0 items-center gap-4">
+                        {primaryOrganizationDisplay.image ? (
+                          <img
+                            src={primaryOrganizationDisplay.image}
+                            alt=""
+                            className="h-14 w-14 shrink-0 rounded-xl object-cover ring-2 ring-white/10 shadow-sm"
+                          />
+                        ) : (
+                          <div
+                            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-lg font-bold text-white shadow-sm ring-2 ring-white/10"
+                          >
+                            {orgInitial(primaryOrganizationDisplay.name)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                              Primary organization
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[10px] font-medium text-purple-200">
+                              <Lock className="h-3 w-3" aria-hidden />
+                              Locked
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-lg font-semibold text-slate-50">
+                            {primaryOrganizationDisplay.name}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="shrink-0 border-purple-500/40 bg-slate-900/50 text-slate-100 hover:border-purple-400 hover:bg-purple-500/10"
+                        onClick={openChangePrimaryModal}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  </div>
+                ) : isPrimaryLocked ? (
+                  <div className="rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-6 text-center text-sm text-slate-400">
+                    No primary organization selected.
+                  </div>
+                ) : primaryOrganizationDisplay ? (
+                  <div className="relative overflow-hidden rounded-xl border border-purple-500/25 bg-gradient-to-br from-purple-600/[0.08] via-slate-800/80 to-blue-600/[0.08]">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                    <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                      <div className="flex min-w-0 items-center gap-4">
+                        {primaryOrganizationDisplay.image ? (
+                          <img
+                            src={primaryOrganizationDisplay.image}
+                            alt=""
+                            className="h-14 w-14 shrink-0 rounded-xl object-cover ring-2 ring-white/10"
+                          />
+                        ) : (
+                          <div
+                            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-lg font-bold text-white ring-2 ring-white/10"
+                          >
+                            {orgInitial(primaryOrganizationDisplay.name)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                            Primary organization
+                          </p>
+                          <p className="mt-1 truncate text-lg font-semibold text-slate-50">
+                            {primaryOrganizationDisplay.name}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="shrink-0 border-purple-500/40 bg-slate-900/50 text-slate-100 hover:border-purple-400 hover:bg-purple-500/10"
+                        onClick={openChangePrimaryModal}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <ProfileOrganizationPicker
+                    key={primaryPickerExcludeIds.join(",")}
+                    variant="primary"
+                    triggerId="primary_organization"
+                    excludeIds={primaryPickerExcludeIds}
+                    primaryValue="__none__"
+                    selectedOrganization={undefined}
+                    onPrimaryChange={(value, org) => {
+                      if (value === "__none__") return
+                      if (org) mergeOrg(org)
+                      setChangePrimaryOrgId(value)
+                      setChangeReasonOption("")
+                      setChangePrimaryOpen(true)
+                    }}
+                    placeholder="Select organization"
+                    className="border-slate-600 bg-slate-800 text-slate-100"
+                  />
+                )}
+                {!isPrimaryLocked && !primaryOrganizationDisplay ? (
+                  <p className="text-sm text-slate-400">Select the organization you primarily represent.</p>
+                ) : null}
                 {errors.primary_organization_id && (
                   <p className="text-sm text-red-400">{errors.primary_organization_id}</p>
                 )}
               </div>
+
+              <Dialog open={changePrimaryOpen} onOpenChange={setChangePrimaryOpen}>
+                <DialogContent
+                  className={cn(
+                    "gap-5 rounded-2xl border border-slate-700/80 bg-[#0B1120] p-8 text-slate-100 shadow-2xl sm:max-w-[640px]",
+                    "[&>button]:text-slate-400 [&>button]:hover:text-white",
+                  )}
+                >
+                  <DialogHeader className="space-y-2 text-left">
+                    <DialogTitle className="text-xl font-bold tracking-normal text-white">
+                      {primaryOrganizationDisplay ? "Change primary organization" : "Set primary organization"}
+                    </DialogTitle>
+                    <DialogDescription className="text-sm leading-relaxed text-slate-400">
+                      {primaryOrganizationDisplay
+                        ? "Select your new primary organization and choose a reason for the change."
+                        : "Select your primary organization and choose a reason for your choice."}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold text-white">Primary organization</Label>
+                      <ProfileOrganizationPicker
+                        key={changePrimaryExcludeIds.join(",")}
+                        variant="primary"
+                        triggerId="change_primary_organization"
+                        excludeIds={changePrimaryExcludeIds}
+                        primaryValue={changePrimaryOrgId || "__none__"}
+                        selectedOrganization={changePrimarySelectedOrg}
+                        onPrimaryChange={(value, org) => {
+                          if (org) mergeOrg(org)
+                          setChangePrimaryOrgId(value === "__none__" ? "" : value)
+                        }}
+                        placeholder="Select organization"
+                        modalTrigger
+                        className="h-11 rounded-lg border-slate-600/90 bg-[#0f172a] px-3 text-sm font-medium text-white hover:bg-[#131c31] focus-visible:ring-1 focus-visible:ring-blue-500/40"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label className="text-sm font-semibold text-white">
+                        Reason for change <span className="text-white">*</span>
+                      </Label>
+                      <RadioGroup
+                        value={changeReasonOption}
+                        onValueChange={(value) => setChangeReasonOption(value as PrimaryOrgChangeReasonId)}
+                        className="gap-0"
+                      >
+                        {PRIMARY_ORG_CHANGE_REASONS.map((reason) => (
+                          <label
+                            key={reason.id}
+                            htmlFor={`primary-change-reason-${reason.id}`}
+                            className="flex cursor-pointer gap-3 py-2.5"
+                          >
+                            <RadioGroupItem
+                              value={reason.id}
+                              id={`primary-change-reason-${reason.id}`}
+                              className="mt-1 h-4 w-4 shrink-0 border-slate-500 text-purple-600 data-[state=checked]:border-purple-600 data-[state=checked]:text-purple-600"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium leading-snug text-white">{reason.title}</p>
+                              <p className="mt-0.5 text-sm leading-snug text-slate-400">{reason.description}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </RadioGroup>
+                    </div>
+
+                    <div className="flex gap-3 rounded-lg border border-blue-500/30 bg-blue-500/[0.08] px-4 py-3">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-400" aria-hidden />
+                      <p className="text-sm leading-relaxed text-slate-400">
+                        <span className="font-semibold text-white">Important:</span> Changing your Primary
+                        Organization will affect where future supporter benefits, purchases, rewards, and default
+                        donations are directed. Previous donations and transactions will remain with the organizations
+                        that originally received them.
+                      </p>
+                    </div>
+                  </div>
+
+                  <DialogFooter className="gap-3 pt-1 sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-10 px-4 text-white hover:bg-transparent hover:text-white/80"
+                      onClick={() => setChangePrimaryOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={
+                        changingPrimary ||
+                        !changePrimaryOrgId ||
+                        !changeReasonOption ||
+                        (primaryOrgIdNum !== null && Number(changePrimaryOrgId) === primaryOrgIdNum)
+                      }
+                      className="h-10 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-6 text-sm font-medium text-white shadow-none hover:from-purple-500 hover:to-blue-500 disabled:opacity-50"
+                      onClick={submitPrimaryOrganizationChange}
+                    >
+                      {changingPrimary ? "Saving..." : "Save change"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               <div className="space-y-2">
                 <Label className="text-slate-200">Secondary Organizations</Label>
@@ -869,6 +1303,8 @@ export default function ProfileEdit() {
           </Button>
         </div>
       </form>
+        </>
+      )}
     </ProfileLayout>
   )
 }

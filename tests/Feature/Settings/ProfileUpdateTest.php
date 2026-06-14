@@ -4,14 +4,14 @@ use App\Models\User;
 
 uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
 
-test('profile page is displayed', function () {
-    $user = User::factory()->create();
+test('settings profile redirects supporters to profile edit', function () {
+    $user = User::factory()->create(['role' => 'user']);
 
     $response = $this
         ->actingAs($user)
         ->get('/settings/profile');
 
-    $response->assertOk();
+    $response->assertRedirect(route('user.profile.edit'));
 });
 
 test('profile information can be updated', function () {

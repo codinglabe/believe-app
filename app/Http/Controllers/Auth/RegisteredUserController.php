@@ -7,6 +7,7 @@ use App\Models\BridgeIntegration;
 use App\Models\SupporterPosition;
 use App\Models\User;
 use App\Services\BridgeService;
+use App\Services\SupporterPrimaryOrganizationService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,8 +23,10 @@ class RegisteredUserController extends Controller
 {
     protected BridgeService $bridgeService;
 
-    public function __construct(BridgeService $bridgeService)
-    {
+    public function __construct(
+        BridgeService $bridgeService,
+        private readonly SupporterPrimaryOrganizationService $primaryOrgService,
+    ) {
         $this->bridgeService = $bridgeService;
     }
 
@@ -52,10 +55,11 @@ class RegisteredUserController extends Controller
         ]);
 
         $referredBy = null;
+        $referrer = null;
         if ($request->filled('referralCode')) {
-            $refUser = User::where('referral_code', $request->referralCode)->first();
-            if ($refUser) {
-                $referredBy = $refUser->id;
+            $referrer = User::where('referral_code', $request->referralCode)->first();
+            if ($referrer) {
+                $referredBy = $referrer->id;
             }
         }
 
@@ -80,6 +84,10 @@ class RegisteredUserController extends Controller
         // Positions সেভ করুন
         if ($request->has('positions')) {
             $user->supporterPositions()->sync($request->positions);
+        }
+
+        if ($referrer !== null) {
+            $this->primaryOrgService->assignLockedPrimaryFromReferrer($user, $referrer);
         }
 
         event(new Registered($user));
