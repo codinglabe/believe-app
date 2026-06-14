@@ -35,6 +35,10 @@ export function useOrganizationListingFilterLock(lock?: OrganizationFilterLock |
     setBrowseAll(true)
   }, [])
 
+  const lockListingFilter = useCallback(() => {
+    setBrowseAll(false)
+  }, [])
+
   const effectiveLock = useMemo((): OrganizationFilterLock | null => {
     if (!lock) return null
     if (browseAll) {
@@ -48,6 +52,7 @@ export function useOrganizationListingFilterLock(lock?: OrganizationFilterLock |
   return {
     browseAll,
     unlockListingFilter,
+    lockListingFilter,
     effectiveLock,
     listingFilterLocked,
   }

@@ -1,6 +1,6 @@
 "use client"
 
-import { router } from "@inertiajs/react"
+import { router, usePage } from "@inertiajs/react"
 import { Check, ChevronsUpDown, Search, X } from "lucide-react"
 import {
   useCallback,
@@ -72,6 +72,9 @@ export function ProfileOrganizationPicker({
   modalTrigger = false,
 }: ProfileOrganizationPickerProps) {
   const pickerTarget = variant === "primary" ? "primary" : "secondary"
+  const { organizationPicker: pageOrganizationPicker } = usePage<{
+    organizationPicker?: OrganizationPickerPayload | null
+  }>().props
 
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -84,11 +87,41 @@ export function ProfileOrganizationPicker({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastRequestedSearch = useRef("")
   const firstOpenLoadRef = useRef(true)
+  const requestIdRef = useRef(0)
+  const lastAppliedPickerPage = useRef(0)
 
   const excludeParam = useMemo(() => excludeIds.filter((id) => id > 0).join(","), [excludeIds])
 
+  const applyPickerPayload = useCallback(
+    (raw: OrganizationPickerPayload, mode: "reset" | "append") => {
+      if (raw.target !== pickerTarget) return
+
+      if (mode === "reset" || raw.page <= 1) {
+        setItems(raw.items)
+      } else {
+        setItems((prev) => {
+          const seen = new Set(prev.map((x) => x.id))
+          const next = [...prev]
+          for (const row of raw.items) {
+            if (!seen.has(row.id)) {
+              seen.add(row.id)
+              next.push(row)
+            }
+          }
+          return next
+        })
+      }
+      setHasMore(raw.has_more)
+      setLoadedPage(raw.page)
+      lastRequestedSearch.current = raw.search
+      lastAppliedPickerPage.current = raw.page
+    },
+    [pickerTarget],
+  )
+
   const visitPicker = useCallback(
     (page: number, q: string, mode: "reset" | "append") => {
+      const rid = ++requestIdRef.current
       const params: Record<string, string> = {
         org_picker_page: String(page),
         org_picker_q: q,
@@ -102,44 +135,58 @@ export function ProfileOrganizationPicker({
         preserveUrl: true,
         replace: true,
         onStart: () => {
+          if (rid !== requestIdRef.current) return
           if (mode === "reset") setLoading(true)
           else setLoadingMore(true)
         },
-        onFinish: () => {
+        onCancel: () => {
+          if (rid !== requestIdRef.current) return
           setLoading(false)
           setLoadingMore(false)
         },
+        onFinish: () => {
+          if (rid !== requestIdRef.current) return
+          setLoading(false)
+          setLoadingMore(false)
+        },
+        onError: () => {
+          if (rid !== requestIdRef.current) return
+          if (mode === "reset") setItems([])
+          setHasMore(false)
+        },
         onSuccess: (pageResult) => {
+          if (rid !== requestIdRef.current) return
           const raw = (pageResult.props as { organizationPicker?: OrganizationPickerPayload | null })
             .organizationPicker
-          if (!raw || raw.target !== pickerTarget) return
-          if (mode === "reset") {
-            setItems(raw.items)
-          } else {
-            setItems((prev) => {
-              const seen = new Set(prev.map((x) => x.id))
-              const next = [...prev]
-              for (const row of raw.items) {
-                if (!seen.has(row.id)) {
-                  seen.add(row.id)
-                  next.push(row)
-                }
-              }
-              return next
-            })
+          if (!raw) {
+            if (mode === "reset") setItems([])
+            setHasMore(false)
+            return
           }
-          setHasMore(raw.has_more)
-          setLoadedPage(raw.page)
-          lastRequestedSearch.current = q
+          applyPickerPayload(raw, mode)
         },
       })
     },
-    [excludeParam, pickerTarget],
+    [applyPickerPayload, excludeParam, pickerTarget],
   )
+
+  useEffect(() => {
+    if (!open || !pageOrganizationPicker) return
+    if (pageOrganizationPicker.target !== pickerTarget) return
+    if (pageOrganizationPicker.page === lastAppliedPickerPage.current && pageOrganizationPicker.search === lastRequestedSearch.current) {
+      return
+    }
+    applyPickerPayload(
+      pageOrganizationPicker,
+      pageOrganizationPicker.page <= 1 ? "reset" : "append",
+    )
+  }, [applyPickerPayload, open, pageOrganizationPicker, pickerTarget])
 
   useEffect(() => {
     if (!open) {
       firstOpenLoadRef.current = true
+      requestIdRef.current += 1
+      lastAppliedPickerPage.current = 0
       setItems([])
       setLoadedPage(0)
       setHasMore(false)
