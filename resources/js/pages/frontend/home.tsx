@@ -17,7 +17,7 @@ const DEFAULT_SUBTITLE =
 interface PageProps {
   seo?: { title: string; description?: string; share_image?: string }
   homeHero?: { headline: string; subtitle: string }
-}
+  }
 
 export default function HomePage() {
   const { seo, homeHero } = usePage<PageProps>().props
@@ -31,7 +31,7 @@ export default function HomePage() {
       ? homeHero.subtitle
       : DEFAULT_SUBTITLE
 
-  return (
+    return (
     <FrontendLayout>
       <PageHead
         title={seo?.title ?? "Believe In Unity — One Platform for Nonprofit Impact"}
@@ -48,7 +48,7 @@ export default function HomePage() {
         <LandingSteps />
         <LandingSocialProof />
         <LandingFinalCta />
-      </div>
+            </div>
     </FrontendLayout>
   )
 }

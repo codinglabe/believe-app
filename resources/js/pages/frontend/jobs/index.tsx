@@ -20,6 +20,11 @@ import {
 import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge";
 import { Badge } from "@/components/frontend/ui/badge";
 import axios from "axios";
+import {
+  LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter";
 
 interface JobPost {
   id: number;
@@ -72,6 +77,7 @@ interface JobsIndexProps {
         organization_id?: string;
         position_id?: string;
     };
+  organizationFilterLock?: OrganizationFilterLock | null;
   auth?: {
     user: {
       role: string;
@@ -79,7 +85,9 @@ interface JobsIndexProps {
   };
 }
 
-export default function JobsIndex({ seo, jobs, organizations, positionCategories,positions: initialPositions, filters, auth }: JobsIndexProps) {
+export default function JobsIndex({ seo, jobs, organizations, positionCategories,positions: initialPositions, filters, organizationFilterLock, auth }: JobsIndexProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
     const [jobType, setJobType] = useState(filters.type || '');
@@ -96,17 +104,20 @@ const [positions, setPositions] = useState<Record<string, string>>({});
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(true);
-      router.get('/jobs', {
+      const query: Record<string, string | number> = {
         search,
         location_type: locationType,
         type: jobType,
         city,
-          state,
+        state,
         position_category_id: positionCategoryId,
-        organization_id: organizationId,
-            position_id: positionId,
-        page: currentPage, // Use currentPage state
-      }, {
+        position_id: positionId,
+        page: currentPage,
+      };
+      if (!listingFilterLocked) {
+        query.organization_id = organizationId;
+      }
+      router.get('/jobs', query, {
         preserveState: true,
         preserveScroll: true,
         onFinish: () => setLoading(false),
@@ -114,7 +125,7 @@ const [positions, setPositions] = useState<Record<string, string>>({});
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, locationType, jobType, city, state, positionCategoryId, organizationId, positionId, currentPage]); // Add currentPage to dependencies
+  }, [search, locationType, jobType, city, state, positionCategoryId, organizationId, positionId, currentPage, listingFilterLocked]);
 
     // Add this effect to load positions when category changes
 // useEffect(() => {
@@ -463,22 +474,32 @@ const [positions, setPositions] = useState<Record<string, string>>({});
                   )}
 
                   {/* Organization Filter */}
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      Organization
-                    </label>
-                    <Select value={organizationId || undefined} onValueChange={(value) => setOrganizationId(value || '')}>
-                      <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
-                        <SelectValue placeholder="All Organizations" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(organizations).map(([id, name]) => (
-                          <SelectItem key={id} value={id}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <LockedPrimaryOrganizationFilter
+                    lock={effectiveLock}
+                    onUnlock={() => {
+                      unlockListingFilter()
+                      setOrganizationId("all")
+                      router.get(route("jobs.index"), { organization_id: "all" }, { preserveState: false })
+                    }}
+                  >
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        Organization
+                      </label>
+                      <Select value={organizationId || "all"} onValueChange={(value) => setOrganizationId(value === "all" ? "all" : value)}>
+                        <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
+                          <SelectValue placeholder="All Organizations" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Organizations</SelectItem>
+                          {Object.entries(organizations).map(([id, name]) => (
+                            <SelectItem key={id} value={id}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </LockedPrimaryOrganizationFilter>
 
                   {/* Location Filters */}
                   <div className="space-y-4">

@@ -12,6 +12,7 @@ use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
 use App\Services\SeoService;
+use App\Services\SupporterPrimaryOrganizationService;
 use App\Support\ConnectionHubType;
 use App\Support\SessionDurationMinutes;
 use Illuminate\Http\Request;
@@ -30,6 +31,9 @@ class CourseController extends BaseController
      */
     public function publicIndex(Request $request)
     {
+        $primaryOrgService = app(SupporterPrimaryOrganizationService::class);
+        $listingOrgUserId = $primaryOrgService->resolveListingCourseOwnerUserId($request);
+
         $filters = $request->only([
             'search',
             'topic_id',
@@ -41,6 +45,15 @@ class CourseController extends BaseController
             'cause_id',
             'view',
         ]);
+
+        if (! $request->has('organization') && $listingOrgUserId !== null) {
+            $defaultSlug = $primaryOrgService->defaultOrganizationFilterSlug($request->user());
+            if ($defaultSlug) {
+                $filters['organization'] = $defaultSlug;
+            }
+        } elseif ($request->has('organization')) {
+            $filters['organization'] = $request->input('organization');
+        }
 
         if (isset($filters['view'])) {
             $view = strtolower(trim((string) $filters['view']));
@@ -110,12 +123,8 @@ class CourseController extends BaseController
                     $query->where('event_type_id', $filters['event_type_id']);
                 }
             )
-            ->when($filters['organization'] ?? null, function ($query, $organization) {
-                if ($organization !== 'all') {
-                    $query->whereHas('organization', function ($query) use ($organization) {
-                        $query->where('slug', $organization);
-                    });
-                }
+            ->when($listingOrgUserId !== null, function ($query) use ($listingOrgUserId) {
+                $query->where('organization_id', $listingOrgUserId);
             })
             ->when($filters['format'] ?? null, function ($query, $format) {
                 if ($format !== 'all') {
@@ -214,13 +223,14 @@ class CourseController extends BaseController
         $learningStats = null;
 
         if (($filters['type'] ?? null) === 'learning') {
-            $learningTopicCounts = $this->connectionHubEventTypeCountsFor('learning');
+            $learningTopicCounts = $this->connectionHubEventTypeCountsFor('learning', $listingOrgUserId);
 
             $today = now()->toDateString();
 
             // “Live Learning Now”: listings that have started and not ended (same window as public table “Active”).
             $liveLearning = Course::query()
                 ->where('type', 'learning')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where('start_date', '<=', $today)
                 ->where(function ($q) use ($today) {
                     $q->whereNull('end_date')
@@ -242,6 +252,7 @@ class CourseController extends BaseController
             // “Featured” learning: upcoming or in date window (same logic as events hub featured strip).
             $learningFeatured = Course::query()
                 ->where('type', 'learning')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where(function ($q) use ($today) {
                     $q->where('start_date', '>=', $today)
                         ->orWhere(function ($q2) use ($today) {
@@ -261,6 +272,7 @@ class CourseController extends BaseController
             if ($learningFeatured->isEmpty()) {
                 $learningFeatured = Course::query()
                     ->where('type', 'learning')
+                    ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                     ->with(['creator', 'topic', 'organization.organization'])
                     ->withCount(['enrollmentsCount as enrolled_count'])
                     ->orderBy('start_date', 'desc')
@@ -274,7 +286,10 @@ class CourseController extends BaseController
             }
             $learningFeaturedCourses = $learningFeatured;
 
-            $learningCourseIds = Course::where('type', 'learning')->pluck('id');
+            $learningCourseIds = Course::query()
+                ->where('type', 'learning')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
+                ->pluck('id');
 
             if ($learningCourseIds->isEmpty()) {
                 $learningStats = [
@@ -292,9 +307,13 @@ class CourseController extends BaseController
 
                 $learningStats = [
                     'active_learners' => $activeLearners,
-                    'courses_available' => (int) Course::where('type', 'learning')->count(),
+                    'courses_available' => (int) Course::query()
+                        ->where('type', 'learning')
+                        ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
+                        ->count(),
                     'expert_mentors' => (int) DB::table('courses')
                         ->where('type', 'learning')
+                        ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                         ->selectRaw('count(distinct user_id) as c')
                         ->value('c'),
                     'lessons_completed' => (int) Enrollment::query()
@@ -314,12 +333,13 @@ class CourseController extends BaseController
         $companionStats = null;
 
         if (($filters['type'] ?? null) === 'companion') {
-            $companionEventTypeCounts = $this->connectionHubEventTypeCountsFor('companion');
+            $companionEventTypeCounts = $this->connectionHubEventTypeCountsFor('companion', $listingOrgUserId);
 
             $today = now()->toDateString();
 
             $companionFeatured = Course::query()
                 ->where('type', 'companion')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where(function ($q) use ($today) {
                     $q->where('start_date', '>=', $today)
                         ->orWhere(function ($q2) use ($today) {
@@ -339,6 +359,7 @@ class CourseController extends BaseController
             if ($companionFeatured->isEmpty()) {
                 $companionFeatured = Course::query()
                     ->where('type', 'companion')
+                    ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                     ->with(['creator', 'eventType', 'organization.organization'])
                     ->withCount(['enrollmentsCount as enrolled_count'])
                     ->orderBy('start_date', 'desc')
@@ -354,6 +375,7 @@ class CourseController extends BaseController
 
             $companionLive = Course::query()
                 ->where('type', 'companion')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where('start_date', '<=', $today)
                 ->where(function ($q) use ($today) {
                     $q->whereNull('end_date')
@@ -371,7 +393,10 @@ class CourseController extends BaseController
             }
             $companionLiveCourses = $companionLive;
 
-            $companionCourseIds = Course::where('type', 'companion')->pluck('id');
+            $companionCourseIds = Course::query()
+                ->where('type', 'companion')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
+                ->pluck('id');
 
             if ($companionCourseIds->isEmpty()) {
                 $companionStats = [
@@ -399,6 +424,7 @@ class CourseController extends BaseController
                         ->count(),
                     'companion_volunteers' => (int) DB::table('courses')
                         ->where('type', 'companion')
+                        ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                         ->selectRaw('count(distinct user_id) as c')
                         ->value('c'),
                 ];
@@ -411,7 +437,7 @@ class CourseController extends BaseController
         $eventsStats = null;
 
         if (($filters['type'] ?? null) === 'events') {
-            $eventsEventTypeCounts = $this->connectionHubEventTypeCountsFor('events');
+            $eventsEventTypeCounts = $this->connectionHubEventTypeCountsFor('events', $listingOrgUserId);
 
             $today = now()->toDateString();
 
@@ -419,6 +445,7 @@ class CourseController extends BaseController
             // fall back to the most recent event listings so the hub isn’t empty when data exists.
             $featured = Course::query()
                 ->where('type', 'events')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where(function ($q) use ($today) {
                     $q->where('start_date', '>=', $today)
                         ->orWhere(function ($q2) use ($today) {
@@ -438,6 +465,7 @@ class CourseController extends BaseController
             if ($featured->isEmpty()) {
                 $featured = Course::query()
                     ->where('type', 'events')
+                    ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                     ->with(['creator', 'eventType', 'organization.organization'])
                     ->withCount(['enrollmentsCount as enrolled_count'])
                     ->orderBy('start_date', 'desc')
@@ -453,6 +481,7 @@ class CourseController extends BaseController
 
             $live = Course::query()
                 ->where('type', 'events')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where('start_date', '<=', $today)
                 ->where(function ($q) use ($today) {
                     $q->whereNull('end_date')
@@ -470,7 +499,10 @@ class CourseController extends BaseController
             }
             $eventsLiveCourses = $live;
 
-            $eventCourseIds = Course::where('type', 'events')->pluck('id');
+            $eventCourseIds = Course::query()
+                ->where('type', 'events')
+                ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
+                ->pluck('id');
 
             if ($eventCourseIds->isEmpty()) {
                 $eventsStats = [
@@ -480,12 +512,17 @@ class CourseController extends BaseController
                     'lives_impacted' => 0,
                 ];
             } else {
-                $upcomingEvents = (int) Course::where('type', 'events')
+                $upcomingEvents = (int) Course::query()
+                    ->where('type', 'events')
+                    ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                     ->where('start_date', '>', $today)
                     ->count();
 
                 $eventsStats = [
-                    'events_hosted' => (int) Course::where('type', 'events')->count(),
+                    'events_hosted' => (int) Course::query()
+                        ->where('type', 'events')
+                        ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
+                        ->count(),
                     'total_attendees' => (int) Enrollment::query()
                         ->whereIn('course_id', $eventCourseIds)
                         ->count(),
@@ -524,6 +561,7 @@ class CourseController extends BaseController
             'eventsFeaturedCourses' => $eventsFeaturedCourses->values()->all(),
             'eventsLiveCourses' => $eventsLiveCourses->values()->all(),
             'eventsStats' => $eventsStats,
+            'organizationFilterLock' => $primaryOrgService->listingFilterLockState($request, 'organization'),
         ]);
     }
 
@@ -1494,7 +1532,7 @@ class CourseController extends BaseController
      * @param  string  $courseType  `companion`, `learning`, or `events` — must match `courses.type`
      * @return array<int, array{id: int, name: string, count: int}>
      */
-    protected function connectionHubEventTypeCountsFor(string $courseType): array
+    protected function connectionHubEventTypeCountsFor(string $courseType, ?int $listingOrgUserId = null): array
     {
         $alias = match ($courseType) {
             'companion' => 'companion_count',
@@ -1508,8 +1546,11 @@ class CourseController extends BaseController
         return EventType::query()
             ->where('is_active', true)
             ->when($courseType === 'companion', fn ($q) => $q->where('category', 'like', $prefix.'%'))
-            ->withCount(['courses as '.$alias => function ($q) use ($courseType) {
+            ->withCount(['courses as '.$alias => function ($q) use ($courseType, $listingOrgUserId) {
                 $q->where('type', $courseType);
+                if ($listingOrgUserId !== null) {
+                    $q->where('organization_id', $listingOrgUserId);
+                }
             }])
             ->orderByDesc($alias)
             ->orderBy('category')

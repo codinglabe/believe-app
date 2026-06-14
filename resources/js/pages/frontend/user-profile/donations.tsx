@@ -280,11 +280,7 @@ export default function ProfileDonations() {
                         <div className="min-w-0">
                           <p className="text-xs text-gray-500 dark:text-gray-400">Date</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                            {new Date(donation.date).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
+                            {donation.date}
                           </p>
                         </div>
                       </div>

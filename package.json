@@ -10,6 +10,7 @@
         "build": "vite build && node scripts/stamp-pwa-version.mjs",
         "build:ssr": "vite build && vite build --ssr",
         "dev": "vite",
+        "dev:clean": "node scripts/clear-vite-cache.mjs && vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",

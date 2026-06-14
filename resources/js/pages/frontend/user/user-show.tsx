@@ -1158,6 +1158,41 @@ export default function UserPage({
                         </div>
                       )}
 
+                      {(user.primary_organization || (user.followed_organizations && user.followed_organizations.length > 0)) && (
+                        <div className="mb-6 space-y-4">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Organization affiliation</h3>
+                          {user.primary_organization && (
+                            <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-4">
+                              <p className="text-sm text-gray-500 dark:text-gray-400">Primary organization</p>
+                              <p className="font-medium text-gray-900 dark:text-white">{user.primary_organization.name}</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Badge className="bg-purple-600/20 text-purple-300 border border-purple-500/30">Primary</Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  Locked: {user.primary_organization_locked ? 'Yes' : 'No'}
+                                </Badge>
+                              </div>
+                            </div>
+                          )}
+                          {user.followed_organizations && user.followed_organizations.length > 0 && (
+                            <div>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Organizations followed</p>
+                              <div className="flex flex-wrap gap-2">
+                                {user.followed_organizations.map((org: { id: number; name: string; organization_status?: string }) => (
+                                  <Badge
+                                    key={org.id}
+                                    variant="outline"
+                                    className="capitalize border-gray-300 dark:border-white/20"
+                                  >
+                                    {org.name}
+                                    {org.organization_status ? ` (${org.organization_status})` : ''}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* User Details */}
                       <div className="space-y-4 border-t border-gray-200 dark:border-white/10 pt-6">
                         {user.email && (

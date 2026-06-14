@@ -20,6 +20,11 @@ import { Badge } from "@/components/ui/badge"
 import { router, usePage, Link } from "@inertiajs/react"
 import { useNotification } from "@/components/frontend/notification-provider"
 import { PageHead } from "@/components/frontend/PageHead"
+import {
+  LockedPrimaryOrganizationFilter,
+  useOrganizationListingFilterLock,
+  type OrganizationFilterLock,
+} from "@/components/frontend/locked-primary-organization-filter"
 import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 import type { ConnectionHubType } from "@/lib/connection-hub-type"
 import { CauseBadge, type CauseBadgeCause } from "@/components/frontend/cause-badge"
@@ -181,6 +186,7 @@ interface FrontendCoursesListPageProps {
   companionFeaturedCourses?: EventsHubCourse[]
   companionLiveCourses?: EventsHubCourse[]
   companionStats?: CompanionHubStats | null
+  organizationFilterLock?: OrganizationFilterLock | null
 }
 
 function stripHtmlToText(html: string, maxLen = 140): string {
@@ -245,10 +251,12 @@ function formatCategoryFilterLabel(et: EventType): string {
 export default function FrontendCoursesListPage({
   seo,
   courses: initialCourses,
+  organizations = [],
   causesForFilter = [],
   eventTypes = [],
   companionEventTypes = [],
   filters,
+  organizationFilterLock,
   learningTopicCounts = [],
   learningExploreUsesEventTypes = false,
   learningSpotlightCourses = [],
@@ -264,6 +272,8 @@ export default function FrontendCoursesListPage({
   companionLiveCourses = [],
   companionStats = null,
 }: FrontendCoursesListPageProps) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+    useOrganizationListingFilterLock(organizationFilterLock)
   const flash = usePage().props
   const { showNotification } = useNotification()
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
@@ -273,6 +283,7 @@ export default function FrontendCoursesListPage({
   )
   const [selectedPricing, setSelectedPricing] = useState(filters.pricing_type || "all")
   const [selectedEventTypeId, setSelectedEventTypeId] = useState(filters.event_type_id || "")
+  const [selectedOrganization, setSelectedOrganization] = useState(filters.organization || "all")
   const [isSearching, setIsSearching] = useState(false)
   const [showFilters, setShowFilters] = useState(true)
   /** Avoid Inertia remount + preserveState merge right after load (causes stale UI / scroll glitches). */
@@ -287,6 +298,10 @@ export default function FrontendCoursesListPage({
     setSelectedEventTypeId(filters.event_type_id || "")
   }, [filters.event_type_id])
 
+  useEffect(() => {
+    setSelectedOrganization(filters.organization || "all")
+  }, [filters.organization])
+
   /** Full navigation from another route often keeps scroll position; reset once per mount. */
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
@@ -299,6 +314,7 @@ export default function FrontendCoursesListPage({
       causeId: number | null,
       pricing: string,
       eventTypeId: string,
+      organization: string,
     ) => {
       setIsSearching(true)
 
@@ -309,6 +325,13 @@ export default function FrontendCoursesListPage({
       if (pricing !== "all") params.pricing_type = pricing
       if (eventTypeId) params.event_type_id = eventTypeId
       if (filters.view === "catalog") params.view = "catalog"
+      if (!listingFilterLocked) {
+        if (organization && organization !== "all") {
+          params.organization = organization
+        } else {
+          params.organization = "all"
+        }
+      }
 
       const urlParams = new URLSearchParams(window.location.search)
       const perPage = urlParams.get("per_page")
@@ -323,7 +346,7 @@ export default function FrontendCoursesListPage({
         onFinish: () => setIsSearching(false),
       })
     },
-    [filters.view],
+    [filters.view, listingFilterLocked],
   )
 
   useEffect(() => {
@@ -332,11 +355,11 @@ export default function FrontendCoursesListPage({
       return
     }
     const timer = setTimeout(() => {
-      performSearch(searchQuery, selectedType, selectedCauseId, selectedPricing, selectedEventTypeId)
+      performSearch(searchQuery, selectedType, selectedCauseId, selectedPricing, selectedEventTypeId, selectedOrganization)
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedType, selectedCauseId, selectedPricing, selectedEventTypeId, performSearch])
+  }, [searchQuery, selectedType, selectedCauseId, selectedPricing, selectedEventTypeId, selectedOrganization, performSearch])
 
   useEffect(() => {
     if (flash?.success) {
@@ -379,7 +402,17 @@ export default function FrontendCoursesListPage({
     setSelectedCauseId(null)
     setSelectedPricing("all")
     setSelectedEventTypeId("")
+    setSelectedOrganization("all")
     router.get("/courses", {}, { preserveScroll: false, replace: true, preserveState: false })
+  }
+
+  const handleUnlockOrganizationFilter = () => {
+    unlockListingFilter()
+    setSelectedOrganization("all")
+    const params: Record<string, string> = { organization: "all", page: "1" }
+    if (filters.view === "catalog") params.view = "catalog"
+    if (selectedType !== "all") params.type = selectedType
+    router.get("/courses", params, { preserveScroll: true, preserveState: false, replace: true })
   }
 
   const hasActiveFilters =
@@ -387,7 +420,8 @@ export default function FrontendCoursesListPage({
     selectedType !== "all" ||
     selectedCauseId != null ||
     selectedPricing !== "all" ||
-    selectedEventTypeId !== ""
+    selectedEventTypeId !== "" ||
+    (!listingFilterLocked && selectedOrganization !== "all")
 
   const shellClass =
     "relative isolate min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B0E14] dark:text-slate-100"
@@ -556,8 +590,33 @@ export default function FrontendCoursesListPage({
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.25 }}
-                    className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-slate-800"
+                    className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-5 dark:border-slate-800"
                   >
+                    <LockedPrimaryOrganizationFilter
+                      lock={effectiveLock}
+                      onUnlock={handleUnlockOrganizationFilter}
+                    >
+                    <div>
+                      <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        Organization
+                      </Label>
+                      <select
+                        value={selectedOrganization}
+                        onChange={(e) => setSelectedOrganization(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="all">All Organizations</option>
+                        {organizations
+                          .filter((org) => org.slug)
+                          .map((org) => (
+                            <option key={org.id} value={org.slug!}>
+                              {org.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    </LockedPrimaryOrganizationFilter>
+
                     <div>
                       <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
                         Type

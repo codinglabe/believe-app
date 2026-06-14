@@ -6,10 +6,22 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
     optimizeDeps: {
+        // Crawl lazy Inertia pages up front so visiting a route doesn't trigger "optimized dependencies changed. reloading".
+        holdUntilCrawlEnd: true,
+        entries: [
+            'resources/js/app.tsx',
+            'resources/js/pages/**/*.tsx',
+            'resources/js/components/**/*.tsx',
+        ],
         include: [
             'obs-websocket-js',
             'prettier/standalone',
             'prettier/plugins/html',
+            'sonner',
+            '@headlessui/react',
+            '@radix-ui/react-radio-group',
+            '@radix-ui/react-tooltip',
+            'cmdk',
         ],
     },
     build: {
@@ -31,7 +43,7 @@ export default defineConfig({
     },
     resolve: {
         alias: {
-            // '@': resolve(__dirname, 'resources/js'),
+            '@': resolve(__dirname, 'resources/js'),
             'ziggy-js': resolve(__dirname, 'vendor/tightenco/ziggy'),
         },
     },

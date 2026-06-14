@@ -9,6 +9,7 @@ use App\Models\CommunityVideoShare;
 use App\Models\CommunityVideoView;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\SupporterPrimaryOrganizationService;
 use App\Services\YouTubeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -28,6 +29,13 @@ class CommunityVideosController extends Controller
         $search = $request->input('search', '');
         $tab = $request->input('tab', 'latest');
         $org = $request->input('org', 'all');
+        $orgFilterId = app(SupporterPrimaryOrganizationService::class)
+            ->resolveListingOrganizationFilterId($request, 'org');
+        if ($orgFilterId !== null) {
+            $org = (string) $orgFilterId;
+        } elseif (! $request->has('org')) {
+            $org = 'all';
+        }
         $hub = $request->input('hub', 'all');
         $hubNormalized = 'all';
 
@@ -244,6 +252,8 @@ class CommunityVideosController extends Controller
             'authUserChannelSlug' => $authUserChannelSlug ?? null,
             'userOrgHasYoutube' => $userOrgHasYoutube ?? false,
             'userOrgCanConnect' => $userOrgCanConnect ?? false,
+            'organizationFilterLock' => app(SupporterPrimaryOrganizationService::class)
+                ->listingFilterLockState($request, 'org'),
         ]);
     }
 
