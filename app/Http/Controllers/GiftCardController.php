@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\InsufficientPhazeBalanceException;
 use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\GiftCardGiftedPointsPolicy;
 use App\Services\GiftCardRevenueShareService;
 use App\Services\GiftCardService;
+use App\Services\PhazeBalanceService;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,9 +26,12 @@ class GiftCardController extends Controller
 {
     protected $giftCardService;
 
-    public function __construct(GiftCardService $giftCardService)
+    protected PhazeBalanceService $phazeBalanceService;
+
+    public function __construct(GiftCardService $giftCardService, PhazeBalanceService $phazeBalanceService)
     {
         $this->giftCardService = $giftCardService;
+        $this->phazeBalanceService = $phazeBalanceService;
         Stripe::setApiKey(config('services.stripe.secret'));
     }
 
@@ -535,6 +540,13 @@ class GiftCardController extends Controller
                 ], 403);
             }
 
+            $phazeBalanceResponse = $this->rejectIfInsufficientPhazeBalance($purchaseAmount, $isInertiaRequest);
+            if ($phazeBalanceResponse !== null) {
+                DB::rollBack();
+
+                return $phazeBalanceResponse;
+            }
+
             // Handle Believe Points payment
             if ($paymentMethod === 'believe_points') {
                 $pointsRequired = $purchaseAmount; // 1$ = 1 believe point
@@ -620,7 +632,7 @@ class GiftCardController extends Controller
                 }
 
                 // Check if Phaze returned an error in the response
-                if (isset($phazePurchaseResult['error']) || (isset($phazePurchaseResult['httpStatusCode']) && $phazePurchaseResult['httpStatusCode'] >= 400)) {
+                if (! $this->giftCardService->isPurchaseSuccessful($phazePurchaseResult)) {
                     // Refund points if Phaze purchase has error
                     $user->refundBelievePointsGiftCardBuckets($pointsSplit['from_gifted'], $pointsSplit['from_purchased']);
                     DB::rollBack();
@@ -771,6 +783,8 @@ class GiftCardController extends Controller
                     'gift_card_id' => $giftCard->id,
                     'updated_fields' => array_keys($updateData),
                 ]);
+
+                $this->recordPhazeBalanceDeduction($giftCard, (float) $purchaseAmount, $orderId);
 
                 // Create transaction record
                 $transactionMeta = array_merge([
@@ -1209,6 +1223,50 @@ class GiftCardController extends Controller
                 // Phaze requires orderId to be a Version 4 UUID to prevent duplicate orders
                 $orderId = \Illuminate\Support\Str::uuid()->toString();
 
+                try {
+                    $this->phazeBalanceService->assertCanAfford($purchaseAmount);
+                } catch (InsufficientPhazeBalanceException $e) {
+                    Log::error('Insufficient internal Phaze balance after Stripe payment succeeded', [
+                        'gift_card_id' => $giftCard->id,
+                        'purchase_amount' => $purchaseAmount,
+                        'available' => $e->available,
+                        'stripe_payment_intent' => $session->payment_intent,
+                    ]);
+
+                    $giftCard->update([
+                        'status' => 'failed',
+                        'meta' => array_merge($giftCard->meta ?? [], [
+                            'phaze_balance_insufficient' => true,
+                            'failed_at' => now()->toIso8601String(),
+                        ]),
+                    ]);
+
+                    if ($session->payment_intent) {
+                        try {
+                            Refund::create([
+                                'payment_intent' => $session->payment_intent,
+                                'amount' => (int) ($purchaseAmount * 100),
+                                'reason' => 'requested_by_customer',
+                                'metadata' => [
+                                    'gift_card_id' => $giftCard->id,
+                                    'reason' => 'phaze_balance_insufficient',
+                                ],
+                            ]);
+                        } catch (\Exception $refundException) {
+                            Log::error('Failed to refund Stripe payment after Phaze balance check failed', [
+                                'gift_card_id' => $giftCard->id,
+                                'error' => $refundException->getMessage(),
+                            ]);
+                        }
+                    }
+
+                    DB::commit();
+
+                    return redirect()->route('gift-cards.index')->withErrors([
+                        'message' => 'Gift card purchases are temporarily unavailable due to provider funding limits. Your payment has been refunded.',
+                    ]);
+                }
+
                 // Purchase gift card via Phaze API (after Stripe payment success)
                 $phazePurchaseData = [
                     'productId' => (int) $productId,
@@ -1222,7 +1280,7 @@ class GiftCardController extends Controller
 
                 Log::info('Phaze purchase result', ['result' => $phazePurchaseResult]);
 
-                if ($phazePurchaseResult) {
+                if ($this->giftCardService->isPurchaseSuccessful($phazePurchaseResult)) {
                     $revenueSplit = GiftCardRevenueShareService::calculateFromPhazeResponse($phazePurchaseResult, $purchaseAmount);
                     $commissionPercentage = $revenueSplit['commission_percentage'];
                     $totalCommission = $revenueSplit['total_commission'];
@@ -1278,6 +1336,8 @@ class GiftCardController extends Controller
                     if (isset($phazePurchaseResult['voucher'])) {
                         $giftCard->update(['voucher' => $phazePurchaseResult['voucher']]);
                     }
+
+                    $this->recordPhazeBalanceDeduction($giftCard, (float) $purchaseAmount, $orderId);
                 } else {
                     // Phaze purchase failed - need to refund Stripe payment
                     $phazeError = 'Purchase API call failed';
@@ -2147,6 +2207,51 @@ class GiftCardController extends Controller
 
             return redirect()->back()->withErrors([
                 'error' => 'Error looking up transaction: '.$e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse|null
+     */
+    private function rejectIfInsufficientPhazeBalance(float $purchaseAmount, bool $isInertiaRequest)
+    {
+        try {
+            $this->phazeBalanceService->assertCanAfford($purchaseAmount);
+        } catch (InsufficientPhazeBalanceException $e) {
+            Log::warning('Gift card purchase blocked due to insufficient internal Phaze balance', [
+                'required' => $e->required,
+                'available' => $e->available,
+            ]);
+
+            $message = $e->userMessage();
+
+            if ($isInertiaRequest) {
+                return back()->withErrors([
+                    'payment_method' => $message,
+                    'error' => $message,
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 503);
+        }
+
+        return null;
+    }
+
+    private function recordPhazeBalanceDeduction(GiftCard $giftCard, float $purchaseAmount, ?string $orderId): void
+    {
+        try {
+            $this->phazeBalanceService->deductForPurchase($purchaseAmount, $giftCard, $orderId);
+        } catch (InsufficientPhazeBalanceException $e) {
+            Log::critical('Phaze purchase succeeded but internal balance deduction failed', [
+                'gift_card_id' => $giftCard->id,
+                'required' => $e->required,
+                'available' => $e->available,
+                'order_id' => $orderId,
             ]);
         }
     }

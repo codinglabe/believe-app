@@ -35,6 +35,7 @@ import {
   Wallet,
   Megaphone,
   Sparkles,
+  Landmark,
 } from "lucide-react"
 import PromotionalBanner from "@/components/PromotionalBanner"
 import MarketplaceSavingsHighlight from "@/components/frontend/MarketplaceSavingsHighlight"
@@ -166,7 +167,8 @@ const AdminDashboard = ({
   promotionalBanner,
   promotionalBanners,
   recentTransactions = [],
-  monthlyRevenue = []
+  monthlyRevenue = [],
+  phazeBalanceSummary,
 }: AdminDashboardProps) => {
   const [isDark, setIsDark] = React.useState(false)
 
@@ -360,6 +362,61 @@ const AdminDashboard = ({
             </CardContent>
           </Card>
         </div>
+
+        {phazeBalanceSummary ? (
+          <Card className="border-l-4 border-l-emerald-500">
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Landmark className="h-5 w-5 text-emerald-600" />
+                    Phaze prefunded balance
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Internal balance controls purchases. Live Phaze balance shown for reconciliation.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/admin/phaze-balance">Manage balance</Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Internal available</p>
+                  <p className="text-2xl font-bold">{formatCurrency(phazeBalanceSummary.available_balance)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Total funds added</p>
+                  <p className="text-2xl font-bold">{formatCurrency(phazeBalanceSummary.total_funded)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Total consumed</p>
+                  <p className="text-2xl font-bold">{formatCurrency(phazeBalanceSummary.total_consumed)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Remaining</p>
+                  <p className="text-2xl font-bold">{formatCurrency(phazeBalanceSummary.remaining_balance)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Live Phaze (read-only)</p>
+                  <p className="text-2xl font-bold">
+                    {phazeBalanceSummary.phaze_live?.available != null
+                      ? formatCurrency(phazeBalanceSummary.phaze_live.available)
+                      : "—"}
+                  </p>
+                  {phazeBalanceSummary.phaze_live?.variance != null &&
+                  Math.abs(phazeBalanceSummary.phaze_live.variance) >= 0.01 ? (
+                    <Badge variant="destructive" className="mt-1">
+                      Variance {formatCurrency(phazeBalanceSummary.phaze_live.variance)}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Secondary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -614,6 +671,20 @@ interface AdminDashboardProps {
     monthShort: string
     revenue: number
   }>
+  phazeBalanceSummary?: {
+    available_balance: number
+    total_funded: number
+    total_consumed: number
+    remaining_balance: number
+    currency: string
+    phaze_live: {
+      available: number | null
+      currency: string
+      fetched_at: string | null
+      error: string | null
+      variance: number | null
+    }
+  } | null
 }
 
 export default function Dashboard({
@@ -634,6 +705,7 @@ export default function Dashboard({
   paymentStats,
   recentTransactions = [],
   monthlyRevenue = [],
+  phazeBalanceSummary = null,
   promotionalBanner = null,
   promotionalBanners = null,
   hasSubscription = false,
@@ -834,6 +906,7 @@ export default function Dashboard({
       paymentStats={paymentStats}
       recentTransactions={recentTransactions}
       monthlyRevenue={monthlyRevenue}
+      phazeBalanceSummary={phazeBalanceSummary}
     />
   }
 
