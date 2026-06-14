@@ -41,7 +41,8 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
-     * Stored secondary org IDs, or followed orgs (minus primary) when none are saved yet.
+     * Stored secondary org IDs. When null (never saved), derive from follows minus primary.
+     * An empty array means the supporter explicitly cleared secondaries.
      *
      * @return list<int>
      */
@@ -50,8 +51,14 @@ class SupporterPrimaryOrganizationService
         $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
         $storedSecondary = $user->secondary_organization_ids;
 
-        if (is_array($storedSecondary) && count($storedSecondary) > 0) {
-            return array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
+        if ($storedSecondary !== null && is_array($storedSecondary)) {
+            $ids = array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
+
+            if ($ids === []) {
+                return [];
+            }
+
+            return $this->filterEligibleSecondaryOrganizationIds($ids, $primaryOrgId);
         }
 
         if (! $user->relationLoaded('favoriteOrganizations')) {
@@ -60,10 +67,66 @@ class SupporterPrimaryOrganizationService
             }]);
         }
 
-        return array_values(array_filter(
+        $ids = array_values(array_filter(
             $user->favoriteOrganizations->pluck('id')->map(fn ($id) => (int) $id)->all(),
             fn (int $id) => $primaryOrgId === null || $id !== $primaryOrgId
         ));
+
+        return $this->filterEligibleSecondaryOrganizationIds($ids, $primaryOrgId);
+    }
+
+    /**
+     * Approved, public-picker organizations only (excludes inactive rows and Care Alliance hubs).
+     *
+     * @param  list<int>  $ids
+     * @return list<int>
+     */
+    public function filterEligibleSecondaryOrganizationIds(array $ids, ?int $excludePrimaryId = null): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            fn (int $id) => $id > 0 && ($excludePrimaryId === null || $id !== $excludePrimaryId)
+        )));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return Organization::query()
+            ->active()
+            ->excludingCareAllianceHubs()
+            ->whereIn('id', $ids)
+            ->orderBy('name')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Normalize secondary org ids from JSON posts or multipart form arrays.
+     *
+     * @return list<int>
+     */
+    public function normalizeSecondaryOrganizationIdsInput(Request $request): array
+    {
+        $raw = $request->input('secondary_organization_ids');
+
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded)
+                ? $decoded
+                : preg_split('/\s*,\s*/', trim($raw), -1, PREG_SPLIT_NO_EMPTY);
+        }
+
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('intval', $raw),
+            fn (int $id) => $id > 0
+        )));
     }
 
     /**

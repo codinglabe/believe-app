@@ -384,6 +384,23 @@ class UserProfileController extends Controller
             ]);
         }
 
+        if ($isSupporter && $request->exists('secondary_organization_ids')) {
+            $primaryForSecondaryFilter = $request->input('primary_organization_id');
+            if ($primaryForSecondaryFilter === '' || $primaryForSecondaryFilter === null) {
+                $primaryForSecondaryFilter = $user->primary_organization_id;
+            }
+            $primaryForSecondaryFilter = $primaryForSecondaryFilter !== null && $primaryForSecondaryFilter !== ''
+                ? (int) $primaryForSecondaryFilter
+                : null;
+
+            $request->merge([
+                'secondary_organization_ids' => $this->primaryOrgService->filterEligibleSecondaryOrganizationIds(
+                    $this->primaryOrgService->normalizeSecondaryOrganizationIdsInput($request),
+                    $primaryForSecondaryFilter > 0 ? $primaryForSecondaryFilter : null,
+                ),
+            ]);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,'.$user->id],
@@ -421,7 +438,7 @@ class UserProfileController extends Controller
             'messaging_policy' => ['sometimes', 'string', Rule::in(['everyone', 'followers_only', 'organizations_i_follow', 'no_one'])],
             'primary_organization_id' => ['nullable', 'integer', Rule::exists('organizations', 'id')],
             'secondary_organization_ids' => ['sometimes', 'array'],
-            'secondary_organization_ids.*' => ['integer', Rule::exists('organizations', 'id')],
+            'secondary_organization_ids.*' => ['integer', 'min:1'],
             'preferred_theme' => ['nullable', 'string', Rule::in(['system', 'light', 'dark'])],
             'proximity_notifications_enabled' => ['sometimes', 'boolean'],
         ]);
@@ -473,16 +490,23 @@ class UserProfileController extends Controller
                 fn (int $id) => $id > 0
             )));
             foreach ($secondaryIds as $sid) {
-                if (! in_array($sid, $favoriteOrganizationIds, true)) {
-                    return back()->withErrors([
-                        'secondary_organization_ids' => 'Secondary organizations must be organizations you follow.',
-                    ])->withInput();
-                }
                 if ($primaryOrganizationId !== null && $sid === $primaryOrganizationId) {
                     return back()->withErrors([
                         'secondary_organization_ids' => 'Secondary organizations cannot include your primary organization.',
                     ])->withInput();
                 }
+
+                $organization = Organization::query()
+                    ->active()
+                    ->excludingCareAllianceHubs()
+                    ->whereKey($sid)
+                    ->first();
+
+                if ($organization === null) {
+                    continue;
+                }
+
+                $this->primaryOrgService->ensureFavoriteOrganization($user, $organization);
             }
         }
 
@@ -529,14 +553,24 @@ class UserProfileController extends Controller
         ];
 
         if ($isSupporter) {
-            $secondaryIds = array_values(array_unique(array_filter(
-                array_map('intval', $validated['secondary_organization_ids'] ?? []),
-                fn (int $id) => $id > 0
-            )));
             $primaryForSecondary = (int) ($primaryOrganizationId ?? 0);
-            if ($primaryForSecondary > 0) {
-                $secondaryIds = array_values(array_filter($secondaryIds, fn (int $id) => $id !== $primaryForSecondary));
+            $primaryExclude = $primaryForSecondary > 0 ? $primaryForSecondary : null;
+
+            if (array_key_exists('secondary_organization_ids', $validated)) {
+                $secondaryIds = $this->primaryOrgService->filterEligibleSecondaryOrganizationIds(
+                    array_values(array_unique(array_filter(
+                        array_map('intval', $validated['secondary_organization_ids'] ?? []),
+                        fn (int $id) => $id > 0
+                    ))),
+                    $primaryExclude,
+                );
+            } else {
+                $secondaryIds = $this->primaryOrgService->filterEligibleSecondaryOrganizationIds(
+                    $this->primaryOrgService->resolveSecondaryOrganizationIds($user),
+                    $primaryExclude,
+                );
             }
+
             $updateData['secondary_organization_ids'] = $secondaryIds;
 
             if (array_key_exists('account_visibility', $validated)) {
