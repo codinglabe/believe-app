@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Data\GovernanceFolderStructure;
 use App\Data\OrganizationOnboardingRequirements;
 use App\Models\Organization;
 use App\Models\OrganizationOnboardingDocument;
@@ -217,6 +218,65 @@ class OrganizationOnboardingService
                 : 'Document saved. It will sync to Governance Storage when Dropbox is connected.',
             'document' => $document,
         ];
+    }
+
+    /**
+     * When a governance storage file is removed, clear the matching onboarding record
+     * so /governance/onboarding shows that step as incomplete again.
+     *
+     * @return array{revoked: bool, document_type: string|null, label: string|null}
+     */
+    public function revokeDocumentByStoragePath(Organization $organization, string $storagePath): array
+    {
+        if (! $this->documentsTableExists()) {
+            return ['revoked' => false, 'document_type' => null, 'label' => null];
+        }
+
+        $normalizedPath = $this->normalizeComparableStoragePath($storagePath);
+
+        $document = $organization->onboardingDocuments()
+            ->get()
+            ->first(function (OrganizationOnboardingDocument $doc) use ($normalizedPath) {
+                $storedPath = (string) ($doc->file_path ?? '');
+
+                return $storedPath !== ''
+                    && $this->normalizeComparableStoragePath($storedPath) === $normalizedPath;
+            });
+
+        if ($document === null) {
+            return ['revoked' => false, 'document_type' => null, 'label' => null];
+        }
+
+        $documentType = $document->document_type;
+        $requirement = OrganizationOnboardingRequirements::find($documentType);
+        $label = $requirement['label'] ?? null;
+
+        $document->delete();
+        $this->syncCompletionTimestamp($organization);
+
+        return [
+            'revoked' => true,
+            'document_type' => $documentType,
+            'label' => $label,
+        ];
+    }
+
+    private function normalizeComparableStoragePath(string $path): string
+    {
+        $path = trim(str_replace('\\', '/', $path));
+        if ($path === '') {
+            return '';
+        }
+
+        if (! str_starts_with($path, '/')) {
+            $path = '/'.$path;
+        }
+
+        if (str_starts_with($path, '/Governance')) {
+            return GovernanceFolderStructure::normalizePath($path);
+        }
+
+        return preg_replace('#/+#', '/', $path) ?: $path;
     }
 
     /**

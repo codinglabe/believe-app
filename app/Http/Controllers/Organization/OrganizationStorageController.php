@@ -6,6 +6,7 @@ use App\Data\GovernanceFolderStructure;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Services\DropboxGovernanceService;
+use App\Services\OrganizationOnboardingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class OrganizationStorageController extends Controller
 {
     public function __construct(
         private readonly DropboxGovernanceService $governanceService,
+        private readonly OrganizationOnboardingService $onboardingService,
     ) {}
 
     protected function resolveOrg(): Organization
@@ -243,11 +245,18 @@ class OrganizationStorageController extends Controller
             return back()->with('error', 'Could not delete file.');
         }
 
+        $revoked = $this->onboardingService->revokeDocumentByStoragePath($org, $path);
+
         $redirectPath = GovernanceFolderStructure::isAllowedPath($folderPath)
             ? $folderPath
             : GovernanceFolderStructure::rootPath();
 
-        return redirect()->route('governance.storage.index', ['path' => $redirectPath])->with('success', 'File deleted.');
+        $message = 'File deleted.';
+        if ($revoked['revoked'] && filled($revoked['label'])) {
+            $message .= ' '.$revoked['label'].' is required again on Governance onboarding.';
+        }
+
+        return redirect()->route('governance.storage.index', ['path' => $redirectPath])->with('success', $message);
     }
 
     public function rename(Request $request): RedirectResponse
