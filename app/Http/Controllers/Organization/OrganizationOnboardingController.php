@@ -78,6 +78,31 @@ class OrganizationOnboardingController extends Controller
         return $this->uploadResponse($request, $result['success'], $result['message']);
     }
 
+    public function destroyDocument(Request $request): RedirectResponse|JsonResponse
+    {
+        $org = $this->resolveOrg();
+
+        $request->validate([
+            'document_type' => ['required', 'string'],
+        ]);
+
+        $result = $this->onboardingService->deleteDocument(
+            $org,
+            (string) $request->input('document_type')
+        );
+
+        if ($this->wantsJsonResponse($request)) {
+            return response()->json([
+                'success' => $result['success'],
+                'message' => $result['message'],
+            ], $result['success'] ? 200 : 422);
+        }
+
+        return redirect()
+            ->route('governance.onboarding.index')
+            ->with($result['success'] ? 'success' : 'error', $result['message']);
+    }
+
     public function storeAuthorizedSigner(Request $request): RedirectResponse
     {
         $org = $this->resolveOrg();
@@ -101,7 +126,7 @@ class OrganizationOnboardingController extends Controller
 
     private function uploadResponse(Request $request, bool $success, string $message): RedirectResponse|JsonResponse
     {
-        if ($request->expectsJson() || $request->ajax()) {
+        if ($this->wantsJsonResponse($request)) {
             return response()->json([
                 'success' => $success,
                 'message' => $message,
@@ -111,5 +136,10 @@ class OrganizationOnboardingController extends Controller
         return redirect()
             ->route('governance.onboarding.index')
             ->with($success ? 'success' : 'error', $message);
+    }
+
+    private function wantsJsonResponse(Request $request): bool
+    {
+        return ($request->expectsJson() || $request->ajax()) && ! $request->header('X-Inertia');
     }
 }

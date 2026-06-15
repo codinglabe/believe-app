@@ -1499,6 +1499,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::prefix('governance/onboarding')->name('governance.onboarding.')->group(function () {
             Route::get('/', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'index'])->name('index');
             Route::post('/upload', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'upload'])->name('upload');
+            Route::delete('/document', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'destroyDocument'])->name('document.destroy');
             Route::post('/authorized-signer', [\App\Http\Controllers\Organization\OrganizationOnboardingController::class, 'storeAuthorizedSigner'])->name('authorized-signer');
         });
     });

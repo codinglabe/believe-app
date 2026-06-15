@@ -23,12 +23,14 @@ import {
   Phone,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Upload,
   User,
   Users,
 } from "lucide-react"
 import { toast } from "react-hot-toast"
 import { cn } from "@/lib/utils"
+import { ConfirmationModal } from "@/components/confirmation-modal"
 
 const BRAND = {
   from: "#9333ea",
@@ -364,6 +366,8 @@ function DocumentUploadCard({
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [dragOver, setDragOver] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const Icon = DOCUMENT_ICONS[item.id] ?? FileText
 
   const handleFile = useCallback(
@@ -388,6 +392,16 @@ function DocumentUploadCard({
     },
     [item.id, onUploaded]
   )
+
+  const handleDelete = useCallback(() => {
+    setDeleting(true)
+    router.delete(route("governance.onboarding.document.destroy"), {
+      data: { document_type: item.id },
+      preserveScroll: true,
+      onError: () => toast.error("Could not remove document. Please try again."),
+      onFinish: () => setDeleting(false),
+    })
+  }, [item.id])
 
   const storageLabel = item.storage_path?.replace("/Governance/", "") ?? ""
 
@@ -453,19 +467,47 @@ function DocumentUploadCard({
           </div>
 
           {item.connected ? (
-            <div className="mt-5 flex min-w-0 items-start gap-3 overflow-hidden rounded-xl border border-emerald-200/60 bg-emerald-50/50 px-4 py-3 dark:border-emerald-800/40 dark:bg-emerald-950/20">
-              <FileText className="h-5 w-5 shrink-0 text-emerald-600" />
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Document on file</p>
-                {item.file_name && (
-                  <p
-                    className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-300/80 truncate"
-                    title={item.file_name}
-                  >
-                    {shortenFileName(item.file_name)}
-                  </p>
-                )}
+            <div className="mt-5">
+              <div className="flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border border-emerald-200/60 bg-emerald-50/50 px-4 py-3 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+                <FileText className="h-5 w-5 shrink-0 text-emerald-600" />
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Document on file</p>
+                  {item.file_name && (
+                    <p
+                      className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-300/80 truncate"
+                      title={item.file_name}
+                    >
+                      {shortenFileName(item.file_name)}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+                  disabled={deleting || uploading}
+                  onClick={() => setDeleteModalOpen(true)}
+                  aria-label={`Remove ${item.label}`}
+                  title="Remove document"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </Button>
               </div>
+              <ConfirmationModal
+                isOpen={deleteModalOpen}
+                onChange={setDeleteModalOpen}
+                title={`Remove ${item.label}?`}
+                description={
+                  item.file_name
+                    ? `"${item.file_name}" will be permanently removed from Governance Storage. This step will be marked incomplete until you upload a new file.`
+                    : `This document will be permanently removed from Governance Storage. This step will be marked incomplete until you upload a new file.`
+                }
+                confirmLabel="Remove document"
+                cancelLabel="Keep document"
+                isLoading={deleting}
+                onConfirm={handleDelete}
+              />
             </div>
           ) : (
             <div className="mt-5">
