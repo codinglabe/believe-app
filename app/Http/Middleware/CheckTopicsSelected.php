@@ -92,6 +92,7 @@ class CheckTopicsSelected
             'user/topics/store',
             'unity-call/*',
             'unity-calls/*',
+            'broadcasting/*',
         )) {
             return false;
         }

@@ -118,7 +118,7 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
                 Continue to development app
               </Link>
               <Link
-                href={route("logout")}
+                href={route("logout.main")}
                 method="post"
                 as="button"
                 className="flex h-12 w-full items-center justify-center rounded-lg border border-white/20 bg-transparent text-sm font-medium text-white/90 transition hover:border-white/35 hover:bg-white/5"

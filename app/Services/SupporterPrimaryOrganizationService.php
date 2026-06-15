@@ -403,9 +403,6 @@ class SupporterPrimaryOrganizationService
         $this->changePrimaryOrganizationWithReason($supporter, $newOrganizationId, $reason);
     }
 
-    /**
-     * @deprecated Dispatched via {@see SendSupporterPrimaryOrganizationChangedEmail} on the mail queue.
-     */
     public function notifyOrganizationOfChange(
         Organization $organization,
         User $supporter,

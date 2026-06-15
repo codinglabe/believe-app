@@ -1,11 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { router } from "@inertiajs/react"
 import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing } from "lucide-react"
 import type { ChatMessage, UnityCallChatMetadata } from "@/providers/chat-provider"
 import { cn } from "@/lib/utils"
-import { toInternalAppPath } from "@/lib/unityCall"
+import { navigateToUnityCall, toInternalAppPath } from "@/lib/unityCall"
 import { chatReceivedBubble, chatSentBubble } from "./chat-brand"
 import { formatChatTime, parseChatTimestamp } from "@/lib/chat-timestamps"
 
@@ -140,7 +139,7 @@ export function ChatCallMessage({ message, currentUserId }: Props) {
         ? `${joinPath}${joinPath.includes("?") ? "&" : "?"}ring=1`
         : joinPath
 
-    router.visit(path)
+    navigateToUnityCall(path)
   }
 
   return (

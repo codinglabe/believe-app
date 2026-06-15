@@ -7,7 +7,7 @@ import type { GlobalEvent } from '@inertiajs/core';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { configureEcho } from '@laravel/echo-react';
-import { buildReverbEchoConfig, syncEchoCsrfToken } from './lib/reverb-config';
+import { buildReverbEchoConfig, refreshEchoAuthHeaders, syncEchoCsrfToken } from './lib/reverb-config';
 import { createRoot } from 'react-dom/client';
 import { NotificationProvider } from './components/frontend/notification-provider';
 import { PwaInstallPrompt } from './components/pwa/pwa-install-prompt';
@@ -65,6 +65,7 @@ createInertiaApp({
                 document.head.appendChild(newMeta);
             }
             syncEchoCsrfToken(initialToken);
+            refreshEchoAuthHeaders();
         }
 
         type InitialProps = {
@@ -94,6 +95,7 @@ createInertiaApp({
                 }
                 syncEchoCsrfToken(token);
             }
+            refreshEchoAuthHeaders();
 
             const pageProps = event.detail.page?.props as {
                 auth?: { user?: { id?: number } };
@@ -153,6 +155,7 @@ createInertiaApp({
                     const metaUserId = document.querySelector('meta[name="user-id"]')?.getAttribute('content');
                     return Boolean(metaUserId);
                 });
+                void ensureMessagingReady();
             }
         }
     },

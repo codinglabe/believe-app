@@ -7,7 +7,12 @@ import toast from "react-hot-toast"
 import echo from "@/lib/echo"
 import { chatTimestampMs } from "@/lib/chat-timestamps"
 import { attachCsrfToAxios } from "@/lib/csrf"
-import { startAudioCall as initiateAudioCall, toInternalAppPath, unityCallShowPath } from "@/lib/unityCall"
+import {
+  navigateToUnityCall,
+  startAudioCall as initiateAudioCall,
+  toInternalAppPath,
+  unityCallShowPath,
+} from "@/lib/unityCall"
 import { dispatchUnityCallIncoming, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
@@ -362,7 +367,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.error("Could not start audio call")
         return null
       }
-      return toInternalAppPath(result.join_url || unityCallShowPath(result.call_id))
+      const path = toInternalAppPath(result.join_url || unityCallShowPath(result.call_id))
+      navigateToUnityCall(path)
+      return path
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not start audio call")
       return null
@@ -511,7 +518,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       privateChannel.stopListening(".MessageSent")
-      echoInstance.leave(`user.${currentUser.id}`)
     }
   }, [currentUser?.id, markRoomAsRead, mergeIncomingChatMessage])
 

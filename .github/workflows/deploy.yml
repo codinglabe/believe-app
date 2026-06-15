@@ -1,9 +1,8 @@
 # Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
 # Production uses deploy-production.yml → believeinunity.org on branch `production`.
 #
-# Required secret: CPANEL_SSH_KEY_PRODUCTION (same VPS entry as production deploy)
+# Runs on self-hosted runner believe-vps (local SSH to c3ers@127.0.0.1 — no CSF/firewall issues).
 # Required variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, APP_URL
-# Deploys to c3ers@501c3ers.com via believeinunity relay (CSF-safe for GitHub Actions).
 name: Deploy development (501c3ers.com)
 
 on:
@@ -13,11 +12,11 @@ on:
 
 concurrency:
   group: deploy-development-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, believe-vps]
 
     env:
       PHP_VERSION: '8.4'
@@ -30,6 +29,12 @@ jobs:
       APP_URL: ${{ vars.APP_URL }}
       PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL != '' && vars.PRODUCTION_APP_URL || 'https://believeinunity.org' }}
       DEVELOPMENT_HOSTS: ${{ vars.DEVELOPMENT_HOSTS != '' && vars.DEVELOPMENT_HOSTS || '501c3ers.com,www.501c3ers.com' }}
+      WEBRTC_TURN_PUBLIC_IP: ${{ vars.WEBRTC_TURN_PUBLIC_IP != '' && vars.WEBRTC_TURN_PUBLIC_IP || '72.60.226.88' }}
+      WEBRTC_TURN_URL: ${{ vars.WEBRTC_TURN_URL != '' && vars.WEBRTC_TURN_URL || 'turn:72.60.226.88:3478,turn:501c3ers.com:3478,turns:501c3ers.com:5349?transport=tcp' }}
+      WEBRTC_TURN_USERNAME: ${{ vars.WEBRTC_TURN_USERNAME != '' && vars.WEBRTC_TURN_USERNAME || 'believe501c3' }}
+      WEBRTC_TURN_CREDENTIAL: ${{ secrets.WEBRTC_TURN_CREDENTIAL }}
+      WEBRTC_TURN_API_KEY: ''
+      WEBRTC_USE_THIRD_PARTY_TURN: 'false'
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
       SSH_MAX_ATTEMPTS: 10
       SSH_RETRY_SLEEP: 8
@@ -49,6 +54,9 @@ jobs:
         --exclude=.htaccess
         --exclude=docs/
         --exclude=deploy/
+        --exclude=forgestack/
+        --exclude=/build/
+        --exclude=resources/js/
         --exclude=*.md
         --exclude=CLAUDE.md
         --exclude=COMMAND_IN_PRODUCTION.md
@@ -100,6 +108,7 @@ jobs:
 
       - name: Setup SSH
         env:
+          SSH_SELF_HOSTED: 'true'
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy
           DEPLOY_USER: ${{ env.DEPLOY_USER }}
@@ -110,16 +119,9 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
-          SSH_RELAY_TO_C3ERS: ${{ env.SSH_RELAY_TO_C3ERS }}
-          SSH_RELAY_USER: ${{ env.SSH_RELAY_USER }}
-          SSH_RELAY_HOST: ${{ env.SSH_RELAY_HOST }}
           APP_URL: ${{ env.APP_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
-            exit 1
-          fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
           bash .github/scripts/setup-cpanel-ssh.sh
 
@@ -133,29 +135,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          tools: composer:v2
-          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
+      - name: Prepare build tools (self-hosted VPS)
+        run: |
+          set -euo pipefail
+          php --version | grep -E '^PHP 8\.(3|4)\.' || { echo "::error::PHP 8.3+ required on VPS"; exit 1; }
+          mkdir -p "${HOME}/bin"
+          if ! command -v composer >/dev/null 2>&1; then
+            curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "${HOME}/bin/composer.phar"
+            printf '%s\n' '#!/usr/bin/env bash' 'exec php "${HOME}/bin/composer.phar" "$@"' > "${HOME}/bin/composer"
+            chmod +x "${HOME}/bin/composer"
+          fi
+          export PATH="${HOME}/bin:${PATH}"
+          if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q '^v20\.'; then
+            export NVM_DIR="${HOME}/.nvm"
+            if [ ! -s "${NVM_DIR}/nvm.sh" ]; then
+              curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+            fi
+            # shellcheck source=/dev/null
+            . "${NVM_DIR}/nvm.sh"
+            nvm install 20
+            nvm use 20
+          fi
+          echo "${HOME}/bin" >> "${GITHUB_PATH}"
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then
+            echo "NVM_DIR=${HOME}/.nvm" >> "${GITHUB_ENV}"
+          fi
+          composer --version
+          node --version
+          npm --version
 
       - name: Install PHP dependencies
         run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
+          export PATH="${HOME}/bin:${PATH}"
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then . "${HOME}/.nvm/nvm.sh"; fi
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi --ignore-platform-req=ext-sodium
           mkdir -p resources/views storage/framework/views
-
-      - name: Setup Node
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
 
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then . "${HOME}/.nvm/nvm.sh"; fi
           ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
           echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
@@ -175,6 +195,7 @@ jobs:
           APP_URL: ${{ env.APP_URL }}
         run: |
           set -euo pipefail
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then . "${HOME}/.nvm/nvm.sh"; fi
           npm ci --legacy-peer-deps --no-audit --no-fund
           npm run build
           test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
@@ -209,10 +230,10 @@ jobs:
           ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
           set -euo pipefail
           cd "${DEPLOY_PATH}"
-          rm -rf docs tests node_modules deploy .ssh-deploy .ssh-deploy-prod .phpunit.cache bootstrap/ssr 2>/dev/null || true
-          rm -f CLAUDE.md README.md COMMAND_IN_PRODUCTION.md phpunit.xml .editorconfig eslint.config.js .prettierignore .prettierrc .gitattributes .gitignore Homestead.yaml Homestead.json tsconfig.json components.json package.json package-lock.json vite.config.ts 2>/dev/null || true
-          rm -f .env.backup .env.before-sync .env.production .env.backup- 2>/dev/null || true
-          rm -f resources/js/components/wallet/*.md resources/js/components/merchant/README.md 2>/dev/null || true
+          rm -rf docs tests node_modules deploy forgestack build storage_old .ssh-deploy .ssh-deploy-prod .phpunit.cache bootstrap/ssr resources/js 2>/dev/null || true
+          rm -f CLAUDE.md README.md COMMAND_IN_PRODUCTION.md phpunit.xml .editorconfig eslint.config.js .prettierignore .prettierrc .gitattributes .gitignore Homestead.yaml Homestead.json tsconfig.json components.json package.json package-lock.json vite.config.ts .nvmrc .forgestack.json .env.example 2>/dev/null || true
+          rm -f .env.backup .env.before-sync .env.production .env.before-reverb-fix .env.backup-* .env.backup.* 2>/dev/null || true
+          rm -f scripts/allow-github-actions-csf.sh scripts/allow-runner-ip.sh scripts/check-node-version.mjs scripts/install-coturn-vps.sh scripts/install-local-ssh-key-on-vps.sh scripts/setup-cpanel-deploy-ssh-access.sh scripts/setup-local-ssh.ps1 scripts/stamp-pwa-version.mjs 2>/dev/null || true
           echo PRUNE_OK
           REMOTE
 
@@ -228,7 +249,14 @@ jobs:
           chmod +x scripts/sync-server-env-keys.sh 2>/dev/null || true
           bash scripts/sync-server-env-keys.sh .env \
             "PRODUCTION_APP_URL=${PRODUCTION_APP_URL}" \
-            "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}"
+            "DEVELOPMENT_HOSTS=${DEVELOPMENT_HOSTS}" \
+            "WEBRTC_TURN_PUBLIC_IP=${WEBRTC_TURN_PUBLIC_IP}" \
+            "WEBRTC_TURN_URL=${WEBRTC_TURN_URL}" \
+            "WEBRTC_TURN_USERNAME=${WEBRTC_TURN_USERNAME}" \
+            "WEBRTC_TURN_CREDENTIAL=${WEBRTC_TURN_CREDENTIAL}" \
+            "WEBRTC_TURN_API_KEY=${WEBRTC_TURN_API_KEY}" \
+            "WEBRTC_USE_THIRD_PARTY_TURN=${WEBRTC_USE_THIRD_PARTY_TURN}"
+          php artisan cache:forget webrtc:ice_servers:v1 2>/dev/null || true
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           timeout 300 php artisan migrate --force -v || {
             echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"

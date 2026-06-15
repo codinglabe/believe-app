@@ -1,43 +1,36 @@
 <?php
 
-$turnFromEnv = (env('WEBRTC_TURN_URL') && env('WEBRTC_TURN_USERNAME') && env('WEBRTC_TURN_CREDENTIAL'))
-    ? [
-        'urls' => env('WEBRTC_TURN_URL'),
-        'username' => env('WEBRTC_TURN_USERNAME'),
-        'credential' => env('WEBRTC_TURN_CREDENTIAL'),
-    ]
-    : null;
-
 return [
 
     /*
     |--------------------------------------------------------------------------
-    | ICE servers (STUN / TURN) for browser WebRTC
+    | Self-hosted TURN (coturn on Hostinger VPS) — preferred for Unity calls
     |--------------------------------------------------------------------------
-    | TURN is required for many mobile / corporate networks. OpenRelay is a
-    | public fallback; set WEBRTC_TURN_* in .env for your own TURN server.
+    |
+    | WEBRTC_TURN_URL=turn:72.60.226.88:3478,turn:501c3ers.com:3478,turns:501c3ers.com:5349
+    | WEBRTC_TURN_USERNAME=believe501c3
+    | WEBRTC_TURN_CREDENTIAL=strong-secret
+    |
+    | Optional Metered API fallback (leave WEBRTC_TURN_API_KEY empty to disable):
+    | WEBRTC_TURN_API_KEY=
     */
 
-    'ice_servers' => array_values(array_filter([
-        ['urls' => 'stun:stun.l.google.com:19302'],
-        ['urls' => 'stun:stun1.l.google.com:19302'],
-        ['urls' => 'stun:stun.cloudflare.com:3478'],
-        $turnFromEnv,
-        [
-            'urls' => 'turn:openrelay.metered.ca:80',
-            'username' => 'openrelayproject',
-            'credential' => 'openrelayproject',
-        ],
-        [
-            'urls' => 'turn:openrelay.metered.ca:443',
-            'username' => 'openrelayproject',
-            'credential' => 'openrelayproject',
-        ],
-        [
-            'urls' => 'turns:openrelay.metered.ca:443?transport=tcp',
-            'username' => 'openrelayproject',
-            'credential' => 'openrelayproject',
-        ],
-    ], fn ($entry) => is_array($entry) && ! empty($entry['urls']))),
+    'turn_public_ip' => env('WEBRTC_TURN_PUBLIC_IP', '72.60.226.88'),
+
+    'turn_realm' => env('WEBRTC_TURN_REALM', '501c3ers.com'),
+
+    'turn_urls' => env('WEBRTC_TURN_URL'),
+
+    'turn_username' => env('WEBRTC_TURN_USERNAME'),
+
+    'turn_credential' => env('WEBRTC_TURN_CREDENTIAL'),
+
+    'turn_api_key' => env('WEBRTC_TURN_API_KEY'),
+
+    'turn_api_url' => env('WEBRTC_TURN_API_URL', 'https://501c3ers.metered.live'),
+
+    'use_third_party_turn_fallback' => env('WEBRTC_USE_THIRD_PARTY_TURN', false),
+
+    'turn_tls_enabled' => env('WEBRTC_TURNS_ENABLED', false),
 
 ];

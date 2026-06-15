@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\UnityCall;
 use App\Services\UnityCallService;
+use App\Services\WebRtcIceService;
 use App\Events\UnityCallWebRTCSignal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,22 @@ class UnityCallController extends Controller
             'call_id' => $call->id,
             'status' => $call->status,
             'join_url' => $this->callJoinPath($call),
+        ]);
+    }
+
+    public function incoming(Request $request, UnityCallService $calls): JsonResponse
+    {
+        $payload = $calls->incomingCallPayloadForUser($request->user());
+
+        return response()->json([
+            'incoming' => $payload,
+        ]);
+    }
+
+    public function chatRooms(Request $request, UnityCallService $calls): JsonResponse
+    {
+        return response()->json([
+            'rooms' => $calls->chatRoomsForIncomingListener($request->user()),
         ]);
     }
 
@@ -174,11 +191,13 @@ class UnityCallController extends Controller
         return response()->json(['signals' => $forMe]);
     }
 
-    public function show(Request $request, UnityCall $call, UnityCallService $calls): Response
+    public function show(Request $request, UnityCall $call, UnityCallService $calls, WebRtcIceService $webrtcIce): Response
     {
         $user = $request->user();
 
         if ($request->query('ring') === '1') {
+            $call = $calls->prepareCalleeForIncomingRing($call, $user);
+        } elseif ((int) $call->caller_id !== (int) $user->id && $call->isActive()) {
             $call = $calls->prepareCalleeForIncomingRing($call, $user);
         }
 
@@ -210,6 +229,7 @@ class UnityCallController extends Controller
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
+                'chatRoomType' => $call->chatRoom?->type,
                 'isGroupCall' => $isGroupCall,
                 'joinUrl' => $this->callJoinPath($call),
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
@@ -231,7 +251,7 @@ class UnityCallController extends Controller
             'isCaller' => $isCaller,
             'isGroupCall' => $isGroupCall,
             'participantStatus' => $participant?->status,
-            'iceServers' => config('webrtc.ice_servers', []),
+            'iceServers' => $webrtcIce->iceServers(),
             'endCallUrl' => route('unity-calls.end', $call->id),
             'cancelCallUrl' => route('unity-calls.cancel', $call->id),
             'acceptCallUrl' => route('unity-calls.accept', $call->id),
@@ -247,7 +267,7 @@ class UnityCallController extends Controller
 
     private function authorizeCall(Request $request, UnityCall $call): void
     {
-        if (! app(UnityCallService::class)->userCanAccess($call, $request->user())) {
+        if (! app(UnityCallService::class)->userCanBroadcastOnCall($request->user(), (int) $call->id)) {
             abort(403);
         }
     }

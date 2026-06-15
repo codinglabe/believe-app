@@ -1,67 +1,50 @@
 <?php
 
-use App\Models\UnityCall;
 use App\Models\User;
 use App\Services\UnityCallService;
 use Illuminate\Support\Facades\Broadcast;
 
-Broadcast::routes(['middleware' => ['auth']]);
-
-// Public chat channels
+// Channel authorization only — routes registered in BroadcastServiceProvider.
 Broadcast::channel('public-chat.{roomId}', function (User $user, $roomId) {
-    return $user->chatRooms()->where('chat_rooms.id', $roomId)->exists();
+    return app(UnityCallService::class)->userCanListenOnChatRoom($user, (int) $roomId, 'public');
 });
 
-// Private chat channels
 Broadcast::channel('private-chat.{roomId}', function (User $user, $roomId) {
-    return $user->chatRooms()
-        ->where('chat_rooms.id', $roomId)
-        ->where('chat_rooms.type', 'private')
-        ->exists();
+    return app(UnityCallService::class)->userCanListenOnChatRoom($user, (int) $roomId, 'private');
 });
 
-// Direct chat channels
 Broadcast::channel('direct-chat.{roomId}', function (User $user, $roomId) {
-    return $user->chatRooms()
-        ->where('chat_rooms.id', $roomId)
-        ->where('chat_rooms.type', 'direct')
-        ->exists();
+    return app(UnityCallService::class)->userCanListenOnChatRoom($user, (int) $roomId, 'direct');
 });
 
-// Typing indicator channels
 Broadcast::channel('typing.{roomId}', function (User $user, $roomId) {
-    return $user->chatRooms()->where('chat_rooms.id', $roomId)->exists();
+    return app(UnityCallService::class)->userCanListenOnChatRoom($user, (int) $roomId);
 });
 
-// User presence channels
 Broadcast::channel('presence-chat.{roomId}', function (User $user, $roomId) {
-    if ($user->chatRooms()->where('chat_rooms.id', $roomId)->exists()) {
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'avatar' => $user->avatar_url,
-            'is_online' => $user->is_online
-        ];
+    if (! app(UnityCallService::class)->userCanListenOnChatRoom($user, (int) $roomId)) {
+        return false;
     }
+
+    return [
+        'id' => $user->id,
+        'name' => $user->name,
+        'avatar' => $user->avatar_url,
+        'is_online' => $user->is_online,
+    ];
 });
 
-Broadcast::channel('user.{id}', function ($user, $userId) {
+Broadcast::channel('user.{id}', function (User $user, $userId) {
     return (int) $user->id === (int) $userId;
 });
 
 Broadcast::channel('unity-call.{callId}', function (User $user, $callId) {
-    $call = UnityCall::query()->whereKey($callId)->first();
-    if (! $call) {
-        return false;
-    }
-
-    return app(UnityCallService::class)->userCanAccess($call, $user);
+    return app(UnityCallService::class)->userCanBroadcastOnCall($user, (int) $callId);
 });
 
 Broadcast::channel('meeting.{meetingId}.participants', function (User $user, $meetingId) {
     return $user->meetings()->where('meetings.id', $meetingId)->exists();
 });
-
 
 Broadcast::channel('meeting.{meetingId}', function ($user, $meetingId) {
     return true; // Allow all users for testing (no DB auth check)

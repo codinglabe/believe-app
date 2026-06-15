@@ -10,7 +10,9 @@ import {
   acceptUnityCall,
   isLeavingUnityCall,
   markUnityCallLiveOnPage,
+  markUnityCallSessionActive,
   clearUnityCallLiveOnPage,
+  clearUnityCallSessionActive,
   navigateAfterUnityCall,
   terminateUnityCall,
   unityCallChatChannelName,
@@ -21,7 +23,7 @@ import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnity
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
-import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 type Props = {
   call: UnityCallPayload
@@ -46,6 +48,25 @@ function formatElapsed(totalSeconds: number): string {
     return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
   }
   return `${m}:${String(s).padStart(2, "0")}`
+}
+
+function UnityCallChatStatusEcho({
+  channelName,
+  visibility,
+  onStatus,
+}: {
+  channelName: string
+  visibility: "public" | "private"
+  onStatus: (payload: UnityCallStatusEvent) => void
+}) {
+  useEcho<UnityCallStatusEvent>(
+    channelName,
+    ".call.status",
+    onStatus,
+    [channelName, onStatus],
+    visibility,
+  )
+  return null
 }
 
 function RemoteAudio({ stream, speakerOn }: { stream: MediaStream; speakerOn: boolean }) {
@@ -143,6 +164,10 @@ export default function UnityCallShow({
     return new URLSearchParams(window.location.search).get("ring") === "1"
   }, [])
 
+  useEffect(() => {
+    refreshEchoAuthHeaders()
+  }, [])
+
   const selfStatus = useMemo(
     () => participants.find((p) => p.userId === authUserId)?.status ?? participantStatus,
     [participants, authUserId, participantStatus],
@@ -191,11 +216,14 @@ export default function UnityCallShow({
     [call.status],
   )
 
+  const exitNavigationStarted = useRef(false)
+
   const exitCallScreen = useCallback(
     (nextStatus?: string) => {
-      if (isLeavingUnityCall(call.id)) {
+      if (exitNavigationStarted.current) {
         return
       }
+      exitNavigationStarted.current = true
 
       setEnding(true)
       if (nextStatus) {
@@ -203,7 +231,10 @@ export default function UnityCallShow({
       }
       stopMedia()
       navigateAfterUnityCall(call.id, call.chatRoomId, {
-        onFinish: () => setEnding(false),
+        onFinish: () => {
+          exitNavigationStarted.current = false
+          setEnding(false)
+        },
       })
     },
     [call.chatRoomId, call.id, stopMedia],
@@ -331,6 +362,11 @@ export default function UnityCallShow({
       setCall(payload.call)
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
+      if (payload.reason === "accepted") {
+        unlockRemotePlayback()
+        return
+      }
+
       if (payload.reason === "participant_left" || payload.reason === "participant_declined") {
         const self = payload.participants.find((p) => p.userId === authUserId)
         if (self?.status === "left" || self?.status === "declined") {
@@ -354,7 +390,7 @@ export default function UnityCallShow({
         }
       }
     },
-    [authUserId, call.id, exitCallScreen, isCaller],
+    [authUserId, call.id, exitCallScreen, isCaller, unlockRemotePlayback],
   )
 
   const onStatus = handleCallTerminated
@@ -373,16 +409,10 @@ export default function UnityCallShow({
     if (!call.chatRoomId) {
       return null
     }
-    return unityCallChatChannelName(call.chatRoomId, isGroupCall)
-  }, [call.chatRoomId, isGroupCall])
+    return unityCallChatChannelName(call.chatRoomId, isGroupCall, call.chatRoomType ?? null)
+  }, [call.chatRoomId, call.chatRoomType, isGroupCall])
 
-  useEcho<UnityCallStatusEvent>(
-    chatChannelName ?? "chat.disabled",
-    ".call.status",
-    handleCallTerminated,
-    [chatChannelName, handleCallTerminated],
-    chatChannelName?.startsWith("public-chat.") ? "public" : "private",
-  )
+  const chatChannelVisibility = chatChannelName?.startsWith("public-chat.") ? "public" : "private"
 
   useUnityCallRingTimeout({
     callId: call.id,
@@ -401,7 +431,15 @@ export default function UnityCallShow({
   }, [call.status, call.id, ending, exitCallScreen, isTerminalCallStatus])
 
   useEffect(() => {
-    if (!callLive || !callConnected || ending || isTerminalCallStatus) {
+    if (ending || isLeavingUnityCall(call.id) || isTerminalCallStatus) {
+      clearUnityCallSessionActive(call.id)
+      clearUnityCallLiveOnPage(call.id)
+      return
+    }
+
+    markUnityCallSessionActive(call.id)
+
+    if (!callLive || !callConnected) {
       clearUnityCallLiveOnPage(call.id)
       return
     }
@@ -411,6 +449,14 @@ export default function UnityCallShow({
       clearUnityCallLiveOnPage(call.id)
     }
   }, [call.id, callConnected, callLive, ending, isTerminalCallStatus])
+
+  useEffect(() => {
+    return () => {
+      if (!isLeavingUnityCall(call.id)) {
+        clearUnityCallSessionActive(call.id)
+      }
+    }
+  }, [call.id])
 
   useEffect(() => {
     if (!callLive || !call.answeredAt) {
@@ -462,27 +508,12 @@ export default function UnityCallShow({
     }
   }
 
-  const handleEnd = async () => {
+  const handleEnd = () => {
     if (ending || isLeavingUnityCall(call.id)) {
       return
     }
 
-    setEnding(true)
-
     const wasRinging = call.status === "ringing"
-    const { ok, message } = await terminateUnityCall({
-      callId: call.id,
-      isCaller,
-      callStatus: call.status,
-      selfStatus,
-    })
-
-    if (!ok) {
-      setEnding(false)
-      toast.error(message?.trim() || "Could not end the call. Please try again.")
-      return
-    }
-
     const finalStatus =
       isCaller && wasRinging ? "cancelled" : !isCaller && wasRinging ? "declined" : "ended"
 
@@ -510,6 +541,17 @@ export default function UnityCallShow({
     }
 
     exitCallScreen(finalStatus)
+
+    void terminateUnityCall({
+      callId: call.id,
+      isCaller,
+      callStatus: call.status,
+      selfStatus,
+    }).then(({ ok, message }) => {
+      if (!ok) {
+        toast.error(message?.trim() || "Could not end the call.")
+      }
+    })
   }
 
   const isRingingCallee =
@@ -519,13 +561,33 @@ export default function UnityCallShow({
   const showRingingCalleeControls = isRingingCallee && !ringMode
   const showRejoinControls = isRejoinCallee || canAnswerLate
 
+  const mergedRemoteStream = useMemo(() => {
+    const merged = new MediaStream()
+    remoteStreams.forEach(({ stream }) => {
+      stream.getAudioTracks().forEach((track) => {
+        if (!merged.getTracks().some((item) => item.id === track.id)) {
+          merged.addTrack(track)
+        }
+      })
+    })
+    return merged
+  }, [remoteStreams])
+
   return (
     <div className="fixed inset-0 z-[9998] flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
       <Head title="Audio call" />
 
-      {remoteStreams.map(({ peerId, stream }) => (
-        <RemoteAudio key={peerId} stream={stream} speakerOn={speakerOn} />
-      ))}
+      {chatChannelName ? (
+        <UnityCallChatStatusEcho
+          channelName={chatChannelName}
+          visibility={chatChannelVisibility}
+          onStatus={handleCallTerminated}
+        />
+      ) : null}
+
+      {mergedRemoteStream.getAudioTracks().length > 0 ? (
+        <RemoteAudio key="merged-remote" stream={mergedRemoteStream} speakerOn={speakerOn} />
+      ) : null}
 
       <div className="flex flex-1 flex-col px-4 py-8">
         <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center">
