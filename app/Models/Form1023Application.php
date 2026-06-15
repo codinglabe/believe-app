@@ -15,6 +15,7 @@ class Form1023Application extends Model
     protected $fillable = [
         'organization_id',
         'application_number',
+        'form_type',
         'status',
         'amount',
         'currency',

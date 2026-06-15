@@ -15,6 +15,9 @@ class OrganizationOnboardingRequirements
 
     public const BOARD_MEMBER_LIST = 'board_member_list';
 
+    /** Active board members required beyond the registrant auto-added at signup. */
+    public const MINIMUM_ACTIVE_BOARD_MEMBERS = 2;
+
     public const AUTHORIZED_SIGNER = 'authorized_signer';
 
     public const BANK_VERIFICATION = 'bank_verification';
@@ -26,7 +29,7 @@ class OrganizationOnboardingRequirements
      *     id: string,
      *     label: string,
      *     description: string,
-     *     type: 'upload'|'form',
+     *     type: 'upload'|'form'|'board_members',
      *     storage_path: string|null,
      *     route: string
      * }>
@@ -63,10 +66,10 @@ class OrganizationOnboardingRequirements
             [
                 'id' => self::BOARD_MEMBER_LIST,
                 'label' => 'Board Member List',
-                'description' => 'Current roster of board members (PDF, spreadsheet, or official list).',
-                'type' => 'upload',
+                'description' => 'Add your full board roster. The person who registered is added automatically — add at least one more active board member.',
+                'type' => 'board_members',
                 'storage_path' => '/Governance/Board of Directors/Director Profiles',
-                'route' => $onboardingRoute.'#'.self::BOARD_MEMBER_LIST,
+                'route' => route('board-members.index'),
             ],
             [
                 'id' => self::AUTHORIZED_SIGNER,

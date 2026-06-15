@@ -14,7 +14,17 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { AlertCircle, CheckCircle2, FileText, Loader2, Building2, ChevronLeft, ChevronRight, CheckCircle, Award } from "lucide-react"
+import { AlertCircle, CheckCircle2, FileText, Loader2, Building2, ChevronLeft, ChevronRight, CheckCircle, Award, Info } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+
+type FeeSchedule = {
+  form_1023_application_fee: number
+  form_1023_ez_application_fee: number
+  form_1023_processing_filing_fee: number
+  form_1023_ez_processing_filing_fee: number
+}
+
+type FormType = "1023" | "1023-ez"
 
 interface OrganizationInfo {
   id: number
@@ -33,7 +43,15 @@ interface OrganizationInfo {
 
 interface PageProps {
   organization: OrganizationInfo
-  applicationFee: number
+  fees: FeeSchedule
+  selectedFormType: FormType
+  feeBreakdown: {
+    form_type: FormType
+    application_fee: number
+    processing_filing_fee: number
+    total: number
+    label: string
+  }
   existingApplication: {
     id: number
     application_number: string
@@ -41,6 +59,7 @@ interface PageProps {
     payment_status: string
     submitted_at: string | null
     amount: number
+    form_type?: FormType
     legal_name?: string
     mailing_address?: string
     physical_address?: string
@@ -99,7 +118,8 @@ const steps = [
 
 export default function Form1023ApplyPage({
   organization,
-  applicationFee,
+  fees,
+  selectedFormType,
   existingApplication,
   activeApplication,
 }: PageProps) {
@@ -169,6 +189,7 @@ export default function Form1023ApplyPage({
   // @ts-expect-error - TypeScript inference issue with complex form data
   const form = useForm({
     _method: undefined as string | undefined,
+    form_type: (existingApplication?.form_type || selectedFormType || "1023") as FormType,
     // A. Basic Organization Information
     legal_name: organization.name || "",
     mailing_address: organization.street ? `${organization.street}, ${organization.city}, ${organization.state} ${organization.zip}` : "",
@@ -565,7 +586,20 @@ export default function Form1023ApplyPage({
   }
 
 
+
   const { data, setData, post, processing, errors } = form
+  const selectedType = (data.form_type || "1023") as FormType
+  const applicationFeeAmount =
+    selectedType === "1023-ez"
+      ? fees.form_1023_ez_application_fee
+      : fees.form_1023_application_fee
+  const processingFilingFeeAmount =
+    selectedType === "1023-ez"
+      ? fees.form_1023_ez_processing_filing_fee
+      : fees.form_1023_processing_filing_fee
+  const totalFeeAmount = applicationFeeAmount + processingFilingFeeAmount
+  const selectedFormLabel = selectedType === "1023-ez" ? "Form 1023-EZ" : "Form 1023"
+
   const [showCertificationModal, setShowCertificationModal] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
   const [fieldValidationErrors, setFieldValidationErrors] = useState<Record<string, string>>({})
@@ -594,6 +628,7 @@ export default function Form1023ApplyPage({
       if (existingApplication.political_activities_desc) setData("political_activities_desc", existingApplication.political_activities_desc || "")
       if (existingApplication.foreign_activities_yes_no) setData("foreign_activities_yes_no", existingApplication.foreign_activities_yes_no)
       if (existingApplication.foreign_activities_desc) setData("foreign_activities_desc", existingApplication.foreign_activities_desc || "")
+      if (existingApplication.form_type) setData("form_type", existingApplication.form_type)
 
       // Load file previews from existing application
       // Helper to create file-like objects for preview
@@ -2916,8 +2951,16 @@ export default function Form1023ApplyPage({
                 <div className="rounded-lg border bg-muted/50 p-4">
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Application Fee</span>
-                      <span className="font-semibold">{formatCurrency(applicationFee)}</span>
+                      <span className="text-sm text-muted-foreground">Application fee ({selectedFormLabel})</span>
+                      <span className="font-semibold">{formatCurrency(applicationFeeAmount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Processing filing fee</span>
+                      <span className="font-semibold">{formatCurrency(processingFilingFeeAmount)}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-2">
+                      <span className="text-sm font-medium">Total fees</span>
+                      <span className="font-semibold">{formatCurrency(totalFeeAmount)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Complete your application to proceed with certification.
@@ -2983,6 +3026,137 @@ export default function Form1023ApplyPage({
             </AlertDescription>
           </Alert>
         )}
+
+        <Card className="border-blue-200/70 dark:border-blue-800/40">
+          <CardHeader>
+            <CardTitle>1. Which form do you want to use?</CardTitle>
+            <CardDescription>
+              Choose the IRS form that fits your organization. Fees are based on your selection.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <button
+                type="button"
+                disabled={hasActiveLock || processing}
+                onClick={() => setData("form_type", "1023")}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition",
+                  selectedType === "1023"
+                    ? "border-blue-500 bg-blue-50/80 ring-2 ring-blue-500/30 dark:bg-blue-950/20"
+                    : "border-border hover:border-blue-300"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <Checkbox checked={selectedType === "1023"} className="mt-1" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold">Form 1023</p>
+                      <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                        Application fee {formatCurrency(fees.form_1023_application_fee)}
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Use this form if your organization does not qualify for Form 1023-EZ.
+                    </p>
+                    <div className="flex items-center justify-between border-t pt-2 mt-2">
+                      <span className="text-sm font-medium">Total fees</span>
+                      <span className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                        {formatCurrency(fees.form_1023_application_fee + fees.form_1023_processing_filing_fee)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={hasActiveLock || processing}
+                onClick={() => setData("form_type", "1023-ez")}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition",
+                  selectedType === "1023-ez"
+                    ? "border-blue-500 bg-blue-50/80 ring-2 ring-blue-500/30 dark:bg-blue-950/20"
+                    : "border-border hover:border-blue-300"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <Checkbox checked={selectedType === "1023-ez"} className="mt-1" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold">Form 1023-EZ</p>
+                      <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                        Application fee {formatCurrency(fees.form_1023_ez_application_fee)}
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Use this form if your organization qualifies for the streamlined Form 1023-EZ.
+                    </p>
+                    <div className="flex items-center justify-between border-t pt-2 mt-2">
+                      <span className="text-sm font-medium">Total fees</span>
+                      <span className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                        {formatCurrency(fees.form_1023_ez_application_fee + fees.form_1023_ez_processing_filing_fee)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold mb-3">2. Processing filing fee</p>
+              <div className="rounded-xl border bg-muted/30 px-4 py-3 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Checkbox checked disabled />
+                  <span className="text-sm">
+                    Processing filing fee for {selectedFormLabel}
+                  </span>
+                </div>
+                <span className="font-semibold text-blue-700 dark:text-blue-300">
+                  {formatCurrency(processingFilingFeeAmount)}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold mb-3">3. Fee summary</p>
+              <div className="overflow-hidden rounded-xl border">
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr className="border-b">
+                      <td className="px-4 py-3 text-muted-foreground">Application fee ({selectedFormLabel})</td>
+                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(applicationFeeAmount)}</td>
+                    </tr>
+                    <tr className="border-b">
+                      <td className="px-4 py-3 text-muted-foreground">Processing filing fee ({selectedFormLabel})</td>
+                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(processingFilingFeeAmount)}</td>
+                    </tr>
+                    <tr className="bg-blue-50/60 dark:bg-blue-950/20">
+                      <td className="px-4 py-3 font-semibold">Total fees</td>
+                      <td className="px-4 py-3 text-right text-lg font-bold text-blue-700 dark:text-blue-300">
+                        {formatCurrency(totalFeeAmount)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription>
+                Fee amounts reflect current published fees. Review your selection before continuing.
+              </AlertDescription>
+            </Alert>
+
+            <Alert className="bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <AlertDescription>
+                Summary: You have selected {selectedFormLabel}. The total fees are {formatCurrency(totalFeeAmount)}.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
 
         {/* Progress Indicator */}
         <div className="mb-8">
@@ -3092,10 +3266,18 @@ export default function Form1023ApplyPage({
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <div className="rounded-lg border bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 p-4 mb-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Application Fee</span>
-                  <span className="text-lg font-bold">{formatCurrency(applicationFee)}</span>
+              <div className="rounded-lg border bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 p-4 mb-4 space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium">Application fee ({selectedFormLabel})</span>
+                  <span>{formatCurrency(applicationFeeAmount)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium">Processing filing fee</span>
+                  <span>{formatCurrency(processingFilingFeeAmount)}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-purple-200/60 dark:border-purple-800/40 pt-2">
+                  <span className="font-medium">Total fees</span>
+                  <span className="text-lg font-bold">{formatCurrency(totalFeeAmount)}</span>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground text-center">
