@@ -52,12 +52,15 @@ class OrganizationOnboardingService
             : collect();
 
         $signerComplete = $this->authorizedSignerIsComplete($organization);
+        $boardMembersComplete = $this->boardMembersAreComplete($organization);
+        $activeBoardMemberCount = $organization->boardMembers()->where('is_active', true)->count();
 
         return collect(OrganizationOnboardingRequirements::all())
-            ->map(function (array $req) use ($documents, $signerComplete) {
+            ->map(function (array $req) use ($documents, $signerComplete, $boardMembersComplete, $activeBoardMemberCount) {
                 $connected = match ($req['type']) {
                     'upload' => $documents->has($req['id']),
                     'form' => $signerComplete,
+                    'board_members' => $boardMembersComplete,
                     default => false,
                 };
 
@@ -74,6 +77,10 @@ class OrganizationOnboardingService
                     'connected' => $connected,
                     'submitted_at' => $doc?->submitted_at?->toIso8601String(),
                     'file_name' => $doc?->metadata['original_name'] ?? null,
+                    'board_member_count' => $req['type'] === 'board_members' ? $activeBoardMemberCount : null,
+                    'board_member_minimum' => $req['type'] === 'board_members'
+                        ? OrganizationOnboardingRequirements::MINIMUM_ACTIVE_BOARD_MEMBERS
+                        : null,
                 ];
             })
             ->values()
@@ -85,6 +92,13 @@ class OrganizationOnboardingService
         $completion = $this->profileCompletionForOrganization($organization);
 
         return $completion !== null && $completion['percent'] >= 100;
+    }
+
+    public function boardMembersAreComplete(Organization $organization): bool
+    {
+        return $organization->boardMembers()
+            ->where('is_active', true)
+            ->count() >= OrganizationOnboardingRequirements::MINIMUM_ACTIVE_BOARD_MEMBERS;
     }
 
     public function authorizedSignerIsComplete(Organization $organization): bool
