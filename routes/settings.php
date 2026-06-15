@@ -5,6 +5,8 @@ use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\Settings\DonateWidgetController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\OrganizationSetupChecklistController;
+use App\Http\Controllers\Settings\PayAsYouGoServicesController;
 use App\Http\Controllers\Settings\ProfileSettingsEntryController;
 use App\Http\Controllers\Settings\ReferralLinkController;
 use Illuminate\Support\Facades\Route;
@@ -62,7 +64,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
         })->name('appearance');
 
         // Exemption Certificates - For nonprofit organizations
-        Route::middleware('role:organization|care_alliance')->group(function () {
+        Route::middleware('role:organization|organization_pending|care_alliance')->group(function () {
+            Route::get('settings/setup-checklist', [OrganizationSetupChecklistController::class, 'index'])
+                ->name('setup-checklist.index');
+
+            Route::get('settings/pay-as-you-go', [PayAsYouGoServicesController::class, 'index'])
+                ->name('pay-as-you-go.index');
+
             Route::get('settings/donate-widget', [DonateWidgetController::class, 'edit'])
                 ->name('donate-widget.settings')
                 ->middleware('role:organization');

@@ -23,6 +23,7 @@ class EmailCreditsController extends Controller
         'livestreams.supporter.create',
         'livestreams.supporter.show',
         'livestreams.supporter.ready',
+        'pay-as-you-go.index',
     ];
 
     public function index(Request $request): Response

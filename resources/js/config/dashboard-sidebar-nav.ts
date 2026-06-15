@@ -705,6 +705,18 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         permission: 'role.management.read',
                     },
                     {
+                        title: 'Setup checklist',
+                        href: route('setup-checklist.index'),
+                        icon: ClipboardList,
+                        role: ['organization', 'organization_pending', 'care_alliance'],
+                    },
+                    {
+                        title: 'Pay-As-You-Go Services',
+                        href: route('pay-as-you-go.index'),
+                        icon: Wallet,
+                        role: ['organization', 'care_alliance'],
+                    },
+                    {
                         title: 'Organization settings',
                         href: '/settings/profile',
                         icon: Settings,
@@ -1012,9 +1024,9 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: ['organization', 'care_alliance'],
             },
             {
-                title: 'AI Top Up',
-                href: '/credits/purchase',
-                icon: Coins,
+                title: 'Pay-As-You-Go Services',
+                href: route('pay-as-you-go.index'),
+                icon: Wallet,
                 role: ['organization', 'care_alliance'],
             },
             {
