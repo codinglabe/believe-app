@@ -283,9 +283,7 @@ class OrganizationOnboardingService
             return ['success' => false, 'message' => 'No document on file for this step.'];
         }
 
-        if (! $this->deleteStoredFile($organization, $document)) {
-            return ['success' => false, 'message' => 'Could not delete the file from storage. Please try again.'];
-        }
+        $this->tryDeleteStoredFile($organization, $document);
 
         $document->delete();
         $this->syncCompletionTimestamp($organization);
@@ -296,11 +294,15 @@ class OrganizationOnboardingService
         ];
     }
 
-    private function deleteStoredFile(Organization $organization, OrganizationOnboardingDocument $document): bool
+    /**
+     * Remove the physical file from storage when it still exists there.
+     * Onboarding record removal proceeds even when the file is already gone.
+     */
+    private function tryDeleteStoredFile(Organization $organization, OrganizationOnboardingDocument $document): void
     {
         $filePath = trim((string) ($document->file_path ?? ''));
         if ($filePath === '') {
-            return true;
+            return;
         }
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
@@ -308,28 +310,38 @@ class OrganizationOnboardingService
 
         if ($storageDisk === 'dropbox') {
             if (! $this->governanceService->isDropboxConnected($organization)) {
-                Log::warning('Onboarding document delete skipped Dropbox (not connected)', [
+                return;
+            }
+
+            $api = $this->governanceService->getApiForOrganization($organization);
+            if (! $api) {
+                Log::warning('Onboarding document delete skipped Dropbox (no API)', [
                     'organization_id' => $organization->id,
                     'document_type' => $document->document_type,
                     'file_path' => $filePath,
                 ]);
 
-                return true;
+                return;
             }
 
-            $api = $this->governanceService->getApiForOrganization($organization);
-            if (! $api) {
-                return false;
+            if (! $api->fileExists($filePath)) {
+                return;
             }
 
-            return $api->deleteFile($filePath);
+            if (! $api->deleteFile($filePath)) {
+                Log::warning('Onboarding document delete failed in Dropbox; clearing onboarding record anyway', [
+                    'organization_id' => $organization->id,
+                    'document_type' => $document->document_type,
+                    'file_path' => $filePath,
+                ]);
+            }
+
+            return;
         }
 
         if (Storage::disk('local')->exists($filePath)) {
-            return Storage::disk('local')->delete($filePath);
+            Storage::disk('local')->delete($filePath);
         }
-
-        return true;
     }
 
     private function normalizeComparableStoragePath(string $path): string

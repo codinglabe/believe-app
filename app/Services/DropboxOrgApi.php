@@ -91,6 +91,33 @@ class DropboxOrgApi
         return ($data['.tag'] ?? '') === 'folder';
     }
 
+    /**
+     * Check if a path exists and is a file in Dropbox.
+     */
+    public function fileExists(string $path): bool
+    {
+        $path = trim($path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/'.$path;
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Content-Type' => 'application/json',
+        ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->post(self::API_URL.'/files/get_metadata', [
+                'path' => $path,
+            ]);
+
+        if (! $response->successful()) {
+            return false;
+        }
+
+        $data = $response->json();
+
+        return ($data['.tag'] ?? '') === 'file';
+    }
+
     /** Extensions for recording files to move into folder. */
     private const RECORDING_EXTENSIONS = ['webm', 'mp4', 'mkv'];
 
