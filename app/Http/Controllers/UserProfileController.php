@@ -652,19 +652,13 @@ class UserProfileController extends Controller
             abort(403);
         }
 
-        if (! $user->primary_organization_locked) {
-            return back()->withErrors([
-                'primary_organization_id' => 'Your primary organization is not locked. You can change it directly on your profile.',
-            ]);
-        }
-
         $validated = $request->validate([
             'primary_organization_id' => ['required', 'integer', Rule::exists('organizations', 'id')],
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
         ]);
 
         try {
-            $this->primaryOrgService->changeLockedPrimaryOrganization(
+            $this->primaryOrgService->changePrimaryOrganizationWithReason(
                 $user,
                 (int) $validated['primary_organization_id'],
                 trim($validated['reason'])

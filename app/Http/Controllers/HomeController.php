@@ -10,9 +10,10 @@ class HomeController extends Controller
 {
     public function index(Request $request)
     {
-        if (! $request->user() && is_development_site($request)) {
+        if (is_development_site($request)) {
             return app(DevLoginController::class)->create($request);
         }
+
 
         return Inertia::render('frontend/home', [
             'seo' => SeoService::forPage('home'),
