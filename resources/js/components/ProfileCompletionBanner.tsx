@@ -11,7 +11,7 @@ export type ProfileCompletionItem = {
   benefit: string
   route: string
   connected: boolean
-  type?: "upload" | "form"
+  type?: "upload" | "form" | "board_members"
   description?: string
 }
 
@@ -39,6 +39,7 @@ export default function ProfileCompletionBanner({
 
   const actionLabel = (item: ProfileCompletionItem) => {
     if (item.type === "upload") return "Upload"
+    if (item.type === "board_members") return "Add"
     if (item.type === "form") return "Complete"
     return "Complete"
   }

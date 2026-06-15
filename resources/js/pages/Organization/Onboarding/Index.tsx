@@ -42,12 +42,14 @@ type OnboardingItem = {
   label: string
   description: string
   benefit: string
-  type: "upload" | "form"
+  type: "upload" | "form" | "board_members"
   storage_path: string | null
   route: string
   connected: boolean
   submitted_at?: string | null
   file_name?: string | null
+  board_member_count?: number | null
+  board_member_minimum?: number | null
 }
 
 type PageProps = {
@@ -261,6 +263,94 @@ function StickyChecklistAside({ children }: { children: ReactNode }) {
   )
 }
 
+function BoardMemberListCard({
+  item,
+  index,
+}: {
+  item: OnboardingItem
+  index: number
+}) {
+  const count = item.board_member_count ?? 0
+  const minimum = item.board_member_minimum ?? 2
+  const remaining = Math.max(minimum - count, 0)
+
+  const countLabel =
+    count === 0
+      ? "No active board members on file yet"
+      : count < minimum
+        ? `${count} active board member${count === 1 ? "" : "s"} on file — add ${remaining} more to complete this step`
+        : `${count} active board member${count === 1 ? "" : "s"} on file`
+
+  return (
+    <article
+      id={item.id}
+      className={cn(
+        "group scroll-mt-28 min-w-0 max-w-full overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md",
+        item.connected
+          ? "border-emerald-200/80 dark:border-emerald-800/50"
+          : "border-border"
+      )}
+    >
+      <div className="flex min-w-0 items-stretch">
+        <div
+          className={cn(
+            "hidden sm:flex w-1.5 shrink-0",
+            item.connected ? "bg-emerald-500" : "bg-gradient-to-b from-purple-500 to-blue-500"
+          )}
+        />
+        <div className="min-w-0 flex-1 overflow-hidden p-5 md:p-6">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-1 gap-4">
+              <div
+                className={cn(
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm",
+                  item.connected
+                    ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400"
+                    : "text-white"
+                )}
+                style={
+                  item.connected
+                    ? undefined
+                    : { background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }
+                }
+              >
+                {item.connected ? <CheckCircle2 className="h-6 w-6" /> : <Users className="h-6 w-6" />}
+              </div>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Step {index + 1}
+                  </span>
+                  {item.connected && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Complete
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mt-0.5 break-words">{item.label}</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed break-words">{item.description}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {countLabel}
+                </p>
+              </div>
+            </div>
+            <Link href={item.route} className="shrink-0 self-start">
+              <Button
+                className="gap-2 text-white shadow-md hover:opacity-90"
+                style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+              >
+                <Users className="h-4 w-4" />
+                {item.connected ? "Manage board" : "Add board members"}
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 function DocumentUploadCard({
   item,
   index,
@@ -467,6 +557,7 @@ export default function OrganizationOnboardingIndex({
   }
 
   const signerItem = items.find((i) => i.id === "authorized_signer")
+  const boardMemberItem = items.find((i) => i.id === "board_member_list")
   const uploadItems = items.filter((i) => i.type === "upload")
   const isComplete = percent >= 100
 
@@ -591,6 +682,19 @@ export default function OrganizationOnboardingIndex({
                   ))}
                 </div>
               </section>
+
+              {boardMemberItem ? (
+                <section className="min-w-0 max-w-full overflow-hidden">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    <h2 className="text-lg font-semibold">Board governance</h2>
+                  </div>
+                  <BoardMemberListCard
+                    item={boardMemberItem}
+                    index={uploadItems.length}
+                  />
+                </section>
+              ) : null}
 
               <section
                 id="authorized_signer"
