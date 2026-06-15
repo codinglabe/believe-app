@@ -2,7 +2,7 @@
 
 import { FormEventHandler } from "react"
 import { Head, Link, useForm, usePage } from "@inertiajs/react"
-import { ExternalLink, LoaderCircle, Lock, User } from "lucide-react"
+import { Building2, Copy, ExternalLink, LoaderCircle, Lock, User } from "lucide-react"
 import InputError from "@/components/input-error"
 import { PageHead } from "@/components/frontend/PageHead"
 import type { SharedData } from "@/types"
@@ -18,9 +18,16 @@ interface DevLoginProps {
   status?: string | null
   devHost: string
   productionUrl: string
+  organizationRegisterUrl: string
 }
 
-export default function DevLoginPage({ seo, status, devHost, productionUrl }: DevLoginProps) {
+export default function DevLoginPage({
+  seo,
+  status,
+  devHost,
+  productionUrl,
+  organizationRegisterUrl,
+}: DevLoginProps) {
   const { auth } = usePage<SharedData>().props
   const signedInUser = auth.user
 
@@ -185,6 +192,37 @@ export default function DevLoginPage({ seo, status, devHost, productionUrl }: De
             </button>
           </form>
           )}
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/15" />
+            <span className="text-xs uppercase tracking-wider text-white/40">or</span>
+            <div className="h-px flex-1 bg-white/15" />
+          </div>
+
+          <div className="space-y-3 text-left">
+            <Link
+              href={organizationRegisterUrl}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-blue-400/35 bg-blue-500/10 text-sm font-semibold text-blue-100 transition hover:border-blue-300/50 hover:bg-blue-500/20"
+            >
+              <Building2 className="h-4 w-4 shrink-0" />
+              Register your organization
+            </Link>
+            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
+              <p className="text-xs font-medium text-white/55">Share this link with new organizations (development only)</p>
+              <div className="mt-2 flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate text-left text-xs text-blue-200/90">{organizationRegisterUrl}</code>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(organizationRegisterUrl)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs text-white/80 transition hover:bg-white/10"
+                  aria-label="Copy organization registration link"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
 
           <div className="my-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-white/15" />
