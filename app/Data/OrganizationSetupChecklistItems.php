@@ -3,13 +3,19 @@
 namespace App\Data;
 
 /**
- * Organization setup checklist — System + Tools sections (16 items).
+ * Organization setup checklist — System + Tools sections.
  */
 class OrganizationSetupChecklistItems
 {
     public const SECTION_SYSTEM = 'system';
 
     public const SECTION_TOOLS = 'tools';
+
+    /** Temporarily hidden from the setup checklist UI (re-enable by removing ids here). */
+    private const HIDDEN_ITEM_IDS = [
+        'social_media',
+        'youtube',
+    ];
 
     /**
      * @return list<array{
@@ -23,8 +29,26 @@ class OrganizationSetupChecklistItems
      */
     public static function all(): array
     {
+        return array_values(array_filter(
+            self::definitions(),
+            static fn (array $item): bool => ! in_array($item['id'], self::HIDDEN_ITEM_IDS, true)
+        ));
+    }
+
+    /**
+     * @return list<array{
+     *     id: string,
+     *     section: string,
+     *     label: string,
+     *     description: string,
+     *     route: string,
+     *     route_label: string
+     * }>
+     */
+    private static function definitions(): array
+    {
         return [
-            // —— System (7) ——
+            // —— System ——
             [
                 'id' => 'integrations',
                 'section' => self::SECTION_SYSTEM,
