@@ -261,6 +261,77 @@ class OrganizationOnboardingService
         ];
     }
 
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public function deleteDocument(Organization $organization, string $documentType): array
+    {
+        $requirement = OrganizationOnboardingRequirements::find($documentType);
+        if ($requirement === null || $requirement['type'] !== 'upload') {
+            return ['success' => false, 'message' => 'Invalid document type.'];
+        }
+
+        if (! $this->documentsTableExists()) {
+            return ['success' => false, 'message' => 'Onboarding tables are not migrated yet.'];
+        }
+
+        $document = $organization->onboardingDocuments()
+            ->where('document_type', $documentType)
+            ->first();
+
+        if ($document === null) {
+            return ['success' => false, 'message' => 'No document on file for this step.'];
+        }
+
+        if (! $this->deleteStoredFile($organization, $document)) {
+            return ['success' => false, 'message' => 'Could not delete the file from storage. Please try again.'];
+        }
+
+        $document->delete();
+        $this->syncCompletionTimestamp($organization);
+
+        return [
+            'success' => true,
+            'message' => ($requirement['label'] ?? 'Document').' removed. Upload a new file to complete this step.',
+        ];
+    }
+
+    private function deleteStoredFile(Organization $organization, OrganizationOnboardingDocument $document): bool
+    {
+        $filePath = trim((string) ($document->file_path ?? ''));
+        if ($filePath === '') {
+            return true;
+        }
+
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $storageDisk = (string) ($metadata['storage_disk'] ?? 'local');
+
+        if ($storageDisk === 'dropbox') {
+            if (! $this->governanceService->isDropboxConnected($organization)) {
+                Log::warning('Onboarding document delete skipped Dropbox (not connected)', [
+                    'organization_id' => $organization->id,
+                    'document_type' => $document->document_type,
+                    'file_path' => $filePath,
+                ]);
+
+                return true;
+            }
+
+            $api = $this->governanceService->getApiForOrganization($organization);
+            if (! $api) {
+                return false;
+            }
+
+            return $api->deleteFile($filePath);
+        }
+
+        if (Storage::disk('local')->exists($filePath)) {
+            return Storage::disk('local')->delete($filePath);
+        }
+
+        return true;
+    }
+
     private function normalizeComparableStoragePath(string $path): string
     {
         $path = trim(str_replace('\\', '/', $path));
