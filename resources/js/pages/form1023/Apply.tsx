@@ -3098,6 +3098,9 @@ export default function Form1023ApplyPage({
                         {formatCurrency(fees.form_1023_ez_application_fee + fees.form_1023_ez_processing_filing_fee)}
                       </span>
                     </div>
+                  </div>
+                </div>
+              </button>
             </div>
 
             <div>
