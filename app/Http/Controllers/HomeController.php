@@ -14,6 +14,7 @@ class HomeController extends Controller
             return app(DevLoginController::class)->create($request);
         }
 
+
         return Inertia::render('frontend/home', [
             'seo' => SeoService::forPage('home'),
             'homeHero' => SeoService::getHomeHero(),
