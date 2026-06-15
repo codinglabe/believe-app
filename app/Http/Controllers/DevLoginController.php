@@ -26,6 +26,7 @@ class DevLoginController extends Controller
             'status' => $request->session()->get('status'),
             'devHost' => $request->getHost(),
             'productionUrl' => config('app.production_url'),
+            'organizationRegisterUrl' => route('dev.register.organization'),
         ]);
     }
 }
