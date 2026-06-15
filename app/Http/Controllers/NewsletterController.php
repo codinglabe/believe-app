@@ -3516,12 +3516,14 @@ TXT;
 
         $request->validate([
             'package_id' => 'required|exists:sms_packages,id',
-            'return_to' => 'nullable|in:newsletter',
+            'return_to' => 'nullable|in:newsletter,pay-as-you-go',
         ]);
 
         $user = $request->user();
         $package = SmsPackage::active()->findOrFail((int) $request->input('package_id'));
-        $returnToNewsletter = $request->input('return_to') === 'newsletter';
+        $returnTo = $request->input('return_to');
+        $returnToNewsletter = $returnTo === 'newsletter';
+        $returnToPayg = $returnTo === 'pay-as-you-go';
 
         try {
             $transaction = $user->recordTransaction([
@@ -3540,10 +3542,18 @@ TXT;
 
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $package->price, 'card');
 
-            $successQs = 'session_id={CHECKOUT_SESSION_ID}'.($returnToNewsletter ? '&return_to=newsletter&open_buy=sms' : '');
+            $successQs = 'session_id={CHECKOUT_SESSION_ID}';
+            if ($returnToNewsletter) {
+                $successQs .= '&return_to=newsletter&open_buy=sms';
+            } elseif ($returnToPayg) {
+                $successQs .= '&return_to=pay-as-you-go&open=sms';
+            }
+
             $cancelUrl = $returnToNewsletter
                 ? route('newsletter.index', ['canceled' => '1', 'open_buy' => 'sms'])
-                : route('newsletter.create').'?canceled=1';
+                : ($returnToPayg
+                    ? route('pay-as-you-go.index', ['canceled' => '1', 'open' => 'sms'])
+                    : route('newsletter.create').'?canceled=1');
 
             $checkout = $user->checkoutCharge(
                 $amountInCents,
@@ -3559,7 +3569,7 @@ TXT;
                         'sms_to_add' => (string) $package->sms_count,
                         'package_id' => (string) $package->id,
                         'amount' => (string) $package->price,
-                        'return_to' => $returnToNewsletter ? 'newsletter' : '',
+                        'return_to' => $returnToNewsletter ? 'newsletter' : ($returnToPayg ? 'pay-as-you-go' : ''),
                     ],
                     'payment_method_types' => ['card'],
                 ]
@@ -3587,9 +3597,15 @@ TXT;
 
         try {
             $sessionId = $request->query('session_id');
-            $toNewsletter = $request->query('return_to') === 'newsletter';
+            $returnTo = $request->query('return_to');
+            $toNewsletter = $returnTo === 'newsletter';
+            $toPayg = $returnTo === 'pay-as-you-go';
 
             if (! $sessionId) {
+                if ($toPayg) {
+                    return redirect()->route('pay-as-you-go.index', ['error' => 'Invalid session.', 'open' => 'sms']);
+                }
+
                 return $toNewsletter
                     ? redirect()->route('newsletter.index', [
                         'error' => 'Invalid session.',
@@ -3605,8 +3621,18 @@ TXT;
             if (! $toNewsletter && (($metadata['return_to'] ?? '') === 'newsletter')) {
                 $toNewsletter = true;
             }
+            if (! $toPayg && (($metadata['return_to'] ?? '') === 'pay-as-you-go')) {
+                $toPayg = true;
+            }
 
             if ($session->payment_status !== 'paid') {
+                if ($toPayg) {
+                    return redirect()->route('pay-as-you-go.index', [
+                        'error' => 'Payment was not completed.',
+                        'open' => 'sms',
+                    ]);
+                }
+
                 return $toNewsletter
                     ? redirect()->route('newsletter.index', [
                         'error' => 'Payment was not completed.',
@@ -3638,6 +3664,10 @@ TXT;
 
             $successMsg = "Successfully added {$smsToAdd} SMS credits to your wallet!";
 
+            if ($toPayg) {
+                return redirect()->route('pay-as-you-go.index', ['success' => $successMsg]);
+            }
+
             return $toNewsletter
                 ? redirect()->route('newsletter.index', [
                     'success' => $successMsg,
@@ -3650,7 +3680,15 @@ TXT;
                 'session_id' => $request->query('session_id'),
             ]);
 
-            $toNewsletter = $request->query('return_to') === 'newsletter';
+            $returnTo = $request->query('return_to');
+            $toNewsletter = $returnTo === 'newsletter';
+            $toPayg = $returnTo === 'pay-as-you-go';
+
+            if ($toPayg) {
+                return redirect()->route('pay-as-you-go.index', [
+                    'error' => 'Error confirming payment. Please contact support.',
+                ]);
+            }
 
             return $toNewsletter
                 ? redirect()->route('newsletter.index', [

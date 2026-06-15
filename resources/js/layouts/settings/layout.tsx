@@ -17,6 +17,8 @@ import {
   MapPin,
   Landmark,
   Code2,
+  Wallet,
+  ClipboardList,
 } from "lucide-react"
 import type { PropsWithChildren } from "react"
 
@@ -182,6 +184,32 @@ export default function SettingsLayout({
                       <CreditCard className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Billing & Wallet</span>
                     </Link>
+                    {(auth.user.role === "organization" || auth.user.role === "organization_pending" || auth.user.role === "care_alliance") && (
+                      <Link
+                        href={route("setup-checklist.index")}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                          activeTab === "setup-checklist"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <ClipboardList className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Setup checklist</span>
+                      </Link>
+                    )}
+                    {(auth.user.role === "organization" || auth.user.role === "organization_pending" || auth.user.role === "care_alliance") && (
+                      <Link
+                        href={route("pay-as-you-go.index")}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                          activeTab === "pay-as-you-go"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <Wallet className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Pay-As-You-Go Services</span>
+                      </Link>
+                    )}
                     <Link
                       href={route("settings.saved-payment-methods.index")}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
@@ -360,6 +388,32 @@ export default function SettingsLayout({
                       <CreditCard className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Billing & Wallet</span>
                     </Link>
+                    {(auth.user.role === "organization" || auth.user.role === "organization_pending" || auth.user.role === "care_alliance") && (
+                      <Link
+                        href={route("setup-checklist.index")}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                          activeTab === "setup-checklist"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <ClipboardList className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Setup checklist</span>
+                      </Link>
+                    )}
+                    {(auth.user.role === "organization" || auth.user.role === "organization_pending" || auth.user.role === "care_alliance") && (
+                      <Link
+                        href={route("pay-as-you-go.index")}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                          activeTab === "pay-as-you-go"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <Wallet className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Pay-As-You-Go Services</span>
+                      </Link>
+                    )}
                     <Link
                       href={route("settings.saved-payment-methods.index")}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
