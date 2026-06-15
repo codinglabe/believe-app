@@ -33,12 +33,17 @@ const breadcrumbs: BreadcrumbItem[] = [
 ]
 
 export default function Form1023View() {
-  const { application, canEdit, canPay, applicationFee } = usePage<{
+  const { application, canEdit, canPay, feeBreakdown } = usePage<{
     application: any
     canEdit: boolean
     canPay: boolean
-    applicationFee: number
+    feeBreakdown: {
+      total: number
+      label: string
+    }
   }>().props
+
+  const displayAmount = application.amount ?? feeBreakdown?.total ?? 0
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
@@ -231,7 +236,7 @@ export default function Form1023View() {
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Application Fee</p>
                   <p className="text-lg font-semibold">
-                    ${application.amount ? Number(application.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : applicationFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${Number(displayAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
