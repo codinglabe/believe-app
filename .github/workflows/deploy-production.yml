@@ -45,7 +45,7 @@ jobs:
         --exclude=docs/
         --exclude=deploy/
         --exclude=forgestack/
-        --exclude=build/
+        --exclude=/build/
         --exclude=resources/js/
         --exclude=*.md
         --exclude=CLAUDE.md
