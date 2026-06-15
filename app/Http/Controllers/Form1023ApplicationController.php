@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AdminSetting;
 use App\Models\Form1023Application;
+use App\Services\Form1023FeeService;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +14,22 @@ use Spatie\Permission\Models\Role;
 
 class Form1023ApplicationController extends Controller
 {
+    /**
+     * @return array{form_type: string, total: float, breakdown: array<string, mixed>}
+     */
+    private function resolveFeeSelection(Request $request, ?Form1023Application $existing = null): array
+    {
+        $formType = Form1023FeeService::normalizeFormType(
+            $request->input('form_type', $existing?->form_type)
+        );
+
+        return [
+            'form_type' => $formType,
+            'total' => Form1023FeeService::totalForFormType($formType),
+            'breakdown' => Form1023FeeService::breakdownForFormType($formType),
+        ];
+    }
+
     public function show(Request $request)
     {
         $user = $request->user();
@@ -34,16 +50,12 @@ class Form1023ApplicationController extends Controller
             return redirect()->route('dashboard')->with('error', 'Form 1023 is only available for organizations not found in the IRS database.');
         }
 
-        $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
-
-        $latestApplication = $organization->form1023Applications()
-            ->latest()
-            ->first();
-
+        $feeSchedule = Form1023FeeService::schedule();
         $activeApplication = $organization->form1023Applications()
             ->whereIn('status', ['draft', 'pending_payment', 'awaiting_review', 'needs_more_info'])
             ->latest()
             ->first();
+        $selectedFormType = Form1023FeeService::normalizeFormType($activeApplication?->form_type);
 
         // If there's an active application (not draft or needs_more_info), redirect to view page
         if ($activeApplication && ! in_array($activeApplication->status, ['draft', 'needs_more_info'])) {
@@ -60,6 +72,7 @@ class Form1023ApplicationController extends Controller
                 'payment_status' => $activeApplication->payment_status,
                 'submitted_at' => optional($activeApplication->submitted_at)->toIso8601String(),
                 'amount' => $activeApplication->amount,
+                'form_type' => Form1023FeeService::normalizeFormType($activeApplication->form_type),
                 // Form data
                 'legal_name' => $activeApplication->legal_name,
                 'mailing_address' => $activeApplication->mailing_address,
@@ -118,7 +131,9 @@ class Form1023ApplicationController extends Controller
                 'mission' => $organization->mission,
                 'description' => $organization->description,
             ],
-            'applicationFee' => $applicationFee,
+            'fees' => $feeSchedule,
+            'selectedFormType' => $selectedFormType,
+            'feeBreakdown' => Form1023FeeService::breakdownForFormType($selectedFormType),
             'existingApplication' => $existingApplicationData,
             'activeApplication' => $activeApplication ? [
                 'id' => $activeApplication->id,
@@ -147,9 +162,6 @@ class Form1023ApplicationController extends Controller
         if (! $organization->has_edited_irs_data && $organization->registration_status === 'approved') {
             return redirect()->route('dashboard')->with('error', 'Form 1023 is only available for organizations not found in the IRS database.');
         }
-
-        $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
-        $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         // Check for existing draft or needs_more_info application to update
         // Also check by application ID if provided in request
@@ -227,6 +239,7 @@ class Form1023ApplicationController extends Controller
 
         // Comprehensive validation based on IRS Form 1023 checklist
         $request->validate([
+            'form_type' => ['required', 'string', 'in:1023,1023-ez'],
             // A. Basic Organization Information - REQUIRED
             'legal_name' => ['required', 'string', 'max:255'],
             'ein' => ['required', 'string', 'size:9', 'regex:/^[0-9]{9}$/'],
@@ -335,10 +348,15 @@ class Form1023ApplicationController extends Controller
             'conflict_of_interest_policy_document.required' => 'Conflict of Interest Policy document is required.',
         ]);
 
+        $feeSelection = $this->resolveFeeSelection($request, $existingApplication);
+        $applicationFee = $feeSelection['total'];
+        $formType = $feeSelection['form_type'];
+        $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
+
         try {
             $application = null;
 
-            DB::transaction(function () use ($request, $organization, $applicationFee, $existingApplication, &$application) {
+            DB::transaction(function () use ($request, $organization, $applicationFee, $formType, $existingApplication, &$application) {
                 // Helper function to handle multiple file uploads
                 $handleFileUploads = function ($files, $directory, $existingFiles = null, $fieldName = null, &$meta = null) {
                     $uploaded = [];
@@ -477,6 +495,7 @@ class Form1023ApplicationController extends Controller
                     $application = $existingApplication;
                     $application->update([
                         'status' => 'pending_payment',
+                        'form_type' => $formType,
                         'amount' => $applicationFee,
                         'payment_status' => 'pending',
                         // A. Basic Organization Information
@@ -525,6 +544,7 @@ class Form1023ApplicationController extends Controller
                     $application = Form1023Application::create([
                         'organization_id' => $organization->id,
                         'application_number' => Form1023Application::generateApplicationNumber(),
+                        'form_type' => $formType,
                         'status' => 'pending_payment',
                         'amount' => $applicationFee,
                         'currency' => 'usd',
@@ -692,12 +712,14 @@ class Form1023ApplicationController extends Controller
             abort(403);
         }
 
-        $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
+        $formType = Form1023FeeService::normalizeFormType($application->form_type);
+        $feeBreakdown = Form1023FeeService::breakdownForFormType($formType);
 
         return Inertia::render('form1023/View', [
             'application' => [
                 'id' => $application->id,
                 'application_number' => $application->application_number,
+                'form_type' => $formType,
                 'status' => $application->status,
                 'payment_status' => $application->payment_status,
                 'submitted_at' => optional($application->submitted_at)->toIso8601String(),
@@ -727,7 +749,9 @@ class Form1023ApplicationController extends Controller
                 'foreign_activities_yes_no' => $application->foreign_activities_yes_no,
                 'foreign_activities_desc' => $application->foreign_activities_desc,
             ],
-            'applicationFee' => $applicationFee,
+            'fees' => Form1023FeeService::schedule(),
+            'selectedFormType' => $formType,
+            'feeBreakdown' => $feeBreakdown,
             'canEdit' => in_array($application->status, ['draft', 'needs_more_info']),
             'canPay' => $application->payment_status === 'pending' && in_array($application->status, ['pending_payment', 'draft']),
         ]);
@@ -758,7 +782,7 @@ class Form1023ApplicationController extends Controller
             return redirect()->route('form1023.apply.view', $application)->with('error', 'Payment cannot be initiated for this application status.');
         }
 
-        $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
+        $applicationFee = Form1023FeeService::totalForApplication($application);
         $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         try {
@@ -853,6 +877,7 @@ class Form1023ApplicationController extends Controller
 
         // For editing: ALL files are optional (they already exist in database)
         $request->validate([
+            'form_type' => ['required', 'string', 'in:1023,1023-ez'],
             // A. Basic Organization Information - REQUIRED
             'legal_name' => ['required', 'string', 'max:255'],
             'ein' => ['required', 'string', 'size:9', 'regex:/^[0-9]{9}$/'],
@@ -917,11 +942,13 @@ class Form1023ApplicationController extends Controller
             'whistleblower_policy_document' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
         ]);
 
-        $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
+        $feeSelection = $this->resolveFeeSelection($request, $application);
+        $applicationFee = $feeSelection['total'];
+        $formType = $feeSelection['form_type'];
         $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         try {
-            DB::transaction(function () use ($request, $applicationFee, $application) {
+            DB::transaction(function () use ($request, $applicationFee, $formType, $application) {
                 // Helper functions (same as store method)
                 $handleFileUploads = function ($files, $directory, $existingFiles = null) {
                     $uploaded = [];
@@ -1051,6 +1078,7 @@ class Form1023ApplicationController extends Controller
                 // Update the application
                 $application->update([
                     'status' => $isDraftSave ? 'draft' : 'pending_payment',
+                    'form_type' => $formType,
                     'amount' => $applicationFee,
                     'payment_status' => 'pending',
                     'legal_name' => $request->input('legal_name'),
@@ -1197,6 +1225,7 @@ class Form1023ApplicationController extends Controller
 
         // Use the same validation as store method but allow draft status
         $validated = $request->validate([
+            'form_type' => ['required', 'string', 'in:1023,1023-ez'],
             // A. Basic Organization Information - REQUIRED
             'legal_name' => ['required', 'string', 'max:255'],
             'ein' => ['required', 'string', 'size:9', 'regex:/^[0-9]{9}$/'],
@@ -1261,7 +1290,9 @@ class Form1023ApplicationController extends Controller
             'whistleblower_policy_document' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
         ]);
 
-        $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
+        $feeSelection = $this->resolveFeeSelection($request, $existingApplication);
+        $applicationFee = $feeSelection['total'];
+        $formType = $feeSelection['form_type'];
 
         $activeApplication = $organization->form1023Applications()
             ->whereIn('status', ['pending_payment', 'awaiting_review'])
@@ -1277,7 +1308,7 @@ class Form1023ApplicationController extends Controller
         try {
             $application = null;
 
-            DB::transaction(function () use ($request, $organization, $applicationFee, $user, $existingApplication, &$application) {
+            DB::transaction(function () use ($request, $organization, $applicationFee, $formType, $user, $existingApplication, &$application) {
                 // Reuse the same helper functions from store method
                 $handleFileUploads = function ($files, $directory) {
                     $uploaded = [];
@@ -1402,6 +1433,7 @@ class Form1023ApplicationController extends Controller
                 // Update existing application or create new one
                 $applicationData = [
                     'status' => 'draft',
+                    'form_type' => $formType,
                     'amount' => $applicationFee,
                     'currency' => 'usd',
                     'payment_status' => 'pending',

@@ -19,6 +19,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// Development staging only — shareable direct link to organization registration (501c3ers.com).
+Route::get('/dev/organization', function (Request $request) {
+    if (! is_development_site($request)) {
+        abort(404);
+    }
+
+    return app(OrganizationRegisterController::class)->create($request);
+})->name('dev.register.organization');
+
 Route::middleware('guest')->group(function () {
     Route::get('/register', function () {
         return Inertia::render('frontend/register', [
