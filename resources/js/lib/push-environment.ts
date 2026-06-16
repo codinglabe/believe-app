@@ -47,6 +47,25 @@ export function shouldAutoPromptForPushPermission(): boolean {
     return isMobilePushClient();
 }
 
+/** Persist installed-PWA marker for server-side mobile routing on the next request. */
+export function ensureMobilePwaCookie(): void {
+    if (typeof document === "undefined" || !isMobilePushClient()) {
+        return;
+    }
+
+    const userAgent = navigator.userAgent;
+    const isPhoneUserAgent = /iPhone|iPod|Android.*Mobile|Mobile.*Android/i.test(userAgent);
+    const isStandalonePwa =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+    if (!isPhoneUserAgent && !isStandalonePwa) {
+        return;
+    }
+
+    document.cookie = "biu_pwa_standalone=1; path=/; max-age=31536000; SameSite=Lax";
+}
+
 /** True on phone/tablet browsers where push is expected (Android Chrome, iOS installed PWA). */
 export function isMobilePushClient(): boolean {
     if (typeof window === "undefined") {

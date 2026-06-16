@@ -19,7 +19,7 @@ import { isMerchantDomain } from './lib/merchant-domain';
 import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
 import { showNativePushNotification } from './lib/firebase-push-toast';
 import { syncPushTokenWithServer, startPushTokenRefreshListeners } from './lib/push-token-sync';
-import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
+import { ensureMobilePwaCookie, logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import IncomingCallOverlay from './components/call/IncomingCallOverlay';
 import CallPermissionsPrompt from './components/call/CallPermissionsPrompt';
 import UnityCallGlobalListener from './components/call/UnityCallGlobalListener';
@@ -67,6 +67,8 @@ createInertiaApp({
             syncEchoCsrfToken(initialToken);
             refreshEchoAuthHeaders();
         }
+
+        ensureMobilePwaCookie();
 
         type InitialProps = {
             initialPage?: {

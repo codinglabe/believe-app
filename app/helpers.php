@@ -99,3 +99,47 @@ if (! function_exists('app_version')) {
         return \App\Support\AppVersion::current();
     }
 }
+
+if (! function_exists('request_is_mobile_phone_client')) {
+    /**
+     * True for phone browsers and installed PWA sessions on phones.
+     * Desktop browsers (including narrow viewports) are excluded.
+     */
+    function request_is_mobile_phone_client(?\Illuminate\Http\Request $request = null): bool
+    {
+        $request ??= function_exists('request') ? request() : null;
+
+        if (! $request instanceof \Illuminate\Http\Request) {
+            return false;
+        }
+
+        $userAgent = $request->userAgent() ?? '';
+
+        if ($request->cookie('biu_pwa_standalone') === '1' && request_user_agent_looks_like_phone($userAgent)) {
+            return true;
+        }
+
+        if ($request->header('Sec-CH-UA-Mobile') === '?1') {
+            return true;
+        }
+
+        return request_user_agent_looks_like_phone($userAgent);
+    }
+}
+
+if (! function_exists('request_user_agent_looks_like_phone')) {
+    /**
+     * Detect phone-class user agents. Excludes typical desktop and tablet UAs.
+     */
+    function request_user_agent_looks_like_phone(string $userAgent): bool
+    {
+        if ($userAgent === '') {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/iPhone|iPod|Android.*Mobile|Mobile.*Android|webOS|BlackBerry|IEMobile|Opera Mini/i',
+            $userAgent
+        );
+    }
+}
