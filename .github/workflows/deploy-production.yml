@@ -1,7 +1,7 @@
-# Deploy PRODUCTION only ??? https://believeinunity.org (separate cPanel from 501c3ers.com)
-# Development uses deploy.yml ??? 501c3ers.com on branch `development`.
+# Deploy PRODUCTION only → https://believeinunity.org (separate cPanel from 501c3ers.com)
+# Development uses deploy.yml → 501c3ers.com on branch `development`.
 #
-# Required secret: CPANEL_SSH_KEY_PRODUCTION (private key for PRODUCTION_DEPLOY_USER@host)
+# Runs on self-hosted runner believe-vps (local SSH to DEPLOY_USER@127.0.0.1 — no CSF/firewall).
 # Required variables: PRODUCTION_DEPLOY_HOST, PRODUCTION_DEPLOY_USER, PRODUCTION_DEPLOY_PATH, PRODUCTION_APP_URL
 name: Deploy production (believeinunity.org)
 
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, believe-vps]
 
     env:
       PHP_VERSION: '8.4'
@@ -96,18 +96,9 @@ jobs:
             exit 1
           fi
 
-      - name: Preflight ? open SSH for this runner
-        env:
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
-          APP_URL: ${{ env.APP_URL }}
-          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
-          SSH_PORT: ${{ env.SSH_PORT }}
-        run: |
-          chmod +x .github/scripts/preflight-open-runner-ssh.sh
-          bash .github/scripts/preflight-open-runner-ssh.sh
-
       - name: Setup SSH
         env:
+          SSH_SELF_HOSTED: 'true'
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy-prod
           DEPLOY_USER: ${{ env.DEPLOY_USER }}
@@ -118,14 +109,9 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
-            exit 1
-          fi
           chmod +x .github/scripts/setup-cpanel-ssh.sh
           bash .github/scripts/setup-cpanel-ssh.sh
 
@@ -139,29 +125,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          tools: composer:v2
-          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
+      - name: Prepare build tools (self-hosted VPS)
+        run: |
+          set -euo pipefail
+          php --version | grep -E '^PHP 8\.(3|4)\.' || { echo "::error::PHP 8.3+ required on VPS"; exit 1; }
+          mkdir -p "${HOME}/bin"
+          if ! command -v composer >/dev/null 2>&1; then
+            curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "${HOME}/bin/composer.phar"
+            printf '%s\n' '#!/usr/bin/env bash' 'exec php "${HOME}/bin/composer.phar" "$@"' > "${HOME}/bin/composer"
+            chmod +x "${HOME}/bin/composer"
+          fi
+          export PATH="${HOME}/bin:${PATH}"
+          if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q '^v20\.'; then
+            export NVM_DIR="${HOME}/.nvm"
+            if [ ! -s "${NVM_DIR}/nvm.sh" ]; then
+              curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+            fi
+            # shellcheck source=/dev/null
+            . "${NVM_DIR}/nvm.sh"
+            nvm install 20
+            nvm use 20
+          fi
+          echo "${HOME}/bin" >> "${GITHUB_PATH}"
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then
+            echo "NVM_DIR=${HOME}/.nvm" >> "${GITHUB_ENV}"
+          fi
+          composer --version
+          node --version
+          npm --version
 
       - name: Install PHP dependencies
         run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
+          export PATH="${HOME}/bin:${PATH}"
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then . "${HOME}/.nvm/nvm.sh"; fi
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi --ignore-platform-req=ext-sodium
           mkdir -p resources/views storage/framework/views
-
-      - name: Setup Node
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
 
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then . "${HOME}/.nvm/nvm.sh"; fi
           ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
           echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
@@ -180,6 +184,8 @@ jobs:
         env:
           APP_URL: ${{ env.APP_URL }}
         run: |
+          set -euo pipefail
+          if [ -s "${HOME}/.nvm/nvm.sh" ]; then . "${HOME}/.nvm/nvm.sh"; fi
           npm ci --legacy-peer-deps --no-audit --no-fund
           npm run build
           test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
