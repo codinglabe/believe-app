@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   sync-ledger:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, believe-vps]
 
     env:
       DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
@@ -29,6 +29,7 @@ jobs:
 
       - name: Setup SSH
         env:
+          SSH_SELF_HOSTED: 'true'
           SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
           SSH_DIR: ${{ github.workspace }}/.ssh-deploy-prod
           DEPLOY_USER: ${{ env.DEPLOY_USER }}
@@ -39,7 +40,6 @@ jobs:
           SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
           SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
           SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
-          DEPLOY_RUNNER_ALLOW_TOKEN: ${{ secrets.DEPLOY_RUNNER_ALLOW_TOKEN }}
           APP_URL: ${{ env.APP_URL }}
         run: |
           set -euo pipefail

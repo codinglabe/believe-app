@@ -40,9 +40,6 @@ jobs:
       SSH_RETRY_SLEEP: 8
       SSH_USE_TCP_PROBE: false
       SSH_USE_DEPLOY_HOST: true
-      SSH_RELAY_TO_C3ERS: true
-      SSH_RELAY_USER: believeinunity
-      SSH_RELAY_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
