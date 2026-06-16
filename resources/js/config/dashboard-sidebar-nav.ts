@@ -21,6 +21,7 @@ import {
     Briefcase,
     BookOpen,
     MessageSquare,
+    MessagesSquare,
     FileCode,
     Hash,
     Percent,
@@ -255,6 +256,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         icon: Send,
                         items: [
                             {
+                                title: 'My groups',
+                                href: route('my-chat-groups.index'),
+                                icon: MessagesSquare,
+                                permission: 'communication.read',
+                            },
+                            {
                                 title: 'Create',
                                 href: '/chat-group-topics',
                                 icon: MessageSquare,
@@ -465,6 +472,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 title: 'Chat',
                 icon: MessageCircle,
                 items: [
+                    {
+                        title: 'My groups',
+                        href: route('my-chat-groups.index'),
+                        icon: MessagesSquare,
+                        permission: 'communication.read',
+                    },
                     {
                         title: 'Announcements',
                         href: '/chat',

@@ -5,7 +5,7 @@ import { useState } from "react"
 import { useForm, router, usePage } from "@inertiajs/react"
 import type { PageProps, Organization, BoardMember as BoardMemberType, User } from "@/types"
 import AppLayout from "@/layouts/app-layout"
-import { Users, Plus, UserCheck, UserX, Calendar, Mail, Briefcase, Shield, Crown, CheckCircle2, XCircle, AlertCircle, Clock } from "lucide-react"
+import { Users, Plus, UserCheck, UserX, Calendar, Mail, Briefcase, Shield, Crown, CheckCircle2, XCircle, AlertCircle, Clock, FileDown } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface IrsBoardMemberOption {
@@ -115,6 +115,7 @@ export default function Index({ organization, boardMembers, irsBoardMembers }: P
 
   const activeMembers = boardMembers.filter((member) => member.is_active)
   const inactiveMembers = boardMembers.filter((member) => !member.is_active)
+  const filingPdfUrl = route("board-members.filing-pdf")
 
   const getRoleIcon = (role: string) => {
     switch (role) {
@@ -256,6 +257,24 @@ export default function Index({ organization, boardMembers, irsBoardMembers }: P
                   <h2 className="text-xl sm:text-2xl font-bold text-card-foreground">Board Members</h2>
                   <p className="text-muted-foreground text-xs sm:text-sm mt-1 hidden sm:block">Manage and verify your organization's board members</p>
                 </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+                  <a
+                    href={filingPdfUrl}
+                    className={`inline-flex items-center justify-center gap-2 font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 shadow-lg w-full sm:w-auto text-sm sm:text-base ${
+                      activeMembers.length > 0
+                        ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white hover:shadow-xl transform hover:-translate-y-0.5"
+                        : "bg-muted text-muted-foreground border border-border pointer-events-none opacity-60"
+                    }`}
+                    aria-disabled={activeMembers.length === 0}
+                    title={
+                      activeMembers.length > 0
+                        ? "Download board listing for Form 1023 / 501(c)(3) filing"
+                        : "Add at least one active board member to generate the filing PDF"
+                    }
+                  >
+                    <FileDown className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <span>PDF</span>
+                  </a>
                   <button
                     onClick={() => setShowAddForm(!showAddForm)}
                     className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 w-full sm:w-auto"
@@ -263,6 +282,7 @@ export default function Index({ organization, boardMembers, irsBoardMembers }: P
                     <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
                     <span className="text-sm sm:text-base">Add Member</span>
                   </button>
+                </div>
               </div>
             </div>
 

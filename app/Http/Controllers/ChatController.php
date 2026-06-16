@@ -27,13 +27,9 @@ class ChatController extends Controller
     {
         $user = auth()->user();
 
-        // For every visit: materialize and join all cause group chats the user has on their profile,
-        // so the Groups list can show every selected cause, not a single room.
-        $pacKey = (new PrimaryActionCategory)->getQualifiedKeyName();
-        $myPacIds = $user->supporterInterestCategories()->pluck($pacKey)->all();
-        if (! empty($myPacIds)) {
-            app(CauseGroupChatService::class)->ensureForUserAndCategoryIds($user, $myPacIds);
-        }
+        // For every visit: materialize and join all cause group chats for this account
+        // (supporter interests or organization Causes & Interest).
+        app(CauseGroupChatService::class)->ensureForUser($user);
 
         // `?cause=` is only used to join/ensure a group; do not keep it in the URL — that flag turns on
         // single-cause (pac) UI and hides every other group. After joining, use the "all my causes" view.

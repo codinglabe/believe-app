@@ -10,6 +10,7 @@ use App\Models\ChatTopic;
 use App\Models\Organization;
 use App\Models\PrimaryActionCategory;
 use App\Models\User;
+use App\Services\CauseGroupChatService;
 use App\Services\SeoService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
@@ -209,6 +210,8 @@ class CareAllianceRegisterController extends Controller
             }
 
             $user->syncRoles(['care_alliance']);
+
+            app(CauseGroupChatService::class)->ensureForUser($user->fresh());
 
             DB::commit();
         } catch (\Throwable $e) {

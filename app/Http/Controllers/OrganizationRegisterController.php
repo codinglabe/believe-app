@@ -12,6 +12,7 @@ use App\Models\OrganizationInvite;
 use App\Models\PrimaryActionCategory;
 use App\Models\User;
 use App\Services\BridgeService;
+use App\Services\CauseGroupChatService;
 use App\Services\EINLookupService;
 use App\Services\OrgClaim990Service;
 use App\Services\TaxComplianceService;
@@ -454,6 +455,7 @@ class OrganizationRegisterController extends Controller
             );
 
             $this->syncOrganizationUserRole($user, $organization);
+            app(CauseGroupChatService::class)->ensureForUser($user->fresh());
 
 
             // Create board member record

@@ -9,6 +9,7 @@ use App\Models\CareAlliance;
 use App\Models\CareAllianceMembership;
 use App\Models\PrimaryActionCategory;
 use App\Services\CareAllianceGeneralDonationDistributionService;
+use App\Services\CauseGroupChatService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -148,6 +149,7 @@ class ProfileController extends Controller
                 ]);
 
                 $org->primaryActionCategories()->sync($pacIds);
+                app(CauseGroupChatService::class)->ensureForUser($request->user());
                 $request->user()->load('organization');
             }
         } elseif ($request->user()->role === 'organization') {
@@ -179,6 +181,7 @@ class ProfileController extends Controller
             $request->user()->organization->primaryActionCategories()->sync(
                 array_values(array_unique(array_map('intval', $pacIds)))
             );
+            app(CauseGroupChatService::class)->ensureForUser($request->user());
         }
 
         return to_route('profile.edit');

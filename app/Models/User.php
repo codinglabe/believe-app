@@ -917,6 +917,40 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Cause IDs that should materialize public group chats for this account.
+     * Supporters: profile Supporters Interest. Organizations: Causes & Interest on the org profile.
+     *
+     * @return int[]
+     */
+    public function causeInterestCategoryIds(): array
+    {
+        $pacKey = (new PrimaryActionCategory)->getQualifiedKeyName();
+
+        if ($this->role === 'user') {
+            return $this->supporterInterestCategories()
+                ->where('is_active', true)
+                ->pluck($pacKey)
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        if (in_array($this->role, ['organization', 'organization_pending', 'care_alliance'], true)) {
+            $org = Organization::forAuthUser($this);
+            if (! $org) {
+                return [];
+            }
+
+            return $org->primaryActionCategories()
+                ->where('is_active', true)
+                ->pluck($pacKey)
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        return [];
+    }
+
+    /**
      * Job positions (volunteer role types) this supporter saved on /volunteer-opportunities.
      */
     public function volunteerPreferredJobPositions(): BelongsToMany

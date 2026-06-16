@@ -29,6 +29,7 @@ import {
   MessageCircle,
   GraduationCap,
   UserCheck, // Added MessageCircle icon
+  MessagesSquare,
   PieChart,
   Gift,
   Coins,
@@ -101,6 +102,13 @@ const navigationItems = [
     icon: Text,
     description: "Groups Chat",
     color: "from-green-400 to-blue-600",
+  },
+  {
+    name: "My Groups",
+    href: route("my-chat-groups.index"),
+    icon: MessagesSquare,
+    description: "Chats and groups you joined",
+    color: "from-purple-600 to-blue-600",
   },
   {
     name: "Following",

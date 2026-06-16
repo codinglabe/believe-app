@@ -96,4 +96,15 @@ class CauseGroupChatService
             $this->ensureForUserAndPrimaryActionCategory($user, $id);
         }
     }
+
+    /**
+     * Join cause group chats for every cause on the user's profile or organization settings.
+     */
+    public function ensureForUser(User $user): void
+    {
+        $ids = $user->causeInterestCategoryIds();
+        if ($ids !== []) {
+            $this->ensureForUserAndCategoryIds($user, $ids);
+        }
+    }
 }
