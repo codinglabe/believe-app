@@ -21,10 +21,13 @@ import {
   MapPin,
   PenLine,
   Phone,
+  Plus,
   ShieldCheck,
   Sparkles,
   Trash2,
   Upload,
+  FileDown,
+  Briefcase,
   User,
   Users,
 } from "lucide-react"
@@ -54,6 +57,15 @@ type OnboardingItem = {
   board_member_minimum?: number | null
 }
 
+type OnboardingBoardMember = {
+  id: number
+  name: string
+  email: string
+  position: string
+  is_active: boolean
+  appointed_on: string | null
+}
+
 type PageProps = {
   items: OnboardingItem[]
   percent: number
@@ -67,6 +79,8 @@ type PageProps = {
     address?: string
   } | null
   storageHref: string
+  filingPdfUrl: string
+  boardMembers: OnboardingBoardMember[]
 }
 
 const DOCUMENT_ICONS: Record<string, typeof FileText> = {
@@ -268,20 +282,69 @@ function StickyChecklistAside({ children }: { children: ReactNode }) {
 function BoardMemberListCard({
   item,
   index,
+  boardMembers,
+  filingPdfUrl,
+  onUploaded,
 }: {
   item: OnboardingItem
   index: number
+  boardMembers: OnboardingBoardMember[]
+  filingPdfUrl: string
+  onUploaded: () => void
 }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [dragOver, setDragOver] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
   const count = item.board_member_count ?? 0
   const minimum = item.board_member_minimum ?? 2
   const remaining = Math.max(minimum - count, 0)
+  const activeMembers = boardMembers.filter((m) => m.is_active)
+  const hasUploadedDoc = Boolean(item.file_name)
+  const storageLabel = item.storage_path?.replace("/Governance/", "") ?? ""
 
   const countLabel =
     count === 0
       ? "No active board members on file yet"
       : count < minimum
-        ? `${count} active board member${count === 1 ? "" : "s"} on file — add ${remaining} more to complete this step`
+        ? `${count} active board member${count === 1 ? "" : "s"} — add ${remaining} more, or upload a board list document`
         : `${count} active board member${count === 1 ? "" : "s"} on file`
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setUploading(true)
+      setProgress(0)
+      try {
+        const result = await uploadOnboardingDocument(item.id, file, setProgress)
+        if (result.success) {
+          toast.success(result.message)
+          onUploaded()
+        } else {
+          toast.error(result.message)
+        }
+      } catch {
+        toast.error("Upload failed. Please try again.")
+      } finally {
+        setUploading(false)
+        setProgress(0)
+        setDragOver(false)
+      }
+    },
+    [item.id, onUploaded]
+  )
+
+  const handleDelete = useCallback(() => {
+    setDeleting(true)
+    router.delete(route("governance.onboarding.document.destroy"), {
+      data: { document_type: item.id },
+      preserveScroll: true,
+      onError: () => toast.error("Could not remove document. Please try again."),
+      onFinish: () => setDeleting(false),
+    })
+  }, [item.id])
 
   return (
     <article
@@ -300,7 +363,7 @@ function BoardMemberListCard({
             item.connected ? "bg-emerald-500" : "bg-gradient-to-b from-purple-500 to-blue-500"
           )}
         />
-        <div className="min-w-0 flex-1 overflow-hidden p-5 md:p-6">
+        <div className="min-w-0 flex-1 overflow-hidden p-5 md:p-6 space-y-5">
           <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 flex-1 gap-4">
               <div
@@ -332,20 +395,212 @@ function BoardMemberListCard({
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mt-0.5 break-words">{item.label}</h3>
                 <p className="text-sm text-muted-foreground mt-1 leading-relaxed break-words">{item.description}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {countLabel}
-                </p>
+                <p className="mt-2 text-sm text-muted-foreground">{countLabel}</p>
+                {storageLabel && (
+                  <p className="mt-2 flex max-w-full min-w-0 items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate" title={`Governance Storage / ${storageLabel}`}>
+                      Governance Storage / {storageLabel}
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
-            <Link href={item.route} className="shrink-0 self-start">
-              <Button
-                className="gap-2 text-white shadow-md hover:opacity-90"
-                style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0 self-start">
+              <Link href={route("board-members.index")}>
+                <Button
+                  variant="outline"
+                  className="gap-2 w-full sm:w-auto border-purple-200 dark:border-purple-800/50"
+                >
+                  <Users className="h-4 w-4" />
+                  {activeMembers.length > 0 ? "Manage board" : "Add members"}
+                </Button>
+              </Link>
+              <a
+                href={filingPdfUrl}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium shadow-md transition-all",
+                  activeMembers.length > 0
+                    ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                    : "bg-muted text-muted-foreground pointer-events-none opacity-60"
+                )}
+                aria-disabled={activeMembers.length === 0}
+                title={
+                  activeMembers.length > 0
+                    ? "Download board listing PDF for 501(c)(3) filing"
+                    : "Add at least one active board member to generate PDF"
+                }
               >
-                <Users className="h-4 w-4" />
-                {item.connected ? "Manage board" : "Add board members"}
-              </Button>
-            </Link>
+                <FileDown className="h-4 w-4" />
+                PDF
+              </a>
+            </div>
+          </div>
+
+          {boardMembers.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2.5 font-semibold">Name</th>
+                    <th className="px-4 py-2.5 font-semibold hidden sm:table-cell">Position</th>
+                    <th className="px-4 py-2.5 font-semibold hidden md:table-cell">Email</th>
+                    <th className="px-4 py-2.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boardMembers.map((member) => (
+                    <tr key={member.id} className="border-b last:border-0">
+                      <td className="px-4 py-3 font-medium">{member.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                          {member.position}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell truncate max-w-[200px]">
+                        {member.email}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                            member.is_active
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                              : "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {member.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-purple-200/70 bg-purple-50/30 px-4 py-6 text-center dark:border-purple-800/40 dark:bg-purple-950/10">
+              <Users className="mx-auto h-8 w-8 text-purple-400 mb-2" />
+              <p className="text-sm text-muted-foreground">No board members yet.</p>
+              <Link href={route("board-members.index")} className="mt-3 inline-block">
+                <Button
+                  size="sm"
+                  className="gap-2 text-white"
+                  style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add board members
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          <div>
+            <p className="text-sm font-semibold mb-3">Board list document</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Generate the PDF above and upload it here, or upload your own board member list for Governance Storage.
+            </p>
+
+            {hasUploadedDoc ? (
+              <div className="flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border border-emerald-200/60 bg-emerald-50/50 px-4 py-3 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+                <FileText className="h-5 w-5 shrink-0 text-emerald-600" />
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Document on file</p>
+                  {item.file_name && (
+                    <p className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-300/80 truncate" title={item.file_name}>
+                      {shortenFileName(item.file_name)}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+                  disabled={deleting || uploading}
+                  onClick={() => setDeleteModalOpen(true)}
+                  aria-label="Remove board list document"
+                  title="Remove document"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-1">
+                <input
+                  ref={inputRef}
+                  type="file"
+                  className="hidden"
+                  aria-label="Upload board member list"
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handleFile(file)
+                    e.target.value = ""
+                  }}
+                />
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") inputRef.current?.click()
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDragOver(true)
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const file = e.dataTransfer.files?.[0]
+                    if (file) void handleFile(file)
+                  }}
+                  onClick={() => !uploading && inputRef.current?.click()}
+                  className={cn(
+                    "relative cursor-pointer rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all",
+                    dragOver
+                      ? "border-purple-400 bg-purple-50/80 dark:border-purple-500 dark:bg-purple-950/30"
+                      : "border-purple-200/70 bg-purple-50/30 hover:border-purple-300 hover:bg-purple-50/50 dark:border-purple-800/50 dark:bg-purple-950/10 dark:hover:border-purple-600"
+                  )}
+                >
+                  {uploading ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+                      <p className="text-sm font-medium text-foreground">Uploading… {progress}%</p>
+                      <Progress value={progress} className="h-2 w-full max-w-xs" />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <div
+                        className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-md"
+                        style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+                      >
+                        <Upload className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Drop board list here or <span className="text-purple-600 dark:text-purple-400">browse</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">PDF, DOC, XLS, CSV, or image — max 50 MB</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <ConfirmationModal
+              isOpen={deleteModalOpen}
+              onChange={setDeleteModalOpen}
+              title="Remove board list document?"
+              description={
+                item.file_name
+                  ? `"${item.file_name}" will be removed from Governance Storage. You can upload again or rely on your board roster if it meets the minimum.`
+                  : "This document will be removed from Governance Storage."
+              }
+              confirmLabel="Remove document"
+              cancelLabel="Keep document"
+              isLoading={deleting}
+              onConfirm={handleDelete}
+            />
           </div>
         </div>
       </div>
@@ -583,6 +838,8 @@ export default function OrganizationOnboardingIndex({
   total,
   authorizedSigner,
   storageHref,
+  filingPdfUrl,
+  boardMembers,
 }: PageProps) {
   const { flash } = usePage().props as { flash?: { success?: string; error?: string } }
 
@@ -595,7 +852,7 @@ export default function OrganizationOnboardingIndex({
   })
 
   const refresh = () => {
-    router.reload({ only: ["items", "percent", "completed", "total", "authorizedSigner"] })
+    router.reload({ only: ["items", "percent", "completed", "total", "authorizedSigner", "boardMembers"] })
   }
 
   const signerItem = items.find((i) => i.id === "authorized_signer")
@@ -734,6 +991,9 @@ export default function OrganizationOnboardingIndex({
                   <BoardMemberListCard
                     item={boardMemberItem}
                     index={uploadItems.length}
+                    boardMembers={boardMembers}
+                    filingPdfUrl={filingPdfUrl}
+                    onUploaded={refresh}
                   />
                 </section>
               ) : null}

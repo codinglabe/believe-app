@@ -127,7 +127,7 @@ use App\Http\Controllers\MarketplaceOrganizationProductController;
 use App\Http\Controllers\MerchantHubMarketplaceProductController;
 use App\Http\Controllers\MerchantHubOfferController;
 use App\Http\Controllers\MerchantRedemptionController;
-use App\Http\Controllers\NewsletterController;
+use App\Http\Controllers\MyChatGroupsController;
 use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\NodeSellController;
@@ -1007,6 +1007,10 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
 Route::get('group-topics/select', [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|care_alliance'])
     ->name('auth.topics.select');
 
+Route::get('/my-chat-groups', [MyChatGroupsController::class, 'index'])
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:user|organization|organization_pending|care_alliance|admin'])
+    ->name('my-chat-groups.index');
+
 Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('chat.')->group(function () {
     Route::get('/', [ChatController::class, 'index'])->name('index');
     Route::get('/rooms/{chatRoom}/messages', [ChatController::class, 'getMessages'])->name('messages');
@@ -1505,6 +1509,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     });
 
     Route::middleware('role:organization|organization_pending|care_alliance')->group(function () {
+        Route::get('board-members/filing/pdf', [BoardMemberController::class, 'filingPdf'])
+            ->name('board-members.filing-pdf');
+
         Route::resource('board-members', BoardMemberController::class)
             ->only(['index', 'store', 'update', 'destroy'])
             ->shallow();

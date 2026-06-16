@@ -49,6 +49,22 @@ class OrganizationOnboardingController extends Controller
             'total' => $completion['total'] ?? 0,
             'authorizedSigner' => is_array($org->authorized_signer_info) ? $org->authorized_signer_info : null,
             'storageHref' => route('governance.storage.index'),
+            'filingPdfUrl' => route('board-members.filing-pdf'),
+            'boardMembers' => $org->boardMembers()
+                ->with('user')
+                ->orderByDesc('is_active')
+                ->orderBy('position')
+                ->get()
+                ->map(fn ($member) => [
+                    'id' => $member->id,
+                    'name' => $member->user?->name ?? '—',
+                    'email' => $member->user?->email ?? '',
+                    'position' => $member->position,
+                    'is_active' => $member->is_active,
+                    'appointed_on' => $member->appointed_on?->toIso8601String(),
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 

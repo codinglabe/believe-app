@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Models\IrsBoardMember;
 use App\Notifications\BoardMemberInvitation;
+use App\Services\BoardMemberFilingPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -17,6 +18,10 @@ use Carbon\Carbon;
 
 class BoardMemberController extends Controller
 {
+    public function __construct(
+        private readonly BoardMemberFilingPdfService $filingPdfService,
+    ) {}
+
     public function index()
     {
         $organization = Auth::user()->organization;
@@ -42,6 +47,21 @@ class BoardMemberController extends Controller
                 'position' => $m->position ?? '',
             ])->values()->all(),
         ]);
+    }
+
+    public function filingPdf(Request $request)
+    {
+        $organization = Auth::user()->organization;
+
+        $this->authorize('viewAny', [BoardMember::class, $organization]);
+
+        $activeOnly = $request->boolean('all') !== true;
+
+        if ($request->header('X-Inertia')) {
+            return \Inertia\Inertia::location($request->fullUrl());
+        }
+
+        return $this->filingPdfService->download($organization, $activeOnly);
     }
 
     public function store(Request $request)

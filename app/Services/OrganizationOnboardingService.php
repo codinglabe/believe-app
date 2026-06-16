@@ -61,7 +61,7 @@ class OrganizationOnboardingService
                 $connected = match ($req['type']) {
                     'upload' => $documents->has($req['id']),
                     'form' => $signerComplete,
-                    'board_members' => $boardMembersComplete,
+                    'board_members' => $boardMembersComplete || $documents->has($req['id']),
                     default => false,
                 };
 
@@ -128,7 +128,7 @@ class OrganizationOnboardingService
     public function storeUpload(Organization $organization, string $documentType, UploadedFile $file): array
     {
         $requirement = OrganizationOnboardingRequirements::find($documentType);
-        if ($requirement === null || $requirement['type'] !== 'upload') {
+        if ($requirement === null || ! $this->requirementAcceptsUpload($requirement)) {
             return ['success' => false, 'message' => 'Invalid document type.'];
         }
 
@@ -267,7 +267,7 @@ class OrganizationOnboardingService
     public function deleteDocument(Organization $organization, string $documentType): array
     {
         $requirement = OrganizationOnboardingRequirements::find($documentType);
-        if ($requirement === null || $requirement['type'] !== 'upload') {
+        if ($requirement === null || ! $this->requirementAcceptsUpload($requirement)) {
             return ['success' => false, 'message' => 'Invalid document type.'];
         }
 
@@ -288,10 +288,23 @@ class OrganizationOnboardingService
         $document->delete();
         $this->syncCompletionTimestamp($organization);
 
+        $rosterStillComplete = $requirement['type'] === 'board_members'
+            && $this->boardMembersAreComplete($organization);
+
         return [
             'success' => true,
-            'message' => ($requirement['label'] ?? 'Document').' removed. Upload a new file to complete this step.',
+            'message' => $rosterStillComplete
+                ? ($requirement['label'] ?? 'Document').' file removed. Your board roster still satisfies this step.'
+                : ($requirement['label'] ?? 'Document').' removed. Upload a new file or add board members to complete this step.',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requirement
+     */
+    private function requirementAcceptsUpload(array $requirement): bool
+    {
+        return in_array($requirement['type'], ['upload', 'board_members'], true);
     }
 
     /**

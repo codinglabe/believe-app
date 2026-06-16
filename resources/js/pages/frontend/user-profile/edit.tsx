@@ -232,24 +232,24 @@ export default function ProfileEdit() {
 
   useEffect(() => {
     if (!user) return
-    setData("name", user.name || "")
-    setData("email", user.email || "")
-    setData("phone", user.phone || "")
-    setData("dob", user.dob || "")
-    setData("city", user.city || "")
-    setData("state", user.state || "")
-    setData("zipcode", user.zipcode || "")
-    setData("religion", user.religion || "")
+      setData("name", user.name || "")
+      setData("email", user.email || "")
+      setData("phone", user.phone || "")
+      setData("dob", user.dob || "")
+      setData("city", user.city || "")
+      setData("state", user.state || "")
+      setData("zipcode", user.zipcode || "")
+      setData("religion", user.religion || "")
     setData("account_visibility", user.account_visibility === "private" ? "private" : "public")
     setData("messaging_policy", (user.messaging_policy ?? "everyone") as ProfileEditPageProps["user"]["messaging_policy"])
     setData("primary_organization_id", user.primary_organization_id ?? "")
     setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
     setData("preferred_theme", (user.preferred_theme as Appearance) || "system")
-    setData("positions", user.positions || [])
-    setData("supporter_interests", user.supporter_interests || [])
-    if (user.image) {
-      setPreviewUrl(user.image)
-    }
+      setData("positions", user.positions || [])
+      setData("supporter_interests", user.supporter_interests || [])
+      if (user.image) {
+        setPreviewUrl(user.image)
+      }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync form when loaded user identity changes, not on every prop churn
   }, [user?.id])
 
@@ -626,85 +626,85 @@ export default function ProfileEdit() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Label htmlFor="name" className={labelClass}>
-                  Full Name *
-                </Label>
-                <Input
-                  id="name"
-                  value={data.name}
-                  onChange={(e) => setData("name", e.target.value)}
+                Full Name *
+              </Label>
+              <Input
+                id="name"
+                value={data.name}
+                onChange={(e) => setData("name", e.target.value)}
                   className={inputClass}
-                  required
-                />
+                required
+              />
                 {errors.name && <p className="mt-1 text-sm text-red-400">{errors.name}</p>}
-              </div>
+            </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="email" className={labelClass}>
-                  Email Address *
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={data.email}
-                  onChange={(e) => setData("email", e.target.value)}
+                Email Address *
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={data.email}
+                onChange={(e) => setData("email", e.target.value)}
                   className={inputClass}
-                  required
-                />
+                required
+              />
                 {errors.email && <p className="mt-1 text-sm text-red-400">{errors.email}</p>}
-              </div>
-              <div>
+            </div>
+            <div>
                 <Label htmlFor="phone" className={labelClass}>
-                  Phone Number
-                </Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={data.phone}
-                  onChange={(e) => setData("phone", e.target.value)}
+                Phone Number
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={data.phone}
+                onChange={(e) => setData("phone", e.target.value)}
                   className={inputClass}
-                  placeholder="+1 (555) 123-4567"
-                />
+                placeholder="+1 (555) 123-4567"
+              />
                 {errors.phone && <p className="mt-1 text-sm text-red-400">{errors.phone}</p>}
-              </div>
-              <div>
+            </div>
+            <div>
                 <Label htmlFor="dob" className={labelClass}>
-                  Date of Birth (MM/DD) *
-                </Label>
+                Date of Birth (MM/DD) *
+              </Label>
                 <div className="relative mt-1">
                   <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    id="dob"
-                    type="text"
+              <Input
+                id="dob"
+                type="text"
                     inputMode="numeric"
                     value={data.dob ?? ""}
                     onChange={(e) => setData("dob", formatMmDdInput(e.target.value))}
                     className="border-gray-300 bg-white pl-10 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="MM/DD"
+                placeholder="MM/DD"
                     maxLength={5}
-                  />
-                </div>
+              />
+            </div>
                 {errors.dob && <p className="mt-1 text-sm text-red-400">{errors.dob}</p>}
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="religion" className={labelClass}>
                   Major World Religions (Optional)
-                </Label>
+              </Label>
                 <p className={cn("mb-2 mt-1", helperClass)}>Optional — choose the tradition that best describes you.</p>
-                <Select
-                  value={data.religion ? data.religion : "__none__"}
-                  onValueChange={(v) => setData("religion", v === "__none__" ? "" : v)}
-                >
+              <Select
+                value={data.religion ? data.religion : "__none__"}
+                onValueChange={(v) => setData("religion", v === "__none__" ? "" : v)}
+              >
                   <SelectTrigger id="religion" className="border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Prefer not to say</SelectItem>
-                    {religionOptions.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Prefer not to say</SelectItem>
+                  {religionOptions.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
                 {errors.religion && <p className="mt-1 text-sm text-red-400">{errors.religion}</p>}
               </div>
             </div>
@@ -902,7 +902,7 @@ export default function ProfileEdit() {
                     <RadioGroupItem value="private" id="vis-private" className="mt-1 shrink-0" />
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 dark:text-gray-100">Private Account</div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                         You approve follow requests. Only approved followers can see your content.
                       </p>
                     </div>
@@ -947,9 +947,9 @@ export default function ProfileEdit() {
                   ))}
                 </RadioGroup>
                 {errors.messaging_policy && <p className="text-sm text-red-400">{errors.messaging_policy}</p>}
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </CardContent>
+        </Card>
 
           <Card className={cardClass}>
             <CardHeader className="pb-4">{sectionTitle(<Building2 className="h-5 w-5" />, 4, "Organization Affiliation")}</CardHeader>

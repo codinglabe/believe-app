@@ -66,10 +66,10 @@ class OrganizationOnboardingRequirements
             [
                 'id' => self::BOARD_MEMBER_LIST,
                 'label' => 'Board Member List',
-                'description' => 'Add your full board roster. The person who registered is added automatically — add at least one more active board member.',
+                'description' => 'Add your board roster below, generate a 501(c)(3) filing PDF, or upload your board member list document.',
                 'type' => 'board_members',
                 'storage_path' => '/Governance/Board of Directors/Director Profiles',
-                'route' => route('board-members.index'),
+                'route' => $onboardingRoute.'#'.self::BOARD_MEMBER_LIST,
             ],
             [
                 'id' => self::AUTHORIZED_SIGNER,
