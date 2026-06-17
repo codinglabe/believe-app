@@ -13,7 +13,6 @@ import {
 } from "@/components/frontend/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import {
-  Menu,
   X,
   Home,
   Bell,
@@ -65,6 +64,7 @@ import { Link, router, usePage } from "@inertiajs/react"
 import { prepareLogout } from "@/lib/logout"
 import toast from "react-hot-toast"
 import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
+import { useMobileNav } from "@/contexts/mobile-nav-context"
 import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
 import { WalletPopup } from "@/components/WalletPopup"
@@ -170,8 +170,8 @@ function LandingNavDropdown({ label, items }: { label: string; items: LandingNav
 }
 
 export default function Navbar() {
-  const { auth, supporterSubscription } = usePage<SharedData & { supporterSubscription?: SupporterSubscriptionState | null }>().props
-  const [isOpen, setIsOpen] = useState(false)
+  const { auth, supporterSubscription, url } = usePage<SharedData & { supporterSubscription?: SupporterSubscriptionState | null }>().props
+  const { isMenuOpen, closeMenu } = useMobileNav()
   const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
 
   const isSupporterUser = auth?.user?.role === "user"
@@ -329,6 +329,10 @@ export default function Navbar() {
   ]
 
   const cleanup = useMobileNavigation()
+
+  useEffect(() => {
+    closeMenu()
+  }, [url, closeMenu])
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -838,33 +842,57 @@ export default function Navbar() {
                               </Link>
                           </div>
                       )}
-                      <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 shrink-0 gap-1.5 px-2 sm:px-3"
-                          onClick={() => setIsOpen(!isOpen)}
-                          aria-expanded={isOpen}
-                          aria-controls="site-nav-mobile-panel"
-                          aria-label={isOpen ? "Close site menu" : "Open site menu"}
-                      >
-                          <span className="hidden text-xs font-medium sm:inline">Menu</span>
-                          {isOpen ? <X className="h-5 w-5 shrink-0" /> : <Menu className="h-5 w-5 shrink-0" />}
-                      </Button>
                   </div>
           </div>
 
-              {/* Mobile / tablet Navigation sheet */}
+              {/* Mobile / tablet navigation sheet */}
               <AnimatePresence>
-                  {isOpen && (
+                  {isMenuOpen && (
+                      <>
+                      <motion.button
+                          type="button"
+                          aria-label="Close menu"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="fixed inset-0 z-[60] bg-black/45 backdrop-blur-[2px] 2xl:hidden"
+                          onClick={closeMenu}
+                      />
                       <motion.div
                           id="site-nav-mobile-panel"
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="border-t 2xl:hidden"
+                          role="dialog"
+                          aria-modal="true"
+                          aria-label="Site menu"
+                          initial={{ y: "100%" }}
+                          animate={{ y: 0 }}
+                          exit={{ y: "100%" }}
+                          transition={{ type: "spring", stiffness: 320, damping: 34 }}
+                          className="fixed inset-x-0 bottom-0 z-[61] flex max-h-[min(92vh,100dvh)] flex-col overflow-hidden rounded-t-[1.35rem] border-t border-border/80 bg-background shadow-[0_-24px_64px_rgba(15,23,42,0.22)] 2xl:hidden dark:shadow-[0_-24px_64px_rgba(0,0,0,0.55)]"
+                          style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
                       >
-                          <div className="container mx-auto max-h-[calc(100vh-4rem)] space-y-2 overflow-y-auto px-4 py-4">
+                          <div className="flex shrink-0 flex-col items-center border-b border-border/60 px-4 pb-3 pt-3">
+                              <div className="mb-3 h-1 w-12 rounded-full bg-muted-foreground/25" aria-hidden />
+                              <div className="flex w-full items-center justify-between gap-3">
+                                  <div>
+                                      <p className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-sm font-semibold text-transparent">
+                                          Believe In Unity
+                                      </p>
+                                      <p className="text-muted-foreground text-xs">Browse the full site menu</p>
+                                  </div>
+                                  <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-9 w-9 shrink-0 rounded-full"
+                                      onClick={closeMenu}
+                                      aria-label="Close menu"
+                                  >
+                                      <X className="h-5 w-5" />
+                                  </Button>
+                              </div>
+                          </div>
+                          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-4">
                               <div className="px-3 py-2">
                                   <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Home</p>
                                   {isLoggedIn ? (
@@ -873,7 +901,7 @@ export default function Navbar() {
                                               key={item.name}
                                               href={item.href}
                                               className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                              onClick={() => setIsOpen(false)}
+                                              onClick={() => closeMenu()}
                                           >
                                               <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                               {item.name}
@@ -883,7 +911,7 @@ export default function Navbar() {
                                       <Link
                                           href="/"
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <Home className="mr-2 h-4 w-4 shrink-0" />
                                           Home
@@ -906,7 +934,7 @@ export default function Navbar() {
                                                           key={`${item.name}-${child.name}`}
                                                           href={child.href ?? "#"}
                                                           className="text-foreground hover:bg-accent ml-4 flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                                          onClick={() => setIsOpen(false)}
+                                                          onClick={() => closeMenu()}
                                                       >
                                                           <child.icon className="mr-2 h-4 w-4 shrink-0" />
                                                           {child.name}
@@ -921,7 +949,7 @@ export default function Navbar() {
                                               key={item.name}
                                               href={item.href ?? "#"}
                                               className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                              onClick={() => setIsOpen(false)}
+                                              onClick={() => closeMenu()}
                                           >
                                               <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                               {item.name}
@@ -937,7 +965,7 @@ export default function Navbar() {
                                           key={`${item.name}-${item.href}`}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
@@ -952,7 +980,7 @@ export default function Navbar() {
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
@@ -967,7 +995,7 @@ export default function Navbar() {
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
@@ -983,7 +1011,7 @@ export default function Navbar() {
                                               key={item.name}
                                               href={item.href}
                                               className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                              onClick={() => setIsOpen(false)}
+                                              onClick={() => closeMenu()}
                                           >
                                               <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                               {item.name}
@@ -999,7 +1027,7 @@ export default function Navbar() {
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
@@ -1014,7 +1042,7 @@ export default function Navbar() {
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
@@ -1029,7 +1057,7 @@ export default function Navbar() {
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
+                                          onClick={() => closeMenu()}
                                       >
                                           <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
@@ -1249,6 +1277,7 @@ export default function Navbar() {
                               </div>
                           </div>
                       </motion.div>
+                      </>
                   )}
               </AnimatePresence>
 

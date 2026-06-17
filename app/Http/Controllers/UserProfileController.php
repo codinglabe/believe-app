@@ -693,6 +693,16 @@ class UserProfileController extends Controller
         return ['city' => $c, 'state' => $s, 'zip' => $z];
     }
 
+    protected function formatPublicUserLocation(User $user): ?string
+    {
+        $locationParts = array_filter([$user->city, $user->state]);
+        if (! empty($locationParts)) {
+            return implode(', ', $locationParts).($user->zipcode ? ' '.$user->zipcode : '');
+        }
+
+        return $user->getAttribute('location') ?: null;
+    }
+
     /**
      * Update user timezone
      */
@@ -2127,6 +2137,8 @@ class UserProfileController extends Controller
         }
 
         // Format user data
+        $location = $this->formatPublicUserLocation($user);
+
         $userData = [
             'id' => $user->id,
             'slug' => $user->slug,
@@ -2135,7 +2147,10 @@ class UserProfileController extends Controller
             'image' => $user->image ? Storage::url($user->image) : null,
             'cover_img' => $user->cover_img ? Storage::url($user->cover_img) : null,
             'bio' => $user->bio ?? null,
-            'location' => $user->location ?? null,
+            'location' => $location,
+            'city' => $user->city,
+            'state' => $user->state,
+            'zipcode' => $user->zipcode,
             'phone' => $user->contact_number ?? null,
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
@@ -2232,7 +2247,13 @@ class UserProfileController extends Controller
     {
         $user = User::where('slug', $slug)
             ->orWhere('id', $slug)
-            ->with(['supporterPositions', 'primaryOrganization:id,name', 'favoriteOrganizations:id,name'])
+            ->with([
+                'supporterPositions',
+                'primaryOrganization:id,name,registered_user_image',
+                'favoriteOrganizations' => fn ($q) => $q
+                    ->select('organizations.id', 'organizations.name', 'organizations.registered_user_image')
+                    ->orderByPivot('created_at', 'desc'),
+            ])
             ->first();
 
         if (! $user) {
@@ -2351,10 +2372,31 @@ class UserProfileController extends Controller
         }
 
         // Build location string from city, state, zipcode
-        $locationParts = array_filter([$user->city, $user->state]);
-        $location = ! empty($locationParts)
-            ? implode(', ', $locationParts).($user->zipcode ? ' '.$user->zipcode : '')
-            : ($user->location ?? null);
+        $location = $this->formatPublicUserLocation($user);
+
+        $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
+        $storedSecondary = $user->secondary_organization_ids;
+
+        if ($storedSecondary !== null && is_array($storedSecondary)) {
+            $secondaryIdSet = array_flip(array_values(array_unique(array_map('intval', $storedSecondary))));
+        } else {
+            $secondaryIdSet = array_flip($this->primaryOrgService->resolveSecondaryOrganizationIds($user));
+        }
+
+        $followedOrganizations = $user->favoriteOrganizations
+            ->filter(fn (Organization $org) => $primaryOrgId === null || (int) $org->id !== $primaryOrgId)
+            ->map(function (Organization $org) use ($secondaryIdSet) {
+                $row = $this->organizationPickerRow($org);
+                if ($row === null) {
+                    return null;
+                }
+                $row['affiliation'] = isset($secondaryIdSet[(int) $org->id]) ? 'secondary' : 'following';
+
+                return $row;
+            })
+            ->filter()
+            ->values()
+            ->all();
 
         $userData = [
             'id' => $user->id,
@@ -2373,19 +2415,9 @@ class UserProfileController extends Controller
             'phone' => $user->phone,
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
-            'primary_organization' => $user->primaryOrganization ? [
-                'id' => (int) $user->primaryOrganization->id,
-                'name' => (string) $user->primaryOrganization->name,
-            ] : null,
+            'primary_organization' => $this->organizationPickerRow($user->primaryOrganization),
             'primary_organization_locked' => (bool) $user->primary_organization_locked,
-            'followed_organizations' => $user->favoriteOrganizations
-                ->map(fn (Organization $org) => [
-                    'id' => (int) $org->id,
-                    'name' => (string) $org->name,
-                    'organization_status' => $user->primary_organization_id === $org->id ? 'primary' : 'secondary',
-                ])
-                ->values()
-                ->all(),
+            'followed_organizations' => $followedOrganizations,
             'reward_points' => $isOwnProfile ? (float) ($user->reward_points ?? 0) : 0,
         ];
 

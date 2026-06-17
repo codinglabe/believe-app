@@ -91,7 +91,7 @@ use App\Http\Controllers\ExploreByCauseController;
 use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
 use App\Http\Controllers\Facebook\PostController;
-use App\Http\Controllers\FindCareAlliancesController;
+use App\Http\Controllers\FavoriteMenuController;
 use App\Http\Controllers\FindSupportersController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\Organization\OrganizationSupportersController;
@@ -917,6 +917,15 @@ Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByS
 // Giving dashboard (donation history) - available to both supporters and organizations
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
+
+    Route::prefix('me/favorite-menus')->name('favorite-menus.')->group(function () {
+        Route::post('/', [FavoriteMenuController::class, 'syncQuick'])->name('sync');
+        Route::put('/reorder', [FavoriteMenuController::class, 'syncQuick'])->name('reorder');
+        Route::put('/bottom-nav', [FavoriteMenuController::class, 'syncBottomNav'])->name('bottom-nav');
+        Route::post('/{menuKey}/toggle', [FavoriteMenuController::class, 'toggle'])->name('toggle');
+        Route::post('/onboarding', [FavoriteMenuController::class, 'completeOnboarding'])->name('onboarding');
+        Route::post('/onboarding/skip', [FavoriteMenuController::class, 'skipOnboarding'])->name('onboarding.skip');
+    });
 });
 
 // BIU AI Media Studio — nonprofits + supporters (OpenAI → fal.ai → Dropbox; work runs on the queue worker).
