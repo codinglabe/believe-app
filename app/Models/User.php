@@ -87,6 +87,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'plaid_access_token',
         'verification_metadata',
         'timezone',
+        'favorites_onboarding_completed_at',
         'wallet_access_token',
         'wallet_encrypted_token',
         'wallet_user_id',
@@ -163,6 +164,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'favorites_onboarding_completed_at' => 'datetime',
             'ownership_verified_at' => 'datetime',
             'verification_metadata' => 'array',
             'livestream_overlay_settings' => 'array',

@@ -1,7 +1,9 @@
 import type React from "react"
 // import "./globals.css"
 import Navbar from "@/components/frontend/layout/navbar"
+import MobileBottomNav from "@/components/frontend/layout/mobile-bottom-nav"
 import Footer from "@/components/frontend/layout/footer"
+import { MobileNavProvider } from "@/contexts/mobile-nav-context"
 import { NotificationProvider } from "@/components/frontend/notification-provider"
 import SupportWidget from "@/components/frontend/SupportWidget"
 import toast, { Toaster } from "react-hot-toast"
@@ -47,6 +49,7 @@ export default function RootLayout({
         if (typeof error === "string" && error.trim() !== "") toast.error(error)
     }, [page.props?.success, page.props?.error])
   return (
+      <MobileNavProvider>
       <NotificationProvider>
           {/* Keep CSRF meta in sync so 419 never happens on public/org pages */}
           <CsrfTokenSync />
@@ -79,16 +82,18 @@ export default function RootLayout({
                     },
                 }}
             />
-      <div>
+      <div className="flex min-h-screen flex-col">
         <Navbar />
-        <main>
+        <main className="flex-1 pb-[calc(5.25rem+env(safe-area-inset-bottom))] 2xl:pb-0">
           {/* <PWAInstallPrompt /> */}
           {/* <PWAUpdatePrompt /> */}
           {children}
         </main>
         <Footer />
+        <MobileBottomNav />
         <SupportWidget />
       </div>
     </NotificationProvider>
+      </MobileNavProvider>
   )
 }

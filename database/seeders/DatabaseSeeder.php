@@ -93,6 +93,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(KioskCategoriesSeeder::class);
         $this->callUnlessSeeded(UsStatesSeeder::class);
         $this->callUnlessSeeded(KioskSubcategoriesSeeder::class);
+        $this->callUnlessSeeded(MenuItemSeeder::class);
 
         // After all seeders: care_alliance role must match organization permissions (Spatie).
         $this->callUnlessSeeded(CareAllianceMirrorOrganizationPermissionsSeeder::class);

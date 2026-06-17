@@ -2,7 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CardController;
-use App\Http\Controllers\Api\KycController;
+use App\Http\Controllers\Api\FavoriteMenuController as ApiFavoriteMenuController;
 use App\Http\Controllers\Api\OrganizationLookupController;
 use App\Http\Controllers\Api\ShippoWebhookController;
 use App\Http\Controllers\Api\StreamingStatusCallbackController;
@@ -60,6 +60,13 @@ Route::middleware('auth:api')->group(function () {
             Route::get('/trending-organizations', [UserController::class, 'getTrendingOrganizations']);
             Route::get('/suggested-people', [UserController::class, 'getSuggestedPeople']);
             Route::get('/suggested-causes', [UserController::class, 'getSuggestedCauses']);
+
+            Route::get('/favorite-menus', [ApiFavoriteMenuController::class, 'index']);
+            Route::post('/favorite-menus', [ApiFavoriteMenuController::class, 'store']);
+            Route::put('/favorite-menus/reorder', [ApiFavoriteMenuController::class, 'reorder']);
+            Route::put('/favorite-menus/bottom-nav', [ApiFavoriteMenuController::class, 'syncBottomNav']);
+            Route::delete('/favorite-menus/{menuKey}', [ApiFavoriteMenuController::class, 'destroy']);
+            Route::get('/menu-items', [ApiFavoriteMenuController::class, 'menuItems']);
         });
 
         // Wallet

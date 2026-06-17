@@ -1,0 +1,63 @@
+import type { LucideIcon } from "lucide-react"
+import {
+  Activity,
+  BookOpen,
+  Building2,
+  Calendar,
+  Circle,
+  Clock,
+  Compass,
+  Gift,
+  GraduationCap,
+  Handshake,
+  Heart,
+  HeartHandshake,
+  Home,
+  Megaphone,
+  MessageCircle,
+  MessageSquare,
+  Newspaper,
+  Radio,
+  ShoppingBag,
+  Star,
+  Store,
+  Ticket,
+  Trophy,
+  User,
+  Users,
+  Video,
+} from "lucide-react"
+
+export const siteMenuIconMap: Record<string, LucideIcon> = {
+  Home,
+  Heart,
+  Megaphone,
+  Gift,
+  HeartHandshake,
+  Building2,
+  Calendar,
+  Users,
+  MessageCircle,
+  Activity,
+  GraduationCap,
+  BookOpen,
+  Trophy,
+  Store,
+  ShoppingBag,
+  Ticket,
+  MessageSquare,
+  Handshake,
+  Video,
+  Radio,
+  Newspaper,
+  Compass,
+  Clock,
+  User,
+  Star,
+  Circle,
+}
+
+export function resolveSiteMenuIcon(name?: string): LucideIcon {
+  if (!name) return Circle
+  return siteMenuIconMap[name] ?? Circle
+}

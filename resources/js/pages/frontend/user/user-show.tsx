@@ -39,6 +39,7 @@ import {
   DollarSign,
   Eye,
   Star,
+  Lock,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
@@ -46,6 +47,44 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { PageHead } from "@/components/frontend/PageHead"
 import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/lib/utils"
+
+function orgInitial(name: string) {
+  return name.trim().slice(0, 1).toUpperCase() || "O"
+}
+
+const orgPanelClass =
+  "relative overflow-hidden rounded-lg border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 shadow-sm dark:border-purple-500/30 dark:from-purple-600/[0.12] dark:via-gray-900/80 dark:to-blue-600/[0.12]"
+const orgPanelAccent = "absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600"
+const orgChipClass =
+  "flex min-w-0 items-center gap-2 rounded-lg border border-purple-200/70 bg-white/90 px-2 py-1.5 shadow-sm dark:border-purple-500/20 dark:bg-gray-900/50"
+
+function OrgAffiliationAvatar({
+  name,
+  image,
+  size = "sm",
+}: {
+  name: string
+  image?: string | null
+  size?: "sm" | "md"
+}) {
+  const dim = size === "md" ? "h-10 w-10 rounded-lg text-sm" : "h-8 w-8 rounded-md text-xs"
+
+  if (image) {
+    return <img src={image} alt="" className={cn("shrink-0 object-cover ring-1 ring-white/10", dim)} />
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 font-bold text-white ring-1 ring-white/10",
+        dim
+      )}
+    >
+      {orgInitial(name)}
+    </div>
+  )
+}
 
 interface UserPageProps {
   seo?: { title: string; description?: string }
@@ -170,11 +209,11 @@ export default function UserPage({
     ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : 'Recently'
 
-  // Build location from city, state, zipcode or use location field
+  // Build location from city, state, zipcode or use preformatted location from backend
   const locationParts = [user.city, user.state].filter(Boolean)
   const location = locationParts.length > 0
     ? locationParts.join(', ') + (user.zipcode ? ` ${user.zipcode}` : '')
-    : (user.location || 'Location not set')
+    : (user.location || null)
 
   // Tabs configuration
   const profileTabs = [
@@ -589,10 +628,12 @@ export default function UserPage({
                 <Users className="w-4 h-4" />
                 <span className="whitespace-nowrap">Member since {memberSince}</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <MapPin className="w-4 h-4" />
-                <span className="truncate max-w-[150px] sm:max-w-none">{location}</span>
-              </div>
+              {location && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" />
+                  <span className="truncate max-w-[150px] sm:max-w-none">{location}</span>
+                </div>
+              )}
               {user?.is_own_profile && (
                 <div className="flex items-center gap-1.5">
                   <Zap className="w-4 h-4 text-yellow-500" />
@@ -1162,31 +1203,67 @@ export default function UserPage({
                         <div className="mb-6 space-y-4">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Organization affiliation</h3>
                           {user.primary_organization && (
-                            <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-4">
-                              <p className="text-sm text-gray-500 dark:text-gray-400">Primary organization</p>
-                              <p className="font-medium text-gray-900 dark:text-white">{user.primary_organization.name}</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <Badge className="bg-purple-600/20 text-purple-300 border border-purple-500/30">Primary</Badge>
-                                <Badge variant="outline" className="text-xs">
-                                  Locked: {user.primary_organization_locked ? 'Yes' : 'No'}
-                                </Badge>
+                            <div
+                              className={cn(
+                                orgPanelClass,
+                                user.primary_organization_locked &&
+                                  "shadow-md shadow-purple-900/10 dark:shadow-purple-900/20"
+                              )}
+                            >
+                              <div className={orgPanelAccent} />
+                              <div className="flex min-w-0 items-center gap-3 p-3">
+                                <OrgAffiliationAvatar
+                                  name={user.primary_organization.name}
+                                  image={user.primary_organization.image}
+                                  size="md"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
+                                      Primary organization
+                                    </span>
+                                    {user.primary_organization_locked ? (
+                                      <span className="inline-flex items-center gap-0.5 rounded-full border border-purple-300 bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/15 dark:text-purple-200">
+                                        <Lock className="h-2.5 w-2.5" aria-hidden />
+                                        Locked
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-0.5 truncate text-sm font-semibold text-gray-900 dark:text-slate-50 sm:text-base">
+                                    {user.primary_organization.name}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           )}
                           {user.followed_organizations && user.followed_organizations.length > 0 && (
-                            <div>
-                              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Organizations followed</p>
-                              <div className="flex flex-wrap gap-2">
-                                {user.followed_organizations.map((org: { id: number; name: string; organization_status?: string }) => (
-                                  <Badge
-                                    key={org.id}
-                                    variant="outline"
-                                    className="capitalize border-gray-300 dark:border-white/20"
-                                  >
-                                    {org.name}
-                                    {org.organization_status ? ` (${org.organization_status})` : ''}
-                                  </Badge>
-                                ))}
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                Organizations followed ({user.followed_organizations.length})
+                              </p>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {user.followed_organizations.map(
+                                  (org: {
+                                    id: number
+                                    name: string
+                                    image?: string | null
+                                    affiliation?: "secondary" | "following"
+                                  }) => (
+                                    <div key={org.id} className={orgChipClass}>
+                                      <OrgAffiliationAvatar name={org.name} image={org.image} />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium leading-tight text-gray-900 dark:text-slate-50">
+                                          {org.name}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-purple-600 dark:text-purple-400">
+                                          {org.affiliation === "secondary"
+                                            ? "Secondary"
+                                            : "Following"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )
+                                )}
                               </div>
                             </div>
                           )}
@@ -1207,7 +1284,7 @@ export default function UserPage({
                             <span className="text-gray-700 dark:text-gray-300">{user.phone}</span>
                           </div>
                         )}
-                        {location && location !== 'Location not set' && (
+                        {location && (
                           <div className="flex items-center gap-3">
                             <MapPin className="w-5 h-5 text-gray-500 dark:text-gray-400" />
                             <span className="text-gray-700 dark:text-gray-300">{location}</span>

@@ -4,7 +4,9 @@ import type { ReactNode } from "react"
 import { Link, usePage } from "@inertiajs/react"
 import { cn } from "@/lib/utils"
 import Navbar from "@/components/frontend/layout/navbar"
+import MobileBottomNav from "@/components/frontend/layout/mobile-bottom-nav"
 import Footer from "@/components/frontend/layout/footer"
+import { MobileNavProvider } from "@/contexts/mobile-nav-context"
 import {
   LayoutDashboard,
   Calendar,
@@ -126,11 +128,14 @@ export default function UnityMeetShellLayout({ children }: { children: ReactNode
   }
 
   return (
+    <MobileNavProvider>
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main>{shell}</main>
+      <main className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] 2xl:pb-0">{shell}</main>
       <Footer />
+      <MobileBottomNav />
     </div>
+    </MobileNavProvider>
   )
 }
 

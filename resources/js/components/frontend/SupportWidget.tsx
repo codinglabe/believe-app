@@ -535,7 +535,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({
   }, [uiState.transcriptions, uiState.liveInput, uiState.liveOutput]);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div className="fixed right-4 z-50 flex flex-col items-end max-2xl:bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px)+1rem)] 2xl:bottom-6 2xl:right-6">
       <style>{`
         [data-support-widget-scroll]::-webkit-scrollbar { width: 8px; }
         [data-support-widget-scroll]::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 9999px; }
@@ -546,7 +546,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({
         .dark [data-support-widget-scroll]::-webkit-scrollbar-thumb:hover { background: #a78bfa; }
       `}</style>
       {isOpen && (
-        <div className="mb-4 w-80 md:w-96 rounded-3xl flex flex-col overflow-hidden border border-border bg-background text-foreground h-[600px] animate-in slide-in-from-bottom-4 shadow-2xl shadow-gray-900/10 dark:shadow-black/30">
+        <div className="mb-4 flex w-80 max-2xl:h-[min(600px,calc(100dvh-5.25rem-env(safe-area-inset-bottom,0px)-2rem))] max-2xl:w-[min(100vw-2rem,24rem)] flex-col overflow-hidden rounded-3xl border border-border bg-background text-foreground shadow-2xl shadow-gray-900/10 animate-in slide-in-from-bottom-4 dark:shadow-black/30 md:w-96 2xl:h-[600px]">
           <div className="px-6 py-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center relative">
