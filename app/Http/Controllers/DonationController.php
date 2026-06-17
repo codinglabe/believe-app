@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use Laravel\Cashier\Cashier;
 use Stripe\Exception\ApiErrorException;
 use Symfony\Component\HttpFoundation\Response;
@@ -923,28 +924,24 @@ class DonationController extends Controller
         $sessionId = $request->get('session_id');
         $donationId = $request->get('donation_id');
 
-        // Handle Believe Points donation success (no session_id needed)
-        if ($donationId && ! $sessionId) {
-            $donation = Donation::with(['organization', 'user', 'careAlliance:id,name,slug'])->find($donationId);
-
-            if ($donation && $donation->payment_method === 'believe_points' && $donation->status === 'completed') {
-                return Inertia::render('frontend/organization/donation/success', [
-                    'donation' => $donation,
-                    'paymentMethod' => 'believe_points',
-                ]);
-            } elseif ($donation && $donation->payment_method === 'believe_points' && $donation->status !== 'completed') {
-                return redirect()->route('donate')->withErrors([
-                    'message' => 'Donation is still processing. Please wait a moment.',
-                ]);
-            }
-        }
-
-        // Handle Stripe payment success
+        // Believe Points and saved Stripe payment methods complete without a Checkout session.
         if (! $sessionId) {
+            if ($donationId) {
+                $donation = Donation::with(['organization', 'user', 'careAlliance:id,name,slug'])->find($donationId);
+
+                if ($donation) {
+                    $resolved = $this->resolveDonationSuccessWithoutCheckoutSession($donation);
+                    if ($resolved !== null) {
+                        return $resolved;
+                    }
+                }
+            }
+
             return redirect()->route('donate')->withErrors([
                 'message' => 'Invalid donation session',
             ]);
         }
+
         try {
             // Connect donations now use destination charges, so the Checkout Session lives on the
             // platform Stripe account — NOT on the connected account. Retrieve from the platform.
@@ -1205,6 +1202,76 @@ class DonationController extends Controller
     private function applyDonationToBalances(Donation $donation): void
     {
         DonationStripePaymentCompletion::applyDonationLedgerAndBalances($donation);
+    }
+
+    /**
+     * Success page for donations that never created a Stripe Checkout session.
+     */
+    private function resolveDonationSuccessWithoutCheckoutSession(Donation $donation): RedirectResponse|InertiaResponse|null
+    {
+        if ($donation->payment_method === 'believe_points') {
+            if ($donation->status === 'completed') {
+                return Inertia::render('frontend/organization/donation/success', [
+                    'donation' => $donation,
+                    'paymentMethod' => 'believe_points',
+                ]);
+            }
+
+            return redirect()->route('donate')->withErrors([
+                'message' => 'Donation is still processing. Please wait a moment.',
+            ]);
+        }
+
+        $transactionId = (string) $donation->transaction_id;
+        $isPaymentIntent = str_starts_with($transactionId, 'pi_');
+        $isStripeRail = in_array($donation->payment_method, ['stripe', 'card', 'us_bank_account'], true);
+
+        if (! $isPaymentIntent && ! $isStripeRail) {
+            return null;
+        }
+
+        if ($donation->status === 'completed' && $isStripeRail) {
+            return Inertia::render('frontend/organization/donation/success', [
+                'donation' => $donation,
+                'paymentMethod' => 'stripe',
+            ]);
+        }
+
+        if (! $isPaymentIntent) {
+            return null;
+        }
+
+        try {
+            $intent = Cashier::stripe()->paymentIntents->retrieve($transactionId);
+
+            if ($intent->status === 'succeeded') {
+                $feeRail = (string) ($intent->metadata->fee_rail ?? 'card');
+                $paymentLabel = $feeRail === 'bank' ? 'us_bank_account' : 'card';
+                DonationStripePaymentCompletion::completeSuccessfulOneTime($donation, $intent->id, $paymentLabel);
+                $donation->refresh();
+                $donation->load(['organization', 'user', 'careAlliance:id,name,slug']);
+
+                return Inertia::render('frontend/organization/donation/success', [
+                    'donation' => $donation,
+                    'paymentMethod' => 'stripe',
+                ]);
+            }
+
+            if (in_array($intent->status, ['processing', 'requires_confirmation'], true)) {
+                return redirect()->route('donate')
+                    ->with('info', 'Your payment is still processing. Your donation will be recorded once it completes.');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Donation success without Checkout session: PaymentIntent verify failed', [
+                'donation_id' => $donation->id,
+                'transaction_id' => $transactionId,
+                'payment_method' => $donation->payment_method,
+                'status' => $donation->status,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
     }
 
     /**
