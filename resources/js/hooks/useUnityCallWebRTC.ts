@@ -914,12 +914,10 @@ export function useUnityCallWebRTC({
         }
       })
 
-      if (document.visibilityState === "visible") {
-        void fetchPendingSignalsRef.current().finally(() => {
-          syncPeerConnectionsRef.current()
-          updateMediaConnectedRef.current()
-        })
-      }
+      void fetchPendingSignalsRef.current().finally(() => {
+        syncPeerConnectionsRef.current()
+        updateMediaConnectedRef.current()
+      })
     }
 
     document.addEventListener("visibilitychange", onVisibility)
@@ -977,6 +975,36 @@ export function useUnityCallWebRTC({
     }, 4000)
 
     return () => window.clearInterval(intervalId)
+  }, [callId, keepAlive])
+
+  useEffect(() => {
+    if (!keepAlive || !callId) {
+      return
+    }
+
+    const keepMicAlive = () => {
+      if (callEnded.current || !mediaStarted.current) {
+        return
+      }
+
+      localStreamRef.current?.getAudioTracks().forEach((track) => {
+        if (track.readyState === "live") {
+          track.enabled = track.enabled
+        }
+      })
+    }
+
+    const intervalId = window.setInterval(keepMicAlive, document.visibilityState === "hidden" ? 1000 : 3000)
+
+    const onVisibility = () => {
+      keepMicAlive()
+    }
+
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
   }, [callId, keepAlive])
 
   useEffect(() => {

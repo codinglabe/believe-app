@@ -411,9 +411,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     enabled: keepBackgroundAudioAlive,
     title: callBackgroundTitle,
     subtitle: "Believe In Unity · Voice call",
+    localStream: webrtc.localStream,
+    remoteStream: mergedRemoteStream,
+    speakerOn,
     onHangUp: () => {
       void endActiveCall()
     },
+    onResume: webrtc.resyncCall,
   })
 
   const showRemoteAudio =
