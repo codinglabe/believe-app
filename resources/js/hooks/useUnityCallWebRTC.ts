@@ -47,6 +47,8 @@ type UseUnityCallWebRTCOptions = {
   participants: UnityCallParticipantRow[]
   mediaActive: boolean
   iceServers: RTCIceServer[]
+  /** Keep WebRTC alive when the call UI unmounts (background / minimized call). */
+  keepAlive?: boolean
 }
 
 function buildRtcConfiguration(iceServers: RTCIceServer[]): RTCConfiguration {
@@ -115,6 +117,7 @@ export function useUnityCallWebRTC({
   participants,
   mediaActive,
   iceServers,
+  keepAlive = false,
 }: UseUnityCallWebRTCOptions) {
   const userIdStr = String(userId)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -1006,10 +1009,12 @@ export function useUnityCallWebRTC({
 
   useEffect(() => {
     return () => {
-      stopMedia()
+      if (!keepAlive) {
+        stopMedia()
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tear down only when leaving this call
-  }, [callId])
+  }, [callId, keepAlive, stopMedia])
 
   return {
     localStream,

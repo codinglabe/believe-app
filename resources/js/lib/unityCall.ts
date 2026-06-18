@@ -304,6 +304,14 @@ export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
   return false
 }
 
+export function returnToUnityCall(callId: number): void {
+  router.visit(unityCallShowPath(callId), { preserveScroll: true })
+}
+
+export function minimizeUnityCall(chatRoomId: number | null | undefined): void {
+  router.visit(unityCallChatUrl(chatRoomId), { preserveScroll: true })
+}
+
 export function navigateAfterUnityCall(
   callId: number,
   chatRoomId: number | null | undefined,
