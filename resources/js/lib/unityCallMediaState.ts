@@ -16,6 +16,7 @@ export function computeUnityCallMediaState(
     callIsActive && !callEndedLocally && (call.status === "accepted" || acceptedCallees.length > 0)
   const callConnected = callLive && (isCaller || selfStatus === "accepted")
   const mediaActive = !callEndedLocally && (isCaller ? callIsActive : callConnected)
+  const canBackgroundCall = callIsActive && !callEndedLocally
 
-  return { selfStatus, callLive, callConnected, mediaActive, acceptedCallees }
+  return { selfStatus, callLive, callConnected, mediaActive, acceptedCallees, canBackgroundCall }
 }

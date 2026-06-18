@@ -15,6 +15,30 @@ export function unityCallShowPath(callId: number): string {
   return `/unity-call/${callId}`
 }
 
+export function isOnUnityCallShowPage(callId?: number): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  const match = window.location.pathname.match(/^\/unity-call\/(\d+)$/)
+  if (!match) {
+    return false
+  }
+
+  if (callId === undefined) {
+    return true
+  }
+
+  const pageCallId = Number(match[1])
+  return Number.isFinite(pageCallId) && pageCallId === callId
+}
+
+/** Keep call alive when leaving the full-screen call UI (minimize or any navigation). */
+export function markUnityCallBackgrounded(callId: number): void {
+  markUnityCallSessionActive(callId)
+  markUnityCallLiveOnPage(callId)
+}
+
 /** Full page load — avoids Inertia XHR JSON errors on /unity-call/* (Reverb/WebRTC need a clean page). */
 export function navigateToUnityCall(pathOrUrl: string, options?: { replace?: boolean }): void {
   if (typeof window === "undefined") {

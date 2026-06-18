@@ -1,7 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { router } from "@inertiajs/react"
 import { echo } from "@laravel/echo-react"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import type { UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
 import { invalidateAudioOutputCache } from "@/lib/callAudioOutput"
@@ -843,6 +845,26 @@ export function useUnityCallWebRTC({
   const stopMediaRef = useRef(stopMedia)
   const updateMediaConnectedRef = useRef(updateMediaConnected)
 
+  const resyncCall = useCallback(() => {
+    if (callEnded.current || !mediaStarted.current) {
+      return
+    }
+
+    void fetchPendingSignals().finally(() => {
+      syncPeerConnections()
+      updateMediaConnected()
+      document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+        void (node as HTMLAudioElement).play().catch(() => {})
+      })
+    })
+  }, [fetchPendingSignals, syncPeerConnections, updateMediaConnected])
+
+  const resyncCallRef = useRef(resyncCall)
+
+  useEffect(() => {
+    resyncCallRef.current = resyncCall
+  }, [resyncCall])
+
   useEffect(() => {
     syncPeerConnectionsRef.current = syncPeerConnections
   }, [syncPeerConnections])
@@ -902,6 +924,59 @@ export function useUnityCallWebRTC({
 
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [callId, keepAlive])
+
+  useEffect(() => {
+    if (!keepAlive || !callId) {
+      return
+    }
+
+    const onNavigate = () => {
+      refreshEchoAuthHeaders()
+      resyncCallRef.current()
+    }
+
+    onNavigate()
+    return router.on("success", onNavigate)
+  }, [callId, keepAlive])
+
+  useEffect(() => {
+    if (!keepAlive || !callId) {
+      return
+    }
+
+    const connector = echo().connector as {
+      pusher?: { connection?: { bind: (event: string, handler: () => void) => void; unbind: (event: string, handler: () => void) => void } }
+    }
+    const connection = connector.pusher?.connection
+    if (!connection) {
+      return
+    }
+
+    const onReconnected = () => {
+      void fetchPendingSignalsRef.current().finally(() => {
+        connectPeersRef.current()
+        updateMediaConnectedRef.current()
+      })
+    }
+
+    connection.bind("connected", onReconnected)
+    return () => connection.unbind("connected", onReconnected)
+  }, [callId, keepAlive])
+
+  useEffect(() => {
+    if (!keepAlive || !callId) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (callEnded.current || !mediaStarted.current) {
+        return
+      }
+      resyncCallRef.current()
+    }, 4000)
+
+    return () => window.clearInterval(intervalId)
   }, [callId, keepAlive])
 
   useEffect(() => {
@@ -1069,5 +1144,6 @@ export function useUnityCallWebRTC({
     stopMedia,
     toggleMute,
     retryPermission,
+    resyncCall,
   }
 }

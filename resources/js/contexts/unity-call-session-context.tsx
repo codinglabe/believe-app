@@ -17,23 +17,28 @@ import { UnityCallFloatingBar } from "@/components/call/UnityCallFloatingBar"
 import { UnityCallRemoteAudio } from "@/components/call/UnityCallRemoteAudio"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { useUnityCallBackgroundKeepAlive } from "@/hooks/useUnityCallBackgroundKeepAlive"
+import { useUnityCallAutoMinimize } from "@/hooks/useUnityCallAutoMinimize"
 import {
   clearUnityCallLiveOnPage,
   clearUnityCallSessionActive,
-  getActiveUnityCallIdFromPage,
+  isLeavingUnityCall,
+  isOnUnityCallShowPage,
   markLeavingUnityCall,
+  markUnityCallBackgrounded,
   markUnityCallLiveOnPage,
   markUnityCallSessionActive,
   navigateAfterUnityCall,
   returnToUnityCall,
   terminateUnityCall,
-  unityCallShowPath,
 } from "@/lib/unityCall"
 import {
   dispatchUnityCallTerminated,
   isUnityCallTerminated,
+  subscribeUnityCallStatus,
   subscribeUnityCallTerminated,
 } from "@/lib/unityCallEvents"
+import { mergeCallParticipants } from "@/lib/unityCallParticipants"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -95,10 +100,12 @@ function useLiveAppPath(): string {
 export function UnityCallSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UnityCallSessionSnapshot | null>(null)
   const [speakerOn, setSpeakerOn] = useState(true)
+  const [mediaEngaged, setMediaEngaged] = useState(false)
   const stopMediaRef = useRef<() => void>(() => {})
+  const endActiveCallRef = useRef<() => Promise<void>>(async () => {})
   const appPath = useLiveAppPath()
   const onCallPage = useMemo(() => {
-    return session ? appPath === unityCallShowPath(session.call.id) : false
+    return session ? isOnUnityCallShowPage(session.call.id) : false
   }, [appPath, session])
 
   const mediaState = useMemo(() => {
@@ -114,6 +121,8 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     )
   }, [session])
 
+  const mediaActiveForWebRtc = Boolean(session && (mediaState?.mediaActive || mediaEngaged))
+
   const webrtc = useUnityCallWebRTC({
     callId: session?.call.id ?? 0,
     userId: session?.authUserId ?? 0,
@@ -122,12 +131,24 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     callerId: session?.caller.id ?? 0,
     callStatus: mediaState?.callLive ? "accepted" : session?.call.status ?? "ended",
     participants: session?.participants ?? [],
-    mediaActive: Boolean(session && mediaState?.mediaActive),
+    mediaActive: mediaActiveForWebRtc,
     iceServers: session?.iceServers ?? [],
     keepAlive: true,
   })
 
   stopMediaRef.current = webrtc.stopMedia
+
+  useEffect(() => {
+    if (webrtc.mediaConnected || webrtc.localStream) {
+      setMediaEngaged(true)
+    }
+  }, [webrtc.localStream, webrtc.mediaConnected])
+
+  useEffect(() => {
+    if (!session) {
+      setMediaEngaged(false)
+    }
+  }, [session?.call.id])
 
   const registerSession = useCallback((snapshot: UnityCallSessionSnapshot) => {
     setSession((previous) => {
@@ -190,6 +211,75 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     navigateAfterUnityCall(call.id, call.chatRoomId)
   }, [clearSession, session])
 
+  endActiveCallRef.current = endActiveCall
+
+  useEffect(() => {
+    if (!session) {
+      return
+    }
+
+    const callId = session.call.id
+    const authUserId = session.authUserId
+    const isCaller = session.isCaller
+
+    return subscribeUnityCallStatus((payload) => {
+      if (payload.call.id !== callId) {
+        return
+      }
+
+      setSession((previous) => {
+        if (!previous || previous.call.id !== callId) {
+          return previous
+        }
+
+        return {
+          ...previous,
+          call: payload.call,
+          participants: mergeCallParticipants(previous.participants, payload.participants),
+        }
+      })
+
+      if (payload.reason === "participant_left" || payload.reason === "participant_declined") {
+        const self = payload.participants.find((participant) => participant.userId === authUserId)
+        if (self?.status === "left" || self?.status === "declined") {
+          void endActiveCallRef.current()
+        }
+        return
+      }
+
+      if (payload.reason === "participant_missed") {
+        const self = payload.participants.find((participant) => participant.userId === authUserId)
+        if (!isCaller && self?.status === "missed") {
+          void endActiveCallRef.current()
+        }
+        return
+      }
+
+      if (isUnityCallTerminated(payload) && !isLeavingUnityCall(payload.call.id)) {
+        dispatchUnityCallTerminated(payload)
+      }
+    })
+  }, [session?.call.id, session?.authUserId, session?.isCaller])
+
+  useEffect(() => {
+    if (!session || onCallPage) {
+      return
+    }
+
+    if (mediaState?.canBackgroundCall) {
+      markUnityCallBackgrounded(session.call.id)
+    }
+
+    refreshEchoAuthHeaders()
+    webrtc.resyncCall()
+  }, [appPath, onCallPage, session, mediaState?.canBackgroundCall, webrtc.resyncCall])
+
+  useUnityCallAutoMinimize({
+    session,
+    canBackgroundCall: Boolean(mediaState?.canBackgroundCall),
+    onBackgrounded: webrtc.resyncCall,
+  })
+
   useEffect(() => {
     if (!session || !mediaState?.callLive || !mediaState.callConnected) {
       return
@@ -215,10 +305,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     })
   }, [clearSession, session])
 
-  const showFloatingBar =
-    Boolean(session && mediaState?.callLive && mediaState.callConnected) &&
-    !onCallPage &&
-    getActiveUnityCallIdFromPage() !== session?.call.id
+  const showFloatingBar = Boolean(session && mediaState?.canBackgroundCall && !onCallPage)
 
   const mergedRemoteStream = useMemo(() => {
     const merged = new MediaStream()
@@ -247,7 +334,10 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   }, [session])
 
   const keepBackgroundAudioAlive = Boolean(
-    session && mediaState?.callLive && mediaState.callConnected && webrtc.mediaConnected,
+    session &&
+      mediaState?.callLive &&
+      mediaState.callConnected &&
+      (webrtc.mediaConnected || mediaEngaged || mergedRemoteStream.getAudioTracks().length > 0),
   )
 
   useUnityCallBackgroundKeepAlive({
@@ -260,7 +350,8 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   })
 
   const showRemoteAudio =
-    keepBackgroundAudioAlive && mergedRemoteStream.getAudioTracks().length > 0
+    Boolean(session && mediaState?.callLive && mediaState.callConnected) &&
+    (mergedRemoteStream.getAudioTracks().length > 0 || webrtc.mediaConnected || mediaEngaged)
 
   const value = useMemo<UnityCallSessionContextValue>(
     () => ({
