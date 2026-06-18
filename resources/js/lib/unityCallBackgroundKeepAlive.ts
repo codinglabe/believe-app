@@ -148,8 +148,8 @@ export function startUnityCallBackgroundKeepAlive(
 
   const resumeCaptureTracks = () => {
     options.localStream?.getAudioTracks().forEach((track) => {
-      if (track.readyState === "live") {
-        track.enabled = track.enabled
+      if (track.readyState === "live" && track.enabled) {
+        track.enabled = true
       }
     })
 

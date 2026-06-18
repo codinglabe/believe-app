@@ -109,6 +109,18 @@ function hasAudioSender(pc: RTCPeerConnection): boolean {
   return pc.getSenders().some((sender) => sender.track?.kind === "audio")
 }
 
+function localMicNeedsRevive(track: MediaStreamTrack | undefined): boolean {
+  if (!track) {
+    return true
+  }
+
+  if (track.readyState === "ended") {
+    return true
+  }
+
+  return track.enabled && track.muted
+}
+
 export function useUnityCallWebRTC({
   callId,
   userId,
@@ -129,6 +141,10 @@ export function useUnityCallWebRTC({
   const [permissionStatus, setPermissionStatus] = useState<UnityCallMediaPermission>("idle")
   const [connectionStatus, setConnectionStatus] = useState("idle")
 
+  useEffect(() => {
+    isAudioEnabledRef.current = isAudioEnabled
+  }, [isAudioEnabled])
+
   const localStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamsRef = useRef<UnityCallRemoteStream[]>([])
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
@@ -145,6 +161,10 @@ export function useUnityCallWebRTC({
   const offerRequestSentFor = useRef<Set<string>>(new Set())
   const handleSignalChain = useRef<Promise<void>>(Promise.resolve())
   const handleSignalRef = useRef<(signal: WebRTCSignal) => Promise<void>>(async () => {})
+  const micMonitorCleanupRef = useRef<(() => void) | null>(null)
+  const reviveMicInFlightRef = useRef(false)
+  const isAudioEnabledRef = useRef(true)
+  const reviveLocalMicrophoneRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     rtcConfiguration.current = buildRtcConfiguration(iceServers)
@@ -725,6 +745,98 @@ export function useUnityCallWebRTC({
     updateMediaConnected()
   }, [acceptedPeerIds, createHostOffer, createPeerConnection, isCaller, sendSignal, updateMediaConnected, userIdStr])
 
+  const attachMicTrackMonitor = useCallback((track: MediaStreamTrack) => {
+    micMonitorCleanupRef.current?.()
+    micMonitorCleanupRef.current = null
+
+    const onMicIssue = () => {
+      void reviveLocalMicrophoneRef.current()
+    }
+
+    track.addEventListener("mute", onMicIssue)
+    track.addEventListener("ended", onMicIssue)
+
+    micMonitorCleanupRef.current = () => {
+      track.removeEventListener("mute", onMicIssue)
+      track.removeEventListener("ended", onMicIssue)
+    }
+  }, [])
+
+  const refreshLocalAudioOnPeers = useCallback(async () => {
+    for (const [peerId, pc] of peerConnections.current.entries()) {
+      await addLocalAudioToPeer(peerId, pc)
+    }
+  }, [addLocalAudioToPeer])
+
+  const reviveLocalMicrophone = useCallback(async () => {
+    if (callEnded.current || !mediaStarted.current || reviveMicInFlightRef.current) {
+      return
+    }
+
+    const currentTrack = localStreamRef.current?.getAudioTracks()[0]
+    const needsNewCapture = localMicNeedsRevive(currentTrack)
+
+    if (!needsNewCapture && currentTrack?.readyState === "live") {
+      await refreshLocalAudioOnPeers()
+      return
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return
+    }
+
+    reviveMicInFlightRef.current = true
+    let didReplaceCapture = false
+
+    try {
+      const previousStream = localStreamRef.current
+      const shouldEnable = isAudioEnabledRef.current
+
+      const freshStream = await navigator.mediaDevices.getUserMedia({
+        audio: AUDIO_CONSTRAINTS,
+        video: false,
+      })
+
+      freshStream.getAudioTracks().forEach((track) => {
+        track.enabled = shouldEnable
+      })
+
+      previousStream?.getTracks().forEach((track) => {
+        if (track.readyState === "live") {
+          track.stop()
+        }
+      })
+
+      outboundTracksRef.current.forEach((track) => track.stop())
+      outboundTracksRef.current.clear()
+
+      localStreamRef.current = freshStream
+      setLocalStream(freshStream)
+      didReplaceCapture = true
+
+      const freshTrack = freshStream.getAudioTracks()[0]
+      if (freshTrack) {
+        attachMicTrackMonitor(freshTrack)
+      }
+
+      await refreshLocalAudioOnPeers()
+
+      if (didReplaceCapture && isCaller) {
+        for (const peerId of peerConnections.current.keys()) {
+          void createHostOffer(peerId)
+        }
+      }
+    } catch (error) {
+      console.error("[UnityCallWebRTC] Failed to revive microphone:", error)
+    } finally {
+      reviveMicInFlightRef.current = false
+    }
+  }, [attachMicTrackMonitor, createHostOffer, isCaller, refreshLocalAudioOnPeers])
+
+  useEffect(() => {
+    reviveLocalMicrophoneRef.current = reviveLocalMicrophone
+  }, [reviveLocalMicrophone])
+
   const stopMedia = useCallback(() => {
     callEnded.current = true
     mediaStarted.current = false
@@ -742,6 +854,9 @@ export function useUnityCallWebRTC({
 
     outboundTracksRef.current.forEach((track) => track.stop())
     outboundTracksRef.current.clear()
+
+    micMonitorCleanupRef.current?.()
+    micMonitorCleanupRef.current = null
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -783,6 +898,11 @@ export function useUnityCallWebRTC({
       setPermissionStatus("granted")
       setConnectionStatus(channelReady.current ? "Connecting audio…" : "Joining call channel…")
 
+      const audioTrack = stream.getAudioTracks()[0]
+      if (audioTrack) {
+        attachMicTrackMonitor(audioTrack)
+      }
+
       for (const [peerId, pc] of peerConnections.current.entries()) {
         await addLocalAudioToPeer(peerId, pc)
       }
@@ -796,7 +916,7 @@ export function useUnityCallWebRTC({
       setPermissionStatus(denied ? "denied" : "prompt")
       setConnectionStatus(denied ? "Microphone access blocked" : "Could not access microphone")
     }
-  }, [addLocalAudioToPeer, connectPeers, fetchPendingSignals, flushPendingSignals, mediaActive])
+  }, [addLocalAudioToPeer, attachMicTrackMonitor, connectPeers, fetchPendingSignals, flushPendingSignals, mediaActive])
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current
@@ -850,14 +970,16 @@ export function useUnityCallWebRTC({
       return
     }
 
-    void fetchPendingSignals().finally(() => {
-      syncPeerConnections()
-      updateMediaConnected()
-      document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
-        void (node as HTMLAudioElement).play().catch(() => {})
+    void reviveLocalMicrophone().finally(() => {
+      void fetchPendingSignals().finally(() => {
+        syncPeerConnections()
+        updateMediaConnected()
+        document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+          void (node as HTMLAudioElement).play().catch(() => {})
+        })
       })
     })
-  }, [fetchPendingSignals, syncPeerConnections, updateMediaConnected])
+  }, [fetchPendingSignals, reviveLocalMicrophone, syncPeerConnections, updateMediaConnected])
 
   const resyncCallRef = useRef(resyncCall)
 
@@ -907,12 +1029,7 @@ export function useUnityCallWebRTC({
 
       resumeRemotePlayback()
 
-      const stream = localStreamRef.current
-      stream?.getAudioTracks().forEach((track) => {
-        if (track.readyState === "live") {
-          track.enabled = track.enabled
-        }
-      })
+      void reviveLocalMicrophoneRef.current()
 
       void fetchPendingSignalsRef.current().finally(() => {
         syncPeerConnectionsRef.current()
@@ -982,28 +1099,31 @@ export function useUnityCallWebRTC({
       return
     }
 
+    let intervalId = 0
+
     const keepMicAlive = () => {
       if (callEnded.current || !mediaStarted.current) {
         return
       }
 
-      localStreamRef.current?.getAudioTracks().forEach((track) => {
-        if (track.readyState === "live") {
-          track.enabled = track.enabled
-        }
-      })
+      void reviveLocalMicrophoneRef.current()
     }
 
-    const intervalId = window.setInterval(keepMicAlive, document.visibilityState === "hidden" ? 1000 : 3000)
-
-    const onVisibility = () => {
-      keepMicAlive()
+    const restartInterval = () => {
+      if (intervalId) {
+        window.clearInterval(intervalId)
+      }
+      intervalId = window.setInterval(keepMicAlive, document.visibilityState === "hidden" ? 800 : 3000)
     }
 
-    document.addEventListener("visibilitychange", onVisibility)
+    restartInterval()
+    document.addEventListener("visibilitychange", restartInterval)
+
     return () => {
-      window.clearInterval(intervalId)
-      document.removeEventListener("visibilitychange", onVisibility)
+      if (intervalId) {
+        window.clearInterval(intervalId)
+      }
+      document.removeEventListener("visibilitychange", restartInterval)
     }
   }, [callId, keepAlive])
 
