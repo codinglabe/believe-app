@@ -105,7 +105,7 @@ class UnityCallService
 
     public function accept(UnityCall $call, User $user): UnityCall
     {
-        if ($this->userIsBusyOnOtherCall($user->id, $call->id)) {
+        if ($this->userHasConflictingAcceptedCall($user->id, $call->id)) {
             throw ValidationException::withMessages([
                 'call' => __('You are already on another call. End it before joining this one.'),
             ]);

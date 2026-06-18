@@ -225,25 +225,29 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
     return true
   }
 
+  return isUserOnLiveUnityCall(excludeCallId)
+}
+
+export function isUserAlreadyOnUnityCall(callId: number): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  if (isUnityCallEndedLocally(callId)) {
+    return false
+  }
+
+  if (getActiveUnityCallIdFromPage() === callId) {
+    return true
+  }
+
+  if (hasUnityCallAcceptedLocally(callId)) {
+    return true
+  }
+
   try {
-    for (let index = 0; index < sessionStorage.length; index += 1) {
-      const key = sessionStorage.key(index)
-      if (!key?.startsWith("unity_call_active_")) {
-        continue
-      }
-
-      const callId = Number(key.replace("unity_call_active_", ""))
-      if (!Number.isFinite(callId) || callId <= 0 || callId === excludeCallId) {
-        continue
-      }
-
-      if (isLeavingUnityCall(callId) || isUnityCallEndedLocally(callId)) {
-        continue
-      }
-
-      if (sessionStorage.getItem(key) === "1") {
-        return true
-      }
+    if (sessionStorage.getItem(`unity_call_live_${callId}`) === "1") {
+      return true
     }
   } catch {
     // ignore

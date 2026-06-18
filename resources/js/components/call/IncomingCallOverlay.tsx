@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button"
 import {
   acceptUnityCall,
   clearUnityCallSessionActive,
+  getActiveUnityCallIdFromPage,
+  hasUnityCallAcceptedLocally,
+  isUserAlreadyOnUnityCall,
   isUserBusyWithUnityCall,
   isUnityCallEndedLocally,
   markUnityCallAcceptedLocally,
-  markUnityCallSessionActive,
   markLeavingUnityCall,
   navigateToUnityCall,
   terminateUnityCall,
@@ -26,6 +28,7 @@ import {
   saveCustomCallRingtone,
   setCallRingtoneMode,
 } from "@/lib/callRingtoneSettings"
+import toast from "react-hot-toast"
 import { subscribeUnityCallIncoming, subscribeUnityCallStatus, subscribeUnityCallTerminated, isUnityCallIncomingForUser, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import { consumeAnyPendingIncomingCall, clearAnyPendingIncomingCall, handleSwIncomingCallPayload } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
@@ -97,31 +100,51 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   }, [incoming?.call.id])
 
   const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
+    const callId = payload.call.id
     const self = payload.participants.find((p) => p.userId === userId)
+
+    if (isUnityCallTerminated(payload) || isUnityCallEndedLocally(callId)) {
+      stopCallRingtone()
+      setIncoming((current) => (current?.call.id === callId ? null : current))
+      setBlockedByActiveCall(false)
+      return
+    }
+
+    if (isUserAlreadyOnUnityCall(callId)) {
+      stopCallRingtone()
+      setIncoming(null)
+      setBlockedByActiveCall(false)
+      if (getActiveUnityCallIdFromPage() !== callId) {
+        const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(callId))
+        navigateToUnityCall(joinUrl)
+      }
+      return
+    }
+
     if (self?.role === "callee" && self.status === "accepted") {
-      if (
-        isUnityCallTerminated(payload) ||
-        isUnityCallEndedLocally(payload.call.id) ||
-        (payload.call.status !== "ringing" && payload.call.status !== "accepted")
-      ) {
+      if (payload.call.status !== "ringing" && payload.call.status !== "accepted") {
         return
       }
 
       stopCallRingtone()
-      const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(payload.call.id))
-      navigateToUnityCall(joinUrl)
+      setIncoming(null)
+      setBlockedByActiveCall(false)
+      markUnityCallAcceptedLocally(callId)
+      const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(callId))
+      if (getActiveUnityCallIdFromPage() !== callId) {
+        navigateToUnityCall(joinUrl)
+      }
       return
     }
 
-    if (isUserBusyWithUnityCall(payload.call.id)) {
+    if (isUserBusyWithUnityCall(callId)) {
       setBlockedByActiveCall(true)
       setIncoming(payload)
       return
     }
 
     setBlockedByActiveCall(false)
-    markUnityCallSessionActive(payload.call.id)
-    setIncoming((current) => (current?.call.id === payload.call.id ? current : payload))
+    setIncoming((current) => (current?.call.id === callId ? current : payload))
     void startCallRingtone()
   }, [userId])
 
@@ -190,6 +213,15 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       void wakeLock?.release().catch(() => {})
     }
   }, [incoming])
+
+  useEffect(() => {
+    const callPageId = getActiveUnityCallIdFromPage()
+    if (callPageId && incoming?.call.id === callPageId) {
+      stopCallRingtone()
+      setIncoming(null)
+      setBlockedByActiveCall(false)
+    }
+  }, [incoming?.call.id])
 
   useEffect(() => {
     return subscribeUnityCallIncoming((payload) => {
