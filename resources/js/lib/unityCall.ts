@@ -462,6 +462,25 @@ export async function fetchIncomingUnityCall(): Promise<UnityCallStatusEvent | n
   return ok && data?.incoming ? data.incoming : null
 }
 
+export type UnityCallActiveSession = {
+  call: UnityCallPayload
+  caller: { id: number; name: string; avatar?: string | null }
+  participants: UnityCallParticipantRow[]
+  isCaller: boolean
+  isGroupCall: boolean
+  participantStatus?: string | null
+  iceServers: RTCIceServer[]
+  authUserId: number
+}
+
+export async function fetchActiveUnityCallSession(): Promise<UnityCallActiveSession | null> {
+  const { ok, data } = await getUnityCallJson<{ active?: UnityCallActiveSession | null }>(
+    route("unity-calls.active"),
+  )
+
+  return ok && data?.active ? data.active : null
+}
+
 export type UnityCallChatRoomChannel = {
   id: number
   type: "direct" | "private" | "public" | string

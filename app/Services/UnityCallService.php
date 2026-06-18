@@ -524,6 +524,77 @@ class UnityCallService
     }
 
     /**
+     * Build a client session snapshot for a live call the user can rejoin after refresh or app restart.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function restorableCallSessionForUser(User $user): ?array
+    {
+        $call = $this->activeCallForUser($user->id);
+        if (! $call || ! $call->isActive()) {
+            return null;
+        }
+
+        $call->load(['caller', 'participants.user', 'chatRoom']);
+        if (! $call->caller) {
+            return null;
+        }
+
+        $participant = $call->participantForUser($user->id);
+        $isCaller = (int) $call->caller_id === (int) $user->id;
+        $isGroupCall = $call->chatRoom?->type !== 'direct';
+
+        if (! $isCaller) {
+            if (! $participant || $participant->status !== UnityCallParticipant::STATUS_ACCEPTED) {
+                return null;
+            }
+        }
+
+        $participantsQuery = $call->participants()->with('user');
+        if ($isGroupCall) {
+            $participantsQuery->where(function ($query) use ($call, $user) {
+                $query->where('status', UnityCallParticipant::STATUS_ACCEPTED)
+                    ->orWhere('user_id', $call->caller_id)
+                    ->orWhere('user_id', $user->id);
+            });
+        }
+
+        $participantRows = $participantsQuery->limit(100)->get();
+
+        return [
+            'call' => [
+                'id' => $call->id,
+                'status' => $call->status,
+                'type' => $call->type,
+                'chatRoomId' => $call->chat_room_id,
+                'chatRoomName' => $call->chatRoom?->name,
+                'chatRoomType' => $call->chatRoom?->type,
+                'isGroupCall' => $isGroupCall,
+                'joinUrl' => '/unity-call/'.$call->id,
+                'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
+                'answeredAt' => $call->answered_at?->toIso8601String(),
+                'endedAt' => $call->ended_at?->toIso8601String(),
+            ],
+            'caller' => [
+                'id' => $call->caller->id,
+                'name' => trim((string) $call->caller->name) ?: 'Unknown',
+                'avatar' => $call->caller->avatar_url,
+            ],
+            'participants' => $participantRows->map(fn ($p) => [
+                'userId' => $p->user_id,
+                'name' => trim((string) ($p->user?->name ?? '')) ?: 'Participant',
+                'avatar' => $p->user?->avatar_url,
+                'role' => $p->role,
+                'status' => $p->status,
+            ])->values()->all(),
+            'isCaller' => $isCaller,
+            'isGroupCall' => $isGroupCall,
+            'participantStatus' => $participant?->status,
+            'authUserId' => $user->id,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function incomingCallPayloadForUser(User $user): ?array

@@ -38,6 +38,18 @@ class UnityCallController extends Controller
         ]);
     }
 
+    public function active(Request $request, UnityCallService $calls, WebRtcIceService $webrtcIce): JsonResponse
+    {
+        $session = $calls->restorableCallSessionForUser($request->user());
+        if ($session === null) {
+            return response()->json(['active' => null]);
+        }
+
+        $session['iceServers'] = $webrtcIce->iceServers();
+
+        return response()->json(['active' => $session]);
+    }
+
     public function chatRooms(Request $request, UnityCallService $calls): JsonResponse
     {
         return response()->json([

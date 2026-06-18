@@ -18,6 +18,7 @@ import { UnityCallRemoteAudio } from "@/components/call/UnityCallRemoteAudio"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { useUnityCallBackgroundKeepAlive } from "@/hooks/useUnityCallBackgroundKeepAlive"
 import { useUnityCallAutoMinimize } from "@/hooks/useUnityCallAutoMinimize"
+import { useUnityCallSessionRestore } from "@/hooks/useUnityCallSessionRestore"
 import {
   clearUnityCallLiveOnPage,
   clearUnityCallSessionActive,
@@ -278,6 +279,11 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     session,
     canBackgroundCall: Boolean(mediaState?.canBackgroundCall),
     onBackgrounded: webrtc.resyncCall,
+  })
+
+  useUnityCallSessionRestore({
+    session,
+    registerSession,
   })
 
   useEffect(() => {

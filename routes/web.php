@@ -1040,6 +1040,7 @@ Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
 
 Route::prefix('unity-calls')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('unity-calls.')->group(function () {
     Route::get('/incoming', [UnityCallController::class, 'incoming'])->name('incoming');
+    Route::get('/active', [UnityCallController::class, 'active'])->name('active');
     Route::get('/chat-rooms', [UnityCallController::class, 'chatRooms'])->name('chat-rooms');
     Route::post('/', [UnityCallController::class, 'store'])->name('store');
     Route::post('/{call}/accept', [UnityCallController::class, 'accept'])->name('accept')->where('call', '[0-9]+');
