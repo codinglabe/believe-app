@@ -70,3 +70,53 @@ export function isPeerNegotiationSettled(pc: RTCPeerConnection): boolean {
   }
   return pc.signalingState === "stable" && pc.currentRemoteDescription !== null && pc.currentLocalDescription !== null
 }
+
+const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:openrelay.metered.ca:80" },
+]
+
+const DEFAULT_TURN_SERVERS: RTCIceServer[] = [
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+]
+
+function iceEntryUrls(entry: RTCIceServer): string[] {
+  const urls = entry.urls
+  if (!urls) {
+    return []
+  }
+  return Array.isArray(urls) ? urls.map(String) : [String(urls)]
+}
+
+export function iceEntryHasTurn(entry: RTCIceServer): boolean {
+  return iceEntryUrls(entry).some((url) => url.startsWith("turn:") || url.startsWith("turns:"))
+}
+
+/** STUN-only from the server cannot relay audio across NAT — ensure at least one TURN entry. */
+export function ensureTurnIceServers(iceServers: RTCIceServer[]): RTCIceServer[] {
+  const base = iceServers.length > 0 ? iceServers : DEFAULT_STUN_SERVERS
+  if (base.some(iceEntryHasTurn)) {
+    return base
+  }
+  return [...base, ...DEFAULT_TURN_SERVERS]
+}
+
+export function buildUnityCallRtcConfiguration(iceServers: RTCIceServer[]): RTCConfiguration {
+  return {
+    iceServers: ensureTurnIceServers(iceServers),
+    iceCandidatePoolSize: 10,
+    bundlePolicy: "max-bundle",
+    rtcpMuxPolicy: "require",
+  }
+}

@@ -22,10 +22,16 @@ class WebRtcIceService
                 ?? $this->turnFromMeteredApi()
                 ?? ($this->shouldUseThirdPartyFallback() ? $this->turnOpenRelayStaticFallback() : []);
 
-            return array_values(array_filter(
+            $merged = array_values(array_filter(
                 array_merge($servers, $turn),
                 fn ($entry) => is_array($entry) && ! empty($entry['urls']),
             ));
+
+            if ($this->turnEntryCount($merged) === 0) {
+                Log::warning('WebRTC ICE has no TURN servers — cross-NAT audio may fail. Set WEBRTC_TURN_URL on the server.');
+            }
+
+            return $merged;
         });
     }
 
@@ -279,6 +285,14 @@ class WebRtcIceService
         }
 
         return [];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $entries
+     */
+    private function turnEntryCount(array $entries): int
+    {
+        return count(array_filter($entries, fn (array $entry) => $this->entryIncludesTurn($entry)));
     }
 
     /**

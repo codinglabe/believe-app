@@ -23,6 +23,7 @@ import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnity
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
+import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 type Props = {
@@ -598,6 +599,10 @@ export default function UnityCallShow({
             pulse={!ending && !isTerminalCallStatus && (!callLive || !mediaConnected)}
           />
           {isGroupCall ? <p className="mt-2 text-center text-sm text-white/60">{statusHint}</p> : null}
+
+          <p className="mt-2 text-center text-xs font-medium uppercase tracking-wider text-purple-300/70">
+            Voice call · no video
+          </p>
 
           <p className="mt-8 font-mono text-3xl tabular-nums tracking-wide">{statusLabel}</p>
 
