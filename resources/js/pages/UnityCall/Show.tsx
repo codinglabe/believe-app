@@ -157,6 +157,7 @@ export default function UnityCallShow({
   const [ending, setEnding] = useState(false)
   const [accepting, setAccepting] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(true)
+  const [connectedAt, setConnectedAt] = useState<number | null>(null)
 
   const ringMode = useMemo(() => {
     if (typeof window === "undefined") {
@@ -182,6 +183,19 @@ export default function UnityCallShow({
   const ringingCallees = useMemo(
     () => participants.filter((p) => p.role === "callee" && p.status === "ringing"),
     [participants],
+  )
+
+  const leftParticipants = useMemo(
+    () =>
+      participants.filter((p) =>
+        ["left", "declined", "missed"].includes(p.status),
+      ),
+    [participants],
+  )
+
+  const otherParty = useMemo(
+    () => participants.find((p) => p.userId !== authUserId) ?? null,
+    [participants, authUserId],
   )
 
   const callLive = call.status === "accepted" || acceptedCallees.length > 0
@@ -211,6 +225,25 @@ export default function UnityCallShow({
     mediaActive,
     iceServers,
   })
+
+  const callTimerAnchor = useMemo(() => {
+    if (call.answeredAt) {
+      return new Date(call.answeredAt).getTime()
+    }
+    if (connectedAt) {
+      return connectedAt
+    }
+    return null
+  }, [call.answeredAt, connectedAt])
+
+  useEffect(() => {
+    if (mediaConnected && connectedAt === null) {
+      setConnectedAt(Date.now())
+    }
+    if (!mediaConnected && !callLive) {
+      setConnectedAt(null)
+    }
+  }, [mediaConnected, connectedAt, callLive])
 
   const isTerminalCallStatus = useMemo(
     () => ["ended", "cancelled", "declined", "missed"].includes(call.status),
@@ -280,7 +313,7 @@ export default function UnityCallShow({
     if (ending || isTerminalCallStatus) {
       return "Call ended"
     }
-    if (callLive && call.answeredAt) {
+    if (callTimerAnchor !== null) {
       return formatElapsed(elapsed)
     }
     if (isCaller) {
@@ -300,7 +333,7 @@ export default function UnityCallShow({
   }, [
     ending,
     isTerminalCallStatus,
-    call.answeredAt,
+    callTimerAnchor,
     isCaller,
     acceptedCallees.length,
     ringingCallees.length,
@@ -365,6 +398,9 @@ export default function UnityCallShow({
 
       if (payload.reason === "accepted") {
         unlockRemotePlayback()
+        if (payload.call.answeredAt) {
+          setCall((current) => ({ ...current, answeredAt: payload.call.answeredAt }))
+        }
         return
       }
 
@@ -460,15 +496,14 @@ export default function UnityCallShow({
   }, [call.id])
 
   useEffect(() => {
-    if (!callLive || !call.answeredAt) {
+    if (callTimerAnchor === null) {
       return
     }
-    const started = new Date(call.answeredAt).getTime()
-    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - started) / 1000)))
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - callTimerAnchor) / 1000)))
     tick()
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
-  }, [callLive, call.answeredAt])
+  }, [callTimerAnchor])
 
   const isRejoinCallee =
     !isCaller &&
@@ -610,12 +645,14 @@ export default function UnityCallShow({
             <div className="mt-6 w-full max-w-sm space-y-3">
               {acceptedCallees.length > 0 ? (
                 <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/80">Joined</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/80">In call</p>
                   <ul className="space-y-2">
                     {acceptedCallees.map((p) => (
                       <li key={p.userId} className="flex items-center justify-between text-sm">
                         <span>{p.name}</span>
-                        <span className="text-emerald-300/90">In call</span>
+                        <span className="text-emerald-300/90">
+                          {mediaConnected ? "Connected" : connectionStatus}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -634,6 +671,35 @@ export default function UnityCallShow({
                   </ul>
                 </div>
               ) : null}
+              {leftParticipants.length > 0 ? (
+                <div className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Left</p>
+                  <ul className="space-y-2">
+                    {leftParticipants.map((p) => (
+                      <li key={p.userId} className="flex items-center justify-between text-sm">
+                        <span>{p.name}</span>
+                        <span className="capitalize text-white/60">{p.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!isGroupCall && !isCaller && otherParty && call.status !== "ended" ? (
+            <div className="mt-6 w-full max-w-sm rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Participant</p>
+              <div className="mt-2 flex items-center justify-between text-sm">
+                <span>{otherParty.name}</span>
+                <span className="capitalize text-emerald-300/90">
+                  {otherParty.status === "accepted"
+                    ? mediaConnected
+                      ? "Connected"
+                      : connectionStatus
+                    : otherParty.status}
+                </span>
+              </div>
             </div>
           ) : null}
 
@@ -651,7 +717,7 @@ export default function UnityCallShow({
             </div>
           ) : null}
 
-          {callConnected && !mediaConnected && permissionStatus !== "denied" ? (
+          {callConnected && !mediaConnected && permissionStatus !== "denied" && remoteStreams.length === 0 ? (
             <div className="mt-6 flex items-center gap-2 text-sm text-white/70">
               <Loader2 className="h-4 w-4 animate-spin" />
               {connectionStatus}
