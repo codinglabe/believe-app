@@ -33,10 +33,29 @@ export function isOnUnityCallShowPage(callId?: number): boolean {
   return Number.isFinite(pageCallId) && pageCallId === callId
 }
 
+/** In-memory live call from UnityCallSessionProvider — avoids stale sessionStorage blocking incoming calls. */
+let providerLiveCallId: number | null = null
+
+export function setUnityCallProviderLiveCallId(callId: number | null): void {
+  providerLiveCallId = callId
+}
+
+export function getUnityCallProviderLiveCallId(): number | null {
+  return providerLiveCallId
+}
+
 /** Keep call alive when leaving the full-screen call UI (minimize or any navigation). */
 export function markUnityCallBackgrounded(callId: number): void {
   markUnityCallSessionActive(callId)
   markUnityCallLiveOnPage(callId)
+  setUnityCallProviderLiveCallId(callId)
+}
+
+export function clearUnityCallBackgroundState(callId: number): void {
+  clearUnityCallLiveOnPage(callId)
+  if (getUnityCallProviderLiveCallId() === callId) {
+    setUnityCallProviderLiveCallId(null)
+  }
 }
 
 /** Full page load — avoids Inertia XHR JSON errors on /unity-call/* (Reverb/WebRTC need a clean page). */
@@ -102,8 +121,7 @@ export function markUnityCallEndedLocally(callId: number): void {
   try {
     sessionStorage.setItem(endedCallStorageKey(callId), String(Date.now()))
     clearUnityCallAcceptedLocally(callId)
-    clearUnityCallLiveOnPage(callId)
-    clearUnityCallSessionActive(callId)
+    clearUnityCallBackgroundState(callId)
   } catch {
     // ignore
   }
@@ -239,6 +257,16 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
     return false
   }
 
+  const providerCallId = getUnityCallProviderLiveCallId()
+  if (
+    providerCallId &&
+    providerCallId !== excludeCallId &&
+    !isLeavingUnityCall(providerCallId) &&
+    !isUnityCallEndedLocally(providerCallId)
+  ) {
+    return true
+  }
+
   const pageCallId = getActiveUnityCallIdFromPage()
   if (
     pageCallId &&
@@ -249,7 +277,7 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
     return true
   }
 
-  return isUserOnLiveUnityCall(excludeCallId)
+  return false
 }
 
 export function isUserAlreadyOnUnityCall(callId: number): boolean {
@@ -265,67 +293,19 @@ export function isUserAlreadyOnUnityCall(callId: number): boolean {
     return true
   }
 
-  if (hasUnityCallAcceptedLocally(callId)) {
+  if (getUnityCallProviderLiveCallId() === callId) {
     return true
   }
 
-  try {
-    if (sessionStorage.getItem(`unity_call_live_${callId}`) === "1") {
-      return true
-    }
-  } catch {
-    // ignore
+  if (hasUnityCallAcceptedLocally(callId)) {
+    return true
   }
 
   return false
 }
 
 export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
-  if (typeof window === "undefined") {
-    return false
-  }
-
-  const pageCallId = getActiveUnityCallIdFromPage()
-  if (
-    pageCallId &&
-    pageCallId !== excludeCallId &&
-    !isLeavingUnityCall(pageCallId) &&
-    !isUnityCallEndedLocally(pageCallId)
-  ) {
-    try {
-      if (sessionStorage.getItem(`unity_call_live_${pageCallId}`) === "1") {
-        return true
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  try {
-    for (let index = 0; index < sessionStorage.length; index += 1) {
-      const key = sessionStorage.key(index)
-      if (!key?.startsWith("unity_call_live_")) {
-        continue
-      }
-
-      const callId = Number(key.replace("unity_call_live_", ""))
-      if (!Number.isFinite(callId) || callId <= 0 || callId === excludeCallId) {
-        continue
-      }
-
-      if (isLeavingUnityCall(callId) || isUnityCallEndedLocally(callId)) {
-        continue
-      }
-
-      if (sessionStorage.getItem(key) === "1") {
-        return true
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return false
+  return isUserBusyWithUnityCall(excludeCallId)
 }
 
 export function returnToUnityCall(callId: number): void {

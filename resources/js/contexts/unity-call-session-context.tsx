@@ -22,14 +22,17 @@ import { useUnityCallSessionRestore } from "@/hooks/useUnityCallSessionRestore"
 import {
   clearUnityCallLiveOnPage,
   clearUnityCallSessionActive,
+  clearUnityCallBackgroundState,
   isLeavingUnityCall,
   isOnUnityCallShowPage,
+  isUnityCallEndedLocally,
   markLeavingUnityCall,
   markUnityCallBackgrounded,
   markUnityCallLiveOnPage,
   markUnityCallSessionActive,
   navigateAfterUnityCall,
   returnToUnityCall,
+  setUnityCallProviderLiveCallId,
   terminateUnityCall,
 } from "@/lib/unityCall"
 import {
@@ -138,6 +141,8 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   })
 
   stopMediaRef.current = webrtc.stopMedia
+  const resyncCallRef = useRef(webrtc.resyncCall)
+  resyncCallRef.current = webrtc.resyncCall
 
   useEffect(() => {
     if (webrtc.mediaConnected || webrtc.localStream) {
@@ -150,6 +155,49 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
       setMediaEngaged(false)
     }
   }, [session?.call.id])
+
+  useEffect(() => {
+    if (session) {
+      return
+    }
+
+    setUnityCallProviderLiveCallId(null)
+
+    if (typeof sessionStorage === "undefined") {
+      return
+    }
+
+    try {
+      for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+        const key = sessionStorage.key(index)
+        if (!key?.startsWith("unity_call_live_")) {
+          continue
+        }
+
+        const callId = Number(key.replace("unity_call_live_", ""))
+        if (!Number.isFinite(callId) || callId <= 0) {
+          continue
+        }
+
+        if (isUnityCallEndedLocally(callId) || isLeavingUnityCall(callId)) {
+          clearUnityCallBackgroundState(callId)
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [session])
+
+  useEffect(() => {
+    if (session && mediaState?.canBackgroundCall) {
+      setUnityCallProviderLiveCallId(session.call.id)
+      return
+    }
+
+    if (!session) {
+      setUnityCallProviderLiveCallId(null)
+    }
+  }, [mediaState?.canBackgroundCall, session])
 
   const registerSession = useCallback((snapshot: UnityCallSessionSnapshot) => {
     setSession((previous) => {
@@ -168,7 +216,12 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     if (options?.stopMedia !== false) {
       stopMediaRef.current()
     }
-    setSession(null)
+    setSession((previous) => {
+      if (previous) {
+        clearUnityCallBackgroundState(previous.call.id)
+      }
+      return null
+    })
   }, [])
 
   const minimizeToChat = useCallback(() => {
@@ -228,6 +281,10 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return
       }
 
+      if (payload.reason === "incoming") {
+        return
+      }
+
       setSession((previous) => {
         if (!previous || previous.call.id !== callId) {
           return previous
@@ -239,6 +296,10 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
           participants: mergeCallParticipants(previous.participants, payload.participants),
         }
       })
+
+      if (payload.reason === "accepted" || payload.reason === "participant_left") {
+        resyncCallRef.current()
+      }
 
       if (payload.reason === "participant_left" || payload.reason === "participant_declined") {
         const self = payload.participants.find((participant) => participant.userId === authUserId)

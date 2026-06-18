@@ -100,8 +100,13 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   }, [incoming?.call.id])
 
   const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
+    const activeUserId = userId ?? readAuthUserId()
+    if (!activeUserId) {
+      return
+    }
+
     const callId = payload.call.id
-    const self = payload.participants.find((p) => p.userId === userId)
+    const self = payload.participants.find((p) => p.userId === activeUserId)
 
     if (isUnityCallTerminated(payload) || isUnityCallEndedLocally(callId)) {
       stopCallRingtone()
@@ -140,11 +145,12 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     if (isUserBusyWithUnityCall(callId)) {
       setBlockedByActiveCall(true)
       setIncoming(payload)
+      void startCallRingtone()
       return
     }
 
     setBlockedByActiveCall(false)
-    setIncoming((current) => (current?.call.id === callId ? current : payload))
+    setIncoming(payload)
     void startCallRingtone()
   }, [userId])
 
@@ -235,14 +241,15 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
 
   const onStatus = useCallback(
     (payload: UnityCallStatusEvent) => {
-      if (!userId) {
+      const activeUserId = userId ?? readAuthUserId()
+      if (!activeUserId) {
         return
       }
 
-      const self = payload.participants.find((p) => p.userId === userId)
+      const self = payload.participants.find((p) => p.userId === activeUserId)
       const isIncomingCallee =
         payload.reason === "incoming" &&
-        payload.caller?.id !== userId &&
+        payload.caller?.id !== activeUserId &&
         payload.call.status === "ringing" &&
         (!self || (self.role === "callee" && self.status === "ringing"))
 
@@ -252,8 +259,8 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       }
 
       if (incoming?.call.id === payload.call.id && payload.reason === "accepted") {
-        const self = payload.participants.find((p) => p.userId === userId)
-        if (self?.role === "callee" && self.status === "accepted") {
+        const acceptedSelf = payload.participants.find((p) => p.userId === activeUserId)
+        if (acceptedSelf?.role === "callee" && acceptedSelf.status === "accepted") {
           markUnityCallAcceptedLocally(payload.call.id)
           const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(payload.call.id))
           dismiss()
@@ -266,8 +273,8 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       }
 
       if (incoming?.call.id === payload.call.id && payload.reason === "participant_missed") {
-        const self = payload.participants.find((p) => p.userId === userId)
-        if (self?.status === "missed") {
+        const missedSelf = payload.participants.find((p) => p.userId === activeUserId)
+        if (missedSelf?.status === "missed") {
           dismiss()
         }
         return
