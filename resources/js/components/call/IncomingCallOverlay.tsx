@@ -10,6 +10,7 @@ import {
   acceptUnityCall,
   clearUnityCallSessionActive,
   isUserBusyWithUnityCall,
+  isUnityCallEndedLocally,
   markUnityCallAcceptedLocally,
   markUnityCallSessionActive,
   markLeavingUnityCall,
@@ -98,6 +99,14 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
   const showIncoming = useCallback((payload: UnityCallStatusEvent) => {
     const self = payload.participants.find((p) => p.userId === userId)
     if (self?.role === "callee" && self.status === "accepted") {
+      if (
+        isUnityCallTerminated(payload) ||
+        isUnityCallEndedLocally(payload.call.id) ||
+        (payload.call.status !== "ringing" && payload.call.status !== "accepted")
+      ) {
+        return
+      }
+
       stopCallRingtone()
       const joinUrl = toInternalAppPath(payload.call.joinUrl || unityCallShowPath(payload.call.id))
       navigateToUnityCall(joinUrl)

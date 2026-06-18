@@ -206,6 +206,16 @@ class UnityCallController extends Controller
         }
 
         $call = $calls->expireCallIfRinging($call, $user);
+
+        if (! $call->isActive()) {
+            $chatUrl = route('chat.index');
+            if ($call->chat_room_id) {
+                $chatUrl .= '?room='.$call->chat_room_id;
+            }
+
+            return redirect()->to($chatUrl);
+        }
+
         $call->load(['caller', 'participants.user', 'chatRoom']);
         $participant = $call->participantForUser($user->id);
         $isCaller = (int) $call->caller_id === (int) $user->id;

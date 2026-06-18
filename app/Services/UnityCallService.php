@@ -342,6 +342,10 @@ class UnityCallService
             ->where('status', UnityCallParticipant::STATUS_RINGING)
             ->update(['status' => UnityCallParticipant::STATUS_MISSED]);
 
+        $call->participants()
+            ->where('status', UnityCallParticipant::STATUS_ACCEPTED)
+            ->update(['status' => UnityCallParticipant::STATUS_LEFT]);
+
         $call->loadMissing(['participants.user', 'chatRoom']);
         $payload = $this->notifier->payloadForUser($call, $call->caller, 'ended');
 

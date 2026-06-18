@@ -9,6 +9,7 @@ import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
 import {
   acceptUnityCall,
   isLeavingUnityCall,
+  isUnityCallEndedLocally,
   markUnityCallLiveOnPage,
   markUnityCallSessionActive,
   clearUnityCallLiveOnPage,
@@ -16,6 +17,7 @@ import {
   navigateAfterUnityCall,
   terminateUnityCall,
   unityCallChatChannelName,
+  unityCallChatUrl,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
 import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
@@ -198,11 +200,13 @@ export default function UnityCallShow({
     [participants, authUserId],
   )
 
-  const callLive = call.status === "accepted" || acceptedCallees.length > 0
+  const callIsActive = call.status === "ringing" || call.status === "accepted"
+  const callEndedLocally = isUnityCallEndedLocally(call.id)
+  const callLive = callIsActive && !callEndedLocally && (call.status === "accepted" || acceptedCallees.length > 0)
   const callConnected = callLive && (isCaller || selfStatus === "accepted")
-  const mediaActive = isCaller
-    ? call.status === "ringing" || call.status === "accepted"
-    : callConnected
+  const mediaActive =
+    !callEndedLocally &&
+    (isCaller ? callIsActive : callConnected)
 
   const {
     localStream,
@@ -249,6 +253,31 @@ export default function UnityCallShow({
     () => ["ended", "cancelled", "declined", "missed"].includes(call.status),
     [call.status],
   )
+
+  useEffect(() => {
+    if (!callEndedLocally && !isTerminalCallStatus) {
+      return
+    }
+
+    stopMedia()
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/unity-call/")) {
+      window.location.replace(unityCallChatUrl(call.chatRoomId))
+    }
+  }, [call.chatRoomId, callEndedLocally, isTerminalCallStatus, stopMedia])
+
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted && !isUnityCallEndedLocally(call.id)) {
+        return
+      }
+
+      stopMedia()
+      window.location.replace(unityCallChatUrl(call.chatRoomId))
+    }
+
+    window.addEventListener("pageshow", onPageShow)
+    return () => window.removeEventListener("pageshow", onPageShow)
+  }, [call.chatRoomId, call.id, stopMedia])
 
   const exitNavigationStarted = useRef(false)
 
@@ -458,14 +487,6 @@ export default function UnityCallShow({
     enabled: !isCaller && selfStatus === "ringing" && call.status === "ringing" && !ending,
     onExpired: () => exitCallScreen("missed"),
   })
-
-  useEffect(() => {
-    if (ending || isLeavingUnityCall(call.id) || !isTerminalCallStatus) {
-      return
-    }
-
-    exitCallScreen(call.status)
-  }, [call.status, call.id, ending, exitCallScreen, isTerminalCallStatus])
 
   useEffect(() => {
     if (ending || isLeavingUnityCall(call.id) || isTerminalCallStatus) {

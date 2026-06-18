@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing } from "lucide-react"
 import type { ChatMessage, UnityCallChatMetadata } from "@/providers/chat-provider"
 import { cn } from "@/lib/utils"
-import { navigateToUnityCall, toInternalAppPath } from "@/lib/unityCall"
+import { navigateToUnityCall, toInternalAppPath, clearUnityCallEndedLocally, isUnityCallEndedLocally } from "@/lib/unityCall"
 import { chatReceivedBubble, chatSentBubble } from "./chat-brand"
 import { formatChatTime, parseChatTimestamp } from "@/lib/chat-timestamps"
 
@@ -125,7 +125,7 @@ export function ChatCallMessage({ message, currentUserId }: Props) {
   }
 
   const isOutgoing = metadata.caller_id === currentUserId
-  const isActive = ACTIVE_CALL_STATUSES.has(metadata.call_status)
+  const isActive = ACTIVE_CALL_STATUSES.has(metadata.call_status) && !isUnityCallEndedLocally(metadata.unity_call_id)
   const joinPath = toInternalAppPath(metadata.join_url)
   const subtext = durationSubtext(metadata, liveSeconds)
 
@@ -133,6 +133,8 @@ export function ChatCallMessage({ message, currentUserId }: Props) {
     if (!isActive || !joinPath) {
       return
     }
+
+    clearUnityCallEndedLocally(metadata.unity_call_id)
 
     const path =
       !isOutgoing && metadata.call_status === "ringing"

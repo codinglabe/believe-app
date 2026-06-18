@@ -65,6 +65,50 @@ export const UNITY_CALL_RING_SECONDS = 60
 const acceptInFlight = new Set<number>()
 const leavingCallIds = new Set<number>()
 
+function endedCallStorageKey(callId: number): string {
+  return `unity_call_ended_${callId}`
+}
+
+/** User explicitly left/ended — do not re-enter via back button or stale session flags. */
+export function markUnityCallEndedLocally(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+
+  try {
+    sessionStorage.setItem(endedCallStorageKey(callId), String(Date.now()))
+    clearUnityCallAcceptedLocally(callId)
+    clearUnityCallLiveOnPage(callId)
+    clearUnityCallSessionActive(callId)
+  } catch {
+    // ignore
+  }
+}
+
+export function clearUnityCallEndedLocally(callId: number): void {
+  if (typeof sessionStorage === "undefined") {
+    return
+  }
+
+  try {
+    sessionStorage.removeItem(endedCallStorageKey(callId))
+  } catch {
+    // ignore
+  }
+}
+
+export function isUnityCallEndedLocally(callId: number): boolean {
+  if (typeof sessionStorage === "undefined") {
+    return false
+  }
+
+  try {
+    return sessionStorage.getItem(endedCallStorageKey(callId)) !== null
+  } catch {
+    return false
+  }
+}
+
 export function unityCallChatUrl(chatRoomId: number | null | undefined): string {
   if (!chatRoomId) {
     return route("chat.index")
@@ -91,8 +135,7 @@ export function unityCallChatChannelName(
 
 export function markLeavingUnityCall(callId: number): void {
   leavingCallIds.add(callId)
-  clearUnityCallAcceptedLocally(callId)
-  clearUnityCallLiveOnPage(callId)
+  markUnityCallEndedLocally(callId)
 }
 
 export function clearLeavingUnityCall(callId: number): void {
@@ -173,7 +216,12 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
   }
 
   const pageCallId = getActiveUnityCallIdFromPage()
-  if (pageCallId && !isLeavingUnityCall(pageCallId) && pageCallId !== excludeCallId) {
+  if (
+    pageCallId &&
+    pageCallId !== excludeCallId &&
+    !isLeavingUnityCall(pageCallId) &&
+    !isUnityCallEndedLocally(pageCallId)
+  ) {
     return true
   }
 
@@ -189,7 +237,7 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
         continue
       }
 
-      if (isLeavingUnityCall(callId)) {
+      if (isLeavingUnityCall(callId) || isUnityCallEndedLocally(callId)) {
         continue
       }
 
@@ -210,7 +258,12 @@ export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
   }
 
   const pageCallId = getActiveUnityCallIdFromPage()
-  if (pageCallId && !isLeavingUnityCall(pageCallId) && pageCallId !== excludeCallId) {
+  if (
+    pageCallId &&
+    pageCallId !== excludeCallId &&
+    !isLeavingUnityCall(pageCallId) &&
+    !isUnityCallEndedLocally(pageCallId)
+  ) {
     try {
       if (sessionStorage.getItem(`unity_call_live_${pageCallId}`) === "1") {
         return true
@@ -232,7 +285,7 @@ export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
         continue
       }
 
-      if (isLeavingUnityCall(callId)) {
+      if (isLeavingUnityCall(callId) || isUnityCallEndedLocally(callId)) {
         continue
       }
 
@@ -253,8 +306,15 @@ export function navigateAfterUnityCall(
   options?: { onFinish?: () => void },
 ): void {
   markLeavingUnityCall(callId)
-  router.visit(unityCallChatUrl(chatRoomId), {
+
+  const chatPath = unityCallChatUrl(chatRoomId)
+  if (typeof window !== "undefined") {
+    window.history.replaceState(window.history.state, "", chatPath)
+  }
+
+  router.visit(chatPath, {
     preserveScroll: true,
+    replace: true,
     onFinish: () => {
       clearLeavingUnityCall(callId)
       options?.onFinish?.()
@@ -407,6 +467,7 @@ export async function acceptUnityCall(callId: number): Promise<{ ok: boolean; da
 
   acceptInFlight.add(callId)
   try {
+    clearUnityCallEndedLocally(callId)
     const { ok, data, message } = await postUnityCallJson<UnityCallAcceptResponse>(route("unity-calls.accept", callId))
     if (ok) {
       markUnityCallAcceptedLocally(callId)
