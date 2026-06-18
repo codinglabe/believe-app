@@ -42,7 +42,14 @@ export function UnityCallRemoteAudio({ stream, speakerOn }: Props) {
 
     const retryTimers = [300, 1000, 2500].map((delay) => window.setTimeout(ensurePlayback, delay))
 
+    const onVisibility = () => {
+      ensurePlayback()
+    }
+
+    document.addEventListener("visibilitychange", onVisibility)
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
       retryTimers.forEach((timer) => window.clearTimeout(timer))
       audio.removeEventListener("loadedmetadata", ensurePlayback)
       audio.removeEventListener("canplay", ensurePlayback)
@@ -57,5 +64,15 @@ export function UnityCallRemoteAudio({ stream, speakerOn }: Props) {
     }
   }, [stream, speakerOn])
 
-  return <audio ref={ref} data-unity-call-remote="1" autoPlay playsInline className="hidden" />
+  return (
+    <audio
+      ref={ref}
+      data-unity-call-remote="1"
+      autoPlay
+      playsInline
+      preload="auto"
+      className="hidden"
+      {...({ "x-webkit-airplay": "allow" } as Record<string, string>)}
+    />
+  )
 }

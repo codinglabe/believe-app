@@ -18,7 +18,6 @@ import {
   unityCallChatUrl,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
-import { UnityCallRemoteAudio } from "@/components/call/UnityCallRemoteAudio"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
@@ -542,18 +541,6 @@ export default function UnityCallShow({
   const showRingingCalleeControls = isRingingCallee && !ringMode
   const showRejoinControls = isRejoinCallee || canAnswerLate
 
-  const mergedRemoteStream = useMemo(() => {
-    const merged = new MediaStream()
-    remoteStreams.forEach(({ stream }) => {
-      stream.getAudioTracks().forEach((track) => {
-        if (!merged.getTracks().some((item) => item.id === track.id)) {
-          merged.addTrack(track)
-        }
-      })
-    })
-    return merged
-  }, [remoteStreams])
-
   return (
     <div className="fixed inset-0 z-[9998] flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
       <Head title="Audio call" />
@@ -564,10 +551,6 @@ export default function UnityCallShow({
           visibility={chatChannelVisibility}
           onStatus={handleCallTerminated}
         />
-      ) : null}
-
-      {mergedRemoteStream.getAudioTracks().length > 0 ? (
-        <UnityCallRemoteAudio stream={mergedRemoteStream} speakerOn={speakerOn} />
       ) : null}
 
       {callLive && callConnected && !ending ? (

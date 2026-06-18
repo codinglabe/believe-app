@@ -10,12 +10,13 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { router, usePage } from "@inertiajs/react"
+import { router } from "@inertiajs/react"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
 import { UnityCallFloatingBar } from "@/components/call/UnityCallFloatingBar"
 import { UnityCallRemoteAudio } from "@/components/call/UnityCallRemoteAudio"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
+import { useUnityCallBackgroundKeepAlive } from "@/hooks/useUnityCallBackgroundKeepAlive"
 import {
   clearUnityCallLiveOnPage,
   clearUnityCallSessionActive,
@@ -71,15 +72,34 @@ function normalizePath(url: string): string {
   return url.split("?")[0]?.split("#")[0] ?? "/"
 }
 
+function readAppPath(): string {
+  if (typeof window === "undefined") {
+    return "/"
+  }
+  return normalizePath(`${window.location.pathname}${window.location.search}`)
+}
+
+/** Works outside Inertia `<App>` — provider mounts beside App in app.tsx. */
+function useLiveAppPath(): string {
+  const [path, setPath] = useState(readAppPath)
+
+  useEffect(() => {
+    const refresh = () => setPath(readAppPath())
+    refresh()
+    return router.on("success", refresh)
+  }, [])
+
+  return path
+}
+
 export function UnityCallSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UnityCallSessionSnapshot | null>(null)
   const [speakerOn, setSpeakerOn] = useState(true)
   const stopMediaRef = useRef<() => void>(() => {})
-  const pageUrl = usePage().url
+  const appPath = useLiveAppPath()
   const onCallPage = useMemo(() => {
-    const path = normalizePath(pageUrl)
-    return session ? path === unityCallShowPath(session.call.id) : false
-  }, [pageUrl, session])
+    return session ? appPath === unityCallShowPath(session.call.id) : false
+  }, [appPath, session])
 
   const mediaState = useMemo(() => {
     if (!session) {
@@ -212,6 +232,36 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     return merged
   }, [webrtc.remoteStreams])
 
+  const callBackgroundTitle = useMemo(() => {
+    if (!session) {
+      return "Voice call"
+    }
+    if (session.isGroupCall) {
+      return session.call.chatRoomName?.trim() || "Group call"
+    }
+    if (session.isCaller) {
+      const callee = session.participants.find((participant) => participant.role === "callee")
+      return callee?.name ?? session.caller.name
+    }
+    return session.caller.name
+  }, [session])
+
+  const keepBackgroundAudioAlive = Boolean(
+    session && mediaState?.callLive && mediaState.callConnected && webrtc.mediaConnected,
+  )
+
+  useUnityCallBackgroundKeepAlive({
+    enabled: keepBackgroundAudioAlive,
+    title: callBackgroundTitle,
+    subtitle: "Believe In Unity · Voice call",
+    onHangUp: () => {
+      void endActiveCall()
+    },
+  })
+
+  const showRemoteAudio =
+    keepBackgroundAudioAlive && mergedRemoteStream.getAudioTracks().length > 0
+
   const value = useMemo<UnityCallSessionContextValue>(
     () => ({
       session,
@@ -254,23 +304,19 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   return (
     <UnityCallSessionContext.Provider value={value}>
+      {showRemoteAudio ? <UnityCallRemoteAudio stream={mergedRemoteStream} speakerOn={speakerOn} /> : null}
       {children}
       {showFloatingBar && session ? (
-        <>
-          {mergedRemoteStream.getAudioTracks().length > 0 ? (
-            <UnityCallRemoteAudio stream={mergedRemoteStream} speakerOn={speakerOn} />
-          ) : null}
-          <UnityCallFloatingBar
-            session={session}
-            mediaConnected={webrtc.mediaConnected}
-            isAudioEnabled={webrtc.isAudioEnabled}
-            speakerOn={speakerOn}
-            onToggleMute={webrtc.toggleMute}
-            onToggleSpeaker={() => setSpeakerOn((current) => !current)}
-            onReturn={() => returnToUnityCall(session.call.id)}
-            onEnd={() => void endActiveCall()}
-          />
-        </>
+        <UnityCallFloatingBar
+          session={session}
+          mediaConnected={webrtc.mediaConnected}
+          isAudioEnabled={webrtc.isAudioEnabled}
+          speakerOn={speakerOn}
+          onToggleMute={webrtc.toggleMute}
+          onToggleSpeaker={() => setSpeakerOn((current) => !current)}
+          onReturn={() => returnToUnityCall(session.call.id)}
+          onEnd={() => void endActiveCall()}
+        />
       ) : null}
     </UnityCallSessionContext.Provider>
   )

@@ -841,6 +841,7 @@ export function useUnityCallWebRTC({
   const enqueueSignalRef = useRef(enqueueSignal)
   const fetchPendingSignalsRef = useRef(fetchPendingSignals)
   const stopMediaRef = useRef(stopMedia)
+  const updateMediaConnectedRef = useRef(updateMediaConnected)
 
   useEffect(() => {
     syncPeerConnectionsRef.current = syncPeerConnections
@@ -861,6 +862,47 @@ export function useUnityCallWebRTC({
   useEffect(() => {
     stopMediaRef.current = stopMedia
   }, [stopMedia])
+
+  useEffect(() => {
+    updateMediaConnectedRef.current = updateMediaConnected
+  }, [updateMediaConnected])
+
+  useEffect(() => {
+    if (!keepAlive || !callId) {
+      return
+    }
+
+    const resumeRemotePlayback = () => {
+      document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+        void (node as HTMLAudioElement).play().catch(() => {})
+      })
+    }
+
+    const onVisibility = () => {
+      if (callEnded.current || !mediaStarted.current) {
+        return
+      }
+
+      resumeRemotePlayback()
+
+      const stream = localStreamRef.current
+      stream?.getAudioTracks().forEach((track) => {
+        if (track.readyState === "live") {
+          track.enabled = track.enabled
+        }
+      })
+
+      if (document.visibilityState === "visible") {
+        void fetchPendingSignalsRef.current().finally(() => {
+          syncPeerConnectionsRef.current()
+          updateMediaConnectedRef.current()
+        })
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [callId, keepAlive])
 
   useEffect(() => {
     if (!callId) {
