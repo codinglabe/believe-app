@@ -19,7 +19,7 @@ import {
 import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
 import { resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
-import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
+import { computeUnityCallMediaState, normalizeCallParticipants } from "@/lib/unityCallMediaState"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTerminated, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
@@ -115,11 +115,12 @@ export default function UnityCallShow({
   }, [call, liveSession])
 
   const activeParticipants = useMemo(() => {
-    if (liveSession?.call.id !== call.id) {
-      return participants
-    }
-    return mergeCallParticipants(participants, liveSession.participants)
-  }, [call.id, liveSession, participants])
+    const merged =
+      liveSession?.call.id !== call.id
+        ? participants
+        : mergeCallParticipants(participants, liveSession.participants)
+    return normalizeCallParticipants(activeCall, merged)
+  }, [activeCall, call.id, liveSession, participants])
 
   const selfStatus = useMemo(
     () => activeParticipants.find((p) => p.userId === authUserId)?.status ?? participantStatus,
@@ -164,7 +165,11 @@ export default function UnityCallShow({
       sessionRegisteredRef.current !== call.id || calleeJustAccepted
 
     if (!needsFullRegister) {
-      updateSession({ call: activeCall, participantStatus: selfStatus })
+      updateSession({
+        call: activeCall,
+        participants: activeParticipants,
+        participantStatus: selfStatus,
+      })
       return
     }
 
@@ -356,15 +361,21 @@ export default function UnityCallShow({
       return formatUnityCallElapsed(elapsed)
     }
     if (isCaller) {
-      if (acceptedCallees.length > 0) {
+      const calleeJoined =
+        acceptedCallees.length > 0 ||
+        activeCall.status === "accepted" ||
+        selfStatus === "accepted"
+      if (calleeJoined) {
+        if (callTimerAnchor !== null) {
+          return formatUnityCallElapsed(elapsed)
+        }
         if (callConnected && mediaConnected) {
           return formatUnityCallElapsed(elapsed)
         }
         if (callConnected) {
           return "Connecting…"
         }
-        const ringing = ringingCallees.length
-        return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : "Connecting…"
+        return "Connecting…"
       }
       if (ringingCallees.length > 0 || activeCall.status === "ringing") {
         return calleeIncomingVisible ? "Ringing" : "Calling…"
@@ -387,7 +398,7 @@ export default function UnityCallShow({
     acceptedCallees.length,
     ringingCallees.length,
     calleeIncomingVisible,
-    call.status,
+    activeCall.status,
     callConnected,
     mediaConnected,
     elapsed,
@@ -409,8 +420,8 @@ export default function UnityCallShow({
     if (callConnected && mediaConnected) {
       return speakerOn ? (isAudioEnabled ? "Speaker on" : "Speaker on · mic muted") : "Earpiece"
     }
-    if (isCaller && acceptedCallees.length > 0) {
-      return mediaConnected ? "Connected" : `${acceptedCallees.length} in call · ${connectionStatus}`
+    if (isCaller && (acceptedCallees.length > 0 || activeCall.status === "accepted")) {
+      return mediaConnected ? "Connected" : `${Math.max(acceptedCallees.length, 1)} in call · ${connectionStatus}`
     }
     if (isCaller && calleeIncomingVisible) {
       return "Ringing on their device"
@@ -432,7 +443,7 @@ export default function UnityCallShow({
     isAudioEnabled,
     speakerOn,
     isCaller,
-    call.status,
+    activeCall.status,
     connectionStatus,
     permissionStatus,
     acceptedCallees.length,
