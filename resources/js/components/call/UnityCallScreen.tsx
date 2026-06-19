@@ -38,6 +38,7 @@ type Props = {
   onToggleMute: () => void
   onToggleSpeaker: () => void
   showRingingCalleeControls: boolean
+  isRingingCallee?: boolean
   showRejoinControls: boolean
   isRejoinCallee: boolean
   ringMode: boolean
@@ -193,6 +194,7 @@ export function UnityCallScreen({
   onToggleMute,
   onToggleSpeaker,
   showRingingCalleeControls,
+  isRingingCallee = false,
   showRejoinControls,
   isRejoinCallee,
   ringMode,
@@ -297,7 +299,7 @@ export function UnityCallScreen({
               </div>
             ) : null}
 
-            {!isGroupCall && !isCaller && otherParty && callStatus !== "ended" ? (
+            {!isGroupCall && !isCaller && !isRingingCallee && otherParty && callStatus !== "ended" ? (
               <div className="mt-8 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">With</p>
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">

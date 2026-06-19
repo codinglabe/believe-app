@@ -116,10 +116,13 @@ export function UnityCallFloatingBar({
   positionRef.current = position
 
   const anchor = useMemo(() => {
+    if (!mediaConnected) {
+      return null
+    }
     if (session.call.answeredAt) {
       return new Date(session.call.answeredAt).getTime()
     }
-    return mediaConnected ? Date.now() : null
+    return Date.now()
   }, [mediaConnected, session.call.answeredAt])
 
   useEffect(() => {
