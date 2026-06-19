@@ -456,6 +456,11 @@ export function useUnityCallWebRTC({
 
       track.enabled = true
       setRemoteStreams((prev) => {
+        if (!isGroupCall) {
+          const stream = new MediaStream([track])
+          return [...prev.filter((item) => item.peerId !== peerId), { peerId, stream }]
+        }
+
         const existing = prev.find((item) => item.peerId === peerId)
         const tracks = existing ? [...existing.stream.getAudioTracks()] : []
         if (!tracks.some((item) => item.id === track.id)) {
@@ -467,7 +472,7 @@ export function useUnityCallWebRTC({
       updateMediaConnected()
       resumeUnityCallRemotePlayback()
     },
-    [updateMediaConnected],
+    [isGroupCall, updateMediaConnected],
   )
 
   const syncRemoteTracksFromPeer = useCallback(

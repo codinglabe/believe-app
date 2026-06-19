@@ -5,6 +5,8 @@ export type UnityCallBackgroundKeepAliveOptions = {
   localStream?: MediaStream | null
   remoteStream?: MediaStream | null
   speakerOn?: boolean
+  /** When true, route remote audio only through Web Audio (HTML `<audio>` must stay idle). */
+  preferWebAudioRemote?: boolean
   onResume?: () => void
 }
 
@@ -23,6 +25,18 @@ function getAudioContextCtor(): typeof AudioContext | null {
     (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext ??
     null
   )
+}
+
+function pauseHtmlRemotePlayback(): void {
+  if (typeof document === "undefined") {
+    return
+  }
+
+  document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+    const audio = node as HTMLAudioElement
+    audio.muted = true
+    audio.pause()
+  })
 }
 
 function resumeUnityCallRemotePlayback(): void {
@@ -54,6 +68,8 @@ export function startUnityCallBackgroundKeepAlive(
   let localSource: MediaStreamAudioSourceNode | null = null
   let localGain: GainNode | null = null
   let hiddenIntervalId = 0
+  let remoteTrackListeners: (() => void) | null = null
+  const preferWebAudioRemote = options.preferWebAudioRemote === true
 
   const ensureAudioContext = (): AudioContext | null => {
     const AudioContextCtor = getAudioContextCtor()
@@ -80,21 +96,38 @@ export function startUnityCallBackgroundKeepAlive(
     }
 
     const level = options.speakerOn === false ? 0.55 : 1
-    if (document.visibilityState === "hidden") {
-      remoteGain.gain.value = level
-      document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
-        const audio = node as HTMLAudioElement
-        audio.muted = true
-        audio.pause()
-      })
+    remoteGain.gain.value = level
+
+    if (preferWebAudioRemote || document.visibilityState === "hidden") {
+      pauseHtmlRemotePlayback()
       return
     }
 
-    remoteGain.gain.value = level
     resumeUnityCallRemotePlayback()
   }
 
+  const clearRemoteTrackListeners = () => {
+    remoteTrackListeners?.()
+    remoteTrackListeners = null
+  }
+
+  const watchRemoteStreamTracks = (stream: MediaStream) => {
+    clearRemoteTrackListeners()
+
+    const onTrackChange = () => {
+      attachRemoteStream(stream)
+    }
+
+    stream.addEventListener("addtrack", onTrackChange)
+    stream.addEventListener("removetrack", onTrackChange)
+    remoteTrackListeners = () => {
+      stream.removeEventListener("addtrack", onTrackChange)
+      stream.removeEventListener("removetrack", onTrackChange)
+    }
+  }
+
   const attachRemoteStream = (stream: MediaStream | null | undefined) => {
+    clearRemoteTrackListeners()
     remoteSource?.disconnect()
     remoteSource = null
     remoteGain?.disconnect()
@@ -115,6 +148,7 @@ export function startUnityCallBackgroundKeepAlive(
       applyRemoteGain()
       remoteSource.connect(remoteGain)
       remoteGain.connect(context.destination)
+      watchRemoteStreamTracks(stream)
     } catch {
       // Fall back to HTMLAudioElement playback only.
     }
@@ -166,7 +200,9 @@ export function startUnityCallBackgroundKeepAlive(
     void ensureAudioContext()?.resume()
     applyRemoteGain()
     resumeCaptureTracks()
-    resumeUnityCallRemotePlayback()
+    if (!preferWebAudioRemote) {
+      resumeUnityCallRemotePlayback()
+    }
     options.onResume?.()
   }
 
@@ -289,6 +325,7 @@ export function startUnityCallBackgroundKeepAlive(
       void wakeLock?.release().catch(() => {})
       wakeLock = null
 
+      clearRemoteTrackListeners()
       remoteSource?.disconnect()
       remoteGain?.disconnect()
       localSource?.disconnect()

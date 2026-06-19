@@ -537,6 +537,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     localStream: webrtc.localStream,
     remoteStream: mergedRemoteStream,
     speakerOn,
+    preferWebAudioRemote: true,
     onHangUp: () => {
       void endActiveCall()
     },
@@ -544,6 +545,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   })
 
   const showRemoteAudio =
+    onCallPage &&
     Boolean(session && mediaState?.callLive && mediaState.callConnected) &&
     (mergedRemoteStream.getAudioTracks().length > 0 || webrtc.mediaConnected || mediaEngaged)
 

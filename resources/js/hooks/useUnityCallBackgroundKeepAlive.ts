@@ -14,6 +14,7 @@ type Options = {
   remoteStream?: MediaStream | null
   speakerOn?: boolean
   onHangUp?: () => void
+  preferWebAudioRemote?: boolean
   onResume?: () => void
 }
 
@@ -24,6 +25,7 @@ export function useUnityCallBackgroundKeepAlive({
   localStream,
   remoteStream,
   speakerOn = true,
+  preferWebAudioRemote = true,
   onHangUp,
   onResume,
 }: Options): void {
@@ -49,6 +51,7 @@ export function useUnityCallBackgroundKeepAlive({
       localStream,
       remoteStream,
       speakerOn,
+      preferWebAudioRemote,
       onHangUp: () => onHangUpRef.current?.(),
       onResume: () => onResumeRef.current?.(),
     })
@@ -56,5 +59,5 @@ export function useUnityCallBackgroundKeepAlive({
     return () => {
       handle.release()
     }
-  }, [enabled, title, subtitle, localStream, remoteStream, speakerOn])
+  }, [enabled, title, subtitle, localStream, remoteStream, speakerOn, preferWebAudioRemote])
 }
