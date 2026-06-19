@@ -147,40 +147,52 @@ export function isPeerConnectionUsable(pc: RTCPeerConnection | undefined | null)
   return Boolean(pc && pc.connectionState !== "closed" && pc.signalingState !== "closed")
 }
 
-/** Unified Plan: addTrack already adds sendrecv — do not combine with offerToReceiveAudio. */
 export async function ensurePeerAudioTransceiver(
   pc: RTCPeerConnection,
   track: MediaStreamTrack | null,
+  localStream?: MediaStream | null,
 ): Promise<boolean> {
   if (!track || !isPeerConnectionUsable(pc)) {
     return false
   }
 
   const negotiated = pc.localDescription !== null || pc.remoteDescription !== null
-  let transceiver = findAudioTransceiver(pc)
 
-  if (!transceiver) {
-    if (negotiated) {
-      const sender = pc.getSenders().find((item) => item.track?.kind === "audio" || item.track === null)
-      if (sender) {
-        await sender.replaceTrack(track)
-        return true
-      }
-      return false
+  const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio")
+  if (audioSender) {
+    if (audioSender.track?.id !== track.id) {
+      await audioSender.replaceTrack(track)
     }
-
-    transceiver = pc.addTransceiver("audio", { direction: "sendrecv" })
+    return true
   }
 
-  if (transceiver.sender.track?.id !== track.id) {
-    await transceiver.sender.replaceTrack(track)
+  const transceiver = findAudioTransceiver(pc)
+  if (transceiver) {
+    if (transceiver.sender.track?.id !== track.id) {
+      await transceiver.sender.replaceTrack(track)
+    }
+    if (!negotiated && transceiver.direction !== "sendrecv" && transceiver.direction !== "sendonly") {
+      transceiver.direction = "sendrecv"
+    }
+    return true
   }
 
-  if (transceiver.direction !== "sendrecv" && transceiver.direction !== "sendonly") {
-    transceiver.direction = "sendrecv"
+  if (negotiated) {
+    return false
   }
 
+  if (localStream) {
+    pc.addTrack(track, localStream)
+    return true
+  }
+
+  const created = pc.addTransceiver("audio", { direction: "sendrecv" })
+  await created.sender.replaceTrack(track)
   return true
+}
+
+export function peerHasCompletedNegotiation(pc: RTCPeerConnection): boolean {
+  return pc.currentLocalDescription !== null && pc.currentRemoteDescription !== null
 }
 
 export function resumeUnityCallRemotePlayback(): void {

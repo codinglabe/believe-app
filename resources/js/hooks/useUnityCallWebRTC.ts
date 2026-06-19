@@ -8,7 +8,7 @@ import type { UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useU
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { invalidateAudioOutputCache } from "@/lib/callAudioOutput"
-import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration, ensurePeerAudioTransceiver, isPeerConnectionUsable, isPeerNegotiationSettled, resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
+import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration, ensurePeerAudioTransceiver, isPeerConnectionUsable, isPeerNegotiationSettled, peerHasCompletedNegotiation, resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 
 export type UnityCallRemoteStream = {
   peerId: string
@@ -172,6 +172,8 @@ export function useUnityCallWebRTC({
   const signalBackoffUntil = useRef(0)
   const lastOfferRequestAt = useRef<Map<string, number>>(new Map())
   const mediaConnectedRef = useRef(false)
+  const attachAudioChain = useRef<Map<string, Promise<boolean>>>(new Map())
+  const hostOfferChain = useRef<Map<string, Promise<void>>>(new Map())
 
   const ICE_FLUSH_MS = 250
   const MAX_ICE_PER_FLUSH = 3
@@ -421,7 +423,18 @@ export function useUnityCallWebRTC({
         return false
       }
 
-      return ensurePeerAudioTransceiver(pc, track)
+      const attachStream =
+        localStreamRef.current &&
+        localStreamRef.current.getAudioTracks().some((item) => item.id === track.id)
+          ? localStreamRef.current
+          : new MediaStream([track])
+
+      const previous = attachAudioChain.current.get(peerId) ?? Promise.resolve(true)
+      const next = previous
+        .catch(() => true)
+        .then(() => ensurePeerAudioTransceiver(pc, track, attachStream))
+      attachAudioChain.current.set(peerId, next)
+      return next
     },
     [getOutgoingTrack],
   )
@@ -446,6 +459,8 @@ export function useUnityCallWebRTC({
       cloned.stop()
       outboundTracksRef.current.delete(peerId)
     }
+    attachAudioChain.current.delete(peerId)
+    hostOfferChain.current.delete(peerId)
     setRemoteStreams((prev) => prev.filter((item) => item.peerId !== peerId))
   }, [])
 
@@ -501,10 +516,6 @@ export function useUnityCallWebRTC({
       const pc = new RTCPeerConnection(rtcConfiguration.current)
       makingOffer.current.set(peerId, false)
       ignoreOffer.current.set(peerId, false)
-
-      if (localStreamRef.current) {
-        void addLocalAudioToPeer(peerId, pc)
-      }
 
       pc.ontrack = (event) => {
         const track = event.track
@@ -567,12 +578,16 @@ export function useUnityCallWebRTC({
       peerConnections.current.set(peerId, pc)
       return pc
     },
-    [addLocalAudioToPeer, registerRemoteTrack, resetPeerConnection, sendSignal, syncRemoteTracksFromPeer, updateMediaConnected, userIdStr],
+    [registerRemoteTrack, resetPeerConnection, sendSignal, syncRemoteTracksFromPeer, updateMediaConnected, userIdStr],
   )
 
-  const createHostOffer = useCallback(
+  const runCreateHostOffer = useCallback(
     async (peerId: string) => {
       if (callEnded.current || !isCaller || !localStreamRef.current || peerId === userIdStr) {
+        return
+      }
+
+      if (makingOffer.current.get(peerId)) {
         return
       }
 
@@ -586,7 +601,7 @@ export function useUnityCallWebRTC({
           pc = createPeerConnection(peerId)
         }
 
-        if (isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
+        if (peerHasCompletedNegotiation(pc) || isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
           await addLocalAudioToPeer(peerId, pc)
           syncRemoteTracksFromPeer(peerId, pc)
           resumeUnityCallRemotePlayback()
@@ -604,12 +619,16 @@ export function useUnityCallWebRTC({
           return
         }
 
-        if (pc.signalingState !== "stable") {
+        if (pc.signalingState !== "stable" || pc.localDescription || pc.remoteDescription) {
           return
         }
 
         const attached = await addLocalAudioToPeer(peerId, pc)
         if (!attached || !hasAudioSender(pc)) {
+          return
+        }
+
+        if (peerHasCompletedNegotiation(pc) || pc.localDescription || pc.remoteDescription) {
           return
         }
 
@@ -629,7 +648,7 @@ export function useUnityCallWebRTC({
       } catch (error) {
         console.error("[UnityCallWebRTC] Failed to create host offer:", error)
         const pc = peerConnections.current.get(peerId)
-        if (!pc || (!isPeerConnected(pc) && !isPeerNegotiationSettled(pc))) {
+        if (!pc || (!isPeerConnected(pc) && !peerHasCompletedNegotiation(pc))) {
           resetPeerConnection(peerId)
         }
       } finally {
@@ -637,6 +656,16 @@ export function useUnityCallWebRTC({
       }
     },
     [addLocalAudioToPeer, createPeerConnection, isCaller, resetPeerConnection, sendSignal, syncRemoteTracksFromPeer, updateMediaConnected, userIdStr],
+  )
+
+  const createHostOffer = useCallback(
+    (peerId: string): Promise<void> => {
+      const previous = hostOfferChain.current.get(peerId) ?? Promise.resolve()
+      const next = previous.catch(() => {}).then(() => runCreateHostOffer(peerId))
+      hostOfferChain.current.set(peerId, next)
+      return next
+    },
+    [runCreateHostOffer],
   )
 
   /** 1:1 fallback when caller offer never arrives (signaling delay / Echo miss). */
@@ -1022,7 +1051,7 @@ export function useUnityCallWebRTC({
 
       if (didReplaceCapture && isCaller) {
         for (const [peerId, pc] of peerConnections.current.entries()) {
-          if (!isPeerNegotiationSettled(pc) && !isPeerConnected(pc)) {
+          if (!peerHasCompletedNegotiation(pc) && !isPeerConnected(pc) && !isPeerNegotiationSettled(pc)) {
             void createHostOffer(peerId)
           }
         }
@@ -1061,6 +1090,8 @@ export function useUnityCallWebRTC({
 
     outboundTracksRef.current.forEach((track) => track.stop())
     outboundTracksRef.current.clear()
+    attachAudioChain.current.clear()
+    hostOfferChain.current.clear()
 
     micMonitorCleanupRef.current?.()
     micMonitorCleanupRef.current = null
