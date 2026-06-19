@@ -7,6 +7,7 @@ use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
 use App\Models\User;
+use App\Support\UnityCallDelivery;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -183,33 +184,6 @@ class UnityCallService
         $this->syncChatCallMessage($fresh);
 
         return $fresh;
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function statusPayloadForUser(UnityCall $call, User $user): ?array
-    {
-        if (! $this->userCanAccess($call, $user)) {
-            return null;
-        }
-
-        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
-        $caller = $call->caller;
-        if (! $caller) {
-            return null;
-        }
-
-        $reason = match ($call->status) {
-            UnityCall::STATUS_RINGING => 'ringing',
-            UnityCall::STATUS_ACCEPTED => 'accepted',
-            UnityCall::STATUS_CANCELLED => 'cancelled',
-            UnityCall::STATUS_DECLINED => 'declined',
-            UnityCall::STATUS_MISSED => 'missed',
-            default => 'ended',
-        };
-
-        return $this->notifier->payloadForUser($call, $caller, $reason);
     }
 
     private function broadcastAcceptedCall(UnityCall $call): void
@@ -828,6 +802,39 @@ class UnityCallService
         }
 
         return false;
+    }
+
+    public function markCalleeIncomingDelivered(UnityCall $call, User $callee): void
+    {
+        $call->loadMissing(['participants.user', 'chatRoom', 'caller']);
+
+        if (! $call->isActive() || $call->status !== UnityCall::STATUS_RINGING) {
+            return;
+        }
+
+        $participant = $call->participantForUser($callee->id);
+        if (
+            ! $participant
+            || $participant->role !== UnityCallParticipant::ROLE_CALLEE
+            || $participant->status !== UnityCallParticipant::STATUS_RINGING
+        ) {
+            return;
+        }
+
+        if (! UnityCallDelivery::markDelivered($call->id, $callee->id)) {
+            return;
+        }
+
+        $caller = $call->caller;
+        if (! $caller) {
+            return;
+        }
+
+        $payload = $this->notifier->payloadForUser($call, $caller, 'callee_ringing');
+
+        $this->notifier->broadcastStatus($caller->id, $payload);
+        $this->notifier->broadcastSessionStatus($call, $caller, 'callee_ringing');
+        $this->notifier->broadcastRoomStatus($call, $caller, 'callee_ringing');
     }
 
     public function prepareCalleeForIncomingRing(UnityCall $call, User $user): UnityCall

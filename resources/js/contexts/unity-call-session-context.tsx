@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { router } from "@inertiajs/react"
+import { echo } from "@laravel/echo-react"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
 import { UnityCallFloatingBar } from "@/components/call/UnityCallFloatingBar"
@@ -45,7 +46,6 @@ import {
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
-import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -388,34 +388,47 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     markUnityCallLiveOnPage(session.call.id)
   }, [mediaState?.callConnected, mediaState?.callLive, session])
 
-  const shouldPollCallStatus = Boolean(
-    session &&
-      !isUnityCallTerminated({
-        reason: session.call.status,
-        call: session.call,
-        caller: session.caller,
-        participants: session.participants,
-      }) &&
-      (session.call.status === "ringing" ||
-        (session.call.status === "accepted" && !webrtc.mediaConnected)),
-  )
+  useEffect(() => {
+    const activeCallId = session?.call.id
+    const authUserId = session?.authUserId
+    const chatRoomId = session?.call.chatRoomId
 
-  const handlePolledStatus = useCallback(
-    (payload: UnityCallStatusEvent) => {
+    if (!activeCallId || !authUserId) {
+      return
+    }
+
+    refreshEchoAuthHeaders()
+
+    const onRealtimeStatus = (payload: UnityCallStatusEvent) => {
+      if (payload.call.id !== activeCallId || payload.reason === "incoming") {
+        return
+      }
+
       applyUnityCallStatus(payload)
       dispatchUnityCallStatus(payload)
-      if (payload.reason === "accepted") {
+
+      if (payload.reason === "accepted" || payload.reason === "participant_left") {
         resyncCallRef.current()
       }
-    },
-    [applyUnityCallStatus],
-  )
+    }
 
-  useUnityCallStatusSync({
-    callId: session?.call.id ?? 0,
-    enabled: shouldPollCallStatus,
-    onStatus: handlePolledStatus,
-  })
+    const instance = echo()
+    const userChannel = instance.private(`user.${authUserId}`)
+    const callChannel = instance.private(`unity-call.${activeCallId}`)
+
+    userChannel.listen(".call.status", onRealtimeStatus)
+    callChannel.listen(".call.session.status", onRealtimeStatus)
+
+    const roomChannel =
+      chatRoomId && !session?.isGroupCall ? instance.private(`direct-chat.${chatRoomId}`) : null
+    roomChannel?.listen(".call.status", onRealtimeStatus)
+
+    return () => {
+      userChannel.stopListening(".call.status")
+      callChannel.stopListening(".call.session.status")
+      roomChannel?.stopListening(".call.status")
+    }
+  }, [applyUnityCallStatus, session?.authUserId, session?.call.chatRoomId, session?.call.id, session?.isGroupCall])
 
   useEffect(() => {
     if (!session) {

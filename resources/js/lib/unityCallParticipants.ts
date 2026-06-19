@@ -6,7 +6,12 @@ export function mergeCallParticipants(
 ): UnityCallParticipantRow[] {
   const map = new Map(previous.map((row) => [row.userId, row]))
   for (const row of incoming) {
-    map.set(row.userId, { ...(map.get(row.userId) ?? row), ...row })
+    const prev = map.get(row.userId)
+    const merged = { ...(prev ?? row), ...row }
+    if (prev?.incomingDelivered || row.incomingDelivered) {
+      merged.incomingDelivered = true
+    }
+    map.set(row.userId, merged)
   }
   return Array.from(map.values())
 }

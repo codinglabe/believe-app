@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\UnityCall;
 use App\Services\UnityCallService;
 use App\Services\WebRtcIceService;
+use App\Support\UnityCallDelivery;
 use App\Events\UnityCallWebRTCSignal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -155,6 +156,14 @@ class UnityCallController extends Controller
         ]);
     }
 
+    public function markIncomingDelivered(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
+    {
+        $this->authorizeCall($request, $call);
+        $calls->markCalleeIncomingDelivered($call, $request->user());
+
+        return response()->json(['ok' => true]);
+    }
+
     public function signal(Request $request, UnityCall $call): JsonResponse
     {
         $this->authorizeCall($request, $call);
@@ -181,20 +190,6 @@ class UnityCallController extends Controller
         UnityCallWebRTCSignal::dispatch($call->id, $validated);
 
         return response()->json(['ok' => true]);
-    }
-
-    public function status(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
-    {
-        $this->authorizeCall($request, $call);
-
-        $payload = $calls->statusPayloadForUser($call, $request->user());
-        if ($payload === null) {
-            abort(403);
-        }
-
-        return response()->json([
-            'status' => $payload,
-        ]);
     }
 
     public function pendingSignals(Request $request, UnityCall $call): JsonResponse
@@ -283,6 +278,7 @@ class UnityCallController extends Controller
                 'avatar' => $p->user?->avatar_url,
                 'role' => $p->role,
                 'status' => $p->status,
+                'incomingDelivered' => UnityCallDelivery::participantIncomingDelivered($p),
             ])->values(),
             'isCaller' => $isCaller,
             'isGroupCall' => $isGroupCall,
@@ -408,6 +404,7 @@ class UnityCallController extends Controller
                 'avatar' => $p->user?->avatar_url,
                 'role' => $p->role,
                 'status' => $p->status,
+                'incomingDelivered' => UnityCallDelivery::participantIncomingDelivered($p),
             ])->values(),
         ];
     }
