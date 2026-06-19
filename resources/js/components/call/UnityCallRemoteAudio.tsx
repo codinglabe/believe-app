@@ -23,7 +23,11 @@ export function UnityCallRemoteAudio({ stream, speakerOn }: Props) {
     audio.muted = false
 
     const ensurePlayback = () => {
-      void applyRemoteAudioOutput(audio, speakerOn)
+      void applyRemoteAudioOutput(audio, speakerOn).then(() => {
+        if (audio.paused) {
+          void audio.play().catch(() => {})
+        }
+      })
     }
 
     ensurePlayback()
@@ -40,7 +44,7 @@ export function UnityCallRemoteAudio({ stream, speakerOn }: Props) {
     stream.addEventListener("addtrack", onTrackChange)
     stream.addEventListener("removetrack", onTrackChange)
 
-    const retryTimers = [300, 1000, 2500].map((delay) => window.setTimeout(ensurePlayback, delay))
+    const retryTimers = [150, 500, 1500, 3000].map((delay) => window.setTimeout(ensurePlayback, delay))
 
     const onVisibility = () => {
       ensurePlayback()

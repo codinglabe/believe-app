@@ -27,6 +27,7 @@ import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 import { useStableCallback } from "@/hooks/useStableCallback"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
+import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
 
 type Props = {
   call: UnityCallPayload
@@ -41,16 +42,6 @@ type Props = {
   acceptCallUrl: string
   chatUrl: string
   authUserId: number
-}
-
-function formatElapsed(totalSeconds: number): string {
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  const s = totalSeconds % 60
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-  }
-  return `${m}:${String(s).padStart(2, "0")}`
 }
 
 function UnityCallChatStatusEcho({
@@ -89,7 +80,6 @@ export default function UnityCallShow({
   const [elapsed, setElapsed] = useState(0)
   const [ending, setEnding] = useState(false)
   const [accepting, setAccepting] = useState(false)
-  const [connectedAt, setConnectedAt] = useState<number | null>(null)
 
   const {
     session: liveSession,
@@ -248,27 +238,15 @@ export default function UnityCallShow({
     [activeParticipants, authUserId],
   )
 
-  const callTimerAnchor = useMemo(() => {
-    if (!callConnected || !mediaConnected) {
-      return null
-    }
-    if (connectedAt !== null) {
-      return connectedAt
-    }
-    if (call.answeredAt) {
-      return new Date(call.answeredAt).getTime()
-    }
-    return null
-  }, [call.answeredAt, callConnected, connectedAt, mediaConnected])
-
-  useEffect(() => {
-    if (mediaConnected && connectedAt === null) {
-      setConnectedAt(Date.now())
-    }
-    if (!mediaConnected && !callLive) {
-      setConnectedAt(null)
-    }
-  }, [mediaConnected, connectedAt, callLive])
+  const callTimerAnchor = useMemo(
+    () =>
+      resolveUnityCallTimerAnchor({
+        answeredAt: activeCall.answeredAt,
+        callConnected,
+        mediaConnected,
+      }),
+    [activeCall.answeredAt, callConnected, mediaConnected],
+  )
 
   const isTerminalCallStatus = useMemo(
     () => ["ended", "cancelled", "declined", "missed"].includes(call.status),
@@ -374,12 +352,12 @@ export default function UnityCallShow({
       return "Incoming call"
     }
     if (callTimerAnchor !== null) {
-      return formatElapsed(elapsed)
+      return formatUnityCallElapsed(elapsed)
     }
     if (isCaller) {
       if (acceptedCallees.length > 0) {
         if (callConnected && mediaConnected) {
-          return formatElapsed(elapsed)
+          return formatUnityCallElapsed(elapsed)
         }
         if (callConnected) {
           return "Connecting…"
@@ -393,7 +371,7 @@ export default function UnityCallShow({
       return "Calling…"
     }
     if (callConnected && mediaConnected) {
-      return formatElapsed(elapsed)
+      return formatUnityCallElapsed(elapsed)
     }
     if (callConnected) {
       return "Connecting…"
@@ -469,16 +447,21 @@ export default function UnityCallShow({
 
   const unlockRemotePlayback = useCallback(() => {
     document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
-      void (node as HTMLAudioElement).play().catch(() => {})
+      const audio = node as HTMLAudioElement
+      void applyRemoteAudioOutput(audio, speakerOn).then(() => {
+        if (audio.paused) {
+          void audio.play().catch(() => {})
+        }
+      })
     })
-  }, [])
+  }, [speakerOn])
 
   useEffect(() => {
-    if (remoteStreams.length === 0) {
+    if (!mediaConnected) {
       return
     }
     unlockRemotePlayback()
-  }, [remoteStreams, unlockRemotePlayback])
+  }, [mediaConnected, remoteStreams, unlockRemotePlayback])
 
   const handleCallTerminated = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -576,7 +559,12 @@ export default function UnityCallShow({
     if (callTimerAnchor === null) {
       return
     }
-    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - callTimerAnchor) / 1000)))
+    const tick = () => {
+      if (callTimerAnchor === null) {
+        return
+      }
+      setElapsed(tickUnityCallElapsed(callTimerAnchor))
+    }
     tick()
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)

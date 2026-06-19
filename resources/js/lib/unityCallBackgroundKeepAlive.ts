@@ -90,7 +90,7 @@ export function startUnityCallBackgroundKeepAlive(
       return
     }
 
-    remoteGain.gain.value = 0
+    remoteGain.gain.value = level
     resumeUnityCallRemotePlayback()
   }
 

@@ -499,6 +499,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   const keepBackgroundAudioAlive = Boolean(
     session &&
+      !onCallPage &&
       mediaState?.callLive &&
       mediaState.callConnected &&
       (webrtc.mediaConnected || mediaEngaged || mergedRemoteStream.getAudioTracks().length > 0),
@@ -568,6 +569,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
       {showFloatingBar && session ? (
         <UnityCallFloatingBar
           session={session}
+          callConnected={Boolean(mediaState?.callConnected)}
           mediaConnected={webrtc.mediaConnected}
           isAudioEnabled={webrtc.isAudioEnabled}
           speakerOn={speakerOn}
