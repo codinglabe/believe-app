@@ -8,7 +8,7 @@ import type { UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useU
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { invalidateAudioOutputCache } from "@/lib/callAudioOutput"
-import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration, ensurePeerAudioTransceiver, isPeerConnectionUsable, resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
+import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration, ensurePeerAudioTransceiver, isPeerConnectionUsable, isPeerNegotiationSettled, resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 
 export type UnityCallRemoteStream = {
   peerId: string
@@ -395,9 +395,10 @@ export function useUnityCallWebRTC({
         return null
       }
 
-      source.enabled = true
+      const micEnabled = isAudioEnabledRef.current
 
       if (!isCaller || !isGroupCall) {
+        source.enabled = micEnabled
         return source
       }
 
@@ -407,7 +408,7 @@ export function useUnityCallWebRTC({
         cloned = source.clone()
         outboundTracksRef.current.set(peerId, cloned)
       }
-      cloned.enabled = source.enabled
+      cloned.enabled = micEnabled
       return cloned
     },
     [isCaller, isGroupCall],
@@ -597,6 +598,10 @@ export function useUnityCallWebRTC({
             from: userIdStr,
             to: peerId,
           })
+          return
+        }
+
+        if (isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
           return
         }
 
@@ -902,7 +907,13 @@ export function useUnityCallWebRTC({
 
     const peers = acceptedPeerIds()
     peers.forEach((peerId) => {
-      createPeerConnection(peerId)
+      const pc = createPeerConnection(peerId)
+      void addLocalAudioToPeer(peerId, pc)
+
+      if (isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
+        return
+      }
+
       if (isCaller) {
         void createHostOffer(peerId)
       } else if (!isGroupCall) {
@@ -922,7 +933,7 @@ export function useUnityCallWebRTC({
     })
 
     updateMediaConnected()
-  }, [acceptedPeerIds, createDirectCalleeOffer, createHostOffer, createPeerConnection, isCaller, isGroupCall, sendSignal, updateMediaConnected, userIdStr])
+  }, [acceptedPeerIds, addLocalAudioToPeer, createDirectCalleeOffer, createHostOffer, createPeerConnection, isCaller, isGroupCall, sendSignal, updateMediaConnected, userIdStr])
 
   const attachMicTrackMonitor = useCallback((track: MediaStreamTrack) => {
     micMonitorCleanupRef.current?.()
@@ -967,7 +978,6 @@ export function useUnityCallWebRTC({
 
     try {
       const previousStream = localStreamRef.current
-      const shouldEnable = isAudioEnabledRef.current
 
       const freshStream = await navigator.mediaDevices.getUserMedia({
         audio: AUDIO_CONSTRAINTS,
@@ -975,7 +985,7 @@ export function useUnityCallWebRTC({
       })
 
       freshStream.getAudioTracks().forEach((track) => {
-        track.enabled = shouldEnable
+        track.enabled = isAudioEnabledRef.current
       })
 
       previousStream?.getTracks().forEach((track) => {
@@ -1101,24 +1111,30 @@ export function useUnityCallWebRTC({
     }
   }, [addLocalAudioToPeer, attachMicTrackMonitor, connectPeers, fetchPendingSignals, flushPendingSignals, mediaActive])
 
-  const toggleMute = useCallback(() => {
-    const stream = localStreamRef.current
-    if (!stream) {
-      return
-    }
-    const track = stream.getAudioTracks()[0]
-    if (!track) {
-      return
-    }
-    const nextEnabled = !track.enabled
-    stream.getAudioTracks().forEach((audioTrack) => {
-      audioTrack.enabled = nextEnabled
+  const applyOutgoingAudioEnabled = useCallback((enabled: boolean) => {
+    isAudioEnabledRef.current = enabled
+    localStreamRef.current?.getAudioTracks().forEach((audioTrack) => {
+      audioTrack.enabled = enabled
     })
     outboundTracksRef.current.forEach((clonedTrack) => {
-      clonedTrack.enabled = nextEnabled
+      clonedTrack.enabled = enabled
     })
-    setIsAudioEnabled(nextEnabled)
+    peerConnections.current.forEach((pc) => {
+      pc.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          sender.track.enabled = enabled
+        }
+      })
+    })
+    setIsAudioEnabled(enabled)
   }, [])
+
+  const toggleMute = useCallback(() => {
+    if (!localStreamRef.current?.getAudioTracks()[0]) {
+      return
+    }
+    applyOutgoingAudioEnabled(!isAudioEnabledRef.current)
+  }, [applyOutgoingAudioEnabled])
 
   const retryPermission = useCallback(() => {
     mediaStarted.current = false

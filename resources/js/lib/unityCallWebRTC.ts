@@ -134,8 +134,6 @@ export async function ensurePeerAudioTransceiver(
     return false
   }
 
-  track.enabled = true
-
   let transceiver = pc
     .getTransceivers()
     .find((item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio")
