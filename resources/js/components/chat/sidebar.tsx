@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { ConversationItem } from "@/components/chat/conversation-item"
 import { GroupCreateDialog } from "@/components/chat/group-create-dialog"
 import { useChat } from "@/providers/chat-context"
+import type { ChatSidebarTab } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { MessageCircle, PlusIcon, SearchIcon, Users } from "lucide-react"
 import { NotificationBell } from "../notification-bell"
@@ -27,7 +28,7 @@ const asPacId = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
-type TabType = "groups" | "direct" | "users"
+type TabType = ChatSidebarTab
 
 type SidebarProps = {
   /** Full-screen mobile chat list — hides desktop breadcrumb header. */
@@ -45,6 +46,8 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
     selectChatRoom,
     searchQuery = "",
     setSearchQuery,
+    sidebarTab: activeTab,
+    setSidebarTab: setActiveTab,
   } = useChat()
 
   const { auth, chatCauseFilter } = usePage<{
@@ -53,7 +56,6 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
   }>().props
 
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabType>("groups")
 
   const getFilteredRooms = () => {
     if (activeTab === "groups") {
@@ -112,11 +114,7 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
 
   const handleUserClick = async (userId: number) => {
     try {
-      const room = await createDirectChat(userId)
-      if (room) {
-        selectChatRoom(room)
-      }
-      setActiveTab("direct")
+      await createDirectChat(userId, "users")
       setSearchQuery("")
     } catch (error) {
       console.error("Failed to create direct chat:", error)
@@ -267,7 +265,7 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
                   key={room?.id}
                   room={room}
                   isActive={activeRoom?.id === room?.id}
-                  onClick={() => room?.id && selectChatRoom(room)}
+                  onClick={() => room?.id && selectChatRoom(room, activeTab)}
                   currentUser={currentUser}
                   mobileList={mobileList}
                 />
