@@ -66,6 +66,10 @@ export function isUnityCallIncomingForUser(payload: UnityCallStatusEvent, userId
     return false
   }
 
+  if (payload.call.isGroupCall) {
+    return false
+  }
+
   if (payload.caller?.id === userId) {
     return false
   }

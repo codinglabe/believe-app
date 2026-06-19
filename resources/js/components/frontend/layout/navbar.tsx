@@ -477,6 +477,7 @@ export default function Navbar() {
   const userBalance = walletBalance !== null ? walletBalance : (auth?.user?.balance ? parseFloat(auth.user.balance.toString()) : 0)
 
   return (
+      <>
       <nav className="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b backdrop-blur">
           {/* Same width as frontend footer: `container mx-auto px-4` */}
           <div className="container mx-auto flex h-16 min-w-0 items-center gap-2 px-4 sm:gap-3">
@@ -1280,13 +1281,14 @@ export default function Navbar() {
                       </>
                   )}
               </AnimatePresence>
-
-          {/* Wallet Popup */}
-          {showWalletPopup && <WalletPopup isOpen={showWalletPopup} onClose={handleWalletPopupClose} />}
-
-          {/* User Wallet Subscription Modal - For supporters without subscription */}
-          {showSubscriptionModal && <UserWalletSubscriptionModal isOpen={showSubscriptionModal} onClose={() => setShowSubscriptionModal(false)} />}
       </nav>
+
+      {/* Render outside nav — backdrop-blur on nav traps fixed children to header height on mobile */}
+      {showWalletPopup && <WalletPopup isOpen={showWalletPopup} onClose={handleWalletPopupClose} />}
+      {showSubscriptionModal && (
+        <UserWalletSubscriptionModal isOpen={showSubscriptionModal} onClose={() => setShowSubscriptionModal(false)} />
+      )}
+      </>
   );
 }
 

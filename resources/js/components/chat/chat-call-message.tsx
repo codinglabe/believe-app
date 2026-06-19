@@ -125,7 +125,9 @@ export function ChatCallMessage({ message, currentUserId }: Props) {
   }
 
   const isOutgoing = metadata.caller_id === currentUserId
-  const isActive = ACTIVE_CALL_STATUSES.has(metadata.call_status) && !isUnityCallEndedLocally(metadata.unity_call_id)
+  const isGroupCall = metadata.is_group_call === true
+  const isActive =
+    !isGroupCall && ACTIVE_CALL_STATUSES.has(metadata.call_status) && !isUnityCallEndedLocally(metadata.unity_call_id)
   const joinPath = toInternalAppPath(metadata.join_url)
   const subtext = durationSubtext(metadata, liveSeconds)
 

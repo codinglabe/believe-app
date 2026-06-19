@@ -89,7 +89,7 @@ class FavoriteMenuController extends Controller
                 'title' => $item->title,
                 'category' => $item->category,
                 'icon' => $item->icon,
-                'href' => $this->favoriteMenuService->resolveHref($item),
+                'href' => $this->favoriteMenuService->resolveHref($item, $user),
             ])->values(),
         ]);
     }

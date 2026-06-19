@@ -361,6 +361,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [])
 
   const startAudioCall = useCallback(async (roomId: number) => {
+    const room = chatRooms.find((entry) => entry.id === roomId)
+    if (room && room.type !== "direct") {
+      toast.error("Voice calls are only available in direct chats.")
+      return null
+    }
+
     try {
       const result = await initiateAudioCall(roomId)
       if (!result?.call_id) {
@@ -374,7 +380,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error(error instanceof Error ? error.message : "Could not start audio call")
       return null
     }
-  }, [])
+  }, [chatRooms])
 
   const fetchMessages = useCallback(async (roomId: number, page = 1, append = false) => {
     try {

@@ -26,6 +26,7 @@ class FavoriteMenuController extends Controller
     {
         $user = $request->user();
         abort_unless($user, 403);
+        abort_unless($this->favoriteMenuService->isSupporterUser($user), 403);
 
         $validated = $request->validate([
             'menu_keys' => ['required', 'array', 'max:'.FavoriteMenuService::MAX_QUICK_FAVORITES],
@@ -41,6 +42,7 @@ class FavoriteMenuController extends Controller
     {
         $user = $request->user();
         abort_unless($user, 403);
+        abort_unless($this->favoriteMenuService->mobileNavRoleKey($user) !== null, 403);
 
         $validated = $request->validate([
             'slots' => ['required', 'array'],
@@ -65,6 +67,7 @@ class FavoriteMenuController extends Controller
     {
         $user = $request->user();
         abort_unless($user, 403);
+        abort_unless($this->favoriteMenuService->isSupporterUser($user), 403);
 
         $this->favoriteMenuService->toggleFavorite($user, $menuKey);
 
