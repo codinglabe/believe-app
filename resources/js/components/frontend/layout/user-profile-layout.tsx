@@ -1,6 +1,6 @@
 "use client"
 import type React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
 import {
@@ -39,13 +39,21 @@ import {
   Youtube,
   Gavel,
   Video,
+  ChevronsUpDown,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
+import { resolveStorageUrl } from "@/lib/storage-url"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/frontend/ui/sheet"
 import { Link, router, usePage } from "@inertiajs/react"
 import { LogOut } from "lucide-react"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
@@ -273,6 +281,84 @@ const navigationItems = [
   },
 ]
 
+function isProfileNavActive(href: string, currentPath: string): boolean {
+  if (href === "/profile") {
+    return currentPath === "/profile"
+  }
+
+  return currentPath === href || currentPath.startsWith(`${href}/`)
+}
+
+function ProfileNavLinks({
+  currentPath,
+  onNavigate,
+  animate = true,
+}: {
+  currentPath: string
+  onNavigate?: () => void
+  animate?: boolean
+}) {
+  return (
+    <div className="space-y-1">
+      {navigationItems.map((item, index) => {
+        const isActive = isProfileNavActive(item.href, currentPath)
+        const Icon = item.icon
+        const rowClass = `group flex cursor-pointer items-center gap-3 rounded-lg px-4 py-3 transition-all duration-200 ${
+          isActive
+            ? "border-l-4 border-purple-600 bg-gradient-to-r from-purple-50 to-blue-50 shadow-sm dark:from-purple-900/30 dark:to-blue-900/30"
+            : "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+        }`
+
+        const inner = (
+          <>
+            <div className={`rounded-lg bg-gradient-to-br p-2 shadow-sm transition-transform duration-200 group-hover:scale-110 ${item.color}`}>
+              <Icon className="h-4 w-4 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className={`text-sm font-semibold ${
+                isActive ? "text-purple-900 dark:text-purple-100" : "text-gray-900 dark:text-white"
+              }`}>
+                {item.name}
+              </h3>
+              <p className={`mt-0.5 truncate text-xs ${
+                isActive ? "text-purple-600 dark:text-purple-300" : "text-gray-500 dark:text-gray-400"
+              }`}>
+                {item.description}
+              </p>
+            </div>
+            {isActive && (
+              <div className="h-2 w-2 shrink-0 rounded-full bg-gradient-to-r from-purple-600 to-blue-600" />
+            )}
+          </>
+        )
+
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            preserveScroll={!item.href.includes("#")}
+            preserveState
+            onClick={onNavigate}
+          >
+            {animate ? (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
+                className={rowClass}
+              >
+                {inner}
+              </motion.div>
+            ) : (
+              <div className={rowClass}>{inner}</div>
+            )}
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function ProfileLayout({ children, title, description }: ProfileLayoutProps) {
   const { auth, isImpersonating, impact_score, impact_breakdown, success, error, supporterSubscription } =
     usePage<
@@ -353,7 +439,23 @@ export default function ProfileLayout({ children, title, description }: ProfileL
     router.get(route("chat.index", { topic: topicId }));
   };
 
-  const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
+  const page = usePage()
+  const currentPath = useMemo(() => {
+    const raw = typeof page.url === "string" ? page.url : ""
+    const path = raw.split("?")[0]
+    if (path) return path
+    return typeof window !== "undefined" ? window.location.pathname : ""
+  }, [page.url])
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [currentPath])
+
+  const activeNavItem =
+    navigationItems.find((item) => isProfileNavActive(item.href, currentPath)) ?? navigationItems[0]
+  const ActiveNavIcon = activeNavItem.icon
 
   const handleCopy = () => {
     navigator.clipboard.writeText(user?.referral_link || "")
@@ -383,7 +485,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
             <div className="absolute bottom-10 right-20 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
           </div>
 
-          <div className="relative container mx-auto px-4 py-12">
+          <div className="relative container mx-auto px-3 py-8 sm:px-4 sm:py-12">
             {/* Exit Impersonation Button */}
             {isImpersonating && (
               <div className="absolute top-4 right-4 z-10">
@@ -412,17 +514,16 @@ export default function ProfileLayout({ children, title, description }: ProfileL
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
-              className="flex flex-col lg:flex-row items-center gap-8"
+              className="flex flex-col items-center gap-6 lg:flex-row lg:gap-8"
             >
               {/* Profile Info */}
-              <div className="flex flex-col sm:flex-row items-center gap-6 flex-1">
+              <div className="flex w-full min-w-0 flex-col items-center gap-6 sm:flex-row sm:items-center flex-1">
                 <div className="relative">
                   <div className="absolute -inset-1 bg-gradient-to-r from-white/30 to-white/10 rounded-full blur-sm"></div>
                   <Avatar className="relative w-24 h-24 sm:w-28 sm:h-28 border-4 border-white/20 shadow-2xl">
                     <AvatarImage
-                      src={user.image ? `${user.image}` : "/placeholder.svg?height=112&width=112"}
+                      src={resolveStorageUrl(user.image, "/placeholder.svg?height=112&width=112")}
                       alt="Profile"
-                      className="object-cover"
                     />
                     <AvatarFallback className="bg-gradient-to-br from-white/20 to-white/10 text-white text-2xl font-bold backdrop-blur-sm">
                       {auth.user.name?.split(" ")[0]?.[0] || "J"}
@@ -434,15 +535,15 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                   </div>
                 </div>
 
-                <div className="text-center sm:text-left">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white">{user.name}</h1>
+                <div className="min-w-0 w-full text-center sm:text-left">
+                  <div className="mb-3 flex flex-col items-center gap-3 sm:flex-row sm:items-center">
+                    <h1 className="max-w-full break-words text-2xl font-bold text-white sm:text-3xl lg:text-4xl">{user.name}</h1>
                     <Badge className={cn("w-fit mx-auto sm:mx-0", planBadge.className)}>
                       <PlanBadgeIcon className="w-3 h-3 mr-1" />
                       {planBadge.label}
                     </Badge>
                   </div>
-                  <p className="text-white/90 text-lg mb-4">{user.email}</p>
+                  <p className="mb-4 break-all text-base text-white/90 sm:text-lg">{user.email}</p>
                   <div className="flex items-center justify-center sm:justify-start gap-2 text-white/80">
                     <Calendar className="w-4 h-4" />
                     <span>Member since {user.joined}</span>
@@ -451,17 +552,19 @@ export default function ProfileLayout({ children, title, description }: ProfileL
               </div>
 
               {/* Quick Actions */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/profile/edit">
-                  <Button className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105">
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Edit Profile
-                  </Button>
-                </Link>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
+                {currentPath !== "/profile/edit" ? (
+                  <Link href="/profile/edit" className="w-full sm:w-auto">
+                    <Button className="w-full bg-white/20 text-white border-white/30 backdrop-blur-sm transition-all duration-300 hover:bg-white/30 hover:scale-105 sm:w-auto">
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      Edit Profile
+                    </Button>
+                  </Link>
+                ) : null}
                 {user?.slug || user?.id ? (
-                  <Link href={route('users.show', user.slug || user.id)}>
-                    <Button className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105">
-                      <Globe className="w-4 h-4 mr-2" />
+                  <Link href={route('users.show', user.slug || user.id)} className="w-full sm:w-auto">
+                    <Button className="w-full bg-white/20 text-white border-white/30 backdrop-blur-sm transition-all duration-300 hover:bg-white/30 hover:scale-105 sm:w-auto">
+                      <Globe className="mr-2 h-4 w-4" />
                       Public View
                     </Button>
                   </Link>
@@ -478,71 +581,63 @@ export default function ProfileLayout({ children, title, description }: ProfileL
           </div>
         </div>
 
-        <div className="container mx-auto px-4 -mt-8 relative z-10">
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Fixed Left Sidebar */}
+        <div className="relative z-10 container mx-auto -mt-6 px-3 sm:-mt-8 sm:px-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+            {/* Mobile: one compact row — opens full vertical nav in a drawer */}
+            <div className="lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                aria-expanded={mobileNavOpen}
+                aria-controls="profile-mobile-nav"
+                className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-purple-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-purple-500/40"
+              >
+                <div className={`shrink-0 rounded-lg bg-gradient-to-br p-2 shadow-sm ${activeNavItem.color}`}>
+                  <ActiveNavIcon className="h-4 w-4 text-white" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Profile menu</p>
+                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{activeNavItem.name}</p>
+                </div>
+                <ChevronsUpDown className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+              </button>
+
+              <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+                <SheetContent
+                  id="profile-mobile-nav"
+                  side="left"
+                  className="flex w-[min(100vw-1rem,20rem)] max-w-xs flex-col gap-0 p-0 sm:max-w-sm"
+                >
+                  <SheetHeader className="border-b border-gray-200 px-4 py-4 text-left dark:border-gray-700">
+                    <SheetTitle className="text-base font-semibold text-gray-900 dark:text-white">Profile sections</SheetTitle>
+                  </SheetHeader>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                    <ProfileNavLinks
+                      currentPath={currentPath}
+                      animate={false}
+                      onNavigate={() => setMobileNavOpen(false)}
+                    />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
+
+            {/* Desktop: sticky sidebar */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="lg:w-64 lg:flex-shrink-0"
+              className="hidden lg:block lg:w-64 lg:shrink-0"
             >
-              <Card className="bg-white dark:bg-gray-800 shadow-xl border-0 lg:sticky lg:top-6">
+              <Card className="border-0 bg-white shadow-xl dark:bg-gray-800 lg:sticky lg:top-6">
                 <CardContent className="p-4">
-                  <div className="space-y-1">
-                    {navigationItems.map((item, index) => {
-                      // For Overview, only match exactly /profile
-                      // For other items, match exact path or paths starting with the href + '/'
-                      const isActive = item.href === '/profile'
-                        ? currentPath === item.href
-                        : currentPath === item.href || currentPath.startsWith(item.href + '/')
-                      const Icon = item.icon
-                      return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          preserveScroll={!item.href.includes("#")}
-                          preserveState={true}
-                        >
-                          <motion.div
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ duration: 0.3, delay: index * 0.05 }}
-                            className={`group flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer ${
-                              isActive
-                                ? "bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/30 dark:to-blue-900/30 border-l-4 border-purple-600 shadow-sm"
-                                : "hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                            }`}
-                          >
-                            <div className={`p-2 rounded-lg bg-gradient-to-br ${item.color} shadow-sm group-hover:scale-110 transition-transform duration-200`}>
-                              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-white'}`} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className={`font-semibold text-sm ${
-                                isActive ? "text-purple-900 dark:text-purple-100" : "text-gray-900 dark:text-white"
-                              }`}>
-                                {item.name}
-                              </h3>
-                              <p className={`text-xs mt-0.5 truncate ${
-                                isActive ? "text-purple-600 dark:text-purple-300" : "text-gray-500 dark:text-gray-400"
-                              }`}>
-                                {item.description}
-                              </p>
-                            </div>
-                            {isActive && (
-                              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-600 to-blue-600"></div>
-                            )}
-                          </motion.div>
-                        </Link>
-                      )
-                    })}
-                  </div>
+                  <ProfileNavLinks currentPath={currentPath} />
                 </CardContent>
               </Card>
             </motion.div>
 
             {/* Main Content Area */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 w-full flex-1">
               {/* Stats Cards - Only show on overview page */}
               {currentPath === "/profile" && (
                 <>
@@ -675,18 +770,18 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                               <p className="text-gray-600 dark:text-gray-300 mb-4">
                                 Invite friends and earn rewards when they join our community.
                               </p>
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 relative">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <div className="relative min-w-0 flex-1">
                                   <Input
                                     type="text"
                                     value={user?.referral_link || ""}
                                     readOnly
-                                    className="pr-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 font-mono text-sm"
+                                    className="w-full border-gray-300 bg-white pr-12 font-mono text-sm dark:border-gray-600 dark:bg-gray-800"
                                   />
                                 </div>
                                 <Button
                                   onClick={handleCopy}
-                                  className="bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 hover:scale-105"
+                                  className="w-full shrink-0 bg-indigo-600 transition-all duration-300 hover:scale-105 hover:bg-indigo-700 sm:w-auto"
                                 >
                                   {copied ? (
                                     <>
@@ -773,13 +868,15 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
-                className="pb-8"
+                className="pb-6 sm:pb-8"
               >
-                <Card className="bg-white dark:bg-gray-800 shadow-xl border-0 overflow-hidden">
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="mb-6">
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl mb-2 sm:mb-3">{title}</h2>
-                      {description && <p className="text-gray-600 dark:text-gray-300 text-base sm:text-lg">{description}</p>}
+                <Card className="overflow-hidden border-0 bg-white shadow-xl dark:bg-gray-800">
+                  <CardContent className="p-3 sm:p-6">
+                    <div className="mb-4 sm:mb-6">
+                      <h2 className="mb-2 break-words text-xl font-bold text-gray-900 dark:text-white sm:mb-3 sm:text-2xl lg:text-3xl">{title}</h2>
+                      {description ? (
+                        <p className="text-sm text-gray-600 dark:text-gray-300 sm:text-base lg:text-lg">{description}</p>
+                      ) : null}
                     </div>
                     <div className="min-w-0">{children}</div>
                   </CardContent>

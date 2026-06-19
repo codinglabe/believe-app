@@ -171,7 +171,7 @@ export interface ChatContextType {
     members?: number[],
     topic_id: string,
   ) => Promise<void>
-  createDirectChat: (userId: number) => Promise<void>
+  createDirectChat: (userId: number) => Promise<ChatRoom | undefined>
   joinRoom: (roomId: number) => Promise<void>
   leaveRoom: (roomId: number) => Promise<void>
   setTypingStatus: (isTyping: boolean) => void
@@ -248,7 +248,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return prev
       }
       const room = chatRooms.find((entry) => entry.id === roomId)
-      return room ?? prev
+      return room ?? null
     })
   }, [url, chatRooms])
 
@@ -440,41 +440,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   )
 
   /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
-  useEffect(() => {
-    if (!activeRoom?.id) {
-      messagesRoomIdRef.current = null
-      setMessages([])
-      setHasMoreMessages(false)
-      setCurrentPage(1)
-      setLoadingMessages(false)
-      return
-    }
-
-    const roomId = activeRoom.id
-    messagesRoomIdRef.current = roomId
-    setMessages([])
-    setCurrentPage(1)
-    setTypingUsers([])
-    setReplyingToMessage(null)
-    setLoadingMessages(true)
-
-    let cancelled = false
-
-    ;(async () => {
-      try {
-        await fetchMessages(roomId, 1, false)
-        if (!cancelled && messagesRoomIdRef.current === roomId) {
-          await markRoomAsRead(roomId)
-        }
-      } finally {
-        if (!cancelled) setLoadingMessages(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [activeRoom?.id, fetchMessages, markRoomAsRead])
+  // (effect is registered after joinRoom / createDirectChat)
 
   useEffect(() => {
     if (!currentUser?.id) return
@@ -909,7 +875,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data } = await api.post<{ room: ChatRoom }>("/chat/direct-chat", { user_id: userId })
       const room = data.room
-      if (!room) return
+      if (!room) return undefined
       setChatRooms((prev) => {
         const exists = prev.some((r) => r.id === room.id)
         if (exists) return prev.map((r) => (r.id === room.id ? room : r))
@@ -921,39 +887,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error("Error creating direct chat:", error)
       toast.error("Failed to start direct chat")
+      return undefined
     }
   }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const timer = setTimeout(async () => {
-      try {
-        const raw = sessionStorage.getItem("chat_initiation")
-        if (!raw || cancelled) {
-          return
-        }
-
-        const data = JSON.parse(raw) as { seller_id?: number }
-        const sellerId = Number(data.seller_id)
-        if (!Number.isFinite(sellerId) || sellerId <= 0) {
-          return
-        }
-
-        await createDirectChat(sellerId)
-        if (!cancelled) {
-          sessionStorage.removeItem("chat_initiation")
-        }
-      } catch (error) {
-        console.error("[Chat] Failed to initialize chat with seller:", error)
-      }
-    }, 500)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [createDirectChat])
 
   const sendMessage = useCallback(
     async (message: string, attachments: File[] = [], replyToMessageId?: number) => {
@@ -1062,6 +998,120 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     [activeRoom?.id, currentUser],
   )
+
+  const roomIsMember = useCallback(
+    (room: ChatRoom) =>
+      Boolean(
+        room.is_member ||
+          room.members?.some((member) => Number(member.id) === Number(currentUser?.id)),
+      ),
+    [currentUser?.id],
+  )
+
+  const ensureRoomAccess = useCallback(
+    async (room: ChatRoom): Promise<boolean> => {
+      if (roomIsMember(room)) {
+        return true
+      }
+
+      if (room.type === "public") {
+        await joinRoom(room.id)
+        return true
+      }
+
+      if (room.type === "direct") {
+        const other = room.members?.find((member) => Number(member.id) !== Number(currentUser?.id))
+        if (other?.id) {
+          const healed = await createDirectChat(other.id)
+          return Boolean(healed)
+        }
+      }
+
+      return false
+    },
+    [roomIsMember, joinRoom, createDirectChat, currentUser?.id],
+  )
+
+  /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
+  useEffect(() => {
+    if (!activeRoom?.id) {
+      messagesRoomIdRef.current = null
+      setMessages([])
+      setHasMoreMessages(false)
+      setCurrentPage(1)
+      setLoadingMessages(false)
+      return
+    }
+
+    const roomSnapshot = activeRoomRef.current
+    if (!roomSnapshot?.id) {
+      return
+    }
+
+    const roomId = roomSnapshot.id
+    messagesRoomIdRef.current = roomId
+    setMessages([])
+    setCurrentPage(1)
+    setTypingUsers([])
+    setReplyingToMessage(null)
+    setLoadingMessages(true)
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const allowed = await ensureRoomAccess(roomSnapshot)
+        if (!allowed || cancelled || messagesRoomIdRef.current !== roomId) {
+          if (!allowed && !cancelled) {
+            setActiveRoom(null)
+          }
+          return
+        }
+
+        await fetchMessages(roomId, 1, false)
+        if (!cancelled && messagesRoomIdRef.current === roomId) {
+          await markRoomAsRead(roomId)
+        }
+      } finally {
+        if (!cancelled) setLoadingMessages(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeRoom?.id, ensureRoomAccess, fetchMessages, markRoomAsRead, setActiveRoom])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const timer = setTimeout(async () => {
+      try {
+        const raw = sessionStorage.getItem("chat_initiation")
+        if (!raw || cancelled) {
+          return
+        }
+
+        const data = JSON.parse(raw) as { seller_id?: number }
+        const sellerId = Number(data.seller_id)
+        if (!Number.isFinite(sellerId) || sellerId <= 0) {
+          return
+        }
+
+        await createDirectChat(sellerId)
+        if (!cancelled) {
+          sessionStorage.removeItem("chat_initiation")
+        }
+      } catch (error) {
+        console.error("[Chat] Failed to initialize chat with seller:", error)
+      }
+    }, 500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [createDirectChat])
 
   const emitTypingStatus = useCallback(async (roomId: number, isTyping: boolean) => {
     try {
