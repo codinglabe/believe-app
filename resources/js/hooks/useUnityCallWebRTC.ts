@@ -166,6 +166,17 @@ export function useUnityCallWebRTC({
   const reviveMicInFlightRef = useRef(false)
   const isAudioEnabledRef = useRef(true)
   const reviveLocalMicrophoneRef = useRef<() => Promise<void>>(async () => {})
+  const signalSendChain = useRef<Promise<void>>(Promise.resolve())
+  const iceCandidateQueues = useRef<Map<string, WebRTCSignal[]>>(new Map())
+  const iceFlushTimers = useRef<Map<string, number>>(new Map())
+  const signalBackoffUntil = useRef(0)
+  const lastOfferRequestAt = useRef<Map<string, number>>(new Map())
+  const mediaConnectedRef = useRef(false)
+
+  const ICE_FLUSH_MS = 250
+  const MAX_ICE_PER_FLUSH = 3
+  const SIGNAL_MIN_GAP_MS = 60
+  const OFFER_REQUEST_COOLDOWN_MS = 4000
 
   useEffect(() => {
     rtcConfiguration.current = buildRtcConfiguration(iceServers)
@@ -264,25 +275,117 @@ export function useUnityCallWebRTC({
     resumeUnityCallRemotePlayback()
   }, [mediaConnected, remoteStreams])
 
-  const sendSignal = useCallback(
-    (signal: WebRTCSignal) => {
+  useEffect(() => {
+    mediaConnectedRef.current = mediaConnected
+  }, [mediaConnected])
+
+  const postSignal = useCallback(
+    async (signal: WebRTCSignal) => {
+      if (callEnded.current) {
+        return
+      }
+
+      const now = Date.now()
+      if (now < signalBackoffUntil.current) {
+        await new Promise((resolve) => window.setTimeout(resolve, signalBackoffUntil.current - now))
+      }
+
       const payload = normalizeWebRtcSignal(signal)
       const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
-      void fetch(route("unity-calls.signal", callId), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-CSRF-TOKEN": csrf,
-          "X-Requested-With": "XMLHttpRequest",
-        },
-        credentials: "same-origin",
-        body: JSON.stringify(payload),
-      }).catch((error) => {
+
+      try {
+        const response = await fetch(route("unity-calls.signal", callId), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-CSRF-TOKEN": csrf,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        })
+
+        if (!response.ok) {
+          throw new Error(`signal HTTP ${response.status}`)
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, SIGNAL_MIN_GAP_MS))
+      } catch (error) {
         console.error("[UnityCallWebRTC] Failed to send signal:", error)
-      })
+        signalBackoffUntil.current = Date.now() + 2500
+        throw error
+      }
     },
     [callId],
+  )
+
+  const enqueueSignalSend = useCallback(
+    (signal: WebRTCSignal) => {
+      signalSendChain.current = signalSendChain.current
+        .then(() => postSignal(signal))
+        .catch(() => {})
+    },
+    [postSignal],
+  )
+
+  const flushIceCandidatesForPeerRef = useRef<(peerId: string) => void>(() => {})
+
+  flushIceCandidatesForPeerRef.current = (peerId: string) => {
+    const queue = iceCandidateQueues.current.get(peerId) ?? []
+    if (queue.length === 0) {
+      iceFlushTimers.current.delete(peerId)
+      return
+    }
+
+    const batch = queue.splice(0, MAX_ICE_PER_FLUSH)
+    iceCandidateQueues.current.set(peerId, queue)
+
+    for (const signal of batch) {
+      enqueueSignalSend(signal)
+    }
+
+    if (queue.length > 0) {
+      const timer = window.setTimeout(() => flushIceCandidatesForPeerRef.current(peerId), ICE_FLUSH_MS)
+      iceFlushTimers.current.set(peerId, timer)
+    } else {
+      iceFlushTimers.current.delete(peerId)
+    }
+  }
+
+  const sendSignal = useCallback(
+    (signal: WebRTCSignal) => {
+      if (callEnded.current) {
+        return
+      }
+
+      const normalized = normalizeWebRtcSignal(signal)
+
+      if (normalized.type === "ice-candidate") {
+        const peerId = normalized.to
+        const queue = iceCandidateQueues.current.get(peerId) ?? []
+        queue.push(normalized)
+        iceCandidateQueues.current.set(peerId, queue)
+
+        if (!iceFlushTimers.current.has(peerId)) {
+          const timer = window.setTimeout(() => flushIceCandidatesForPeerRef.current(peerId), ICE_FLUSH_MS)
+          iceFlushTimers.current.set(peerId, timer)
+        }
+        return
+      }
+
+      if (normalized.type === "offer-request") {
+        const peerId = normalized.to
+        const lastSent = lastOfferRequestAt.current.get(peerId) ?? 0
+        if (Date.now() - lastSent < OFFER_REQUEST_COOLDOWN_MS) {
+          return
+        }
+        lastOfferRequestAt.current.set(peerId, Date.now())
+      }
+
+      enqueueSignalSend(normalized)
+    },
+    [enqueueSignalSend],
   )
 
   const getOutgoingTrack = useCallback(
@@ -904,6 +1007,12 @@ export function useUnityCallWebRTC({
     processedSignals.current.clear()
     offerRequestSentFor.current.clear()
     handleSignalChain.current = Promise.resolve()
+    signalSendChain.current = Promise.resolve()
+    iceCandidateQueues.current.clear()
+    iceFlushTimers.current.forEach((timer) => window.clearTimeout(timer))
+    iceFlushTimers.current.clear()
+    lastOfferRequestAt.current.clear()
+    signalBackoffUntil.current = 0
 
     peerConnections.current.forEach((pc) => pc.close())
     peerConnections.current.clear()
@@ -1029,13 +1138,25 @@ export function useUnityCallWebRTC({
       return
     }
 
+    const resumeRemotePlayback = () => {
+      document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+        void (node as HTMLAudioElement).play().catch(() => {})
+      })
+    }
+
+    if (mediaConnectedRef.current) {
+      resumeRemotePlayback()
+      updateMediaConnected()
+      return
+    }
+
     void reviveLocalMicrophone().finally(() => {
-      void fetchPendingSignals().finally(() => {
+      const fetchPending = channelReady.current ? Promise.resolve() : fetchPendingSignals()
+
+      void fetchPending.finally(() => {
         syncPeerConnections()
         updateMediaConnected()
-        document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
-          void (node as HTMLAudioElement).play().catch(() => {})
-        })
+        resumeRemotePlayback()
       })
     })
   }, [fetchPendingSignals, reviveLocalMicrophone, syncPeerConnections, updateMediaConnected])
@@ -1088,6 +1209,11 @@ export function useUnityCallWebRTC({
 
       resumeRemotePlayback()
 
+      if (mediaConnectedRef.current) {
+        updateMediaConnectedRef.current()
+        return
+      }
+
       void reviveLocalMicrophoneRef.current()
 
       void fetchPendingSignalsRef.current().finally(() => {
@@ -1105,13 +1231,27 @@ export function useUnityCallWebRTC({
       return
     }
 
+    let navigateResyncTimer = 0
+
     const onNavigate = () => {
       refreshEchoAuthHeaders()
-      resyncCallRef.current()
+      if (navigateResyncTimer) {
+        window.clearTimeout(navigateResyncTimer)
+      }
+      navigateResyncTimer = window.setTimeout(() => {
+        resyncCallRef.current()
+      }, 400)
     }
 
     onNavigate()
-    return router.on("success", onNavigate)
+    const unsubRouter = router.on("success", onNavigate)
+
+    return () => {
+      if (navigateResyncTimer) {
+        window.clearTimeout(navigateResyncTimer)
+      }
+      unsubRouter()
+    }
   }, [callId, keepAlive])
 
   useEffect(() => {
@@ -1144,11 +1284,11 @@ export function useUnityCallWebRTC({
     }
 
     const intervalId = window.setInterval(() => {
-      if (callEnded.current || !mediaStarted.current) {
+      if (callEnded.current || !mediaStarted.current || mediaConnectedRef.current) {
         return
       }
       resyncCallRef.current()
-    }, 4000)
+    }, 12000)
 
     return () => window.clearInterval(intervalId)
   }, [callId, keepAlive])
@@ -1165,6 +1305,10 @@ export function useUnityCallWebRTC({
         return
       }
 
+      if (mediaConnectedRef.current && document.visibilityState !== "hidden") {
+        return
+      }
+
       void reviveLocalMicrophoneRef.current()
     }
 
@@ -1172,7 +1316,10 @@ export function useUnityCallWebRTC({
       if (intervalId) {
         window.clearInterval(intervalId)
       }
-      intervalId = window.setInterval(keepMicAlive, document.visibilityState === "hidden" ? 800 : 3000)
+      const connected = mediaConnectedRef.current
+      const hidden = document.visibilityState === "hidden"
+      const delay = connected ? (hidden ? 5000 : 30000) : hidden ? 1500 : 5000
+      intervalId = window.setInterval(keepMicAlive, delay)
     }
 
     restartInterval()
@@ -1184,7 +1331,7 @@ export function useUnityCallWebRTC({
       }
       document.removeEventListener("visibilitychange", restartInterval)
     }
-  }, [callId, keepAlive])
+  }, [callId, keepAlive, mediaConnected])
 
   useEffect(() => {
     if (!callId) {
@@ -1295,7 +1442,7 @@ export function useUnityCallWebRTC({
           void createHostOffer(peerId)
         })
       }
-    }, 1500)
+    }, 3000)
 
     return () => window.clearInterval(intervalId)
   }, [acceptedPeerIds, createHostOffer, isCaller, mediaActive, mediaConnected])
@@ -1306,11 +1453,11 @@ export function useUnityCallWebRTC({
     }
 
     const intervalId = window.setInterval(() => {
-      if (mediaConnected || callEnded.current) {
+      if (mediaConnected || callEnded.current || channelReady.current) {
         return
       }
       void fetchPendingSignalsRef.current()
-    }, 2000)
+    }, 5000)
 
     return () => window.clearInterval(intervalId)
   }, [mediaActive, mediaConnected])
@@ -1342,7 +1489,7 @@ export function useUnityCallWebRTC({
         from: userIdStr,
         to: peerId,
       })
-    }, 2500)
+    }, 5000)
 
     return () => window.clearInterval(intervalId)
   }, [callerId, createDirectCalleeOffer, isCaller, isGroupCall, mediaActive, mediaConnected, resendDirectCalleeOffer, sendSignal, userIdStr])
