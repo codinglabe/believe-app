@@ -71,6 +71,28 @@ export function isPeerNegotiationSettled(pc: RTCPeerConnection): boolean {
   return pc.signalingState === "stable" && pc.currentRemoteDescription !== null && pc.currentLocalDescription !== null
 }
 
+export function findAudioTransceiver(pc: RTCPeerConnection): RTCRtpTransceiver | undefined {
+  const byTrack = pc.getTransceivers().find(
+    (item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio",
+  )
+  if (byTrack) {
+    return byTrack
+  }
+
+  const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio")
+  if (audioSender) {
+    return pc.getTransceivers().find((item) => item.sender === audioSender)
+  }
+
+  // Audio-only calls: reuse the first negotiated transceiver (tracks may be null briefly).
+  return pc.getTransceivers().find(
+    (item) =>
+      item.mid !== null &&
+      item.currentDirection !== "inactive" &&
+      item.currentDirection !== "stopped",
+  )
+}
+
 const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -119,4 +141,68 @@ export function buildUnityCallRtcConfiguration(iceServers: RTCIceServer[]): RTCC
     bundlePolicy: "max-bundle",
     rtcpMuxPolicy: "require",
   }
+}
+
+export function isPeerConnectionUsable(pc: RTCPeerConnection | undefined | null): pc is RTCPeerConnection {
+  return Boolean(pc && pc.connectionState !== "closed" && pc.signalingState !== "closed")
+}
+
+export async function ensurePeerAudioTransceiver(
+  pc: RTCPeerConnection,
+  track: MediaStreamTrack | null,
+  localStream?: MediaStream | null,
+): Promise<boolean> {
+  if (!track || !isPeerConnectionUsable(pc)) {
+    return false
+  }
+
+  const negotiated = pc.localDescription !== null || pc.remoteDescription !== null
+
+  const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio")
+  if (audioSender) {
+    if (audioSender.track?.id !== track.id) {
+      await audioSender.replaceTrack(track)
+    }
+    return true
+  }
+
+  const transceiver = findAudioTransceiver(pc)
+  if (transceiver) {
+    if (transceiver.sender.track?.id !== track.id) {
+      await transceiver.sender.replaceTrack(track)
+    }
+    if (!negotiated && transceiver.direction !== "sendrecv" && transceiver.direction !== "sendonly") {
+      transceiver.direction = "sendrecv"
+    }
+    return true
+  }
+
+  if (negotiated) {
+    return false
+  }
+
+  if (localStream) {
+    pc.addTrack(track, localStream)
+    return true
+  }
+
+  const created = pc.addTransceiver("audio", { direction: "sendrecv" })
+  await created.sender.replaceTrack(track)
+  return true
+}
+
+export function peerHasCompletedNegotiation(pc: RTCPeerConnection): boolean {
+  return pc.currentLocalDescription !== null && pc.currentRemoteDescription !== null
+}
+
+export function resumeUnityCallRemotePlayback(): void {
+  if (typeof document === "undefined") {
+    return
+  }
+
+  document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+    const audio = node as HTMLAudioElement
+    audio.muted = false
+    void audio.play().catch(() => {})
+  })
 }

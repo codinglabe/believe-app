@@ -10,6 +10,7 @@ use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
 use App\Models\User;
+use App\Support\UnityCallDelivery;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -168,6 +169,7 @@ class UnityCallNotifier
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
+                'chatRoomType' => $call->chatRoom?->type,
                 'isGroupCall' => $call->chatRoom?->type !== 'direct',
                 'joinUrl' => '/unity-call/'.$call->id,
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
@@ -185,6 +187,7 @@ class UnityCallNotifier
                 'avatar' => $p->user?->avatar_url,
                 'role' => $p->role,
                 'status' => $p->status,
+                'incomingDelivered' => UnityCallDelivery::participantIncomingDelivered($p),
             ])->values()->all(),
         ];
     }

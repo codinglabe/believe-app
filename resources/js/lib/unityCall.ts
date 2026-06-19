@@ -15,6 +15,49 @@ export function unityCallShowPath(callId: number): string {
   return `/unity-call/${callId}`
 }
 
+export function isOnUnityCallShowPage(callId?: number): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  const match = window.location.pathname.match(/^\/unity-call\/(\d+)$/)
+  if (!match) {
+    return false
+  }
+
+  if (callId === undefined) {
+    return true
+  }
+
+  const pageCallId = Number(match[1])
+  return Number.isFinite(pageCallId) && pageCallId === callId
+}
+
+/** In-memory live call from UnityCallSessionProvider — avoids stale sessionStorage blocking incoming calls. */
+let providerLiveCallId: number | null = null
+
+export function setUnityCallProviderLiveCallId(callId: number | null): void {
+  providerLiveCallId = callId
+}
+
+export function getUnityCallProviderLiveCallId(): number | null {
+  return providerLiveCallId
+}
+
+/** Keep call alive when leaving the full-screen call UI (minimize or any navigation). */
+export function markUnityCallBackgrounded(callId: number): void {
+  markUnityCallSessionActive(callId)
+  markUnityCallLiveOnPage(callId)
+  setUnityCallProviderLiveCallId(callId)
+}
+
+export function clearUnityCallBackgroundState(callId: number): void {
+  clearUnityCallLiveOnPage(callId)
+  if (getUnityCallProviderLiveCallId() === callId) {
+    setUnityCallProviderLiveCallId(null)
+  }
+}
+
 /** Full page load — avoids Inertia XHR JSON errors on /unity-call/* (Reverb/WebRTC need a clean page). */
 export function navigateToUnityCall(pathOrUrl: string, options?: { replace?: boolean }): void {
   if (typeof window === "undefined") {
@@ -35,9 +78,11 @@ export function toInternalAppPath(urlOrPath: string): string {
   }
   try {
     const parsed = new URL(urlOrPath, window.location.origin)
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+    const pathname = parsed.pathname.replace(/^\/unity-calls\/(\d+)\/?$/, "/unity-call/$1")
+    return `${pathname}${parsed.search}${parsed.hash}`
   } catch {
-    return urlOrPath.startsWith("/") ? urlOrPath : `/${urlOrPath}`
+    const normalized = urlOrPath.replace(/^\/unity-calls\/(\d+)\/?$/, "/unity-call/$1")
+    return normalized.startsWith("/") ? normalized : `/${normalized}`
   }
 }
 
@@ -78,8 +123,7 @@ export function markUnityCallEndedLocally(callId: number): void {
   try {
     sessionStorage.setItem(endedCallStorageKey(callId), String(Date.now()))
     clearUnityCallAcceptedLocally(callId)
-    clearUnityCallLiveOnPage(callId)
-    clearUnityCallSessionActive(callId)
+    clearUnityCallBackgroundState(callId)
   } catch {
     // ignore
   }
@@ -215,6 +259,16 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
     return false
   }
 
+  const providerCallId = getUnityCallProviderLiveCallId()
+  if (
+    providerCallId &&
+    providerCallId !== excludeCallId &&
+    !isLeavingUnityCall(providerCallId) &&
+    !isUnityCallEndedLocally(providerCallId)
+  ) {
+    return true
+  }
+
   const pageCallId = getActiveUnityCallIdFromPage()
   if (
     pageCallId &&
@@ -225,7 +279,7 @@ export function isUserBusyWithUnityCall(excludeCallId?: number): boolean {
     return true
   }
 
-  return isUserOnLiveUnityCall(excludeCallId)
+  return false
 }
 
 export function isUserAlreadyOnUnityCall(callId: number): boolean {
@@ -241,67 +295,19 @@ export function isUserAlreadyOnUnityCall(callId: number): boolean {
     return true
   }
 
-  if (hasUnityCallAcceptedLocally(callId)) {
+  if (getUnityCallProviderLiveCallId() === callId) {
     return true
   }
 
-  try {
-    if (sessionStorage.getItem(`unity_call_live_${callId}`) === "1") {
-      return true
-    }
-  } catch {
-    // ignore
+  if (hasUnityCallAcceptedLocally(callId)) {
+    return true
   }
 
   return false
 }
 
 export function isUserOnLiveUnityCall(excludeCallId?: number): boolean {
-  if (typeof window === "undefined") {
-    return false
-  }
-
-  const pageCallId = getActiveUnityCallIdFromPage()
-  if (
-    pageCallId &&
-    pageCallId !== excludeCallId &&
-    !isLeavingUnityCall(pageCallId) &&
-    !isUnityCallEndedLocally(pageCallId)
-  ) {
-    try {
-      if (sessionStorage.getItem(`unity_call_live_${pageCallId}`) === "1") {
-        return true
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  try {
-    for (let index = 0; index < sessionStorage.length; index += 1) {
-      const key = sessionStorage.key(index)
-      if (!key?.startsWith("unity_call_live_")) {
-        continue
-      }
-
-      const callId = Number(key.replace("unity_call_live_", ""))
-      if (!Number.isFinite(callId) || callId <= 0 || callId === excludeCallId) {
-        continue
-      }
-
-      if (isLeavingUnityCall(callId) || isUnityCallEndedLocally(callId)) {
-        continue
-      }
-
-      if (sessionStorage.getItem(key) === "1") {
-        return true
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return false
+  return isUserBusyWithUnityCall(excludeCallId)
 }
 
 export function returnToUnityCall(callId: number): void {
@@ -397,6 +403,35 @@ export async function postUnityCallJson<T = unknown>(
   }
 }
 
+const incomingDeliveredCalls = new Set<number>()
+
+/** Callee reports that the incoming-call UI is visible on their device (overlay or call screen). */
+export function notifyCalleeIncomingDelivered(
+  callId: number,
+  calleeUserId: number,
+  callerUserId: number,
+): void {
+  if (
+    !Number.isFinite(callId) ||
+    callId <= 0 ||
+    !Number.isFinite(calleeUserId) ||
+    !Number.isFinite(callerUserId) ||
+    incomingDeliveredCalls.has(callId)
+  ) {
+    return
+  }
+
+  incomingDeliveredCalls.add(callId)
+
+  // Use the signal route — it ships with every Unity Call deploy. The dedicated
+  // incoming-delivered route can 404 when production route cache is stale.
+  void postUnityCallJson(route("unity-calls.signal", callId), {
+    type: "incoming-delivered",
+    from: String(calleeUserId),
+    to: String(callerUserId),
+  })
+}
+
 export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitResponse | null> {
   if (isUserBusyWithUnityCall()) {
     throw new Error("You are already on a call. End it before starting another.")
@@ -436,6 +471,25 @@ export async function fetchIncomingUnityCall(): Promise<UnityCallStatusEvent | n
   )
 
   return ok && data?.incoming ? data.incoming : null
+}
+
+export type UnityCallActiveSession = {
+  call: UnityCallPayload
+  caller: { id: number; name: string; avatar?: string | null }
+  participants: UnityCallParticipantRow[]
+  isCaller: boolean
+  isGroupCall: boolean
+  participantStatus?: string | null
+  iceServers: RTCIceServer[]
+  authUserId: number
+}
+
+export async function fetchActiveUnityCallSession(): Promise<UnityCallActiveSession | null> {
+  const { ok, data } = await getUnityCallJson<{ active?: UnityCallActiveSession | null }>(
+    route("unity-calls.active"),
+  )
+
+  return ok && data?.active ? data.active : null
 }
 
 export type UnityCallChatRoomChannel = {

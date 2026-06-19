@@ -13,7 +13,7 @@ import {
   toInternalAppPath,
   unityCallShowPath,
 } from "@/lib/unityCall"
-import { dispatchUnityCallIncoming, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { dispatchUnityCallIncoming, dispatchUnityCallStatus, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 import { ChatContext } from "@/providers/chat-context"
@@ -230,8 +230,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [url, roomsSyncKey])
 
   const [activeRoom, setActiveRoomState] = useState<ChatRoom | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<ChatSidebarTab>("groups")
-  const sidebarTabBeforeRoomRef = useRef<ChatSidebarTab>("groups")
+  const [sidebarTab, setSidebarTab] = useState<ChatSidebarTab>("direct")
+  const sidebarTabBeforeRoomRef = useRef<ChatSidebarTab>("direct")
 
   const rememberSidebarTabForRoom = useCallback(
     (fromTab?: ChatSidebarTab) => {
@@ -282,7 +282,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const room = chatRooms.find((entry) => entry.id === roomId)
       if (room) {
-        sidebarTabBeforeRoomRef.current = room.type === "direct" ? "direct" : "groups"
+        sidebarTabBeforeRoomRef.current = "direct"
       }
       return room ?? null
     })
@@ -590,10 +590,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
           ]
 
+      dispatchUnityCallStatus({ ...payload, participants })
       dispatchUnityCallIncoming({ ...payload, participants })
     })
 
     channel.listen(".call.status", (payload: UnityCallStatusEvent) => {
+      dispatchUnityCallStatus(payload)
+
       if (isUnityCallTerminated(payload)) {
         dispatchUnityCallTerminated(payload)
       }

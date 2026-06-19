@@ -3455,7 +3455,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
 
                         {/* Content */}
-                        <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-h-0 wallet-kyc-scroll">
                             {/* Splash Screen - Show during initial load */}
                             {isInitialLoading ? (
                                 <SplashScreen key="splash-screen" />
@@ -4031,7 +4031,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 animate={{ opacity: 1, y: 0 }}
                                                 exit={{ opacity: 0, y: -20 }}
                                                 transition={{ duration: 0.3 }}
-                                                className="flex-1 flex flex-col items-center p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full"
+                                                className="flex flex-col items-center p-3 sm:p-4 space-y-3 sm:space-y-4 w-full"
                                             >
                                                 <div className="text-center space-y-3 sm:space-y-4 w-full">
                                                     {/* Icon */}
@@ -4266,7 +4266,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                                                         {useCustomKyc ? (
                                                                             /* Custom KYC/KYB Form */
-                                                                            <div className="space-y-2 sm:space-y-3 max-h-[250px] sm:max-h-[350px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full -mx-0">
+                                                                            <div className="flex w-full flex-col gap-2 sm:gap-3">
+                                                                                <div className="w-full">
                                                                                 {verificationType === 'kyc' ? (
                                                                                     // Show waiting screen until KYC is approved
                                                                                     // Show waiting screen if:
@@ -6142,6 +6143,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                         onSubmit={handleSubmitCustomKyc}
                                                                                     />
                                                                                 )}
+                                                                                </div>
                                                                                 {/* Hide button when KYB waiting screen is shown, BUT always show it if admin requested refill */}
                                                                                 {(() => {
                                                                                     // Check if KYB waiting screen should be shown

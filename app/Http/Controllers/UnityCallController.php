@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\UnityCall;
 use App\Services\UnityCallService;
 use App\Services\WebRtcIceService;
+use App\Support\UnityCallDelivery;
 use App\Events\UnityCallWebRTCSignal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,6 +37,18 @@ class UnityCallController extends Controller
         return response()->json([
             'incoming' => $payload,
         ]);
+    }
+
+    public function active(Request $request, UnityCallService $calls, WebRtcIceService $webrtcIce): JsonResponse
+    {
+        $session = $calls->restorableCallSessionForUser($request->user());
+        if ($session === null) {
+            return response()->json(['active' => null]);
+        }
+
+        $session['iceServers'] = $webrtcIce->iceServers();
+
+        return response()->json(['active' => $session]);
     }
 
     public function chatRooms(Request $request, UnityCallService $calls): JsonResponse
@@ -143,12 +156,25 @@ class UnityCallController extends Controller
         ]);
     }
 
-    public function signal(Request $request, UnityCall $call): JsonResponse
+    public function markIncomingDelivered(Request $request, int $call, UnityCallService $calls): JsonResponse
+    {
+        $unityCall = UnityCall::query()->find($call);
+        if ($unityCall === null) {
+            return response()->json(['ok' => false]);
+        }
+
+        $this->authorizeCall($request, $unityCall);
+        $calls->markCalleeIncomingDelivered($unityCall, $request->user());
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function signal(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
     {
         $this->authorizeCall($request, $call);
 
         $validated = $request->validate([
-            'type' => ['required', 'string', 'in:offer,answer,ice-candidate,offer-request'],
+            'type' => ['required', 'string', 'in:offer,answer,ice-candidate,offer-request,incoming-delivered'],
             'from' => ['required', 'string'],
             'to' => ['required', 'string'],
             'offer' => ['nullable', 'array'],
@@ -158,6 +184,12 @@ class UnityCallController extends Controller
 
         if ((int) $validated['from'] !== (int) $request->user()->id) {
             abort(403);
+        }
+
+        if ($validated['type'] === 'incoming-delivered') {
+            $calls->markCalleeIncomingDelivered($call, $request->user());
+
+            return response()->json(['ok' => true]);
         }
 
         if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {
@@ -257,6 +289,7 @@ class UnityCallController extends Controller
                 'avatar' => $p->user?->avatar_url,
                 'role' => $p->role,
                 'status' => $p->status,
+                'incomingDelivered' => UnityCallDelivery::participantIncomingDelivered($p),
             ])->values(),
             'isCaller' => $isCaller,
             'isGroupCall' => $isGroupCall,
@@ -382,6 +415,7 @@ class UnityCallController extends Controller
                 'avatar' => $p->user?->avatar_url,
                 'role' => $p->role,
                 'status' => $p->status,
+                'incomingDelivered' => UnityCallDelivery::participantIncomingDelivered($p),
             ])->values(),
         ];
     }

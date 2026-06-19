@@ -34,3 +34,7 @@ yarn-error.log
 # Local deploy SSH keys (never commit)
 /composer
 /.ssh-local/
+
+# ForgeStack local dev (machine-specific nginx paths, not for server)
+/forgestack/
+.env.server

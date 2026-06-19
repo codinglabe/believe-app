@@ -183,6 +183,7 @@ use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\WebhookManagementController;
 use App\Http\Controllers\WithdrawalController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -1046,6 +1047,7 @@ Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
 
 Route::prefix('unity-calls')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('unity-calls.')->group(function () {
     Route::get('/incoming', [UnityCallController::class, 'incoming'])->name('incoming');
+    Route::get('/active', [UnityCallController::class, 'active'])->name('active');
     Route::get('/chat-rooms', [UnityCallController::class, 'chatRooms'])->name('chat-rooms');
     Route::post('/', [UnityCallController::class, 'store'])->name('store');
     Route::post('/{call}/accept', [UnityCallController::class, 'accept'])->name('accept')->where('call', '[0-9]+');
@@ -1053,9 +1055,18 @@ Route::prefix('unity-calls')->middleware(['auth', 'EnsureEmailIsVerified', 'topi
     Route::post('/{call}/cancel', [UnityCallController::class, 'cancel'])->name('cancel')->where('call', '[0-9]+');
     Route::post('/{call}/end', [UnityCallController::class, 'end'])->name('end')->where('call', '[0-9]+');
     Route::post('/{call}/expire-ringing', [UnityCallController::class, 'expireRinging'])->name('expire-ringing')->where('call', '[0-9]+');
+    Route::post('/{call}/incoming-delivered', [UnityCallController::class, 'markIncomingDelivered'])->name('incoming-delivered')->where('call', '[0-9]+');
     Route::post('/{call}/signal', [UnityCallController::class, 'signal'])->name('signal')->where('call', '[0-9]+');
     Route::get('/{call}/pending-signals', [UnityCallController::class, 'pendingSignals'])->name('pending-signals')->where('call', '[0-9]+');
 });
+
+Route::get('/unity-calls/{call}', function (Request $request, int $call) {
+    $query = $request->getQueryString();
+
+    return redirect()->to('/unity-call/'.$call.($query ? '?'.$query : ''));
+})
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])
+    ->where('call', '[0-9]+');
 
 Route::get('/unity-call/{call}', [UnityCallController::class, 'show'])
     ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])

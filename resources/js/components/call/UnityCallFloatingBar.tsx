@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Mic, MicOff, PhoneOff, User } from "lucide-react"
 import type { UnityCallSessionSnapshot } from "@/contexts/unity-call-session-context"
 import { cn } from "@/lib/utils"
+import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
 
 type Props = {
   session: UnityCallSessionSnapshot
+  callConnected: boolean
   mediaConnected: boolean
   isAudioEnabled: boolean
   speakerOn: boolean
@@ -26,9 +28,7 @@ const POSITION_STORAGE_KEY = "unity_call_bubble_position"
 const DRAG_THRESHOLD_PX = 6
 
 function formatElapsed(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60)
-  const s = totalSeconds % 60
-  return `${m}:${String(s).padStart(2, "0")}`
+  return formatUnityCallElapsed(totalSeconds)
 }
 
 function readSafeAreaBottom(): number {
@@ -99,6 +99,7 @@ function readStoredPosition(): Point | null {
 
 export function UnityCallFloatingBar({
   session,
+  callConnected,
   mediaConnected,
   isAudioEnabled,
   onToggleMute,
@@ -115,12 +116,15 @@ export function UnityCallFloatingBar({
 
   positionRef.current = position
 
-  const anchor = useMemo(() => {
-    if (session.call.answeredAt) {
-      return new Date(session.call.answeredAt).getTime()
-    }
-    return mediaConnected ? Date.now() : null
-  }, [mediaConnected, session.call.answeredAt])
+  const anchor = useMemo(
+    () =>
+      resolveUnityCallTimerAnchor({
+        answeredAt: session.call.answeredAt,
+        callConnected,
+        mediaConnected,
+      }),
+    [callConnected, mediaConnected, session.call.answeredAt],
+  )
 
   useEffect(() => {
     if (anchor === null) {
@@ -128,7 +132,7 @@ export function UnityCallFloatingBar({
       return
     }
 
-    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - anchor) / 1000)))
+    const tick = () => setElapsed(tickUnityCallElapsed(anchor))
     tick()
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
@@ -227,7 +231,7 @@ export function UnityCallFloatingBar({
     }
   }
 
-  const statusLabel = mediaConnected ? formatElapsed(elapsed) : "…"
+  const statusLabel = anchor !== null ? formatElapsed(elapsed) : "…"
 
   return (
     <div

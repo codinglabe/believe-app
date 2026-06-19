@@ -58,9 +58,7 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false)
 
   const getFilteredRooms = () => {
-    if (activeTab === "groups") {
-      return chatRooms.filter((room) => room.type === "public" || room.type === "private")
-    } else if (activeTab === "direct") {
+    if (activeTab === "direct") {
       return chatRooms.filter((room) => room.type === "direct")
     }
     return []
@@ -200,7 +198,6 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
         >
           {(
             [
-              { id: "groups" as const, label: "Groups" },
               { id: "direct" as const, label: "Direct" },
               { id: "users" as const, label: "Users" },
             ]
@@ -275,13 +272,9 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-dashed border-purple-500/25 bg-muted/40">
                   <MessageCircle className="h-7 w-7 text-muted-foreground" strokeWidth={1.5} />
                 </div>
-                <p className="text-sm font-medium text-foreground">
-                  {activeTab === "groups" ? "No groups yet" : "No direct chats yet"}
-                </p>
+                <p className="text-sm font-medium text-foreground">No direct chats yet</p>
                 <p className="max-w-[260px] text-xs text-muted-foreground">
-                  {activeTab === "groups"
-                    ? "Create a room with the + button or adjust your search."
-                    : "Start a chat from the Users tab or open an existing thread."}
+                  Start a chat from the Users tab or open an existing thread.
                 </p>
               </div>
             )}

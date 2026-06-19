@@ -7,6 +7,7 @@ use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
 use App\Models\User;
+use App\Support\UnityCallDelivery;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -124,7 +125,7 @@ class UnityCallService
             ]);
         }
 
-        return DB::transaction(function () use ($call, $user) {
+        $fresh = DB::transaction(function () use ($call, $user) {
             $call = UnityCall::query()->whereKey($call->id)->lockForUpdate()->firstOrFail();
             $participant = $this->ensureCalleeParticipant($call, $user);
             $participant = UnityCallParticipant::query()
@@ -173,30 +174,35 @@ class UnityCallService
                 $call->update($updates);
             }
 
-            $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
-            $caller = $call->caller;
-
-            $acceptedPayload = $this->notifier->payloadForUser(
-                $call->fresh(['participants.user', 'chatRoom']),
-                $caller,
-                'accepted',
-            );
-
-            foreach ($call->participants as $p) {
-                $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
-            }
-
-            $this->notifier->broadcastStatus($call->caller_id, $acceptedPayload);
-
-            $freshCall = $call->fresh(['participants.user', 'chatRoom']);
-            $this->notifier->broadcastSessionStatus($freshCall, $caller, 'accepted');
-            $this->notifier->broadcastRoomStatus($freshCall, $caller, 'accepted');
-
-            $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
-            $this->syncChatCallMessage($fresh);
-
-            return $fresh;
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
+
+        if ($fresh->status === UnityCall::STATUS_ACCEPTED) {
+            $this->broadcastAcceptedCall($fresh);
+        }
+
+        $this->syncChatCallMessage($fresh);
+
+        return $fresh;
+    }
+
+    private function broadcastAcceptedCall(UnityCall $call): void
+    {
+        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+        $caller = $call->caller;
+        if (! $caller) {
+            return;
+        }
+
+        $acceptedPayload = $this->notifier->payloadForUser($call, $caller, 'accepted');
+
+        foreach ($call->participants as $participant) {
+            $this->notifier->broadcastStatus($participant->user_id, $acceptedPayload);
+        }
+
+        $this->notifier->broadcastStatus($call->caller_id, $acceptedPayload);
+        $this->notifier->broadcastSessionStatus($call, $caller, 'accepted');
+        $this->notifier->broadcastRoomStatus($call, $caller, 'accepted');
     }
 
     public function decline(UnityCall $call, User $user): UnityCall
@@ -538,6 +544,77 @@ class UnityCallService
     }
 
     /**
+     * Build a client session snapshot for a live call the user can rejoin after refresh or app restart.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function restorableCallSessionForUser(User $user): ?array
+    {
+        $call = $this->activeCallForUser($user->id);
+        if (! $call || ! $call->isActive()) {
+            return null;
+        }
+
+        $call->load(['caller', 'participants.user', 'chatRoom']);
+        if (! $call->caller) {
+            return null;
+        }
+
+        $participant = $call->participantForUser($user->id);
+        $isCaller = (int) $call->caller_id === (int) $user->id;
+        $isGroupCall = $call->chatRoom?->type !== 'direct';
+
+        if (! $isCaller) {
+            if (! $participant || $participant->status !== UnityCallParticipant::STATUS_ACCEPTED) {
+                return null;
+            }
+        }
+
+        $participantsQuery = $call->participants()->with('user');
+        if ($isGroupCall) {
+            $participantsQuery->where(function ($query) use ($call, $user) {
+                $query->where('status', UnityCallParticipant::STATUS_ACCEPTED)
+                    ->orWhere('user_id', $call->caller_id)
+                    ->orWhere('user_id', $user->id);
+            });
+        }
+
+        $participantRows = $participantsQuery->limit(100)->get();
+
+        return [
+            'call' => [
+                'id' => $call->id,
+                'status' => $call->status,
+                'type' => $call->type,
+                'chatRoomId' => $call->chat_room_id,
+                'chatRoomName' => $call->chatRoom?->name,
+                'chatRoomType' => $call->chatRoom?->type,
+                'isGroupCall' => $isGroupCall,
+                'joinUrl' => '/unity-call/'.$call->id,
+                'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),
+                'answeredAt' => $call->answered_at?->toIso8601String(),
+                'endedAt' => $call->ended_at?->toIso8601String(),
+            ],
+            'caller' => [
+                'id' => $call->caller->id,
+                'name' => trim((string) $call->caller->name) ?: 'Unknown',
+                'avatar' => $call->caller->avatar_url,
+            ],
+            'participants' => $participantRows->map(fn ($p) => [
+                'userId' => $p->user_id,
+                'name' => trim((string) ($p->user?->name ?? '')) ?: 'Participant',
+                'avatar' => $p->user?->avatar_url,
+                'role' => $p->role,
+                'status' => $p->status,
+            ])->values()->all(),
+            'isCaller' => $isCaller,
+            'isGroupCall' => $isGroupCall,
+            'participantStatus' => $participant?->status,
+            'authUserId' => $user->id,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function incomingCallPayloadForUser(User $user): ?array
@@ -725,6 +802,39 @@ class UnityCallService
         }
 
         return false;
+    }
+
+    public function markCalleeIncomingDelivered(UnityCall $call, User $callee): void
+    {
+        $call->loadMissing(['participants.user', 'chatRoom', 'caller']);
+
+        if (! $call->isActive() || $call->status !== UnityCall::STATUS_RINGING) {
+            return;
+        }
+
+        $participant = $call->participantForUser($callee->id);
+        if (
+            ! $participant
+            || $participant->role !== UnityCallParticipant::ROLE_CALLEE
+            || $participant->status !== UnityCallParticipant::STATUS_RINGING
+        ) {
+            return;
+        }
+
+        if (! UnityCallDelivery::markDelivered($call->id, $callee->id)) {
+            return;
+        }
+
+        $caller = $call->caller;
+        if (! $caller) {
+            return;
+        }
+
+        $payload = $this->notifier->payloadForUser($call, $caller, 'callee_ringing');
+
+        $this->notifier->broadcastStatus($caller->id, $payload);
+        $this->notifier->broadcastSessionStatus($call, $caller, 'callee_ringing');
+        $this->notifier->broadcastRoomStatus($call, $caller, 'callee_ringing');
     }
 
     public function prepareCalleeForIncomingRing(UnityCall $call, User $user): UnityCall

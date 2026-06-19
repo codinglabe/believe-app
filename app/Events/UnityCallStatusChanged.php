@@ -23,7 +23,7 @@ class UnityCallStatusChanged implements ShouldBroadcastNow
         public array $payload,
     ) {}
 
-    public bool $broadcastAfterCommit = true;
+    public bool $broadcastAfterCommit = false;
 
     /**
      * @return array<int, PrivateChannel>
