@@ -8,9 +8,13 @@ import {
   MobileGuestHubSheet,
 } from "@/components/frontend/layout/mobile-favorites-sheets"
 import { useMobileNav } from "@/contexts/mobile-nav-context"
+import { useOpenWalletPopup } from "@/hooks/use-open-wallet-popup"
+import { mobileNavRouteContext } from "@/lib/mobile-nav-routes"
 import { resolveSiteMenuIcon } from "@/lib/site-menu-icons"
 import type { MobileNavMenuItem, MobileNavPayload } from "@/types/mobile-nav"
 import { isMobileNavItemActive } from "@/types/mobile-nav"
+import { WalletPopup } from "@/components/WalletPopup"
+import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
 import { Link, usePage } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { Heart, Star } from "lucide-react"
@@ -23,16 +27,23 @@ function normalizePath(url: string): string {
   return url.split("?")[0]?.split("#")[0] ?? "/"
 }
 
-function NavTab({ item, path }: { item: MobileNavMenuItem; path: string }) {
-  if (item.isHub || !item.href) return null
+function NavTab({
+  item,
+  path,
+  isActiveOverride,
+  onPress,
+}: {
+  item: MobileNavMenuItem
+  path: string
+  isActiveOverride?: boolean
+  onPress?: () => void
+}) {
+  if (item.isHub || (!item.href && !item.opensWallet)) return null
   const Icon = resolveSiteMenuIcon(item.icon)
-  const isActive = isMobileNavItemActive(path, item)
+  const isActive = isActiveOverride ?? isMobileNavItemActive(path, item)
 
-  return (
-    <Link
-      href={item.href}
-      className="relative z-10 flex h-full flex-col items-center justify-end gap-1 px-1 pb-1.5 pt-1 touch-manipulation active:opacity-80"
-    >
+  const content = (
+    <>
       <span
         className={cn(
           "flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200",
@@ -51,17 +62,52 @@ function NavTab({ item, path }: { item: MobileNavMenuItem; path: string }) {
       >
         {item.title}
       </span>
+    </>
+  )
+
+  if (item.opensWallet && onPress) {
+    return (
+      <button
+        type="button"
+        onClick={onPress}
+        className="relative z-10 flex h-full w-full flex-col items-center justify-end gap-1 px-1 pb-1.5 pt-1 touch-manipulation active:opacity-80"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <Link
+      href={item.href ?? "#"}
+      className="relative z-10 flex h-full flex-col items-center justify-end gap-1 px-1 pb-1.5 pt-1 touch-manipulation active:opacity-80"
+    >
+      {content}
     </Link>
   )
 }
 
-function guestBottomNav(path: string, isLoggedIn: boolean, profileHref: string, chatHref: string, unityMeetHref: string): MobileNavMenuItem[] {
+function roleAwareBottomNav(routes: ReturnType<typeof mobileNavRouteContext>): MobileNavMenuItem[] {
   return [
     { menuKey: "home", title: "Home", href: "/", icon: "Home", activePathPrefix: "/", slot: 1 },
-    { menuKey: "unity_meet", title: "Unity Meet", href: unityMeetHref, icon: "Video", activePathPrefix: "/livestreams/supporter", slot: 2 },
+    {
+      menuKey: routes.isAdmin || routes.isOrgUser || routes.hasCareAllianceRole ? "dashboard" : "organizations",
+      title: routes.slot2Title,
+      href: routes.slot2Href,
+      icon: routes.slot2Icon,
+      activePathPrefix: routes.slot2ActivePrefix,
+      slot: 2,
+    },
     { menuKey: "my_favorites", title: "Favorites", href: null, icon: "Star", isHub: true, slot: 3 },
-    { menuKey: "chat", title: "Chat", href: chatHref, icon: "MessageCircle", activePathPrefix: "/chat", slot: 4 },
-    { menuKey: "profile", title: isLoggedIn ? "Profile" : "Sign in", href: profileHref, icon: "User", activePathPrefix: "/profile", slot: 5 },
+    { menuKey: "chat", title: "Chat", href: routes.chatHref, icon: "MessageCircle", activePathPrefix: "/chat", slot: 4 },
+    {
+      menuKey: "profile",
+      title: routes.isLoggedIn ? "Profile" : "Sign in",
+      href: routes.profileHref,
+      icon: "User",
+      activePathPrefix: routes.isAdmin || routes.isOrgUser || routes.hasCareAllianceRole ? routes.slot2ActivePrefix : "/profile",
+      slot: 5,
+    },
   ]
 }
 
@@ -77,12 +123,15 @@ export default function MobileBottomNav() {
   const [showOnboarding, setShowOnboarding] = useState(false)
 
   const isLoggedIn = Boolean(auth?.user)
-  const role = auth?.user?.role
-  const isSupporter = role === "user"
-
-  const unityMeetHref = isLoggedIn ? route("livestreams.supporter.index") : route("login")
-  const chatHref = isLoggedIn ? route("chat.index") : route("login")
-  const profileHref = isLoggedIn ? route("user.profile.index") : route("login")
+  const routes = useMemo(() => mobileNavRouteContext(auth), [auth])
+  const isSupporter = routes.isSupporter
+  const {
+    showWalletPopup,
+    showSubscriptionModal,
+    openWallet,
+    closeWallet,
+    closeSubscriptionModal,
+  } = useOpenWalletPopup(auth)
 
   const mobileNav = mobileNavProp ?? null
 
@@ -90,14 +139,15 @@ export default function MobileBottomNav() {
     if (mobileNav?.bottomNavSlots?.length) {
       return mobileNav.bottomNavSlots
     }
-    return guestBottomNav(path, isLoggedIn, profileHref, chatHref, unityMeetHref)
-  }, [mobileNav, path, isLoggedIn, profileHref, chatHref, unityMeetHref])
+    return roleAwareBottomNav(routes)
+  }, [mobileNav, routes])
 
   useEffect(() => {
     setFavoritesOpen(false)
     setBrowseOpen(false)
     setCustomizeOpen(false)
-  }, [path])
+    closeWallet()
+  }, [path, closeWallet])
 
   useEffect(() => {
     if (isMenuOpen) {
@@ -124,8 +174,21 @@ export default function MobileBottomNav() {
 
   const hubActive = favoritesOpen || browseOpen || customizeOpen
 
+  const handleWalletPress = () => {
+    closeMenu()
+    setFavoritesOpen(false)
+    setBrowseOpen(false)
+    setCustomizeOpen(false)
+    void openWallet()
+  }
+
   return (
     <>
+      {showWalletPopup && <WalletPopup isOpen={showWalletPopup} onClose={closeWallet} />}
+      {showSubscriptionModal && (
+        <UserWalletSubscriptionModal isOpen={showSubscriptionModal} onClose={closeSubscriptionModal} />
+      )}
+
       {showOnboarding && mobileNav && (
         <MobileFavoritesOnboarding mobileNav={mobileNav} onDone={() => setShowOnboarding(false)} />
       )}
@@ -146,6 +209,7 @@ export default function MobileBottomNav() {
               setFavoritesOpen(false)
               setCustomizeOpen(true)
             }}
+            canCustomize={mobileNav.canCustomize || mobileNav.canCustomizeQuick}
           />
           <MobileBrowseAllSheet mobileNav={mobileNav} open={browseOpen} onClose={() => setBrowseOpen(false)} />
           <MobileCustomizeSheet mobileNav={mobileNav} open={customizeOpen} onClose={() => setCustomizeOpen(false)} />
@@ -199,7 +263,17 @@ export default function MobileBottomNav() {
                   )
                 }
 
-                return <NavTab key={`${item.slot}-${item.menuKey}`} item={item} path={path} />
+                const opensWallet = item.opensWallet || item.menuKey === "wallet"
+
+                return (
+                  <NavTab
+                    key={`${item.slot}-${item.menuKey}`}
+                    item={item}
+                    path={path}
+                    isActiveOverride={opensWallet ? showWalletPopup : undefined}
+                    onPress={opensWallet ? handleWalletPress : undefined}
+                  />
+                )
               })}
             </div>
           </div>

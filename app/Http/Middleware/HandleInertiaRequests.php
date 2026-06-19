@@ -368,7 +368,7 @@ class HandleInertiaRequests extends Middleware
                 'appId' => config('services.firebase.app_id'),
                 'vapidKey' => config('services.firebase.vapid_key'),
             ],
-            'mobileNav' => fn () => ($user instanceof \App\Models\User && ($user->role ?? null) === 'user' && ! $isLivestockDomain && ! $isMerchantDomain)
+            'mobileNav' => fn () => ($user instanceof \App\Models\User && ! $isLivestockDomain && ! $isMerchantDomain && app(\App\Services\FavoriteMenuService::class)->mobileNavRoleKey($user) !== null)
                 ? app(\App\Services\FavoriteMenuService::class)->payloadForUser($user)
                 : null,
         ];

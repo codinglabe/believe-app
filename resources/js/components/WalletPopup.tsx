@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage, Loader2, CreditCard } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
@@ -3377,7 +3378,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     // Splash Screen and Skeleton components are now imported from './wallet'
     // Removed inline definitions to reduce file size
 
-    return (
+    if (typeof document === 'undefined') {
+        return null
+    }
+
+    return createPortal(
         <AnimatePresence>
             {isOpen && (
                 <React.Fragment key="wallet-popup">
@@ -3388,18 +3393,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 bg-black/20 z-50"
+                        className="fixed inset-0 z-[80] bg-black/40"
                     />
 
-                    {/* Popup - MetaMask style structure */}
+                    {/* Popup - full screen on mobile, panel on desktop */}
                     <motion.div
                         key="wallet-popup-content"
                         initial={{ opacity: 0, scale: 0.95, y: -10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
                         transition={{ duration: 0.2 }}
-                        className="fixed inset-0 sm:inset-x-auto sm:top-16 sm:right-4 sm:inset-y-auto z-50 w-full sm:w-80 md:w-96 h-full sm:h-[600px] bg-card border border-border sm:rounded-xl shadow-2xl overflow-hidden flex flex-col"
-                        style={{ maxHeight: '100vh' }}
+                        className="fixed inset-0 z-[80] flex h-[100dvh] w-full flex-col overflow-hidden border-border bg-card shadow-2xl sm:inset-x-auto sm:inset-y-auto sm:top-16 sm:right-4 sm:h-[600px] sm:w-80 sm:rounded-xl sm:border md:w-96"
                     >
                         {/* Header - MetaMask style */}
                         <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
@@ -6468,7 +6472,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 feature="wallet"
             />
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body,
     )
 }
 

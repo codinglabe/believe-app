@@ -28,6 +28,12 @@ class UnityCallService
         $chatRoom = ChatRoom::query()->findOrFail($chatRoomId);
         $isDirect = $chatRoom->type === 'direct';
 
+        if (! $isDirect) {
+            throw ValidationException::withMessages([
+                'chat_room_id' => __('Voice calls are only available in direct chats.'),
+            ]);
+        }
+
         if (! $chatRoom->members()->where('users.id', $caller->id)->exists()) {
             throw ValidationException::withMessages([
                 'chat_room_id' => __('You are not a member of this chat.'),
@@ -108,6 +114,13 @@ class UnityCallService
         if ($this->userHasConflictingAcceptedCall($user->id, $call->id)) {
             throw ValidationException::withMessages([
                 'call' => __('You are already on another call. End it before joining this one.'),
+            ]);
+        }
+
+        $call->loadMissing('chatRoom');
+        if ($call->chatRoom?->type !== 'direct') {
+            throw ValidationException::withMessages([
+                'call' => __('Voice calls are only available in direct chats.'),
             ]);
         }
 
@@ -518,6 +531,7 @@ class UnityCallService
         return UnityCall::query()
             ->whereIn('status', [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED])
             ->whereNull('ended_at')
+            ->whereHas('chatRoom', fn ($roomQuery) => $roomQuery->where('type', 'direct'))
             ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
             ->latest('id')
             ->first();
@@ -606,28 +620,12 @@ class UnityCallService
             ->where('status', UnityCall::STATUS_RINGING)
             ->whereNull('ended_at')
             ->where('caller_id', '!=', $user->id)
-            ->where(function ($query) use ($user) {
-                $query->whereHas('participants', function ($participantQuery) use ($user) {
-                    $participantQuery
-                        ->where('user_id', $user->id)
-                        ->where('role', UnityCallParticipant::ROLE_CALLEE)
-                        ->where('status', UnityCallParticipant::STATUS_RINGING);
-                })->orWhere(function ($groupQuery) use ($user) {
-                    $groupQuery
-                        ->whereHas('chatRoom', function ($roomQuery) use ($user) {
-                            $roomQuery
-                                ->where('type', '!=', 'direct')
-                                ->where('is_active', true)
-                                ->whereHas('members', fn ($memberQuery) => $memberQuery->where('users.id', $user->id));
-                        })
-                        ->whereDoesntHave('participants', fn ($participantQuery) => $participantQuery
-                            ->where('user_id', $user->id)
-                            ->whereIn('status', [
-                                UnityCallParticipant::STATUS_DECLINED,
-                                UnityCallParticipant::STATUS_MISSED,
-                                UnityCallParticipant::STATUS_ACCEPTED,
-                            ]));
-                });
+            ->whereHas('chatRoom', fn ($roomQuery) => $roomQuery->where('type', 'direct'))
+            ->whereHas('participants', function ($participantQuery) use ($user) {
+                $participantQuery
+                    ->where('user_id', $user->id)
+                    ->where('role', UnityCallParticipant::ROLE_CALLEE)
+                    ->where('status', UnityCallParticipant::STATUS_RINGING);
             })
             ->latest('id')
             ->first();
@@ -636,11 +634,9 @@ class UnityCallService
             return null;
         }
 
-        if ($call->chatRoom?->type === 'direct') {
-            $participant = $call->participantForUser($user->id);
-            if (! $participant || $participant->status !== UnityCallParticipant::STATUS_RINGING) {
-                return null;
-            }
+        $participant = $call->participantForUser($user->id);
+        if (! $participant || $participant->status !== UnityCallParticipant::STATUS_RINGING) {
+            return null;
         }
 
         return $this->notifier->payloadForUser($call, $call->caller, 'incoming');
@@ -653,7 +649,7 @@ class UnityCallService
     {
         return $user->chatRooms()
             ->where('chat_rooms.is_active', true)
-            ->whereIn('chat_rooms.type', ['direct', 'private', 'public'])
+            ->where('chat_rooms.type', 'direct')
             ->orderByDesc('chat_rooms.updated_at')
             ->limit(64)
             ->get(['chat_rooms.id', 'chat_rooms.type'])

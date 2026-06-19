@@ -8,6 +8,7 @@ export type MobileNavMenuItem = {
   requiresAuth?: boolean
   bottomNavEligible?: boolean
   isHub?: boolean
+  opensWallet?: boolean
   slot?: number
 }
 
@@ -23,6 +24,8 @@ export type MobileNavPayload = {
   bottomNavSlots: MobileNavMenuItem[]
   menuCatalog: MobileNavCatalogGroup[]
   needsOnboarding: boolean
+  canCustomize: boolean
+  canCustomizeQuick: boolean
   interestOptions: { key: string; label: string }[]
   limits: { quickMax: number; quickGrid: number }
 }
