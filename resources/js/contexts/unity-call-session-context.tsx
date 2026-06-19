@@ -43,7 +43,7 @@ import {
   subscribeUnityCallStatus,
   subscribeUnityCallTerminated,
 } from "@/lib/unityCallEvents"
-import { mergeCallParticipants } from "@/lib/unityCallParticipants"
+import { mergeCallParticipants, participantsSnapshotEqual } from "@/lib/unityCallParticipants"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
@@ -151,7 +151,6 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
       }
 
       applyUnityCallStatus(payload)
-      dispatchUnityCallStatus(payload)
     },
     [applyUnityCallStatus],
   )
@@ -252,16 +251,34 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return previous
       }
 
-      const next: UnityCallSessionSnapshot = {
-        ...previous,
-        ...patch,
-        call: patch.call ? { ...previous.call, ...patch.call } : previous.call,
-        participants: patch.participants
-          ? mergeCallParticipants(previous.participants, patch.participants)
-          : previous.participants,
+      const nextCall = patch.call ? { ...previous.call, ...patch.call } : previous.call
+      const nextParticipants = patch.participants
+        ? mergeCallParticipants(previous.participants, patch.participants)
+        : previous.participants
+      const nextParticipantStatus =
+        patch.participantStatus !== undefined ? patch.participantStatus : previous.participantStatus
+
+      const callUnchanged =
+        !patch.call ||
+        (nextCall.status === previous.call.status &&
+          nextCall.answeredAt === previous.call.answeredAt &&
+          nextCall.ringExpiresAt === previous.call.ringExpiresAt &&
+          nextCall.endedAt === previous.call.endedAt)
+      const participantsUnchanged =
+        !patch.participants || participantsSnapshotEqual(nextParticipants, previous.participants)
+      const participantStatusUnchanged = patch.participantStatus === undefined
+
+      if (callUnchanged && participantsUnchanged && participantStatusUnchanged) {
+        return previous
       }
 
-      return next
+      return {
+        ...previous,
+        ...patch,
+        call: nextCall,
+        participants: nextParticipants,
+        participantStatus: nextParticipantStatus,
+      }
     })
   }, [])
 
@@ -343,14 +360,22 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
           return previous
         }
 
+        const nextCall = { ...previous.call, ...payload.call }
+        const nextParticipants = mergeCallParticipants(previous.participants, payload.participants)
+        if (
+          nextCall.status === previous.call.status &&
+          nextCall.answeredAt === previous.call.answeredAt &&
+          participantsSnapshotEqual(nextParticipants, previous.participants)
+        ) {
+          return previous
+        }
+
         return {
           ...previous,
-          call: { ...previous.call, ...payload.call },
-          participants: mergeCallParticipants(previous.participants, payload.participants),
+          call: nextCall,
+          participants: nextParticipants,
         }
       })
-
-      dispatchUnityCallStatus(payload)
 
       if (payload.reason === "accepted" || payload.reason === "participant_left") {
         resyncCallRef.current()

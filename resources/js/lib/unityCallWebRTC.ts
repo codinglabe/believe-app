@@ -121,12 +121,16 @@ export function buildUnityCallRtcConfiguration(iceServers: RTCIceServer[]): RTCC
   }
 }
 
+export function isPeerConnectionUsable(pc: RTCPeerConnection | undefined | null): pc is RTCPeerConnection {
+  return Boolean(pc && pc.connectionState !== "closed" && pc.signalingState !== "closed")
+}
+
 /** Unified Plan: addTrack already adds sendrecv — do not combine with offerToReceiveAudio. */
 export async function ensurePeerAudioTransceiver(
   pc: RTCPeerConnection,
   track: MediaStreamTrack | null,
 ): Promise<boolean> {
-  if (!track) {
+  if (!track || !isPeerConnectionUsable(pc)) {
     return false
   }
 

@@ -165,11 +165,6 @@ export default function UnityCallShow({
       sessionRegisteredRef.current !== call.id || calleeJustAccepted
 
     if (!needsFullRegister) {
-      updateSession({
-        call: activeCall,
-        participants: activeParticipants,
-        participantStatus: selfStatus,
-      })
       return
     }
 
@@ -196,7 +191,6 @@ export default function UnityCallShow({
     isPendingIncomingCallee,
     registerSession,
     selfStatus,
-    updateSession,
   ])
 
   useEffect(() => {

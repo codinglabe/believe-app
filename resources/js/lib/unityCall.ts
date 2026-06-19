@@ -78,9 +78,11 @@ export function toInternalAppPath(urlOrPath: string): string {
   }
   try {
     const parsed = new URL(urlOrPath, window.location.origin)
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+    const pathname = parsed.pathname.replace(/^\/unity-calls\/(\d+)\/?$/, "/unity-call/$1")
+    return `${pathname}${parsed.search}${parsed.hash}`
   } catch {
-    return urlOrPath.startsWith("/") ? urlOrPath : `/${urlOrPath}`
+    const normalized = urlOrPath.replace(/^\/unity-calls\/(\d+)\/?$/, "/unity-call/$1")
+    return normalized.startsWith("/") ? normalized : `/${normalized}`
   }
 }
 

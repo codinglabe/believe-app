@@ -20,6 +20,28 @@ function pickParticipantStatus(current?: string, incoming?: string): string {
   return (PARTICIPANT_STATUS_RANK[left] ?? 0) >= (PARTICIPANT_STATUS_RANK[right] ?? 0) ? left : right
 }
 
+export function participantsSnapshotEqual(
+  left: UnityCallParticipantRow[],
+  right: UnityCallParticipantRow[],
+): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return left.every((row) => {
+    const other = right.find((candidate) => candidate.userId === row.userId)
+    if (!other) {
+      return false
+    }
+
+    return (
+      row.status === other.status &&
+      row.role === other.role &&
+      row.incomingDelivered === other.incomingDelivered
+    )
+  })
+}
+
 export function mergeCallParticipants(
   previous: UnityCallParticipantRow[],
   incoming: UnityCallParticipantRow[],

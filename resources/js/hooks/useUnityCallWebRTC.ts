@@ -8,7 +8,7 @@ import type { UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useU
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { invalidateAudioOutputCache } from "@/lib/callAudioOutput"
-import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration, ensurePeerAudioTransceiver, resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
+import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration, ensurePeerAudioTransceiver, isPeerConnectionUsable, resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 
 export type UnityCallRemoteStream = {
   peerId: string
@@ -485,8 +485,11 @@ export function useUnityCallWebRTC({
   const createPeerConnection = useCallback(
     (peerId: string): RTCPeerConnection => {
       const existing = peerConnections.current.get(peerId)
-      if (existing) {
+      if (existing && isPeerConnectionUsable(existing)) {
         return existing
+      }
+      if (existing) {
+        peerConnections.current.delete(peerId)
       }
 
       const pc = new RTCPeerConnection(rtcConfiguration.current)
@@ -570,7 +573,10 @@ export function useUnityCallWebRTC({
       makingOffer.current.set(peerId, true)
       try {
         let pc = peerConnections.current.get(peerId)
-        if (!pc) {
+        if (!isPeerConnectionUsable(pc)) {
+          if (pc) {
+            resetPeerConnection(peerId)
+          }
           pc = createPeerConnection(peerId)
         }
 
@@ -627,7 +633,8 @@ export function useUnityCallWebRTC({
         return
       }
 
-      const pc = peerConnections.current.get(peerId) ?? createPeerConnection(peerId)
+      const existingPc = peerConnections.current.get(peerId)
+      const pc = isPeerConnectionUsable(existingPc) ? existingPc : createPeerConnection(peerId)
       if (pc.signalingState !== "stable" || pc.remoteDescription || pc.localDescription) {
         return
       }
@@ -706,7 +713,7 @@ export function useUnityCallWebRTC({
           return
         }
 
-        if (!existing || existing.signalingState === "closed") {
+        if (!isPeerConnectionUsable(existing)) {
           resetPeerConnection(from)
         }
 
@@ -730,7 +737,10 @@ export function useUnityCallWebRTC({
       processedSignals.current.add(dedupeKey)
 
       let pc = peerConnections.current.get(from)
-      if (!pc) {
+      if (!isPeerConnectionUsable(pc)) {
+        if (pc) {
+          resetPeerConnection(from)
+        }
         pc = createPeerConnection(from)
       }
 
