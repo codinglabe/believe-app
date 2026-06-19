@@ -28,7 +28,9 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
   const [startingCall, setStartingCall] = React.useState(false)
 
-  const isMember = activeRoom?.is_member || activeRoom?.members?.some((member) => member.id === currentUser?.id)
+  const isMember =
+    activeRoom?.is_member ||
+    activeRoom?.members?.some((member) => Number(member.id) === Number(currentUser?.id))
 
   if (!activeRoom) {
     return (

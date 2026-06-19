@@ -546,7 +546,9 @@ export default function ProfileEdit() {
   )
 
   const cardClass =
-    "border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/40"
+    "min-w-0 overflow-hidden border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/40"
+  const cardHeaderPad = "px-4 pb-4 pt-4 sm:px-6 sm:pt-6"
+  const cardContentPad = "px-4 pb-4 sm:px-6 sm:pb-6"
   const inputClass =
     "mt-1 border-gray-300 bg-white text-gray-900 focus-visible:ring-purple-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
   const labelClass = "text-gray-700 dark:text-gray-200"
@@ -562,11 +564,11 @@ export default function ProfileEdit() {
     "w-full shrink-0 border-purple-300 bg-white text-gray-900 hover:border-purple-400 hover:bg-purple-50 sm:w-auto dark:border-purple-500/40 dark:bg-gray-900/50 dark:text-gray-100 dark:hover:bg-purple-500/10"
 
   const sectionTitle = (icon: React.ReactNode, n: number, title: string) => (
-    <CardTitle className="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-900 sm:text-lg dark:text-white">
+    <CardTitle className="flex min-w-0 items-start gap-2 text-base font-semibold text-gray-900 sm:items-center sm:text-lg dark:text-white">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-100 to-blue-100 text-purple-600 dark:from-purple-600/25 dark:to-blue-600/25 dark:text-purple-300">
         {icon}
       </span>
-      <span className="min-w-0">
+      <span className="min-w-0 break-words leading-snug">
         <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">{n}.</span>{" "}
         {title}
       </span>
@@ -597,12 +599,12 @@ export default function ProfileEdit() {
         </Alert>
       </Transition>
 
-      <form onSubmit={handleSubmit} noValidate className="min-w-0 w-full space-y-6">
+      <form onSubmit={handleSubmit} noValidate className="min-w-0 w-full max-w-full space-y-4 sm:space-y-6">
         {/* 1. Personal Information */}
         <Card className={cardClass}>
-          <CardHeader className="pb-4">{sectionTitle(<User className="h-5 w-5" />, 1, "Personal Information")}</CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <CardHeader className={cardHeaderPad}>{sectionTitle(<User className="h-5 w-5" />, 1, "Personal Information")}</CardHeader>
+          <CardContent className={cn(cardContentPad, "space-y-5")}>
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
               <div className="relative shrink-0">
                 <img
                   src={previewUrl || "/placeholder.svg?height=80&width=80"}
@@ -709,8 +711,8 @@ export default function ProfileEdit() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              <div className="min-w-0 sm:col-span-2 md:col-span-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="min-w-0">
                 <Label htmlFor="city" className={labelClass}>
                   City *
                 </Label>
@@ -787,8 +789,8 @@ export default function ProfileEdit() {
 
         {/* 2. Roles & Interests */}
         <Card className={cardClass}>
-          <CardHeader className="pb-4">{sectionTitle(<Briefcase className="h-5 w-5" />, 2, "Roles & Interests")}</CardHeader>
-          <CardContent className="space-y-6">
+          <CardHeader className={cardHeaderPad}>{sectionTitle(<Briefcase className="h-5 w-5" />, 2, "Roles & Interests")}</CardHeader>
+          <CardContent className={cn(cardContentPad, "space-y-6")}>
             <div>
               <Label className={cn("mb-2 block", labelClass)}>Supporter Positions</Label>
               <MultiSelect
@@ -819,7 +821,7 @@ export default function ProfileEdit() {
                 <div
                   role="group"
                   aria-label="Cause groups you have joined"
-                  className="flex min-h-10 w-full min-w-0 flex-wrap items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  className="flex min-h-10 w-full min-w-0 flex-wrap items-center gap-1 overflow-x-auto rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                 >
                   {selectedSupporterInterestCategories.map((c) => (
                     <span
@@ -880,10 +882,10 @@ export default function ProfileEdit() {
         </Card>
 
         {/* 3 & 4 */}
-        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
           <Card className={cardClass}>
-            <CardHeader className="pb-4">{sectionTitle(<Shield className="h-5 w-5" />, 3, "Account Settings")}</CardHeader>
-            <CardContent className="space-y-6">
+            <CardHeader className={cardHeaderPad}>{sectionTitle(<Shield className="h-5 w-5" />, 3, "Account Settings")}</CardHeader>
+            <CardContent className={cn(cardContentPad, "space-y-6")}>
               <div className="space-y-3">
                 <Label className={labelClass}>Account Visibility</Label>
                 <RadioGroup
@@ -952,8 +954,8 @@ export default function ProfileEdit() {
         </Card>
 
           <Card className={cardClass}>
-            <CardHeader className="pb-4">{sectionTitle(<Building2 className="h-5 w-5" />, 4, "Organization Affiliation")}</CardHeader>
-            <CardContent className="space-y-6">
+            <CardHeader className={cardHeaderPad}>{sectionTitle(<Building2 className="h-5 w-5" />, 4, "Organization Affiliation")}</CardHeader>
+            <CardContent className={cn(cardContentPad, "space-y-6")}>
               <div className="space-y-2">
                 <Label htmlFor="primary_organization" className={labelClass}>
                   Primary Organization *
@@ -986,7 +988,7 @@ export default function ProfileEdit() {
                               Locked
                             </span>
                           </div>
-                          <p className="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-slate-50">
+                          <p className="mt-1 break-words text-base font-semibold text-gray-900 sm:truncate sm:text-lg dark:text-slate-50">
                             {primaryOrganizationDisplay.name}
                           </p>
                         </div>
@@ -1027,7 +1029,7 @@ export default function ProfileEdit() {
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
                             Primary organization
                           </p>
-                          <p className="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-slate-50">
+                          <p className="mt-1 break-words text-base font-semibold text-gray-900 sm:truncate sm:text-lg dark:text-slate-50">
                             {primaryOrganizationDisplay.name}
                           </p>
                         </div>
@@ -1071,7 +1073,7 @@ export default function ProfileEdit() {
               <Dialog open={changePrimaryOpen} onOpenChange={setChangePrimaryOpen}>
                 <DialogContent
                   className={cn(
-                    "max-h-[90vh] w-[calc(100vw-2rem)] gap-5 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-2xl dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 sm:max-w-[640px] sm:p-8",
+                    "top-[max(1rem,env(safe-area-inset-top))] max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] translate-y-0 gap-5 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-2xl dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 sm:top-[50%] sm:max-w-[640px] sm:translate-y-[-50%] sm:p-8",
                     "[&>button]:text-gray-500 [&>button]:hover:text-gray-900 dark:[&>button]:text-gray-400 dark:[&>button]:hover:text-white",
                   )}
                 >
@@ -1208,7 +1210,7 @@ export default function ProfileEdit() {
                               <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
                                 Secondary organization
                               </p>
-                              <p className="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-slate-50">{org.name}</p>
+                              <p className="mt-1 break-words text-base font-semibold text-gray-900 sm:truncate sm:text-lg dark:text-slate-50">{org.name}</p>
                             </div>
                           </div>
                           <Button
@@ -1254,12 +1256,12 @@ export default function ProfileEdit() {
 
         {/* 5. Preferences */}
         <Card className={cardClass}>
-          <CardHeader className="pb-4">
+          <CardHeader className={cardHeaderPad}>
             {sectionTitle(<Monitor className="h-5 w-5" />, 5, "Preferences (Global Settings)")}
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className={cn(cardContentPad, "space-y-3")}>
             <Label className={labelClass}>Scene View (Theme)</Label>
-            <div className="mt-1 flex flex-wrap gap-2">
+            <div className="mt-1 grid grid-cols-1 gap-2 min-[420px]:grid-cols-3 sm:flex sm:flex-wrap">
               {(
                 [
                   ["system", <Monitor key="ic-sys" className="h-4 w-4" aria-hidden />, "Auto (System)"],
@@ -1272,7 +1274,7 @@ export default function ProfileEdit() {
                   type="button"
                   onClick={() => setPreferredTheme(mode)}
                   className={cn(
-                    "inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all sm:min-w-[8rem] sm:flex-none sm:px-4",
+                    "inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all min-[420px]:w-auto sm:min-w-[8rem] sm:px-4",
                     data.preferred_theme === mode
                       ? "border-transparent bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md"
                       : "border-gray-300 bg-white text-gray-700 hover:border-purple-400/60 hover:bg-purple-50 dark:border-gray-600 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:border-purple-500/40 dark:hover:bg-gray-800",
@@ -1319,7 +1321,7 @@ export default function ProfileEdit() {
           </CardContent>
         </Card>
 
-        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+        <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-10 -mx-1 flex flex-col-reverse gap-3 border-t border-gray-200 bg-white/95 px-1 py-3 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none sm:flex-row sm:justify-end lg:bottom-auto">
           <Button
             type="button"
             variant="outline"
