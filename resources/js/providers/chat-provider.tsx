@@ -230,8 +230,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [url, roomsSyncKey])
 
   const [activeRoom, setActiveRoomState] = useState<ChatRoom | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<ChatSidebarTab>("groups")
-  const sidebarTabBeforeRoomRef = useRef<ChatSidebarTab>("groups")
+  const [sidebarTab, setSidebarTab] = useState<ChatSidebarTab>("direct")
+  const sidebarTabBeforeRoomRef = useRef<ChatSidebarTab>("direct")
 
   const rememberSidebarTabForRoom = useCallback(
     (fromTab?: ChatSidebarTab) => {
@@ -282,7 +282,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const room = chatRooms.find((entry) => entry.id === roomId)
       if (room) {
-        sidebarTabBeforeRoomRef.current = room.type === "direct" ? "direct" : "groups"
+        sidebarTabBeforeRoomRef.current = "direct"
       }
       return room ?? null
     })

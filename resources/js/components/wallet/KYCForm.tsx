@@ -67,7 +67,7 @@ export function KYCForm({
     }
 
     return (
-        <div className="space-y-2 sm:space-y-3 max-h-[250px] sm:max-h-[350px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full -mx-0">
+        <div className="space-y-2 sm:space-y-3 w-full">
             {/* Personal Information Section */}
             <div className="space-y-3">
                 <h4 className="text-xs font-semibold text-foreground mb-2 text-left">Personal Information</h4>
