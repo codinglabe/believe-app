@@ -21,7 +21,7 @@ import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
-import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { dispatchUnityCallTerminated, isUnityCallTerminated, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
@@ -396,6 +396,15 @@ export default function UnityCallShow({
   const onStatus = handleCallTerminated
 
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
+
+  useEffect(() => {
+    return subscribeUnityCallStatus((payload) => {
+      if (payload.call.id !== call.id) {
+        return
+      }
+      handleCallTerminated(payload)
+    })
+  }, [call.id, handleCallTerminated])
 
   useEcho<UnityCallStatusEvent>(
     `unity-call.${call.id}`,

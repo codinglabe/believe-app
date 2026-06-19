@@ -43,6 +43,7 @@ import {
 } from "@/lib/unityCallEvents"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
+import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -127,6 +128,27 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   const mediaActiveForWebRtc = Boolean(session && (mediaState?.mediaActive || mediaEngaged))
 
+  const applyUnityCallStatus = useCallback((payload: UnityCallStatusEvent) => {
+    setSession((previous) => {
+      if (!previous || payload.call.id !== previous.call.id) {
+        return previous
+      }
+
+      return {
+        ...previous,
+        call: { ...previous.call, ...payload.call },
+        participants: mergeCallParticipants(previous.participants, payload.participants),
+      }
+    })
+  }, [])
+
+  const handleSessionStatus = useCallback(
+    (payload: UnityCallStatusEvent) => {
+      applyUnityCallStatus(payload)
+    },
+    [applyUnityCallStatus],
+  )
+
   const webrtc = useUnityCallWebRTC({
     callId: session?.call.id ?? 0,
     userId: session?.authUserId ?? 0,
@@ -138,6 +160,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     mediaActive: mediaActiveForWebRtc,
     iceServers: session?.iceServers ?? [],
     keepAlive: true,
+    onSessionStatus: handleSessionStatus,
   })
 
   stopMediaRef.current = webrtc.stopMedia
