@@ -17,7 +17,7 @@ final class DonationStripeConnectRouting
         string $frequency,
         string $paymentMethod
     ): bool {
-        if ($paymentMethod !== 'stripe') {
+        if (! in_array($paymentMethod, ['stripe', 'stripe_card', 'stripe_ach', 'venmo', 'cash_app_pay'], true)) {
             return false;
         }
         if ($frequency !== 'one-time') {

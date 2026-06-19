@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CareAlliance;
 use App\Models\Donation;
+use App\Services\Payments\BelievePointsRewardService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -41,6 +42,7 @@ final class DonationStripePaymentCompletion
         });
 
         app(ImpactScoreService::class)->awardDonationPoints($donation->fresh());
+        BelievePointsRewardService::issueDonationReward($donation->fresh());
     }
 
     /**

@@ -24,13 +24,15 @@ import {
   Loader2,
   Receipt,
   CircleHelp,
+  Smartphone,
+  Wallet,
+  ChevronRight,
 } from "lucide-react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -92,6 +94,7 @@ interface PageProps {
   }
   auth?: { user?: { role?: string } }
   feePreview?: BelievePointsFeePreview | null
+  availableMethods?: Record<string, boolean>
   autoReplenish?: AutoReplenishProps
   savedPaymentMethods?: SavedPaymentMethod[]
   paymentMethodsUrl?: string
@@ -103,6 +106,48 @@ interface PageProps {
 }
 
 const ADD_BELIEVE_POINTS_SECTION_ID = "add-believe-points"
+
+type BelievePointsPaymentMethodId =
+  | "stripe_card"
+  | "stripe_ach"
+  | "paypal"
+  | "venmo"
+  | "venmo_manual"
+  | "cash_app_pay"
+  | "cashapp"
+  | "zelle"
+
+const BP_METHOD_CONFIG: {
+  id: BelievePointsPaymentMethodId
+  label: string
+  description: string
+  icon: typeof CreditCard
+  availabilityKey: string
+}[] = [
+  { id: "stripe_card", label: "Pay with Card", description: "Visa, Mastercard, Amex, Discover", icon: CreditCard, availabilityKey: "stripe_card" },
+  { id: "stripe_ach", label: "Pay with ACH", description: "Direct bank transfer", icon: Landmark, availabilityKey: "stripe_ach" },
+  { id: "paypal", label: "Pay with PayPal", description: "Secure payment with PayPal", icon: Wallet, availabilityKey: "paypal" },
+  { id: "venmo", label: "Pay with Venmo", description: "Venmo via Stripe Checkout", icon: Smartphone, availabilityKey: "venmo" },
+  { id: "venmo_manual", label: "Venmo (Manual)", description: "Send payment — admin verifies", icon: Smartphone, availabilityKey: "venmo_manual" },
+  { id: "cash_app_pay", label: "Cash App Pay", description: "Cash App Pay via Stripe", icon: Smartphone, availabilityKey: "cash_app_pay" },
+  { id: "cashapp", label: "Cash App", description: "Manual transfer — QR or cashtag", icon: Smartphone, availabilityKey: "cashapp" },
+  { id: "zelle", label: "Zelle", description: "Manual bank transfer", icon: Landmark, availabilityKey: "zelle" },
+]
+
+function isStripeRail(method: BelievePointsPaymentMethodId): boolean {
+  return method === "stripe_card" || method === "stripe_ach"
+}
+
+function isManualMethod(method: BelievePointsPaymentMethodId): boolean {
+  return method === "cashapp" || method === "zelle" || method === "venmo_manual"
+}
+
+function defaultPaymentMethod(available: Record<string, boolean>): BelievePointsPaymentMethodId {
+  if (available.stripe_ach) return "stripe_ach"
+  if (available.stripe_card) return "stripe_card"
+  const first = BP_METHOD_CONFIG.find((m) => available[m.availabilityKey])
+  return first?.id ?? "stripe_ach"
+}
 
 const defaultAutoReplenish: AutoReplenishProps = {
   enabled: false,
@@ -128,16 +173,20 @@ export default function BelievePointsIndex({
     flash,
     auth,
     feePreview: feePreviewProp,
+    availableMethods: availableMethodsProp = {},
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
   } = page.props
+  const availableMethods = availableMethodsProp
   const feePreview = feePreviewProp ?? null
   const isSupporter = auth?.user?.role === 'user' || !auth?.user?.role
+  const [paymentMethod, setPaymentMethod] = useState<BelievePointsPaymentMethodId>(() =>
+    defaultPaymentMethod(availableMethods)
+  )
   const [formData, setFormData] = useState({
     amount: "",
     policyAccepted: false,
   })
-  const [paymentRail, setPaymentRail] = useState<"bank" | "card">("bank")
   const [savedPaymentMethodId, setSavedPaymentMethodId] = useState<string | null>(null)
   const [feePreviewLoading, setFeePreviewLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -200,9 +249,9 @@ export default function BelievePointsIndex({
       const n = parseFloat(raw)
       const inRange =
         raw !== "" && !Number.isNaN(n) && n >= minPurchaseAmount && n <= maxPurchaseAmount
-      if (inRange) {
+      if (inRange && isStripeRail(paymentMethod)) {
         q.fee_preview_amount = n
-        q.fee_preview_rail = paymentRail
+        q.fee_preview_rail = paymentMethod === "stripe_ach" ? "bank" : "card"
       }
       setFeePreviewLoading(true)
       router.get(route("believe-points.index"), q, {
@@ -215,7 +264,7 @@ export default function BelievePointsIndex({
       })
     }, 300)
     return () => window.clearTimeout(t)
-  }, [formData.amount, paymentRail, minPurchaseAmount, maxPurchaseAmount])
+  }, [formData.amount, paymentMethod, minPurchaseAmount, maxPurchaseAmount])
 
   useEffect(() => {
     setArState({
@@ -356,8 +405,9 @@ export default function BelievePointsIndex({
       route("believe-points.purchase"),
       {
         amount: parseFloat(formData.amount),
-        payment_rail: paymentRail,
-        ...(savedPaymentMethodId ? { saved_payment_method_id: savedPaymentMethodId } : {}),
+        payment_method: paymentMethod,
+        payment_rail: paymentMethod === "stripe_ach" ? "bank" : paymentMethod === "stripe_card" ? "card" : undefined,
+        ...(savedPaymentMethodId && isStripeRail(paymentMethod) ? { saved_payment_method_id: savedPaymentMethodId } : {}),
       },
       {
         onError: (errors) => {
@@ -486,9 +536,7 @@ export default function BelievePointsIndex({
                       </Badge>
                     </div>
                     <CardDescription className="max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                      Pick <span className="font-medium text-gray-800 dark:text-gray-200">Bank</span> or{" "}
-                      <span className="font-medium text-gray-800 dark:text-gray-200">Card</span> below. You receive 1
-                      Believe Point (BP) per $1 USD.
+                      Choose a payment method below. You receive 1 Believe Point (BP) per $1 USD.
                     </CardDescription>
                   </div>
                 </div>
@@ -541,63 +589,58 @@ export default function BelievePointsIndex({
                       </p>
                       <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Payment method</p>
                       <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                        ACH is cheaper for us to process. Paying by bank also earns Believe Reward Points (BRP) on this BP purchase.
+                        {isStripeRail(paymentMethod)
+                          ? "ACH is cheaper to process and earns Believe Reward Points (BRP) on this BP purchase."
+                          : isManualMethod(paymentMethod)
+                            ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
+                            : "Complete checkout with your selected payment provider."}
                       </p>
                     </div>
-                    <Tabs
-                      value={paymentRail}
-                      onValueChange={(v) => {
-                        setPaymentRail(v as "bank" | "card")
-                        setSavedPaymentMethodId(null)
-                      }}
-                      className="w-full"
-                    >
-                      <TabsList className="grid h-auto min-h-12 w-full grid-cols-2 gap-1 rounded-lg border-2 border-gray-300 bg-gray-100 p-1 dark:border-gray-600 dark:bg-gray-800">
-                        <TabsTrigger
-                          value="bank"
-                          className="gap-1.5 rounded-md px-2 py-2.5 text-xs text-gray-700 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-md dark:text-gray-200 dark:data-[state=active]:bg-gray-950 dark:data-[state=active]:text-white sm:gap-2 sm:px-3 sm:text-sm"
-                        >
-                          <Landmark className="h-4 w-4 shrink-0" aria-hidden />
-                          <span className="min-w-0 text-left leading-tight">
-                            <span className="sm:hidden">Bank</span>
-                            <span className="hidden sm:inline">Bank (ACH)</span>
-                          </span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="card"
-                          className="gap-1.5 rounded-md px-2 py-2.5 text-xs text-gray-700 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-md dark:text-gray-200 dark:data-[state=active]:bg-gray-950 dark:data-[state=active]:text-white sm:gap-2 sm:px-3 sm:text-sm"
-                        >
-                          <CreditCard className="h-4 w-4 shrink-0" aria-hidden />
-                          Card
-                        </TabsTrigger>
-                      </TabsList>
-                      <TabsContent
-                        value="bank"
-                        className="mt-3 rounded-lg border border-purple-200 bg-purple-50/80 px-4 py-3 text-sm focus-visible:outline-none dark:border-purple-800 dark:bg-purple-950/30"
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                          <Badge className="w-fit border-0 bg-purple-600 text-white hover:bg-purple-600">
-                            Recommended
-                          </Badge>
-                          <p className="text-gray-700 dark:text-gray-200">
-                            Lower processing fees • Earn Believe Reward Points (BRP) on this BP purchase.
-                          </p>
-                        </div>
-                      </TabsContent>
-                      <TabsContent
-                        value="card"
-                        className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus-visible:outline-none dark:border-gray-600 dark:bg-gray-800/60"
-                      >
-                        <p className="text-gray-700 dark:text-gray-200">
-                          Pay with debit or credit card. No Believe Reward Points (BRP) bonus on card checkout.
+
+                    <div className="space-y-2">
+                      {BP_METHOD_CONFIG.map(({ id, label, description, icon: Icon, availabilityKey }) => {
+                        if (!availableMethods[availabilityKey]) return null
+                        const selected = paymentMethod === id
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod(id)
+                              if (!isStripeRail(id)) setSavedPaymentMethodId(null)
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left transition-all sm:p-4",
+                              selected
+                                ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
+                                : "border-gray-200 bg-white hover:border-purple-300 text-gray-800 dark:border-gray-600 dark:bg-gray-900/40 dark:text-white",
+                            )}
+                          >
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-sm sm:text-base">{label}</div>
+                              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">{description}</div>
+                            </div>
+                            <ChevronRight className="h-4 w-4 shrink-0 opacity-50" />
+                          </button>
+                        )
+                      })}
+                      {Object.values(availableMethods).every((v) => !v) && (
+                        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                          No payment methods are enabled yet. Please contact support or try again later.
                         </p>
-                      </TabsContent>
-                    </Tabs>
+                      )}
+                    </div>
+
+                    {isStripeRail(paymentMethod) && (
+                    <>
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">Use a saved method</p>
                       <SavedPaymentMethodSelector
                         methods={savedPaymentMethods}
-                        rail={paymentRail}
+                        rail={paymentMethod === "stripe_ach" ? "bank" : "card"}
                         value={savedPaymentMethodId}
                         onChange={setSavedPaymentMethodId}
                         manageHref={paymentMethodsUrl}
@@ -608,9 +651,22 @@ export default function BelievePointsIndex({
                       <span>
                         {savedPaymentMethodId
                           ? "Your saved payment method will be charged directly."
-                          : `Stripe Checkout will only show ${paymentRail === "bank" ? "US bank account (ACH)" : "card"} for this purchase.`}
+                          : `Stripe Checkout will only show ${paymentMethod === "stripe_ach" ? "US bank account (ACH)" : "card"} for this purchase.`}
                       </span>
                     </p>
+                    </>
+                    )}
+
+                    {isManualMethod(paymentMethod) && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                        After clicking Add Believe Points, you&apos;ll see payment instructions. Transfer manually, upload a receipt if you have one, and an admin will verify before your Believe Points are credited.
+                      </div>
+                    )}
+                    {!isStripeRail(paymentMethod) && !isManualMethod(paymentMethod) && (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-200">
+                        You&apos;ll be redirected to complete payment with {paymentMethod === "paypal" ? "PayPal" : "Stripe"}.
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-5 bg-gray-50 p-4 sm:p-6 dark:bg-gray-900/35">
@@ -621,7 +677,7 @@ export default function BelievePointsIndex({
                       <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">Fees &amp; what you get</p>
                     </div>
 
-                  {feePreview && (
+                  {feePreview && isStripeRail(paymentMethod) && (
                     <div
                       className={cn(
                         "relative overflow-hidden rounded-lg border border-gray-200 bg-white p-5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800",
@@ -650,7 +706,7 @@ export default function BelievePointsIndex({
                           </span>
                         </li>
                         <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
-                          <span>Est. processing add-on ({paymentRail === "bank" ? "ACH" : "card"})</span>
+                          <span>Est. processing add-on ({paymentMethod === "stripe_ach" ? "ACH" : "card"})</span>
                           <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
                             {formatCurrency(feePreview.processing_fee_estimate)}
                           </span>
@@ -663,17 +719,17 @@ export default function BelievePointsIndex({
                         </li>
                       </ul>
                       <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                        Modeled Stripe fee on that {paymentRail === "bank" ? "ACH" : "card"} charge (informational):{" "}
+                        Modeled Stripe fee on that {paymentMethod === "stripe_ach" ? "ACH" : "card"} charge (informational):{" "}
                         <span className="font-medium tabular-nums text-gray-700 dark:text-gray-300">
                           {formatCurrency(
-                            paymentRail === "bank"
+                            paymentMethod === "stripe_ach"
                               ? feePreview.ach_processing_fee_usd
                               : feePreview.card_processing_fee_usd,
                           )}
                         </span>
                         .
                       </p>
-                      {paymentRail === "bank" && (
+                      {paymentMethod === "stripe_ach" && (
                         <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-3 text-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-indigo-950/30">
                           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500">
                             <Gift className="h-4 w-4 text-white" />

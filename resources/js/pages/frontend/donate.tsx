@@ -27,6 +27,10 @@ import {
   type OrganizationFilterLock,
 } from "@/components/frontend/locked-primary-organization-filter"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  DonationPaymentMethods,
+  type DonationPaymentMethodId,
+} from "@/components/frontend/donation-payment-methods"
 
 /** Matches `DonationController@index` `feePreview` prop (same rules as checkout). */
 type FeePreviewRail = "card" | "bank"
@@ -137,8 +141,10 @@ interface DonatePageProps extends InertiaPageProps {
   organizationFilterLock?: OrganizationFilterLock | null
   /** Profile setting: primary org cannot be changed except via My Profile. */
   primaryOrganizationLocked?: boolean
-  /** Secondary orgs from profile — always available for instant toggle-off UI. */
-  secondaryOrganizations?: DonateCause[]
+  /** Enabled payment rails for selected org (from server). */
+  orgPaymentMethods?: Record<string, boolean>
+  rewardPointsAmount?: number
+  defaultPaymentMethods?: Record<string, boolean>
 }
 
 const amountConfig = [
@@ -210,6 +216,8 @@ export default function DonatePage({
   organizationFilterLock = null,
   primaryOrganizationLocked = false,
   secondaryOrganizations: initialSecondaryOrganizations = [],
+  rewardPointsAmount = 5,
+  defaultPaymentMethods = {},
 }: DonatePageProps) {
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
   const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
@@ -229,7 +237,7 @@ export default function DonatePage({
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
+  const [paymentMethod, setPaymentMethod] = useState<DonationPaymentMethodId>('stripe_card')
   const [donorCoversProcessingFees, setDonorCoversProcessingFees] = useState(true)
   const [feePreviewRail, setFeePreviewRail] = useState<FeePreviewRail>("card")
   const [feePreviewLoading, setFeePreviewLoading] = useState(false)
@@ -256,8 +264,15 @@ export default function DonatePage({
   const organizations = (pageProps.organizations as DonateCause[] | undefined) ?? initialOrganizations
   const secondaryOrganizations =
     (pageProps.secondaryOrganizations as DonateCause[] | undefined) ?? initialSecondaryOrganizations
+  const availablePaymentMethods =
+    (pageProps.orgPaymentMethods as Record<string, boolean> | undefined) ??
+    defaultPaymentMethods
+
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false)
+
   const currentBalance = parseFloat(authUser?.believe_points || '0') || 0
-  const [searchQuery, setSearchQuery] = useState(initialSearchQuery) // Initialize with prop from Laravel
+  const isStripeRail = paymentMethod === "stripe_card" || paymentMethod === "stripe_ach"
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
@@ -287,46 +302,6 @@ export default function DonatePage({
 
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const nonCashOrgSearchRef = useRef<HTMLDivElement>(null)
-
-  /** Inertia partial reload: organizations (search), feePreview (amount + cover switch). No fetch/axios. */
-  useEffect(() => {
-    if (donatePartialReloadSkipRef.current) {
-      donatePartialReloadSkipRef.current = false
-      return
-    }
-    const t = window.setTimeout(() => {
-      const q: Record<string, string | number> = {}
-      const sq = searchQuery.trim()
-      if (sq) q.search = sq
-      if (!listingFilterLocked) {
-        const orgParam = new URLSearchParams(window.location.search).get("organization_id")
-        if (orgParam) q.organization_id = orgParam
-      }
-      const baseUsd = (selectedAmount ?? Number.parseFloat(customAmount)) || 0
-      if (paymentMethod === "stripe" && baseUsd > 0) {
-        q.fee_preview_amount = baseUsd
-        q.fee_preview_donor_covers = donorCoversProcessingFees ? 1 : 0
-        q.fee_preview_rail = feePreviewRail
-      }
-      setFeePreviewLoading(true)
-      setIsSearchingOrganizations(true)
-      router.get(route("donate"), q, {
-        preserveScroll: true,
-        preserveState: true,
-        replace: true,
-        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail", "secondaryOrganizations"],
-        onFinish: () => {
-          setFeePreviewLoading(false)
-          setIsSearchingOrganizations(false)
-        },
-        onCancel: () => {
-          setFeePreviewLoading(false)
-          setIsSearchingOrganizations(false)
-        },
-      })
-    }, 300)
-    return () => clearTimeout(t)
-  }, [searchQuery, selectedAmount, customAmount, paymentMethod, donorCoversProcessingFees, feePreviewRail, listingFilterLocked])
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -382,6 +357,86 @@ export default function DonatePage({
     }
     return undefined
   }, [selectedCauseId, organizations, donatedCauses, secondaryOrganizations])
+
+  const hasOrgSelected = Boolean(selectedCause?.organization_id)
+
+  /** Load org-specific payment methods when recipient changes. */
+  useEffect(() => {
+    const orgId = selectedCause?.organization_id
+    if (!orgId) {
+      return
+    }
+    setPaymentMethodsLoading(true)
+    router.get(
+      route("donate"),
+      { organization_id: orgId },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+        only: ["orgPaymentMethods"],
+        onFinish: () => setPaymentMethodsLoading(false),
+        onCancel: () => setPaymentMethodsLoading(false),
+      },
+    )
+  }, [selectedCause?.organization_id])
+
+  /** Keep selected payment method valid for this org. */
+  useEffect(() => {
+    if (!hasOrgSelected || paymentMethodsLoading) return
+    const methods = pageProps.orgPaymentMethods as Record<string, boolean> | undefined
+    if (!methods) return
+    if (methods[paymentMethod] === false) {
+      const fallback = (
+        ["stripe_card", "stripe_ach", "paypal", "venmo", "venmo_manual", "cash_app_pay", "cashapp", "zelle", "believe_points"] as const
+      ).find((m) => methods[m])
+      if (fallback) {
+        setPaymentMethod(fallback)
+      }
+    }
+  }, [pageProps.orgPaymentMethods, hasOrgSelected, paymentMethodsLoading, paymentMethod])
+
+  /** Inertia partial reload: organizations (search), feePreview, org payment methods. */
+  useEffect(() => {
+    if (donatePartialReloadSkipRef.current) {
+      donatePartialReloadSkipRef.current = false
+      return
+    }
+    const t = window.setTimeout(() => {
+      const q: Record<string, string | number> = {}
+      const sq = searchQuery.trim()
+      if (sq) q.search = sq
+      if (selectedCause?.organization_id) {
+        q.organization_id = selectedCause.organization_id
+      } else if (!listingFilterLocked) {
+        const orgParam = new URLSearchParams(window.location.search).get("organization_id")
+        if (orgParam) q.organization_id = orgParam
+      }
+      const baseUsd = (selectedAmount ?? Number.parseFloat(customAmount)) || 0
+      if (isStripeRail && baseUsd > 0) {
+        q.fee_preview_amount = baseUsd
+        q.fee_preview_donor_covers = donorCoversProcessingFees ? 1 : 0
+        q.fee_preview_rail = feePreviewRail
+      }
+      setFeePreviewLoading(true)
+      setIsSearchingOrganizations(true)
+      router.get(route("donate"), q, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail", "secondaryOrganizations", "orgPaymentMethods"],
+        onFinish: () => {
+          setFeePreviewLoading(false)
+          setIsSearchingOrganizations(false)
+        },
+        onCancel: () => {
+          setFeePreviewLoading(false)
+          setIsSearchingOrganizations(false)
+        },
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchQuery, selectedAmount, customAmount, paymentMethod, donorCoversProcessingFees, feePreviewRail, listingFilterLocked, isStripeRail, selectedCause?.organization_id])
 
   const primaryCause = useMemo(() => {
     const primaryId = organizationFilterLock?.primary_id
@@ -526,9 +581,9 @@ export default function DonatePage({
       frequency: 'one-time',
       message: donorMessage,
       payment_method: paymentMethod,
-      donor_covers_processing_fees: paymentMethod === "stripe" ? donorCoversProcessingFees : false,
-      donation_fee_rail: paymentMethod === "stripe" ? feePreviewRail : undefined,
-      ...(paymentMethod === "stripe" && savedPaymentMethodId
+      donor_covers_processing_fees: isStripeRail ? donorCoversProcessingFees : false,
+      donation_fee_rail: isStripeRail ? feePreviewRail : undefined,
+      ...(isStripeRail && savedPaymentMethodId
         ? { saved_payment_method_id: savedPaymentMethodId }
         : {}),
       name: name,
@@ -549,7 +604,7 @@ export default function DonatePage({
           setShowSubscriptionModal(true)
           setSubmissionError(null)
         } else {
-          setSubmissionError(errors.subscription || errors.message || "Failed to process donation. Please try again.")
+          setSubmissionError(errors.subscription || errors.payment_method || errors.message || "Failed to process donation. Please try again.")
         }
         console.error("Donation submission errors:", errors)
       },
@@ -1041,197 +1096,32 @@ export default function DonatePage({
             >
               <div className={cn(DONATE_CARD_HEADER, "px-5 py-4 flex items-center gap-2")}>
                 <Lock className="h-5 w-5 text-blue-600 shrink-0 dark:text-blue-400" />
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pay Securely</h2>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Choose Payment Method</h2>
               </div>
-              <div className="p-5 space-y-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod('stripe')
-                  }}
-                  className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-                    paymentMethod === 'stripe'
-                      ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
-                      : "border-purple-100/80 bg-white/70 hover:border-purple-400 text-gray-800 dark:border-purple-800/30 dark:bg-white/[0.04] dark:text-white"
-                  }`}
-                >
-                  <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                    <CreditCard className="h-5 w-5 text-slate-900 dark:text-white" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold">
-                      {feePreviewRail === "bank" ? "Pay with bank (ACH)" : "Pay with card"}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-slate-600/70 dark:text-white/60">
-                      <Lock className="h-3.5 w-3.5 shrink-0" />
-                      <span>Stripe Checkout</span>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/50" />
-                </button>
-                {paymentMethod === "stripe" && getCurrentAmount() > 0 && (
-                  <div className="rounded-xl border border-purple-100/80 bg-gradient-to-br from-purple-50/40 to-blue-50/30 p-4 space-y-3 dark:border-purple-800/25 dark:from-purple-950/25 dark:to-blue-950/20">
-                    <div>
-                      <div className="text-xs text-slate-600/80 dark:text-white/65 mb-2 font-medium">Fee preview for</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFeePreviewRail("card")
-                            setSavedPaymentMethodId(null)
-                          }}
-                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
-                            feePreviewRail === "card"
-                              ? "border-purple-600 bg-purple-50 text-purple-900 dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
-                              : "border-gray-200 bg-white text-gray-700 hover:border-blue-400 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200"
-                          }`}
-                        >
-                          <span>Card</span>
-                          {feePreviewCheckoutTotalsByRail ? (
-                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
-                              Total Charged: ${feePreviewCheckoutTotalsByRail.card.toFixed(2)}
-                            </span>
-                          ) : null}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFeePreviewRail("bank")
-                            setSavedPaymentMethodId(null)
-                          }}
-                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
-                            feePreviewRail === "bank"
-                              ? "border-purple-600 bg-purple-50 text-purple-900 dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
-                              : "border-gray-200 bg-white text-gray-700 hover:border-blue-400 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200"
-                          }`}
-                        >
-                          <span>Bank (ACH)</span>
-                          {feePreviewCheckoutTotalsByRail ? (
-                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
-                              Total Charged: ${feePreviewCheckoutTotalsByRail.bank.toFixed(2)}
-                            </span>
-                          ) : null}
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-white/45 mt-2 leading-snug">
-                        Card uses {(processingFeeRates.card_percent * 100).toFixed(1)}% + $
-                        {processingFeeRates.card_fixed_usd.toFixed(2)}; bank uses {(processingFeeRates.ach_percent * 100).toFixed(1)}% capped at $
-                        {processingFeeRates.ach_fee_cap_usd.toFixed(2)} (typical US Stripe rates). Pick the method you plan to use in Checkout—actual fees may vary.
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Make Full Impact</div>
-                        <p className="text-xs text-slate-600/85 dark:text-white/60 mt-0.5 leading-snug">
-                          On: cover fees so 100% of your donation goes to the nonprofit—the extra covers processing.
-                          Off: processing fees reduce what the nonprofit receives. Final total is confirmed in Stripe
-                          Checkout.
-                        </p>
-                      </div>
-                      <Switch checked={donorCoversProcessingFees} onCheckedChange={setDonorCoversProcessingFees} />
-                    </div>
-                    <div className="text-xs space-y-1.5 border-t border-slate-200/50 pt-3 dark:border-white/10 min-h-[5.5rem] relative">
-                      {feePreviewLoading && !feePreview ? (
-                        <div className="flex items-center justify-center gap-2 py-6 text-slate-600/80 dark:text-white/60">
-                          <Loader2 className="h-5 w-5 animate-spin shrink-0" aria-hidden />
-                          <span>Loading fee preview…</span>
-                        </div>
-                      ) : null}
-                      {feePreview ? (
-                        <div className={cn("relative space-y-1.5", feePreviewLoading && "opacity-60")}>
-                          {feePreview.mode === "donor_covers" ? (
-                            <>
-                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
-                                <span>Total Charged</span>
-                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-700 dark:text-white/85">
-                                <span>Donation to Nonprofit</span>
-                                <span className="font-medium tabular-nums">${feePreview.base_gift_usd.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-600/90 dark:text-white/65">
-                                <span>Processing Fees (covered by you)</span>
-                                <span className="tabular-nums">${feePreview.processing_fee_estimate.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1 border-t border-slate-200/40 dark:border-white/10">
-                                <span>✓ Nonprofit receives</span>
-                                <span className="tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
-                                <span>Total Charged</span>
-                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-700 dark:text-white/85">
-                                <span>Donation to Nonprofit</span>
-                                <span className="font-medium tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-600/90 dark:text-white/65">
-                                <span>Processing Fees</span>
-                                <span className="tabular-nums">${feePreview.processing_fee_estimate.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1 border-t border-slate-200/40 dark:border-white/10">
-                                <span>✓ Nonprofit receives</span>
-                                <span className="tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
-                              </div>
-                            </>
-                          )}
-                          {feePreviewLoading ? (
-                            <div className="absolute inset-0 top-0 flex items-center justify-center rounded-md bg-white/50 dark:bg-gray-900/60 backdrop-blur-[1px]">
-                              <Loader2 className="h-5 w-5 animate-spin text-purple-600 dark:text-purple-300" aria-hidden />
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {authUser && (
-                        <div className="space-y-1.5 border-t border-slate-200/50 pt-3 dark:border-white/10">
-                          <p className="text-xs font-medium text-slate-800 dark:text-white/90">Saved method</p>
-                          <SavedPaymentMethodSelector
-                            methods={savedPaymentMethods}
-                            rail={feePreviewRail}
-                            value={savedPaymentMethodId}
-                            onChange={setSavedPaymentMethodId}
-                            manageHref={paymentMethodsUrl}
-                            className="text-xs"
-                          />
-                        </div>
-                      )}
-                      <p className="text-[11px] text-slate-500 dark:text-white/50 pt-1 flex items-start gap-1.5">
-                        <Landmark className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-80" />
-                        {savedPaymentMethodId
-                          ? "Your saved payment method will be charged directly."
-                          : `Sales tax may apply at checkout when enabled in Stripe. Stripe Checkout will only show ${feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this donation.`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!canUseBelievePoints) return
-                    setPaymentMethod('believe_points')
-                    setSavedPaymentMethodId(null)
-                  }}
-                  disabled={!canUseBelievePoints}
-                  className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-                    paymentMethod === 'believe_points'
-                      ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
-                      : "border-purple-100/80 bg-white/70 hover:border-purple-400 text-gray-800 dark:border-purple-800/30 dark:bg-white/[0.04] dark:text-white"
-                  } ${!canUseBelievePoints ? "opacity-60 cursor-not-allowed" : ""}`}
-                >
-                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shrink-0">
-                    <Coins className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold">
-                      {currentBalance.toLocaleString('en-US', { maximumFractionDigits: 0 })} Believe Points
-                    </div>
-                    <div className="text-sm text-slate-600/70 dark:text-white/60">Use your points balance</div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/50" />
-                </button>
+              <DonationPaymentMethods
+                paymentMethod={paymentMethod}
+                onPaymentMethodChange={setPaymentMethod}
+                availableMethods={availablePaymentMethods}
+                hasOrgSelected={hasOrgSelected}
+                paymentMethodsLoading={paymentMethodsLoading}
+                currentBalance={currentBalance}
+                canUseBelievePoints={canUseBelievePoints}
+                amount={getCurrentAmount()}
+                feePreviewRail={feePreviewRail}
+                onFeePreviewRailChange={setFeePreviewRail}
+                donorCoversProcessingFees={donorCoversProcessingFees}
+                onDonorCoversChange={setDonorCoversProcessingFees}
+                feePreview={feePreview}
+                feePreviewLoading={feePreviewLoading}
+                feePreviewCheckoutTotalsByRail={feePreviewCheckoutTotalsByRail}
+                processingFeeRates={processingFeeRates}
+                savedPaymentMethods={savedPaymentMethods}
+                savedPaymentMethodId={savedPaymentMethodId}
+                onSavedPaymentMethodChange={setSavedPaymentMethodId}
+                paymentMethodsUrl={paymentMethodsUrl}
+                authUser={Boolean(authUser)}
+              />
+              <div className="px-5 pb-5">
                 <Link
                   href="/believe-points"
                   className="flex items-center justify-between gap-3 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50/50 text-left text-gray-800 dark:border-gray-600 dark:bg-gray-800/50 dark:hover:bg-blue-950/20 dark:text-white font-medium text-sm transition-all"
@@ -1269,6 +1159,12 @@ export default function DonatePage({
                     className="h-full rounded-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-500"
                     style={{ width: `${givingProgress}%` }}
                   />
+                </div>
+                <div className="rounded-xl border border-purple-200/60 bg-gradient-to-r from-purple-50/90 to-blue-50/50 p-4 dark:border-purple-700/40 dark:from-purple-900/35 dark:to-blue-950/25">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-purple-800 dark:text-purple-200">
+                    <Gift className="h-4 w-4 shrink-0" />
+                    You will receive +{rewardPointsAmount} Believe Points after confirmation
+                  </div>
                 </div>
                 {topOrganizations.length > 0 ? (
                   <div className="space-y-2">

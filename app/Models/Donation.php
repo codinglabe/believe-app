@@ -25,9 +25,15 @@ class Donation extends Model
         'messages',
         'message',
         'donation_date',
+        'payment_transaction_id',
+        'receipt_image',
+        'reward_points_issued',
+        'metadata',
     ];
 
     protected $casts = [
+        'metadata' => 'array',
+        'reward_points_issued' => 'boolean',
         'donation_date' => 'datetime',
         'amount' => 'decimal:2',
         'donor_covers_processing_fees' => 'boolean',
@@ -65,5 +71,10 @@ class Donation extends Model
     public function careAlliance(): BelongsTo
     {
         return $this->belongsTo(CareAlliance::class);
+    }
+
+    public function paymentTransaction(): BelongsTo
+    {
+        return $this->belongsTo(PaymentTransaction::class);
     }
 }

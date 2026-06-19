@@ -11,6 +11,8 @@ use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\DonationProcessingFeeEstimator;
+use App\Services\Payments\BelievePointsPaymentMethodResolver;
+use App\Services\Payments\BelievePointsPurchasePaymentService;
 use App\Services\StripeEnvironmentSyncService;
 use App\Services\UserStripePaymentMethodService;
 use Illuminate\Http\RedirectResponse;
@@ -74,6 +76,7 @@ class BelievePointController extends Controller
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
             'feePreview' => $feePreview,
+            'availableMethods' => BelievePointsPaymentMethodResolver::availableMethods(),
             'savedPaymentMethods' => UserStripePaymentMethodService::listForUser($user),
             'paymentMethodsUrl' => $user->hasNonprofitDashboardRole()
                 ? route('settings.saved-payment-methods.index')
@@ -147,17 +150,48 @@ class BelievePointController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
-            'payment_rail' => ['required', 'in:card,bank'],
+            'payment_method' => ['nullable', 'string', 'in:stripe_card,stripe_ach,paypal,cashapp,zelle,venmo,venmo_manual,cash_app_pay'],
+            'payment_rail' => ['nullable', 'in:card,bank'],
             'saved_payment_method_id' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $paymentMethod = $validated['payment_method'] ?? null;
+        if (! $paymentMethod) {
+            $paymentMethod = ($validated['payment_rail'] ?? 'bank') === 'bank' ? 'stripe_ach' : 'stripe_card';
+        }
+
         if (filled($validated['saved_payment_method_id'] ?? null)) {
+            $validated['payment_rail'] = in_array($paymentMethod, ['stripe_ach'], true) ? 'bank' : 'card';
+
             return $this->purchaseWithSavedPaymentMethod($user, $validated);
         }
 
+        if (in_array($paymentMethod, ['stripe_card', 'stripe_ach'], true)) {
+            $validated['payment_rail'] = $paymentMethod === 'stripe_ach' ? 'bank' : 'card';
+
+            return $this->purchaseWithStripeCheckout($user, $validated, $paymentMethod);
+        }
+
+        return app(BelievePointsPurchasePaymentService::class)->initiate($user, $validated, $paymentMethod);
+    }
+
+    /**
+     * Create a Stripe checkout session for believe points purchase (card/bank).
+     */
+    private function purchaseWithStripeCheckout(User $user, array $validated, string $paymentMethod): RedirectResponse|\Symfony\Component\HttpFoundation\Response
+    {
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
+
+        BelievePointsPaymentMethodResolver::assertMethodAllowed($paymentMethod);
+
         $netPointsUsd = round((float) $validated['amount'], 2);
-        $points = $netPointsUsd; // 1 Believe Point = $1 USD credited (net)
+        if ($netPointsUsd < $minPurchaseAmount || $netPointsUsd > $maxPurchaseAmount) {
+            return redirect()->back()->withInput()->with('error', 'Invalid purchase amount.');
+        }
+
         $feeRail = $validated['payment_rail'] === 'bank' ? 'bank' : 'card';
+        $points = $netPointsUsd;
 
         $checkoutTotalUsd = $feeRail === 'bank'
             ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
@@ -173,7 +207,6 @@ class BelievePointController extends Controller
             }
             $user->refresh();
 
-            // Create purchase record (amount/points = net credited; Stripe charges checkout_total)
             $purchase = BelievePointPurchase::create([
                 'user_id' => $user->id,
                 'amount' => $netPointsUsd,
@@ -183,6 +216,7 @@ class BelievePointController extends Controller
                 'status' => 'pending',
                 'source' => 'manual',
                 'payment_rail' => $feeRail,
+                'payment_method' => $paymentMethod,
             ]);
 
             $amountInCents = (int) round($checkoutTotalUsd * 100);
@@ -195,6 +229,7 @@ class BelievePointController extends Controller
                     'user_id' => (string) $user->id,
                     'type' => 'believe_points_purchase',
                     'payment_rail' => $feeRail,
+                    'payment_method' => $paymentMethod,
                     'base_points_usd' => (string) $netPointsUsd,
                     'checkout_total_usd' => (string) $checkoutTotalUsd,
                 ],
@@ -218,7 +253,6 @@ class BelievePointController extends Controller
                 $checkoutOptions
             );
 
-            // Update purchase with session ID
             $purchase->update([
                 'stripe_session_id' => $checkout->id,
             ]);
@@ -234,6 +268,86 @@ class BelievePointController extends Controller
     }
 
     /**
+     * Manual payment confirmation page.
+     */
+    public function manualConfirm(Request $request, BelievePointPurchase $purchase): \Inertia\Response|RedirectResponse
+    {
+        $user = Auth::user();
+        if (! $user || (int) $purchase->user_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        if ($purchase->status !== 'pending') {
+            return redirect()->route('believe-points.index')
+                ->with('warning', 'This purchase has already been processed.');
+        }
+
+        $method = $purchase->payment_method ?? 'cashapp';
+        $instructions = BelievePointsPaymentMethodResolver::manualPaymentInstructions($method);
+
+        return Inertia::render('BelievePoints/ManualConfirm', [
+            'purchase' => [
+                'id' => $purchase->id,
+                'amount' => (float) $purchase->amount,
+                'points' => (float) $purchase->points,
+                'payment_method' => $method,
+                'status' => $purchase->status,
+            ],
+            'instructions' => $instructions,
+        ]);
+    }
+
+    public function manualConfirmSubmit(
+        Request $request,
+        BelievePointPurchase $purchase,
+        BelievePointsPurchasePaymentService $paymentService
+    ): RedirectResponse {
+        $request->validate([
+            'receipt' => 'nullable|image|max:5120',
+        ]);
+
+        $receiptPath = null;
+        if ($request->hasFile('receipt')) {
+            $receiptPath = $request->file('receipt')->store('believe-points-receipts', 'public');
+        }
+
+        return $paymentService->confirmManualPayment($purchase, $request->user(), $receiptPath);
+    }
+
+    public function paypalCapture(
+        Request $request,
+        BelievePointPurchase $purchase,
+        BelievePointsPurchasePaymentService $paymentService
+    ): RedirectResponse {
+        $user = Auth::user();
+        if (! $user || (int) $purchase->user_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        if ($purchase->status === 'completed') {
+            return redirect()->route('believe-points.index')
+                ->with('success', "Successfully purchased {$purchase->points} Believe Points via PayPal!");
+        }
+
+        $token = $request->input('token');
+        if (! $token) {
+            return redirect()->route('believe-points.index')->with('error', 'PayPal payment was cancelled.');
+        }
+
+        $success = $paymentService->capturePayPalOrder($purchase, $token);
+
+        if ($success) {
+            $purchase->refresh();
+
+            return redirect()->route('believe-points.index')
+                ->with('success', "Successfully purchased {$purchase->points} Believe Points via PayPal!");
+        }
+
+        return redirect()->route('believe-points.index')
+            ->with('error', 'PayPal payment could not be completed. Please try again.');
+    }
+
+    /**
      * Charge a saved Stripe payment method (card or bank) without a new Checkout session.
      */
     private function purchaseWithSavedPaymentMethod(User $user, array $validated): RedirectResponse|\Symfony\Component\HttpFoundation\Response
@@ -242,6 +356,9 @@ class BelievePointController extends Controller
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         $pmId = (string) $validated['saved_payment_method_id'];
+        $paymentMethod = ($validated['payment_rail'] ?? 'bank') === 'bank' ? 'stripe_ach' : 'stripe_card';
+        BelievePointsPaymentMethodResolver::assertMethodAllowed($paymentMethod);
+
         $feeRail = $validated['payment_rail'] === 'bank' ? 'bank' : 'card';
         $railFromPm = UserStripePaymentMethodService::railForPaymentMethod($pmId);
 
@@ -284,6 +401,7 @@ class BelievePointController extends Controller
                 'status' => 'pending',
                 'source' => 'manual',
                 'payment_rail' => $feeRail,
+                'payment_method' => $paymentMethod,
             ]);
 
             $amountInCents = (int) round($checkoutTotalUsd * 100);

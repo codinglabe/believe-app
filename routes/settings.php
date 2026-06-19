@@ -9,6 +9,8 @@ use App\Http\Controllers\Settings\OrganizationSetupChecklistController;
 use App\Http\Controllers\Settings\PayAsYouGoServicesController;
 use App\Http\Controllers\Settings\ProfileSettingsEntryController;
 use App\Http\Controllers\Settings\ReferralLinkController;
+use App\Http\Controllers\Organization\OrganizationPaymentSettingsController;
+use App\Http\Controllers\Organization\OrganizationManualPaymentVerificationController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -74,6 +76,20 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
             Route::get('settings/donate-widget', [DonateWidgetController::class, 'edit'])
                 ->name('donate-widget.settings')
                 ->middleware('role:organization');
+
+            Route::middleware('role:organization|care_alliance')->group(function () {
+                Route::get('settings/donation-payments', [OrganizationPaymentSettingsController::class, 'edit'])
+                    ->name('organization.payment-settings.edit');
+                Route::post('settings/donation-payments', [OrganizationPaymentSettingsController::class, 'update'])
+                    ->name('organization.payment-settings.update');
+
+                Route::get('settings/manual-payments', [OrganizationManualPaymentVerificationController::class, 'index'])
+                    ->name('organization.manual-payments.index');
+                Route::post('settings/manual-payments/{paymentTransaction}/approve', [OrganizationManualPaymentVerificationController::class, 'approve'])
+                    ->name('organization.manual-payments.approve');
+                Route::post('settings/manual-payments/{paymentTransaction}/reject', [OrganizationManualPaymentVerificationController::class, 'reject'])
+                    ->name('organization.manual-payments.reject');
+            });
 
             Route::get('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'index'])->name('exemption-certificates.index');
             Route::post('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'store'])->name('exemption-certificates.store');

@@ -25,7 +25,7 @@ use App\Http\Controllers\Admin\KioskServiceRequestsController;
 use App\Http\Controllers\Admin\KioskSubcategoryController;
 use App\Http\Controllers\Admin\LivestockController;
 use App\Http\Controllers\Admin\MerchantHubCategoryController;
-use App\Http\Controllers\Admin\MerchantHubController;
+use App\Http\Controllers\Admin\ManualPaymentVerificationController;
 use App\Http\Controllers\Admin\PhazeWebhookManagementController;
 use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\PreGeneratedTagController;
@@ -81,6 +81,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonateWidgetEmbedController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\DonationPaymentController;
+use App\Http\Controllers\PayPalWebhookController;
 use App\Http\Controllers\EmailCreditsController;
 use App\Http\Controllers\EmailInviteController;
 use App\Http\Controllers\EnrollmentController;
@@ -140,6 +142,7 @@ use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\Organization\LivestreamController;
 use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
+use App\Http\Controllers\Organization\OrganizationPaymentSettingsController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationStripeConnectController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -696,6 +699,9 @@ Route::get('/service-hub/chat/{chatId}', [ServiceHubController::class, 'serviceC
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->prefix('believe-points')->name('believe-points.')->group(function () {
     Route::get('/', [BelievePointController::class, 'index'])->name('index');
     Route::post('/purchase', [BelievePointController::class, 'purchase'])->name('purchase');
+    Route::get('/manual-confirm/{purchase}', [BelievePointController::class, 'manualConfirm'])->name('manual.confirm');
+    Route::post('/manual-confirm/{purchase}', [BelievePointController::class, 'manualConfirmSubmit'])->name('manual.confirm.submit');
+    Route::get('/paypal/capture/{purchase}', [BelievePointController::class, 'paypalCapture'])->name('paypal.capture');
     Route::get('/complete-saved-payment/{purchase}', [BelievePointController::class, 'completeSavedPayment'])->name('complete-saved-payment');
     Route::get('/success', [BelievePointController::class, 'success'])->name('success');
     Route::get('/cancel', [BelievePointController::class, 'cancel'])->name('cancel');
@@ -1204,12 +1210,21 @@ Route::prefix('admin/reward-points')
     });
 
 // Admin Believe Points Management
+Route::prefix('admin/payments/manual')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.payments.manual.')
+    ->group(function () {
+        Route::get('/', [ManualPaymentVerificationController::class, 'index'])->name('index');
+        Route::post('/{paymentTransaction}/approve', [ManualPaymentVerificationController::class, 'approve'])->name('approve');
+        Route::post('/{paymentTransaction}/reject', [ManualPaymentVerificationController::class, 'reject'])->name('reject');
+    });
+
 Route::prefix('admin/believe-points')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.believe-points.')
     ->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\BelievePointController::class, 'index'])->name('index');
-        Route::put('/', [App\Http\Controllers\Admin\BelievePointController::class, 'update'])->name('update');
+        Route::match(['put', 'post'], '/', [App\Http\Controllers\Admin\BelievePointController::class, 'update'])->name('update');
     });
 
 // Fractional Ownership (Admin-only - Full CRUD)
@@ -2307,6 +2322,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user|care
     Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
 });
 
+Route::post('/paypal/webhook', [PayPalWebhookController::class, 'handle'])->name('paypal.webhook');
+
 // route for donation
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
@@ -2314,12 +2331,19 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
     Route::get('/donations/complete-saved-payment/{donation}', [DonationController::class, 'completeSavedPayment'])->name('donations.complete-saved-payment');
+    Route::get('/donations/manual/{donation}/confirm', [DonationPaymentController::class, 'manualConfirm'])->name('donations.manual.confirm');
+    Route::post('/donations/manual/{donation}/confirm', [DonationPaymentController::class, 'manualConfirmSubmit'])->name('donations.manual.confirm.submit');
+    Route::get('/donations/paypal/{donation}/capture', [DonationPaymentController::class, 'paypalCapture'])->name('donations.paypal.capture');
 
     Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/checkout', [CareAllianceDonationController::class, 'checkout'])
         ->name('care-alliance.campaigns.checkout')
         ->where('campaign', '[a-zA-Z0-9][a-zA-Z0-9-]*');
     Route::get('/care-alliance/donations/success', [CareAllianceDonationController::class, 'success'])
         ->name('care-alliance.donations.success');
+});
+
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance'])->group(function () {
+    Route::redirect('/organization/payment-settings', '/settings/donation-payments', 301);
 });
 
 // Organization donations route

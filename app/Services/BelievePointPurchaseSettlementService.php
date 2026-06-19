@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\BelievePointPurchase;
+use App\Models\PaymentTransaction;
 use App\Models\Transaction;
+use App\Enums\PaymentTransactionType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -57,6 +59,132 @@ class BelievePointPurchaseSettlementService
                 'reward_points_awarded' => $rewardAwarded,
             ]);
 
+            $paymentTx = PaymentTransaction::create([
+                'user_id' => $purchase->user_id,
+                'transaction_type' => PaymentTransactionType::BelievePointsPurchase->value,
+                'payable_type' => BelievePointPurchase::class,
+                'payable_id' => $purchase->id,
+                'payment_method' => ($purchase->payment_rail ?? 'card') === 'bank' ? 'stripe_ach' : 'stripe_card',
+                'amount' => $purchase->amount,
+                'status' => PaymentTransaction::STATUS_COMPLETED,
+                'external_reference' => $paymentIntentId,
+                'completed_at' => now(),
+                'metadata' => ['believe_point_purchase_id' => $purchase->id],
+            ]);
+
+            return true;
+        });
+    }
+
+    public static function settleManualPurchase(
+        int $purchaseId,
+        string $externalReference,
+        string $paymentMethod,
+        ?int $verifiedByUserId = null,
+        ?string $adminNotes = null
+    ): bool {
+        return (bool) DB::transaction(function () use ($purchaseId, $externalReference, $paymentMethod, $verifiedByUserId, $adminNotes) {
+            /** @var BelievePointPurchase|null $purchase */
+            $purchase = BelievePointPurchase::lockForUpdate()->find($purchaseId);
+            if (! $purchase) {
+                return false;
+            }
+
+            if ($purchase->status === 'completed') {
+                return true;
+            }
+
+            if ($purchase->status !== 'pending') {
+                return false;
+            }
+
+            $user = $purchase->user;
+            if (! $user) {
+                return false;
+            }
+
+            $user->addBelievePoints((float) $purchase->points);
+
+            $purchase->update([
+                'status' => 'completed',
+                'payment_method' => $paymentMethod,
+            ]);
+
+            $paymentTx = PaymentTransaction::query()
+                ->where('payable_type', BelievePointPurchase::class)
+                ->where('payable_id', $purchase->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($paymentTx) {
+                $txUpdates = [
+                    'status' => PaymentTransaction::STATUS_COMPLETED,
+                    'payment_method' => $paymentMethod,
+                    'external_reference' => $externalReference,
+                    'completed_at' => now(),
+                ];
+                if ($verifiedByUserId) {
+                    $txUpdates['verified_by'] = $verifiedByUserId;
+                    $txUpdates['verified_at'] = now();
+                }
+                if ($adminNotes) {
+                    $txUpdates['admin_notes'] = $adminNotes;
+                }
+                $paymentTx->update($txUpdates);
+            } else {
+                $paymentTx = PaymentTransaction::create([
+                    'user_id' => $purchase->user_id,
+                    'transaction_type' => PaymentTransactionType::BelievePointsPurchase->value,
+                    'payable_type' => BelievePointPurchase::class,
+                    'payable_id' => $purchase->id,
+                    'payment_method' => $paymentMethod,
+                    'amount' => $purchase->amount,
+                    'status' => PaymentTransaction::STATUS_COMPLETED,
+                    'external_reference' => $externalReference,
+                    'completed_at' => now(),
+                    'verified_by' => $verifiedByUserId,
+                    'verified_at' => $verifiedByUserId ? now() : null,
+                    'admin_notes' => $adminNotes,
+                    'metadata' => ['believe_point_purchase_id' => $purchase->id],
+                ]);
+            }
+
+            Log::info('Believe Points manual purchase settled', [
+                'purchase_id' => $purchase->id,
+                'user_id' => $purchase->user_id,
+                'payment_method' => $paymentMethod,
+            ]);
+
+            return true;
+        });
+    }
+
+    public static function rejectManualPurchase(
+        BelievePointPurchase $purchase,
+        int $adminUserId,
+        ?string $adminNotes = null
+    ): bool {
+        return (bool) DB::transaction(function () use ($purchase, $adminUserId, $adminNotes) {
+            $purchase = BelievePointPurchase::lockForUpdate()->find($purchase->id);
+            if (! $purchase || $purchase->status !== 'pending') {
+                return false;
+            }
+
+            $purchase->update([
+                'status' => 'failed',
+                'failure_message' => $adminNotes ?? 'Payment rejected by admin.',
+            ]);
+
+            PaymentTransaction::query()
+                ->where('payable_type', BelievePointPurchase::class)
+                ->where('payable_id', $purchase->id)
+                ->update([
+                    'status' => PaymentTransaction::STATUS_REJECTED,
+                    'verified_by' => $adminUserId,
+                    'verified_at' => now(),
+                    'admin_notes' => $adminNotes,
+                ]);
+
             return true;
         });
     }
@@ -83,7 +211,8 @@ class BelievePointPurchaseSettlementService
         $gross = $purchase->checkout_total !== null ? (float) $purchase->checkout_total : (float) $purchase->amount;
         $feeEst = $purchase->processing_fee_estimate !== null ? (float) $purchase->processing_fee_estimate : 0.0;
         $rail = $purchase->payment_rail ?? 'card';
-        $paymentMethod = $rail === 'bank' ? 'stripe_ach' : 'stripe_card';
+        $paymentMethod = $purchase->payment_method
+            ?? ($rail === 'bank' ? 'stripe_ach' : 'stripe_card');
 
         $status = match ($purchase->status) {
             'completed' => Transaction::STATUS_COMPLETED,

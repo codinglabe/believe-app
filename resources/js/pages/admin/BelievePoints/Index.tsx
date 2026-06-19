@@ -9,13 +9,41 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/admin/ui/switch"
-import { Coins, Save, AlertCircle, CheckCircle2, DollarSign, TrendingUp, Users, History } from "lucide-react"
+import { Coins, Save, AlertCircle, CheckCircle2, DollarSign, TrendingUp, Users, History, CreditCard, Landmark, Smartphone, Wallet, Upload } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+type PaymentBoolKey =
+  | "stripe_card_enabled"
+  | "stripe_ach_enabled"
+  | "stripe_venmo_enabled"
+  | "venmo_manual_enabled"
+  | "stripe_cash_app_pay_enabled"
+  | "paypal_enabled"
+  | "cashapp_manual_enabled"
+  | "zelle_enabled"
+
+interface PaymentSettings {
+  stripe_card_enabled: boolean
+  stripe_ach_enabled: boolean
+  stripe_venmo_enabled: boolean
+  venmo_manual_enabled: boolean
+  venmo_username: string | null
+  stripe_cash_app_pay_enabled: boolean
+  paypal_enabled: boolean
+  cashapp_manual_enabled: boolean
+  zelle_enabled: boolean
+  cashapp_cashtag: string | null
+  cashapp_qr_image_url: string | null
+  zelle_email: string | null
+  zelle_phone: string | null
+  payment_instructions: string | null
+}
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
@@ -47,18 +75,37 @@ interface PageProps {
     total_points_issued: number
   }
   recentPurchases: Purchase[]
+  paymentSettings: PaymentSettings
+  platform: {
+    stripe_configured: boolean
+    paypal_configured: boolean
+  }
   flash?: {
     success?: string
     error?: string
   }
 }
 
-export default function AdminBelievePointsIndex({ settings, statistics, recentPurchases }: PageProps) {
+export default function AdminBelievePointsIndex({ settings, statistics, recentPurchases, paymentSettings, platform }: PageProps) {
   const { flash } = usePage().props as any
   const [formData, setFormData] = useState({
     enabled: settings.enabled,
     min_purchase_amount: settings.min_purchase_amount.toString(),
     max_purchase_amount: settings.max_purchase_amount.toString(),
+    stripe_card_enabled: paymentSettings.stripe_card_enabled,
+    stripe_ach_enabled: paymentSettings.stripe_ach_enabled,
+    stripe_venmo_enabled: paymentSettings.stripe_venmo_enabled,
+    venmo_manual_enabled: paymentSettings.venmo_manual_enabled,
+    venmo_username: paymentSettings.venmo_username ?? "",
+    stripe_cash_app_pay_enabled: paymentSettings.stripe_cash_app_pay_enabled,
+    paypal_enabled: paymentSettings.paypal_enabled,
+    cashapp_manual_enabled: paymentSettings.cashapp_manual_enabled,
+    zelle_enabled: paymentSettings.zelle_enabled,
+    cashapp_cashtag: paymentSettings.cashapp_cashtag ?? "",
+    zelle_email: paymentSettings.zelle_email ?? "",
+    zelle_phone: paymentSettings.zelle_phone ?? "",
+    payment_instructions: paymentSettings.payment_instructions ?? "",
+    cashapp_qr_image: null as File | null,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -107,6 +154,25 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
       newErrors.max_purchase_amount = "Maximum purchase amount must be greater than minimum"
     }
 
+    if (formData.venmo_manual_enabled && !formData.venmo_username.trim()) {
+      newErrors.venmo_username = "Venmo username is required when Venmo (Manual) is enabled"
+    }
+    if (formData.zelle_enabled) {
+      if (!formData.zelle_email.trim()) {
+        newErrors.zelle_email = "Zelle email is required when Zelle is enabled"
+      }
+      if (!formData.zelle_phone.trim()) {
+        newErrors.zelle_phone = "Zelle phone is required when Zelle is enabled"
+      }
+    }
+    if (formData.cashapp_manual_enabled) {
+      const hasCashtag = formData.cashapp_cashtag.trim().length > 0
+      const hasQr = Boolean(formData.cashapp_qr_image) || Boolean(paymentSettings.cashapp_qr_image_url)
+      if (!hasCashtag && !hasQr) {
+        newErrors.cashapp_cashtag = "Cash App cashtag or QR code is required when Cash App (Manual) is enabled"
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -121,14 +187,30 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
 
     setIsSubmitting(true)
 
-    router.put(
+    router.post(
       route("admin.believe-points.update"),
       {
+        _method: "put",
         enabled: formData.enabled,
         min_purchase_amount: parseFloat(formData.min_purchase_amount),
         max_purchase_amount: parseFloat(formData.max_purchase_amount),
+        stripe_card_enabled: formData.stripe_card_enabled,
+        stripe_ach_enabled: formData.stripe_ach_enabled,
+        stripe_venmo_enabled: formData.stripe_venmo_enabled,
+        venmo_manual_enabled: formData.venmo_manual_enabled,
+        venmo_username: formData.venmo_username,
+        stripe_cash_app_pay_enabled: formData.stripe_cash_app_pay_enabled,
+        paypal_enabled: formData.paypal_enabled,
+        cashapp_manual_enabled: formData.cashapp_manual_enabled,
+        zelle_enabled: formData.zelle_enabled,
+        cashapp_cashtag: formData.cashapp_cashtag,
+        zelle_email: formData.zelle_email,
+        zelle_phone: formData.zelle_phone,
+        payment_instructions: formData.payment_instructions,
+        ...(formData.cashapp_qr_image ? { cashapp_qr_image: formData.cashapp_qr_image } : {}),
       },
       {
+        forceFormData: true,
         onSuccess: () => {
           showSuccessToast("Believe Points settings updated successfully")
           setIsSubmitting(false)
@@ -328,6 +410,150 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
 
               <Separator />
 
+              {/* Payment Methods */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold">Purchase Payment Methods</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Choose which payment options supporters and organizations can use when buying Believe Points — same model as organization donation payments.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {([
+                    { key: "stripe_card_enabled" as PaymentBoolKey, label: "Credit & Debit Card", icon: CreditCard, needsStripe: true },
+                    { key: "stripe_ach_enabled" as PaymentBoolKey, label: "Bank Transfer (ACH)", icon: Landmark, needsStripe: true },
+                    { key: "stripe_venmo_enabled" as PaymentBoolKey, label: "Venmo (Stripe)", icon: Smartphone, needsStripe: true },
+                    { key: "stripe_cash_app_pay_enabled" as PaymentBoolKey, label: "Cash App Pay", icon: Smartphone, needsStripe: true },
+                    { key: "paypal_enabled" as PaymentBoolKey, label: "PayPal", icon: Wallet, needsPaypal: true },
+                    { key: "venmo_manual_enabled" as PaymentBoolKey, label: "Venmo (Manual)", icon: Smartphone },
+                    { key: "cashapp_manual_enabled" as PaymentBoolKey, label: "Cash App (Manual)", icon: Smartphone },
+                    { key: "zelle_enabled" as PaymentBoolKey, label: "Zelle (Manual)", icon: Landmark },
+                  ]).map(({ key, label, icon: Icon, needsStripe, needsPaypal }) => {
+                    const blocked = (needsStripe && !platform.stripe_configured) || (needsPaypal && !platform.paypal_configured)
+                    return (
+                      <div key={key} className={cn("flex items-center justify-between p-3 border rounded-lg", blocked && "opacity-60")}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="text-sm font-medium truncate">{label}</span>
+                        </div>
+                        <Switch
+                          checked={formData[key] && !blocked}
+                          disabled={blocked || isSubmitting}
+                          onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, [key]: checked }))}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {(formData.cashapp_manual_enabled || formData.zelle_enabled || formData.venmo_manual_enabled) && (
+                  <div className="space-y-4 rounded-lg border border-dashed p-4">
+                    {formData.venmo_manual_enabled && (
+                      <div>
+                        <Label htmlFor="venmo_username">Venmo username <span className="text-red-500">*</span></Label>
+                        <Input
+                          id="venmo_username"
+                          className={cn("mt-1 max-w-md", errors.venmo_username && "border-red-500")}
+                          placeholder="@BelieveInUnity"
+                          value={formData.venmo_username}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, venmo_username: e.target.value }))}
+                          disabled={isSubmitting}
+                        />
+                        {errors.venmo_username && (
+                          <p className="mt-1 text-sm text-red-600">{errors.venmo_username}</p>
+                        )}
+                      </div>
+                    )}
+                    {formData.cashapp_manual_enabled && (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor="cashtag">Cash App cashtag <span className="text-muted-foreground text-xs">(or QR →)</span></Label>
+                          <Input
+                            id="cashtag"
+                            className={cn("mt-1", errors.cashapp_cashtag && "border-red-500")}
+                            placeholder="$BelieveInUnity"
+                            value={formData.cashapp_cashtag}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, cashapp_cashtag: e.target.value }))}
+                            disabled={isSubmitting}
+                          />
+                          {errors.cashapp_cashtag && (
+                            <p className="mt-1 text-sm text-red-600">{errors.cashapp_cashtag}</p>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor="cashapp_qr">QR code image <span className="text-muted-foreground text-xs">(or cashtag ←)</span></Label>
+                          <div className="mt-1 flex items-center gap-3">
+                            {paymentSettings.cashapp_qr_image_url && (
+                              <img src={paymentSettings.cashapp_qr_image_url} alt="Cash App QR" className="h-14 w-14 rounded border object-cover" />
+                            )}
+                            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+                              <Upload className="h-4 w-4" />
+                              Upload QR
+                              <input
+                                id="cashapp_qr"
+                                type="file"
+                                accept="image/*"
+                                className="sr-only"
+                                onChange={(e) => setFormData((prev) => ({ ...prev, cashapp_qr_image: e.target.files?.[0] ?? null }))}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {formData.zelle_enabled && (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor="zelle_email">Zelle email <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="zelle_email"
+                            type="email"
+                            className={cn("mt-1", errors.zelle_email && "border-red-500")}
+                            value={formData.zelle_email}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, zelle_email: e.target.value }))}
+                            disabled={isSubmitting}
+                          />
+                          {errors.zelle_email && (
+                            <p className="mt-1 text-sm text-red-600">{errors.zelle_email}</p>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor="zelle_phone">Zelle phone <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="zelle_phone"
+                            className={cn("mt-1", errors.zelle_phone && "border-red-500")}
+                            value={formData.zelle_phone}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, zelle_phone: e.target.value }))}
+                            disabled={isSubmitting}
+                          />
+                          {errors.zelle_phone && (
+                            <p className="mt-1 text-sm text-red-600">{errors.zelle_phone}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <Label htmlFor="payment_instructions">Instructions for buyers (optional)</Label>
+                      <Textarea
+                        id="payment_instructions"
+                        className="mt-1"
+                        rows={3}
+                        placeholder="Include memo text or special instructions…"
+                        value={formData.payment_instructions}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, payment_instructions: e.target.value }))}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Manual methods require admin verification before points are credited. Review pending payments under Admin → Manual Payment Verification.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
               {/* Information Section */}
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
@@ -335,7 +561,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                 </h3>
                 <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
                   <li>1 Believe Point = $1 USD (1:1 ratio)</li>
-                  <li>Users can purchase Believe Points through Stripe payment gateway</li>
+                  <li>Users can purchase Believe Points through enabled payment methods (Stripe, PayPal, Venmo, Cash App, Zelle)</li>
                   <li>Points are added to user accounts immediately after successful payment</li>
                   <li>Both supporters and organizations can purchase Believe Points</li>
                   <li>Purchase history is tracked for all transactions</li>

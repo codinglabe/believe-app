@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CareAlliance;
 use App\Models\Donation;
 use App\Models\Organization;
+use App\Models\PaymentTransaction;
 use App\Models\User;
 use App\Services\CareAlliancePublicPageService;
 use App\Services\BelievePointsPaymentMethodSyncService;
@@ -20,6 +21,8 @@ use App\Services\SupporterPrimaryOrganizationService;
 use App\Services\StripeConfigService;
 use App\Services\StripeConnectOrganizationService;
 use App\Services\StripeEnvironmentSyncService;
+use App\Services\Payments\OrganizationPaymentMethodResolver;
+use App\Services\Payments\PaymentOrchestratorService;
 use App\Services\StripeProcessingFeeEstimator;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
@@ -409,6 +412,8 @@ class DonationController extends Controller
             }
         }
 
+        $orgPaymentMethods = $this->resolveDonatePagePaymentMethods($request);
+
         return Inertia::render('frontend/donate', [
             'seo' => SeoService::forPage('donate'),
             'organizations' => $organizations->values(),
@@ -427,7 +432,44 @@ class DonationController extends Controller
             'feePreviewCheckoutTotalsByRail' => $feePreviewCheckoutTotalsByRail,
             'organizationFilterLock' => $primaryOrgService->listingFilterLockState($request, 'organization_id'),
             'primaryOrganizationLocked' => $user ? (bool) $user->primary_organization_locked : false,
+            'rewardPointsAmount' => PaymentTransaction::REWARD_POINTS_AMOUNT,
+            'orgPaymentMethods' => $orgPaymentMethods,
+            'defaultPaymentMethods' => [
+                'stripe_card' => false,
+                'stripe_ach' => false,
+                'venmo' => false,
+                'venmo_manual' => false,
+                'cash_app_pay' => false,
+                'paypal' => false,
+                'cashapp' => false,
+                'zelle' => false,
+                'believe_points' => true,
+            ],
         ]);
+    }
+
+    /**
+     * Payment methods available on /donate for the selected organization.
+     *
+     * @return array<string, bool>|null
+     */
+    private function resolveDonatePagePaymentMethods(Request $request): ?array
+    {
+        $orgId = $request->integer('organization_id');
+        if ($orgId <= 0) {
+            return null;
+        }
+
+        $organization = Organization::query()
+            ->where('id', $orgId)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (! $organization) {
+            return null;
+        }
+
+        return OrganizationPaymentMethodResolver::availableMethodsForOrganization($organization);
     }
 
     /**
@@ -593,7 +635,7 @@ class DonationController extends Controller
             'amount' => 'required|numeric|min:1',
             'frequency' => 'required|in:one-time,weekly,monthly',
             'message' => 'nullable|string|max:500',
-            'payment_method' => 'nullable|string|in:stripe,believe_points',
+            'payment_method' => 'nullable|string|in:stripe,stripe_card,stripe_ach,paypal,cashapp,zelle,venmo,venmo_manual,cash_app_pay,believe_points',
             'donor_covers_processing_fees' => 'sometimes|boolean',
             'donation_fee_rail' => 'nullable|in:card,bank',
             'saved_payment_method_id' => ['nullable', 'string', 'max:255'],
@@ -601,14 +643,19 @@ class DonationController extends Controller
 
         $user = $request->user();
         $paymentMethod = $validated['payment_method'] ?? 'stripe';
+        $feeRailEarly = $validated['donation_fee_rail'] ?? 'card';
+        if ($paymentMethod === 'stripe') {
+            $paymentMethod = $feeRailEarly === 'bank' ? 'stripe_ach' : 'stripe_card';
+        }
         $baseGiftUsd = (float) $validated['amount'];
-        $donorCoversFees = $paymentMethod === 'stripe' && $request->boolean('donor_covers_processing_fees');
+        $isStripeFamily = in_array($paymentMethod, ['stripe', 'stripe_card', 'stripe_ach', 'venmo', 'cash_app_pay'], true);
+        $donorCoversFees = $isStripeFamily && $request->boolean('donor_covers_processing_fees');
         $feeRail = $validated['donation_fee_rail'] ?? 'card';
         $feeRail = in_array($feeRail, ['card', 'bank'], true) ? $feeRail : 'card';
 
         $checkoutTotalUsd = $baseGiftUsd;
         $processingFeeEstimate = null;
-        if ($paymentMethod === 'stripe') {
+        if ($isStripeFamily) {
             if ($donorCoversFees) {
                 if ($feeRail === 'bank') {
                     $checkoutTotalUsd = DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($baseGiftUsd);
@@ -625,7 +672,7 @@ class DonationController extends Controller
             }
         }
 
-        if ($paymentMethod === 'stripe' && ! $donorCoversFees && StripeProcessingFeeEstimator::customerPaysProcessingFeeEnabled()) {
+        if ($isStripeFamily && ! $donorCoversFees && StripeProcessingFeeEstimator::customerPaysProcessingFeeEnabled()) {
             $rail = $feeRail === 'bank' ? 'us_bank_account' : 'card';
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($baseGiftUsd, $rail);
         } else {
@@ -672,14 +719,14 @@ class DonationController extends Controller
         StripeConnectOrganizationService::syncAccountStatusFromStripe($organization);
         $organization->refresh();
 
-        $useStripeConnectCheckout = DonationStripeConnectRouting::shouldRouteThroughStripeConnect(
+        $useStripeConnectCheckout = $isStripeFamily && DonationStripeConnectRouting::shouldRouteThroughStripeConnect(
             $organization,
             $allianceForCheckout,
             $validated['frequency'],
-            $paymentMethod
+            'stripe_card'
         );
 
-        $eligiblePlainOrgConnect = $paymentMethod === 'stripe'
+        $eligiblePlainOrgConnect = $isStripeFamily
             && $validated['frequency'] === 'one-time'
             && ! ($allianceForCheckout !== null && $allianceForCheckout->financial_settings_completed_at);
 
@@ -709,9 +756,9 @@ class DonationController extends Controller
                 : null,
             'care_alliance_id' => $allianceForCheckout?->id,
             'amount' => $baseGiftUsd,
-            'donor_covers_processing_fees' => $paymentMethod === 'stripe' && $donorCoversFees,
+            'donor_covers_processing_fees' => $isStripeFamily && $donorCoversFees,
             'processing_fee_estimate' => $processingFeeEstimate,
-            'checkout_total' => $paymentMethod === 'stripe' ? round($checkoutTotalUsd, 2) : round($baseGiftUsd, 2),
+            'checkout_total' => $isStripeFamily ? round($checkoutTotalUsd, 2) : round($baseGiftUsd, 2),
             'frequency' => $validated['frequency'],
             'status' => 'pending',
             'payment_method' => $paymentMethod,
@@ -720,50 +767,60 @@ class DonationController extends Controller
             'message' => $validated['message'] ?? null,
         ]);
 
-        // Handle Believe Points payment
-        if ($paymentMethod === 'believe_points') {
+        $isOneTime = $validated['frequency'] === 'one-time';
+
+        if ($isOneTime && ! in_array($paymentMethod, ['stripe'], true)
+            && ! ($isStripeFamily && filled($validated['saved_payment_method_id'] ?? null))) {
             try {
-                \Illuminate\Support\Facades\DB::beginTransaction();
+                OrganizationPaymentMethodResolver::assertMethodAllowed($organization, $paymentMethod);
 
-                $pointsRequired = $validated['amount'];
-
-                // Deduct points
-                if (! $user->deductBelievePoints($pointsRequired)) {
-                    \Illuminate\Support\Facades\DB::rollBack();
-                    $donation->update(['status' => 'failed']);
-
-                    return redirect()->back()->withErrors([
-                        'payment_method' => 'Failed to deduct Believe Points. Please try again.',
-                    ]);
-                }
-
-                // Complete donation with Believe Points
-                $donation->update([
-                    'status' => 'completed',
-                    'transaction_id' => 'believe_points_donation_'.$donation->id,
+                return app(PaymentOrchestratorService::class)->initiateDonation(
+                    $user,
+                    $organization,
+                    $donation,
+                    $paymentMethod,
+                    [
+                        'donor_covers_processing_fees' => $donorCoversFees,
+                        'donation_fee_rail' => $feeRail,
+                        'alliance' => $allianceForCheckout,
+                        'stripe_metadata' => [
+                            'donation_id' => (string) $donation->id,
+                            'organization_id' => (string) $organization->id,
+                            'organization_name' => mb_substr((string) $organizationName, 0, 500),
+                            'donor_user_id' => (string) $user->id,
+                            'donor_name' => mb_substr((string) ($user->name ?? ''), 0, 500),
+                            'donor_email' => mb_substr((string) ($user->email ?? ''), 0, 500),
+                            'base_gift_amount' => (string) $baseGiftUsd,
+                            'donor_covers_processing_fees' => $donorCoversFees ? '1' : '0',
+                            'fee_rail' => $feeRail,
+                            'frequency' => (string) $validated['frequency'],
+                            'care_alliance_id' => $allianceForCheckout ? (string) $allianceForCheckout->id : null,
+                        ],
+                    ]
+                );
+            } catch (\Throwable $e) {
+                $donation->update(['status' => 'failed']);
+                Log::error('Donation payment orchestration failed', [
+                    'donation_id' => $donation->id,
+                    'payment_method' => $paymentMethod,
+                    'error' => $e->getMessage(),
                 ]);
 
-                $this->applyDonationToBalances($donation);
-
-                // Award impact points for completed donation
-                $this->impactScoreService->awardDonationPoints($donation);
-
-                \Illuminate\Support\Facades\DB::commit();
-
-                return redirect(route('donations.success').'?donation_id='.$donation->id)
-                    ->with('success', 'Donation completed successfully using Believe Points!');
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\DB::rollBack();
-                $donation->update(['status' => 'failed']);
-                Log::error('Believe Points donation failed: '.$e->getMessage());
-
                 return redirect()->back()->withErrors([
-                    'payment_method' => 'Failed to process donation: '.$e->getMessage(),
+                    'payment_method' => $e->getMessage() ?: 'Payment could not be started. Please try again.',
                 ]);
             }
         }
 
-        // Handle Stripe payment
+        if (! $isOneTime && ! $isStripeFamily) {
+            $donation->update(['status' => 'failed']);
+
+            return redirect()->back()->withErrors([
+                'payment_method' => 'Recurring donations are only available via card or bank (Stripe).',
+            ]);
+        }
+
+        // Handle Stripe payment (one-time legacy stripe_card/ach or recurring)
         try {
             // Stripe line item: alliance donations show only the Unity Impact Alliance name (no member list or payout copy).
             $checkoutLineTitle = $allianceForCheckout !== null
@@ -1467,21 +1524,70 @@ class DonationController extends Controller
      */
     public function organizationIndex(Request $request)
     {
-        $user = $request->user();
-        $organization = Organization::where('user_id', $user->id)->first();
+        $organization = Organization::forAuthUser($request->user());
 
         if (! $organization) {
             abort(404, 'Organization not found');
         }
 
-        $donations = Donation::where('organization_id', $organization->id)
-            ->with(['user:id,name,email'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $status = $request->input('status', 'all');
+        $allowedStatuses = ['all', 'pending', 'completed', 'active', 'rejected', 'canceled', 'failed'];
+        if (! in_array($status, $allowedStatuses, true)) {
+            $status = 'all';
+        }
+
+        $baseQuery = Donation::query()->where('organization_id', $organization->id);
+
+        $stats = [
+            'total_amount' => (float) (clone $baseQuery)
+                ->whereIn('status', ['completed', 'active'])
+                ->sum('amount'),
+            'total_count' => (clone $baseQuery)->count(),
+            'completed_count' => (clone $baseQuery)->where('status', 'completed')->count(),
+            'active_recurring_count' => (clone $baseQuery)
+                ->where('status', 'active')
+                ->where('frequency', '!=', 'one-time')
+                ->count(),
+            'pending_count' => (clone $baseQuery)->where('status', 'pending')->count(),
+            'rejected_count' => (clone $baseQuery)->where('status', 'rejected')->count(),
+        ];
+
+        $donationsQuery = (clone $baseQuery)->with(['user:id,name,email']);
+
+        if ($status !== 'all') {
+            $donationsQuery->where('status', $status);
+        }
+
+        $donations = $donationsQuery
+            ->orderByDesc('created_at')
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn (Donation $donation) => [
+                'id' => $donation->id,
+                'user_id' => $donation->user_id,
+                'organization_id' => $donation->organization_id,
+                'amount' => (float) $donation->amount,
+                'frequency' => $donation->frequency,
+                'payment_method' => $donation->payment_method,
+                'transaction_id' => $donation->transaction_id,
+                'status' => $donation->status,
+                'messages' => $donation->messages ?? $donation->message,
+                'created_at' => $donation->created_at?->toDateTimeString(),
+                'user' => $donation->user ? [
+                    'id' => $donation->user->id,
+                    'name' => $donation->user->name,
+                    'email' => $donation->user->email,
+                ] : null,
+            ]);
 
         return Inertia::render('Donations/Index', [
             'donations' => $donations,
-            'organization' => $organization,
+            'organization' => [
+                'id' => $organization->id,
+                'name' => $organization->name,
+            ],
+            'stats' => $stats,
+            'filters' => ['status' => $status],
         ]);
     }
 }

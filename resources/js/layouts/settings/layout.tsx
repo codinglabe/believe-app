@@ -19,6 +19,7 @@ import {
   Code2,
   Wallet,
   ClipboardList,
+  HandCoins,
 } from "lucide-react"
 import type { PropsWithChildren } from "react"
 
@@ -233,23 +234,51 @@ export default function SettingsLayout({
                       <span className="truncate">Referral Link</span>
                     </Link>
 
-                    {auth.user.role === "organization" && (
+                    {(auth.user.role === "organization" || auth.user.role === "care_alliance") && (
                       <>
                         <div className="px-3 py-2 mt-4 mb-2">
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Fundraising</h3>
                         </div>
                         <Link
-                          href="/settings/donate-widget"
+                          href={route("organization.payment-settings.edit")}
                           className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                            activeTab === "donate-widget"
+                            activeTab === "donation-payments"
                               ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
                               : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                           }`}
                         >
-                          <Code2 className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">Donation Widget</span>
+                          <HandCoins className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Donation Payments</span>
                         </Link>
+                        <Link
+                          href={route("organization.manual-payments.index")}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "manual-payments"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <ClipboardList className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Manual Payments</span>
+                        </Link>
+                        {auth.user.role === "organization" && (
+                          <Link
+                            href="/settings/donate-widget"
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                              activeTab === "donate-widget"
+                                ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            }`}
+                          >
+                            <Code2 className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">Donation Widget</span>
+                          </Link>
+                        )}
+                      </>
+                    )}
 
+                    {auth.user.role === "organization" && (
+                      <>
                         <div className="px-3 py-2 mt-4 mb-2">
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tax Exemptions</h3>
                         </div>
@@ -437,23 +466,51 @@ export default function SettingsLayout({
                       <span className="truncate">Referral Link</span>
                     </Link>
 
-                    {auth.user.role === "organization" && (
+                    {(auth.user.role === "organization" || auth.user.role === "care_alliance") && (
                       <>
                         <div className="px-3 py-2 mt-4 mb-2">
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Fundraising</h3>
                         </div>
                         <Link
-                          href="/settings/donate-widget"
+                          href={route("organization.payment-settings.edit")}
                           className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                            activeTab === "donate-widget"
+                            activeTab === "donation-payments"
                               ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
                               : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                           }`}
                         >
-                          <Code2 className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">Donation Widget</span>
+                          <HandCoins className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Donation Payments</span>
                         </Link>
+                        <Link
+                          href={route("organization.manual-payments.index")}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "manual-payments"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <ClipboardList className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Manual Payments</span>
+                        </Link>
+                        {auth.user.role === "organization" && (
+                          <Link
+                            href="/settings/donate-widget"
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                              activeTab === "donate-widget"
+                                ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            }`}
+                          >
+                            <Code2 className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">Donation Widget</span>
+                          </Link>
+                        )}
+                      </>
+                    )}
 
+                    {auth.user.role === "organization" && (
+                      <>
                         <div className="px-3 py-2 mt-4 mb-2">
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tax Exemptions</h3>
                         </div>

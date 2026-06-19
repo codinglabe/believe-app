@@ -18,6 +18,8 @@ class BelievePointPurchase extends Model
         'status',
         'source',
         'payment_rail',
+        'payment_method',
+        'receipt_image',
         'reward_points_awarded',
         'failure_code',
         'failure_message',
