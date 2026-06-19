@@ -171,6 +171,20 @@ class UnityCallController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function status(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
+    {
+        $this->authorizeCall($request, $call);
+
+        $payload = $calls->statusPayloadForUser($call, $request->user());
+        if ($payload === null) {
+            abort(403);
+        }
+
+        return response()->json([
+            'status' => $payload,
+        ]);
+    }
+
     public function pendingSignals(Request $request, UnityCall $call): JsonResponse
     {
         $this->authorizeCall($request, $call);

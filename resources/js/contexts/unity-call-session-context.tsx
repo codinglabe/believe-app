@@ -30,6 +30,7 @@ import {
   unityCallShowPath,
 } from "@/lib/unityCall"
 import {
+  dispatchUnityCallStatus,
   dispatchUnityCallTerminated,
   isUnityCallTerminated,
   subscribeUnityCallStatus,
@@ -37,6 +38,7 @@ import {
 } from "@/lib/unityCallEvents"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -133,7 +135,12 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   const handleSessionStatus = useCallback(
     (payload: UnityCallStatusEvent) => {
+      if (payload.reason === "incoming") {
+        return
+      }
+
       applyUnityCallStatus(payload)
+      dispatchUnityCallStatus(payload)
     },
     [applyUnityCallStatus],
   )
@@ -231,13 +238,31 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     }
 
     return subscribeUnityCallStatus((payload) => {
-      if (payload.call.id !== activeCallId) {
+      if (payload.call.id !== activeCallId || payload.reason === "incoming") {
         return
       }
 
       applyUnityCallStatus(payload)
     })
   }, [applyUnityCallStatus, session?.call.id])
+
+  const shouldPollCallStatus = Boolean(
+    session &&
+      !isUnityCallTerminated({
+        reason: session.call.status,
+        call: session.call,
+        caller: session.caller,
+        participants: session.participants,
+      }) &&
+      (session.call.status === "ringing" ||
+        (session.call.status === "accepted" && !webrtc.mediaConnected)),
+  )
+
+  useUnityCallStatusSync({
+    callId: session?.call.id ?? 0,
+    enabled: shouldPollCallStatus,
+    onStatus: applyUnityCallStatus,
+  })
 
   useEffect(() => {
     if (!session) {

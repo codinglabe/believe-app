@@ -168,6 +168,7 @@ class UnityCallNotifier
                 'type' => $call->type,
                 'chatRoomId' => $call->chat_room_id,
                 'chatRoomName' => $call->chatRoom?->name,
+                'chatRoomType' => $call->chatRoom?->type,
                 'isGroupCall' => $call->chatRoom?->type !== 'direct',
                 'joinUrl' => '/unity-call/'.$call->id,
                 'ringExpiresAt' => $call->ring_expires_at?->toIso8601String(),

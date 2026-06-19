@@ -124,7 +124,7 @@ class UnityCallService
             ]);
         }
 
-        return DB::transaction(function () use ($call, $user) {
+        $fresh = DB::transaction(function () use ($call, $user) {
             $call = UnityCall::query()->whereKey($call->id)->lockForUpdate()->firstOrFail();
             $participant = $this->ensureCalleeParticipant($call, $user);
             $participant = UnityCallParticipant::query()
@@ -173,30 +173,62 @@ class UnityCallService
                 $call->update($updates);
             }
 
-            $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
-            $caller = $call->caller;
-
-            $acceptedPayload = $this->notifier->payloadForUser(
-                $call->fresh(['participants.user', 'chatRoom']),
-                $caller,
-                'accepted',
-            );
-
-            foreach ($call->participants as $p) {
-                $this->notifier->broadcastStatus($p->user_id, $acceptedPayload);
-            }
-
-            $this->notifier->broadcastStatus($call->caller_id, $acceptedPayload);
-
-            $freshCall = $call->fresh(['participants.user', 'chatRoom']);
-            $this->notifier->broadcastSessionStatus($freshCall, $caller, 'accepted');
-            $this->notifier->broadcastRoomStatus($freshCall, $caller, 'accepted');
-
-            $fresh = $call->fresh(['participants.user', 'chatRoom', 'caller']);
-            $this->syncChatCallMessage($fresh);
-
-            return $fresh;
+            return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
+
+        if ($fresh->status === UnityCall::STATUS_ACCEPTED) {
+            $this->broadcastAcceptedCall($fresh);
+        }
+
+        $this->syncChatCallMessage($fresh);
+
+        return $fresh;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function statusPayloadForUser(UnityCall $call, User $user): ?array
+    {
+        if (! $this->userCanAccess($call, $user)) {
+            return null;
+        }
+
+        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+        $caller = $call->caller;
+        if (! $caller) {
+            return null;
+        }
+
+        $reason = match ($call->status) {
+            UnityCall::STATUS_RINGING => 'ringing',
+            UnityCall::STATUS_ACCEPTED => 'accepted',
+            UnityCall::STATUS_CANCELLED => 'cancelled',
+            UnityCall::STATUS_DECLINED => 'declined',
+            UnityCall::STATUS_MISSED => 'missed',
+            default => 'ended',
+        };
+
+        return $this->notifier->payloadForUser($call, $caller, $reason);
+    }
+
+    private function broadcastAcceptedCall(UnityCall $call): void
+    {
+        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
+        $caller = $call->caller;
+        if (! $caller) {
+            return;
+        }
+
+        $acceptedPayload = $this->notifier->payloadForUser($call, $caller, 'accepted');
+
+        foreach ($call->participants as $participant) {
+            $this->notifier->broadcastStatus($participant->user_id, $acceptedPayload);
+        }
+
+        $this->notifier->broadcastStatus($call->caller_id, $acceptedPayload);
+        $this->notifier->broadcastSessionStatus($call, $caller, 'accepted');
+        $this->notifier->broadcastRoomStatus($call, $caller, 'accepted');
     }
 
     public function decline(UnityCall $call, User $user): UnityCall
