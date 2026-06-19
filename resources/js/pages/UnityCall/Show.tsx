@@ -116,19 +116,33 @@ export default function UnityCallShow({
     return new URLSearchParams(window.location.search).get("ring") === "1"
   }, [])
 
+  const activeCall = useMemo(() => {
+    if (liveSession?.call.id !== call.id) {
+      return call
+    }
+    return { ...call, ...liveSession.call }
+  }, [call, liveSession])
+
+  const activeParticipants = useMemo(() => {
+    if (liveSession?.call.id !== call.id) {
+      return participants
+    }
+    return mergeCallParticipants(participants, liveSession.participants)
+  }, [call.id, liveSession, participants])
+
   const selfStatus = useMemo(
-    () => participants.find((p) => p.userId === authUserId)?.status ?? participantStatus,
-    [participants, authUserId, participantStatus],
+    () => activeParticipants.find((p) => p.userId === authUserId)?.status ?? participantStatus,
+    [activeParticipants, authUserId, participantStatus],
   )
 
   const { acceptedCallees, callLive, callConnected } = useMemo(
-    () => computeUnityCallMediaState(call, participants, authUserId, isCaller, participantStatus),
-    [call, participants, authUserId, isCaller, participantStatus],
+    () => computeUnityCallMediaState(activeCall, activeParticipants, authUserId, isCaller, selfStatus),
+    [activeCall, activeParticipants, authUserId, isCaller, selfStatus],
   )
 
   const ringingCallees = useMemo(
-    () => participants.filter((p) => p.role === "callee" && p.status === "ringing"),
-    [participants],
+    () => activeParticipants.filter((p) => p.role === "callee" && p.status === "ringing"),
+    [activeParticipants],
   )
 
   const calleeIncomingVisible = useMemo(
@@ -137,67 +151,75 @@ export default function UnityCallShow({
     [ringingCallees],
   )
 
-  useEffect(() => {
-    const isPendingIncomingCallee =
-      !isCaller && selfStatus === "ringing" && call.status === "ringing"
+  const sessionRegisteredRef = useRef<number | null>(null)
+  const calleeWasRingingRef = useRef(false)
 
+  const isPendingIncomingCallee =
+    !isCaller && selfStatus === "ringing" && activeCall.status === "ringing"
+
+  useEffect(() => {
     if (isPendingIncomingCallee) {
+      calleeWasRingingRef.current = true
       return
     }
 
+    const calleeJustAccepted =
+      !isCaller && calleeWasRingingRef.current && selfStatus === "accepted"
+    if (calleeJustAccepted) {
+      calleeWasRingingRef.current = false
+    }
+
+    const needsFullRegister =
+      sessionRegisteredRef.current !== call.id || calleeJustAccepted
+
+    if (!needsFullRegister) {
+      updateSession({ call: activeCall, participantStatus: selfStatus })
+      return
+    }
+
+    sessionRegisteredRef.current = call.id
     registerSession({
-      call,
+      call: activeCall,
       caller,
-      participants,
+      participants: activeParticipants,
       isCaller,
       isGroupCall,
-      participantStatus,
+      participantStatus: selfStatus,
       iceServers,
       authUserId,
     })
   }, [
+    activeCall,
+    activeParticipants,
     authUserId,
-    call,
+    call.id,
     caller,
     iceServers,
     isCaller,
     isGroupCall,
-    participantStatus,
-    participants,
+    isPendingIncomingCallee,
     registerSession,
     selfStatus,
+    updateSession,
   ])
-
-  useEffect(() => {
-    const isPendingIncomingCallee =
-      !isCaller && selfStatus === "ringing" && call.status === "ringing"
-
-    if (isPendingIncomingCallee) {
-      return
-    }
-
-    updateSession({ call, participants, participantStatus })
-  }, [call, participants, participantStatus, selfStatus, isCaller, updateSession])
 
   useEffect(() => {
     if (!liveSession || liveSession.call.id !== call.id) {
       return
     }
 
-    const shouldSyncParticipants = liveSession.participants.some((sessionRow) => {
-      const localRow = participants.find((participant) => participant.userId === sessionRow.userId)
-      return (
-        !localRow ||
-        localRow.status !== sessionRow.status ||
-        localRow.incomingDelivered !== sessionRow.incomingDelivered
-      )
+    const mergedParticipants = mergeCallParticipants(participants, liveSession.participants)
+    const mergedCall = { ...call, ...liveSession.call }
+    const participantsChanged = mergedParticipants.some((row) => {
+      const localRow = participants.find((participant) => participant.userId === row.userId)
+      return !localRow || localRow.status !== row.status || localRow.incomingDelivered !== row.incomingDelivered
     })
 
-    if (liveSession.call.status !== call.status || shouldSyncParticipants) {
-      setCall((current) => ({ ...current, ...liveSession.call }))
-      setParticipants(liveSession.participants)
+    if (mergedCall.status !== call.status || participantsChanged) {
+      setCall(mergedCall)
+      setParticipants(mergedParticipants)
     }
-  }, [call.id, call.status, liveSession, participants])
+  }, [call, liveSession, participants])
 
   useEffect(() => {
     refreshEchoAuthHeaders()
@@ -215,15 +237,15 @@ export default function UnityCallShow({
 
   const leftParticipants = useMemo(
     () =>
-      participants.filter((p) =>
+      activeParticipants.filter((p) =>
         ["left", "declined", "missed"].includes(p.status),
       ),
-    [participants],
+    [activeParticipants],
   )
 
   const otherParty = useMemo(
-    () => participants.find((p) => p.userId !== authUserId) ?? null,
-    [participants, authUserId],
+    () => activeParticipants.find((p) => p.userId !== authUserId) ?? null,
+    [activeParticipants, authUserId],
   )
 
   const callTimerAnchor = useMemo(() => {
@@ -306,14 +328,14 @@ export default function UnityCallShow({
 
   const displayName = useMemo(() => {
     if (isGroupCall) {
-      return call.chatRoomName?.trim() || "Group call"
+      return activeCall.chatRoomName?.trim() || "Group call"
     }
     if (isCaller) {
-      const callee = participants.find((p) => p.role === "callee")
+      const callee = activeParticipants.find((p) => p.role === "callee")
       return callee?.name ?? caller.name
     }
     return caller.name
-  }, [isGroupCall, isCaller, call.chatRoomName, participants, caller.name])
+  }, [isGroupCall, isCaller, activeCall.chatRoomName, activeParticipants, caller.name])
 
   const groupCallerLine = useMemo(() => {
     if (!isGroupCall) {
@@ -333,16 +355,16 @@ export default function UnityCallShow({
       return caller.avatar
     }
     if (isCaller) {
-      const callee = participants.find((p) => p.role === "callee")
+      const callee = activeParticipants.find((p) => p.role === "callee")
       return callee?.avatar ?? caller.avatar
     }
     return caller.avatar
-  }, [isGroupCall, isCaller, participants, caller.avatar])
+  }, [isGroupCall, isCaller, activeParticipants, caller.avatar])
 
   const isRingingCallee =
     !isCaller &&
     selfStatus === "ringing" &&
-    (call.status === "ringing" || call.status === "accepted")
+    (activeCall.status === "ringing" || activeCall.status === "accepted")
 
   const statusLabel = useMemo(() => {
     if (ending || isTerminalCallStatus) {
@@ -356,10 +378,16 @@ export default function UnityCallShow({
     }
     if (isCaller) {
       if (acceptedCallees.length > 0) {
+        if (callConnected && mediaConnected) {
+          return formatElapsed(elapsed)
+        }
+        if (callConnected) {
+          return "Connecting…"
+        }
         const ringing = ringingCallees.length
-        return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : `${acceptedCallees.length} joined`
+        return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : "Connecting…"
       }
-      if (ringingCallees.length > 0 || call.status === "ringing") {
+      if (ringingCallees.length > 0 || activeCall.status === "ringing") {
         return calleeIncomingVisible ? "Ringing" : "Calling…"
       }
       return "Calling…"
@@ -408,7 +436,7 @@ export default function UnityCallShow({
     if (isCaller && calleeIncomingVisible) {
       return "Ringing on their device"
     }
-    if (isCaller && call.status === "ringing") {
+    if (isCaller && activeCall.status === "ringing") {
       return "Calling…"
     }
     if (callConnected) {
@@ -436,7 +464,8 @@ export default function UnityCallShow({
     !isRingingCallee &&
     Boolean(localStream) &&
     permissionStatus === "granted" &&
-    !["ended", "cancelled", "declined", "missed"].includes(call.status)
+    !["ended", "cancelled", "declined", "missed"].includes(activeCall.status) &&
+    (isCaller ? acceptedCallees.length > 0 || activeCall.status === "accepted" : callConnected)
 
   const unlockRemotePlayback = useCallback(() => {
     document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
@@ -689,18 +718,18 @@ export default function UnityCallShow({
     }
     if (
       acceptedCallees.length > 0 ||
-      call.status === "accepted" ||
+      activeCall.status === "accepted" ||
       selfStatus === "accepted"
     ) {
       return "connecting" as const
     }
-    if (call.status === "ringing") {
+    if (activeCall.status === "ringing") {
       return "ringing" as const
     }
     return "connecting" as const
   }, [
     acceptedCallees.length,
-    call.status,
+    activeCall.status,
     callConnected,
     ending,
     isRingingCallee,
@@ -731,7 +760,7 @@ export default function UnityCallShow({
         isGroupCall={isGroupCall}
         groupCallerLine={groupCallerLine}
         isCaller={isCaller}
-        callStatus={call.status}
+        callStatus={activeCall.status}
         showMinimize={Boolean(callLive && callConnected && !ending)}
         onMinimize={() => minimizeToChat()}
         showMediaControls={showMediaControls}
@@ -766,7 +795,7 @@ export default function UnityCallShow({
         connectionStatus={connectionStatus}
         acceptedCallees={acceptedCallees}
         leftParticipants={leftParticipants}
-        showCallerParticipantLists={isCaller && (call.status === "ringing" || call.status === "accepted")}
+        showCallerParticipantLists={isCaller && isGroupCall && (activeCall.status === "ringing" || activeCall.status === "accepted")}
         otherParty={otherParty}
         mediaConnected={mediaConnected}
       />

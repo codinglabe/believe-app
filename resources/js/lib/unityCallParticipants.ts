@@ -1,5 +1,25 @@
 import type { UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
 
+const PARTICIPANT_STATUS_RANK: Record<string, number> = {
+  accepted: 50,
+  ringing: 40,
+  left: 30,
+  declined: 20,
+  missed: 10,
+}
+
+function pickParticipantStatus(current?: string, incoming?: string): string {
+  const left = current ?? ""
+  const right = incoming ?? ""
+  if (!left) {
+    return right
+  }
+  if (!right) {
+    return left
+  }
+  return (PARTICIPANT_STATUS_RANK[left] ?? 0) >= (PARTICIPANT_STATUS_RANK[right] ?? 0) ? left : right
+}
+
 export function mergeCallParticipants(
   previous: UnityCallParticipantRow[],
   incoming: UnityCallParticipantRow[],
@@ -8,6 +28,7 @@ export function mergeCallParticipants(
   for (const row of incoming) {
     const prev = map.get(row.userId)
     const merged = { ...(prev ?? row), ...row }
+    merged.status = pickParticipantStatus(prev?.status, row.status)
     if (prev?.incomingDelivered || row.incomingDelivered) {
       merged.incomingDelivered = true
     }

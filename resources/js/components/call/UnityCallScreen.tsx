@@ -299,22 +299,6 @@ export function UnityCallScreen({
               </div>
             ) : null}
 
-            {!isGroupCall && !isCaller && !isRingingCallee && otherParty && callStatus !== "ended" ? (
-              <div className="mt-8 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">With</p>
-                <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate font-medium">{otherParty.name}</span>
-                  <span className="shrink-0 text-xs capitalize text-emerald-300">
-                    {otherParty.status === "accepted"
-                      ? mediaConnected
-                        ? "Connected"
-                        : connectionStatus
-                      : otherParty.status}
-                  </span>
-                </div>
-              </div>
-            ) : null}
-
             {permissionDenied ? (
               <div className="mt-8 w-full max-w-sm rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-center backdrop-blur-md">
                 <p className="text-sm text-amber-100">Microphone access is required for this call.</p>

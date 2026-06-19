@@ -234,12 +234,35 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
       if (previous && previous.call.id !== snapshot.call.id) {
         stopMediaRef.current()
       }
-      return previous?.call.id === snapshot.call.id ? { ...previous, ...snapshot } : snapshot
+      if (previous?.call.id === snapshot.call.id) {
+        return {
+          ...previous,
+          ...snapshot,
+          call: { ...previous.call, ...snapshot.call },
+          participants: mergeCallParticipants(previous.participants, snapshot.participants),
+        }
+      }
+      return snapshot
     })
   }, [])
 
   const updateSession = useCallback((patch: Partial<UnityCallSessionSnapshot>) => {
-    setSession((previous) => (previous ? { ...previous, ...patch } : previous))
+    setSession((previous) => {
+      if (!previous) {
+        return previous
+      }
+
+      const next: UnityCallSessionSnapshot = {
+        ...previous,
+        ...patch,
+        call: patch.call ? { ...previous.call, ...patch.call } : previous.call,
+        participants: patch.participants
+          ? mergeCallParticipants(previous.participants, patch.participants)
+          : previous.participants,
+      }
+
+      return next
+    })
   }, [])
 
   const clearSession = useCallback((options?: { stopMedia?: boolean }) => {
