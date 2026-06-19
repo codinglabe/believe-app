@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Head } from "@inertiajs/react"
-import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, ChevronDown } from "lucide-react"
 import toast from "react-hot-toast"
-import { Button } from "@/components/ui/button"
-import { PhoneCallAvatar } from "@/components/call/PhoneCallAvatar"
+import { UnityCallScreen } from "@/components/call/UnityCallScreen"
 import {
   acceptUnityCall,
   isLeavingUnityCall,
@@ -13,6 +11,7 @@ import {
   clearUnityCallLiveOnPage,
   clearUnityCallSessionActive,
   navigateAfterUnityCall,
+  notifyCalleeIncomingDelivered,
   terminateUnityCall,
   unityCallChatChannelName,
   unityCallChatUrl,
@@ -26,7 +25,7 @@ import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnity
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
-import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
+import { useStableCallback } from "@/hooks/useStableCallback"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 type Props = {
@@ -63,11 +62,13 @@ function UnityCallChatStatusEcho({
   visibility: "public" | "private"
   onStatus: (payload: UnityCallStatusEvent) => void
 }) {
+  const onStatusStable = useStableCallback(onStatus)
+
   useEcho<UnityCallStatusEvent>(
     channelName,
     ".call.status",
-    onStatus,
-    [channelName, onStatus],
+    onStatusStable,
+    [channelName, visibility],
     visibility,
   )
   return null
@@ -91,6 +92,7 @@ export default function UnityCallShow({
   const [connectedAt, setConnectedAt] = useState<number | null>(null)
 
   const {
+    session: liveSession,
     registerSession,
     updateSession,
     clearSession,
@@ -124,6 +126,24 @@ export default function UnityCallShow({
     updateSession({ call, participants, participantStatus })
   }, [call, participants, participantStatus, updateSession])
 
+  useEffect(() => {
+    if (!liveSession || liveSession.call.id !== call.id) {
+      return
+    }
+
+    const sessionAccepted = liveSession.participants.some(
+      (participant) => participant.role === "callee" && participant.status === "accepted",
+    )
+    const localAccepted = participants.some(
+      (participant) => participant.role === "callee" && participant.status === "accepted",
+    )
+
+    if (liveSession.call.status !== call.status || (sessionAccepted && !localAccepted)) {
+      setCall((current) => ({ ...current, ...liveSession.call }))
+      setParticipants(liveSession.participants)
+    }
+  }, [call.id, call.status, liveSession, participants])
+
   const ringMode = useMemo(() => {
     if (typeof window === "undefined") {
       return false
@@ -149,6 +169,22 @@ export default function UnityCallShow({
     () => participants.filter((p) => p.role === "callee" && p.status === "ringing"),
     [participants],
   )
+
+  const calleeIncomingVisible = useMemo(
+    () =>
+      ringingCallees.some((participant) => participant.incomingDelivered === true),
+    [ringingCallees],
+  )
+
+  useEffect(() => {
+    if (isCaller || selfStatus !== "ringing") {
+      return
+    }
+    if (call.status !== "ringing" && call.status !== "accepted") {
+      return
+    }
+    notifyCalleeIncomingDelivered(call.id)
+  }, [call.id, call.status, isCaller, selfStatus])
 
   const leftParticipants = useMemo(
     () =>
@@ -285,6 +321,9 @@ export default function UnityCallShow({
         const ringing = ringingCallees.length
         return ringing > 0 ? `${acceptedCallees.length} joined · ${ringing} ringing` : `${acceptedCallees.length} joined`
       }
+      if (ringingCallees.length > 0 || call.status === "ringing") {
+        return calleeIncomingVisible ? "Ringing" : "Calling…"
+      }
       return "Calling…"
     }
     if (callConnected && mediaConnected) {
@@ -301,7 +340,8 @@ export default function UnityCallShow({
     isCaller,
     acceptedCallees.length,
     ringingCallees.length,
-    callLive,
+    calleeIncomingVisible,
+    call.status,
     callConnected,
     mediaConnected,
     elapsed,
@@ -324,14 +364,17 @@ export default function UnityCallShow({
     if (isCaller && acceptedCallees.length > 0) {
       return mediaConnected ? "Connected" : `${acceptedCallees.length} in call · ${connectionStatus}`
     }
+    if (isCaller && calleeIncomingVisible) {
+      return "Ringing on their device"
+    }
     if (isCaller && call.status === "ringing") {
-      return "Waiting for answer…"
+      return "Calling…"
     }
     if (callConnected) {
       return connectionStatus
     }
     return "Setting up call…"
-  }, [ending, isTerminalCallStatus, callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length])
+  }, [ending, isTerminalCallStatus, callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length, calleeIncomingVisible])
 
   const showMediaControls =
     Boolean(localStream) &&
@@ -394,20 +437,9 @@ export default function UnityCallShow({
     [authUserId, call.id, exitCallScreen, isCaller, unlockRemotePlayback],
   )
 
-  const onStatus = handleCallTerminated
+  const onStatus = useStableCallback(handleCallTerminated)
 
-  const shouldPollCallStatus =
-    !ending &&
-    !isTerminalCallStatus &&
-    (call.status === "ringing" || (call.status === "accepted" && !mediaConnected))
-
-  useUnityCallStatusSync({
-    callId: call.id,
-    enabled: shouldPollCallStatus,
-    onStatus: handleCallTerminated,
-  })
-
-  useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
+  useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId], "private")
 
   useEffect(() => {
     return subscribeUnityCallStatus((payload) => {
@@ -421,8 +453,8 @@ export default function UnityCallShow({
   useEcho<UnityCallStatusEvent>(
     `unity-call.${call.id}`,
     ".call.session.status",
-    handleCallTerminated,
-    [call.id, handleCallTerminated],
+    onStatus,
+    [call.id],
     "private",
   )
 
@@ -552,8 +584,36 @@ export default function UnityCallShow({
   const showRingingCalleeControls = isRingingCallee && !ringMode
   const showRejoinControls = isRejoinCallee || canAnswerLate
 
+  const callPhase = useMemo(() => {
+    if (ending || isTerminalCallStatus) {
+      return "ended" as const
+    }
+    if (callConnected && mediaConnected) {
+      return "connected" as const
+    }
+    if (
+      acceptedCallees.length > 0 ||
+      call.status === "accepted" ||
+      selfStatus === "accepted"
+    ) {
+      return "connecting" as const
+    }
+    if (call.status === "ringing") {
+      return "ringing" as const
+    }
+    return "connecting" as const
+  }, [
+    acceptedCallees.length,
+    call.status,
+    callConnected,
+    ending,
+    isTerminalCallStatus,
+    mediaConnected,
+    selfStatus,
+  ])
+
   return (
-    <div className="fixed inset-0 z-[9998] flex min-h-[100dvh] flex-col bg-gradient-to-b from-purple-950 via-[#120818] to-blue-950 text-white">
+    <>
       <Head title="Audio call" />
 
       {chatChannelName ? (
@@ -564,232 +624,50 @@ export default function UnityCallShow({
         />
       ) : null}
 
-      {callLive && callConnected && !ending ? (
-        <div className="absolute right-4 top-4 safe-area-inset-top">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-white/80 hover:bg-white/10 hover:text-white"
-            onClick={() => minimizeToChat()}
-          >
-            <ChevronDown className="h-4 w-4" />
-            Minimize
-          </Button>
-        </div>
-      ) : null}
-
-      <div className="flex flex-1 flex-col px-4 py-8">
-        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center">
-          <PhoneCallAvatar
-            name={displayName}
-            avatar={displayAvatar}
-            subtitle={isGroupCall ? (groupCallerLine ?? undefined) : statusHint}
-            pulse={!ending && !isTerminalCallStatus && (!callLive || !mediaConnected)}
-          />
-          {isGroupCall ? <p className="mt-2 text-center text-sm text-white/60">{statusHint}</p> : null}
-
-          <p className="mt-2 text-center text-xs font-medium uppercase tracking-wider text-purple-300/70">
-            Voice call · no video
-          </p>
-
-          <p className="mt-8 font-mono text-3xl tabular-nums tracking-wide">{statusLabel}</p>
-
-          {isCaller && (call.status === "ringing" || call.status === "accepted") ? (
-            <div className="mt-6 w-full max-w-sm space-y-3">
-              {acceptedCallees.length > 0 ? (
-                <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/80">In call</p>
-                  <ul className="space-y-2">
-                    {acceptedCallees.map((p) => (
-                      <li key={p.userId} className="flex items-center justify-between text-sm">
-                        <span>{p.name}</span>
-                        <span className="text-emerald-300/90">
-                          {mediaConnected ? "Connected" : connectionStatus}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {ringingCallees.length > 0 ? (
-                <div className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Ringing</p>
-                  <ul className="space-y-2">
-                    {ringingCallees.map((p) => (
-                      <li key={p.userId} className="flex items-center justify-between text-sm">
-                        <span>{p.name}</span>
-                        <span className="capitalize text-white/60">{p.status}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {leftParticipants.length > 0 ? (
-                <div className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Left</p>
-                  <ul className="space-y-2">
-                    {leftParticipants.map((p) => (
-                      <li key={p.userId} className="flex items-center justify-between text-sm">
-                        <span>{p.name}</span>
-                        <span className="capitalize text-white/60">{p.status}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {!isGroupCall && !isCaller && otherParty && call.status !== "ended" ? (
-            <div className="mt-6 w-full max-w-sm rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Participant</p>
-              <div className="mt-2 flex items-center justify-between text-sm">
-                <span>{otherParty.name}</span>
-                <span className="capitalize text-emerald-300/90">
-                  {otherParty.status === "accepted"
-                    ? mediaConnected
-                      ? "Connected"
-                      : connectionStatus
-                    : otherParty.status}
-                </span>
-              </div>
-            </div>
-          ) : null}
-
-          {callConnected && !mediaConnected && permissionStatus === "denied" ? (
-            <div className="mt-6 w-full max-w-sm rounded-2xl border border-amber-500/30 bg-amber-950/30 p-4 text-center">
-              <p className="text-sm text-amber-100">Microphone access is required for this call.</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-3 border-white/20 text-white hover:bg-white/10"
-                onClick={() => retryPermission()}
-              >
-                Try again
-              </Button>
-            </div>
-          ) : null}
-
-          {callConnected && !mediaConnected && permissionStatus !== "denied" && remoteStreams.length === 0 ? (
-            <div className="mt-6 flex items-center gap-2 text-sm text-white/70">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {connectionStatus}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-6 pb-8 pt-6 safe-area-inset-bottom">
-          {showMediaControls ? (
-            <div className="flex items-center gap-8">
-              <button
-                type="button"
-                className="flex flex-col items-center gap-2 text-white/70"
-                onClick={() => {
-                  toggleMute()
-                  unlockRemotePlayback()
-                }}
-              >
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
-                  {!isAudioEnabled ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                </span>
-                <span className="text-xs">{!isAudioEnabled ? "Unmute" : "Mute"}</span>
-              </button>
-              <button
-                type="button"
-                className="flex flex-col items-center gap-2 text-white/70"
-                aria-label={speakerOn ? "Switch to earpiece" : "Switch to speaker"}
-                onClick={() => {
-                  setSpeakerOn((current) => !current)
-                  unlockRemotePlayback()
-                }}
-              >
-                <span
-                  className={`flex h-12 w-12 items-center justify-center rounded-full ${
-                    speakerOn ? "bg-purple-500/30 ring-1 ring-purple-400/50" : "bg-white/10"
-                  }`}
-                >
-                  {speakerOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
-                </span>
-                <span className="text-xs">{speakerOn ? "Speaker" : "Earpiece"}</span>
-              </button>
-            </div>
-          ) : null}
-
-          {showRingingCalleeControls ? (
-            <div className="flex items-center justify-center gap-10">
-              <div className="flex flex-col items-center gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="h-16 w-16 rounded-full p-0 shadow-lg"
-                  disabled={ending || accepting}
-                  aria-label="Decline call"
-                  onClick={() => void handleEnd()}
-                >
-                  <PhoneOff className="h-7 w-7" />
-                </Button>
-                <span className="text-xs text-white/60">Decline</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Button
-                  type="button"
-                  className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 p-0 shadow-lg hover:from-purple-700 hover:to-blue-700"
-                  disabled={ending || accepting}
-                  aria-label="Accept call"
-                  onClick={() => void handleAccept()}
-                >
-                  {accepting ? <Loader2 className="h-7 w-7 animate-spin" /> : <Phone className="h-7 w-7" />}
-                </Button>
-                <span className="text-xs text-white/60">Accept</span>
-              </div>
-            </div>
-          ) : showRejoinControls ? (
-            <div className="flex flex-col items-center gap-2">
-              <Button
-                type="button"
-                className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 p-0 shadow-lg hover:from-purple-700 hover:to-blue-700"
-                disabled={ending || accepting}
-                aria-label="Rejoin call"
-                onClick={() => void handleAccept()}
-              >
-                {accepting ? <Loader2 className="h-7 w-7 animate-spin" /> : <Phone className="h-7 w-7" />}
-              </Button>
-              <span className="text-xs text-white/60">{isRejoinCallee ? "Rejoin call" : "Accept"}</span>
-            </div>
-          ) : !isRingingCallee || ringMode ? (
-            ending ? (
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="h-10 w-10 animate-spin text-white/80" />
-                <span className="text-sm text-white/60">Returning to chat…</span>
-              </div>
-            ) : (
-            <div className="flex flex-col items-center gap-2">
-              <Button
-                type="button"
-                variant="destructive"
-                size="lg"
-                className="h-16 w-16 rounded-full p-0 shadow-lg"
-                disabled={ending || accepting}
-                aria-label="End call"
-                onClick={() => void handleEnd()}
-              >
-                <PhoneOff className="h-7 w-7" />
-              </Button>
-              <span className="text-sm text-white/60">
-                {call.status === "ringing"
-                  ? isCaller
-                    ? "Cancel call"
-                    : "Decline"
-                  : isGroupCall && !isCaller
-                    ? "Leave call"
-                    : "End call"}
-              </span>
-            </div>
-            )
-          ) : null}
-        </div>
-      </div>
-    </div>
+      <UnityCallScreen
+        displayName={displayName}
+        displayAvatar={displayAvatar}
+        statusHint={statusHint}
+        statusLabel={statusLabel}
+        callPhase={callPhase}
+        pulseAvatar={!ending && !isTerminalCallStatus && (!callLive || !mediaConnected)}
+        isGroupCall={isGroupCall}
+        groupCallerLine={groupCallerLine}
+        isCaller={isCaller}
+        callStatus={call.status}
+        showMinimize={Boolean(callLive && callConnected && !ending)}
+        onMinimize={() => minimizeToChat()}
+        showMediaControls={showMediaControls}
+        isAudioEnabled={isAudioEnabled}
+        speakerOn={speakerOn}
+        onToggleMute={() => {
+          toggleMute()
+          unlockRemotePlayback()
+        }}
+        onToggleSpeaker={() => {
+          setSpeakerOn((current) => !current)
+          unlockRemotePlayback()
+        }}
+        showRingingCalleeControls={showRingingCalleeControls}
+        showRejoinControls={showRejoinControls}
+        isRejoinCallee={isRejoinCallee}
+        ringMode={ringMode}
+        ending={ending}
+        accepting={accepting}
+        onAccept={() => void handleAccept()}
+        onEnd={() => void handleEnd()}
+        permissionDenied={callConnected && !mediaConnected && permissionStatus === "denied"}
+        onRetryPermission={() => retryPermission()}
+        showConnectingSpinner={
+          callConnected && !mediaConnected && permissionStatus !== "denied" && remoteStreams.length === 0
+        }
+        connectionStatus={connectionStatus}
+        acceptedCallees={acceptedCallees}
+        leftParticipants={leftParticipants}
+        showCallerParticipantLists={isCaller && (call.status === "ringing" || call.status === "accepted")}
+        otherParty={otherParty}
+        mediaConnected={mediaConnected}
+      />
+    </>
   )
 }

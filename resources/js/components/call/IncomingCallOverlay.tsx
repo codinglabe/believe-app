@@ -17,6 +17,7 @@ import {
   markUnityCallAcceptedLocally,
   markLeavingUnityCall,
   navigateToUnityCall,
+  notifyCalleeIncomingDelivered,
   terminateUnityCall,
   toInternalAppPath,
   unityCallShowPath,
@@ -308,6 +309,23 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
     enabled: Boolean(incoming) && !blockedByActiveCall,
     onExpired: dismiss,
   })
+
+  useEffect(() => {
+    if (!incoming || blockedByActiveCall || !userId) {
+      return
+    }
+
+    if (incoming.call.status !== "ringing") {
+      return
+    }
+
+    const self = incoming.participants.find((participant) => participant.userId === userId)
+    if (self?.role !== "callee" || self.status !== "ringing") {
+      return
+    }
+
+    notifyCalleeIncomingDelivered(incoming.call.id)
+  }, [blockedByActiveCall, incoming, userId])
 
   const handleAccept = async () => {
     if (!incoming || busy || blockedByActiveCall) {

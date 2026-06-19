@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { router } from "@inertiajs/react"
+import { echo } from "@laravel/echo-react"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallWebRTC } from "@/hooks/useUnityCallWebRTC"
 import { UnityCallFloatingBar } from "@/components/call/UnityCallFloatingBar"
@@ -38,7 +39,8 @@ import {
 } from "@/lib/unityCallEvents"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
-import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
+import { useStableCallback } from "@/hooks/useStableCallback"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -233,6 +235,44 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     const activeCallId = session?.call.id
+    const authUserId = session?.authUserId
+    const chatRoomId = session?.call.chatRoomId
+
+    if (!activeCallId || !authUserId) {
+      return
+    }
+
+    refreshEchoAuthHeaders()
+
+    const onRealtimeStatus = (payload: UnityCallStatusEvent) => {
+      if (payload.call.id !== activeCallId || payload.reason === "incoming") {
+        return
+      }
+
+      applyUnityCallStatus(payload)
+      dispatchUnityCallStatus(payload)
+    }
+
+    const instance = echo()
+    const userChannel = instance.private(`user.${authUserId}`)
+    const callChannel = instance.private(`unity-call.${activeCallId}`)
+
+    userChannel.listen(".call.status", onRealtimeStatus)
+    callChannel.listen(".call.session.status", onRealtimeStatus)
+
+    const roomChannel =
+      chatRoomId && !session?.isGroupCall ? instance.private(`direct-chat.${chatRoomId}`) : null
+    roomChannel?.listen(".call.status", onRealtimeStatus)
+
+    return () => {
+      userChannel.stopListening(".call.status")
+      callChannel.stopListening(".call.session.status")
+      roomChannel?.stopListening(".call.status")
+    }
+  }, [applyUnityCallStatus, session?.authUserId, session?.call.chatRoomId, session?.call.id, session?.isGroupCall])
+
+  useEffect(() => {
+    const activeCallId = session?.call.id
     if (!activeCallId) {
       return
     }
@@ -243,26 +283,9 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
       }
 
       applyUnityCallStatus(payload)
+      dispatchUnityCallStatus(payload)
     })
   }, [applyUnityCallStatus, session?.call.id])
-
-  const shouldPollCallStatus = Boolean(
-    session &&
-      !isUnityCallTerminated({
-        reason: session.call.status,
-        call: session.call,
-        caller: session.caller,
-        participants: session.participants,
-      }) &&
-      (session.call.status === "ringing" ||
-        (session.call.status === "accepted" && !webrtc.mediaConnected)),
-  )
-
-  useUnityCallStatusSync({
-    callId: session?.call.id ?? 0,
-    enabled: shouldPollCallStatus,
-    onStatus: applyUnityCallStatus,
-  })
 
   useEffect(() => {
     if (!session) {

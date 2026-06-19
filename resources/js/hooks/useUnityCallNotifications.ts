@@ -4,6 +4,7 @@ export type UnityCallParticipantRow = {
   avatar?: string | null
   role: "caller" | "callee"
   status: string
+  incomingDelivered?: boolean
 }
 
 export type UnityCallPayload = {

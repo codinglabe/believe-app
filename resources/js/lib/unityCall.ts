@@ -397,6 +397,18 @@ export async function postUnityCallJson<T = unknown>(
   }
 }
 
+const incomingDeliveredCalls = new Set<number>()
+
+/** Callee reports that the incoming-call UI is visible on their device (overlay or call screen). */
+export function notifyCalleeIncomingDelivered(callId: number): void {
+  if (!Number.isFinite(callId) || callId <= 0 || incomingDeliveredCalls.has(callId)) {
+    return
+  }
+
+  incomingDeliveredCalls.add(callId)
+  void postUnityCallJson(route("unity-calls.incoming-delivered", callId))
+}
+
 export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitResponse | null> {
   if (isUserBusyWithUnityCall()) {
     throw new Error("You are already on a call. End it before starting another.")
@@ -449,14 +461,6 @@ export async function fetchUnityCallChatRooms(): Promise<UnityCallChatRoomChanne
   )
 
   return ok && data?.rooms ? data.rooms : []
-}
-
-export async function fetchUnityCallStatus(callId: number): Promise<UnityCallStatusEvent | null> {
-  const { ok, data } = await getUnityCallJson<{ status?: UnityCallStatusEvent | null }>(
-    route("unity-calls.status", callId),
-  )
-
-  return ok && data?.status ? data.status : null
 }
 
 export async function expireUnityCallRinging(

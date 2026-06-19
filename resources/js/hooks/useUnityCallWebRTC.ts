@@ -995,24 +995,6 @@ export function useUnityCallWebRTC({
   }, [syncPeerConnections, mediaActive, participants, callStatus])
 
   useEffect(() => {
-    if (!mediaActive || !mediaStarted.current || mediaConnected) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      if (mediaConnected || callEnded.current) {
-        return
-      }
-
-      void fetchPendingSignalsRef.current().finally(() => {
-        syncPeerConnectionsRef.current()
-      })
-    }, 1500)
-
-    return () => window.clearInterval(intervalId)
-  }, [mediaActive, mediaConnected])
-
-  useEffect(() => {
     if (!mediaActive || !mediaStarted.current) {
       return
     }
