@@ -71,6 +71,28 @@ export function isPeerNegotiationSettled(pc: RTCPeerConnection): boolean {
   return pc.signalingState === "stable" && pc.currentRemoteDescription !== null && pc.currentLocalDescription !== null
 }
 
+export function findAudioTransceiver(pc: RTCPeerConnection): RTCRtpTransceiver | undefined {
+  const byTrack = pc.getTransceivers().find(
+    (item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio",
+  )
+  if (byTrack) {
+    return byTrack
+  }
+
+  const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio")
+  if (audioSender) {
+    return pc.getTransceivers().find((item) => item.sender === audioSender)
+  }
+
+  // Audio-only calls: reuse the first negotiated transceiver (tracks may be null briefly).
+  return pc.getTransceivers().find(
+    (item) =>
+      item.mid !== null &&
+      item.currentDirection !== "inactive" &&
+      item.currentDirection !== "stopped",
+  )
+}
+
 const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -134,11 +156,19 @@ export async function ensurePeerAudioTransceiver(
     return false
   }
 
-  let transceiver = pc
-    .getTransceivers()
-    .find((item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio")
+  const negotiated = pc.localDescription !== null || pc.remoteDescription !== null
+  let transceiver = findAudioTransceiver(pc)
 
   if (!transceiver) {
+    if (negotiated) {
+      const sender = pc.getSenders().find((item) => item.track?.kind === "audio" || item.track === null)
+      if (sender) {
+        await sender.replaceTrack(track)
+        return true
+      }
+      return false
+    }
+
     transceiver = pc.addTransceiver("audio", { direction: "sendrecv" })
   }
 

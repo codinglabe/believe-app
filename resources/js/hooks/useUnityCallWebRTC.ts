@@ -586,8 +586,11 @@ export function useUnityCallWebRTC({
           pc = createPeerConnection(peerId)
         }
 
-        const attached = await addLocalAudioToPeer(peerId, pc)
-        if (!attached || !hasAudioSender(pc)) {
+        if (isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
+          await addLocalAudioToPeer(peerId, pc)
+          syncRemoteTracksFromPeer(peerId, pc)
+          resumeUnityCallRemotePlayback()
+          updateMediaConnected()
           return
         }
 
@@ -601,11 +604,12 @@ export function useUnityCallWebRTC({
           return
         }
 
-        if (isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
+        if (pc.signalingState !== "stable") {
           return
         }
 
-        if (pc.signalingState !== "stable") {
+        const attached = await addLocalAudioToPeer(peerId, pc)
+        if (!attached || !hasAudioSender(pc)) {
           return
         }
 
@@ -624,12 +628,15 @@ export function useUnityCallWebRTC({
         })
       } catch (error) {
         console.error("[UnityCallWebRTC] Failed to create host offer:", error)
-        resetPeerConnection(peerId)
+        const pc = peerConnections.current.get(peerId)
+        if (!pc || (!isPeerConnected(pc) && !isPeerNegotiationSettled(pc))) {
+          resetPeerConnection(peerId)
+        }
       } finally {
         makingOffer.current.set(peerId, false)
       }
     },
-    [addLocalAudioToPeer, createPeerConnection, isCaller, resetPeerConnection, sendSignal, userIdStr],
+    [addLocalAudioToPeer, createPeerConnection, isCaller, resetPeerConnection, sendSignal, syncRemoteTracksFromPeer, updateMediaConnected, userIdStr],
   )
 
   /** 1:1 fallback when caller offer never arrives (signaling delay / Echo miss). */
@@ -719,7 +726,9 @@ export function useUnityCallWebRTC({
 
         const from = normalized.from
         const existing = peerConnections.current.get(from)
-        if (existing && isPeerConnected(existing)) {
+        if (existing && (isPeerConnected(existing) || isPeerNegotiationSettled(existing))) {
+          void addLocalAudioToPeer(from, existing)
+          syncRemoteTracksFromPeer(from, existing)
           return
         }
 
@@ -908,11 +917,14 @@ export function useUnityCallWebRTC({
     const peers = acceptedPeerIds()
     peers.forEach((peerId) => {
       const pc = createPeerConnection(peerId)
-      void addLocalAudioToPeer(peerId, pc)
 
       if (isPeerConnected(pc) || isPeerNegotiationSettled(pc)) {
+        void addLocalAudioToPeer(peerId, pc)
+        syncRemoteTracksFromPeer(peerId, pc)
         return
       }
+
+      void addLocalAudioToPeer(peerId, pc)
 
       if (isCaller) {
         void createHostOffer(peerId)
@@ -933,7 +945,7 @@ export function useUnityCallWebRTC({
     })
 
     updateMediaConnected()
-  }, [acceptedPeerIds, addLocalAudioToPeer, createDirectCalleeOffer, createHostOffer, createPeerConnection, isCaller, isGroupCall, sendSignal, updateMediaConnected, userIdStr])
+  }, [acceptedPeerIds, addLocalAudioToPeer, createDirectCalleeOffer, createHostOffer, createPeerConnection, isCaller, isGroupCall, sendSignal, syncRemoteTracksFromPeer, updateMediaConnected, userIdStr])
 
   const attachMicTrackMonitor = useCallback((track: MediaStreamTrack) => {
     micMonitorCleanupRef.current?.()
@@ -1009,8 +1021,10 @@ export function useUnityCallWebRTC({
       await refreshLocalAudioOnPeers()
 
       if (didReplaceCapture && isCaller) {
-        for (const peerId of peerConnections.current.keys()) {
-          void createHostOffer(peerId)
+        for (const [peerId, pc] of peerConnections.current.entries()) {
+          if (!isPeerNegotiationSettled(pc) && !isPeerConnected(pc)) {
+            void createHostOffer(peerId)
+          }
         }
       }
     } catch (error) {
@@ -1470,13 +1484,20 @@ export function useUnityCallWebRTC({
 
       if (isCaller) {
         acceptedPeerIds().forEach((peerId) => {
+          const pc = peerConnections.current.get(peerId)
+          if (pc && (isPeerConnected(pc) || isPeerNegotiationSettled(pc))) {
+            syncRemoteTracksFromPeer(peerId, pc)
+            void addLocalAudioToPeer(peerId, pc)
+            resumeUnityCallRemotePlayback()
+            return
+          }
           void createHostOffer(peerId)
         })
       }
     }, 3000)
 
     return () => window.clearInterval(intervalId)
-  }, [acceptedPeerIds, createHostOffer, isCaller, mediaActive, mediaConnected])
+  }, [acceptedPeerIds, addLocalAudioToPeer, createHostOffer, isCaller, mediaActive, mediaConnected, syncRemoteTracksFromPeer])
 
   useEffect(() => {
     if (!mediaActive || !mediaStarted.current || mediaConnected || callEnded.current) {
