@@ -32,8 +32,11 @@ import {
 import {
   dispatchUnityCallTerminated,
   isUnityCallTerminated,
+  subscribeUnityCallStatus,
   subscribeUnityCallTerminated,
 } from "@/lib/unityCallEvents"
+import { mergeCallParticipants } from "@/lib/unityCallParticipants"
+import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -114,6 +117,27 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     )
   }, [session])
 
+  const applyUnityCallStatus = useCallback((payload: UnityCallStatusEvent) => {
+    setSession((previous) => {
+      if (!previous || payload.call.id !== previous.call.id) {
+        return previous
+      }
+
+      return {
+        ...previous,
+        call: { ...previous.call, ...payload.call },
+        participants: mergeCallParticipants(previous.participants, payload.participants),
+      }
+    })
+  }, [])
+
+  const handleSessionStatus = useCallback(
+    (payload: UnityCallStatusEvent) => {
+      applyUnityCallStatus(payload)
+    },
+    [applyUnityCallStatus],
+  )
+
   const webrtc = useUnityCallWebRTC({
     callId: session?.call.id ?? 0,
     userId: session?.authUserId ?? 0,
@@ -125,6 +149,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     mediaActive: Boolean(session && mediaState?.mediaActive),
     iceServers: session?.iceServers ?? [],
     keepAlive: true,
+    onSessionStatus: handleSessionStatus,
   })
 
   stopMediaRef.current = webrtc.stopMedia
@@ -198,6 +223,21 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     markUnityCallSessionActive(session.call.id)
     markUnityCallLiveOnPage(session.call.id)
   }, [mediaState?.callConnected, mediaState?.callLive, session])
+
+  useEffect(() => {
+    const activeCallId = session?.call.id
+    if (!activeCallId) {
+      return
+    }
+
+    return subscribeUnityCallStatus((payload) => {
+      if (payload.call.id !== activeCallId) {
+        return
+      }
+
+      applyUnityCallStatus(payload)
+    })
+  }, [applyUnityCallStatus, session?.call.id])
 
   useEffect(() => {
     if (!session) {

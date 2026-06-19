@@ -20,7 +20,8 @@ import {
 import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
-import { dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { dispatchUnityCallTerminated, isUnityCallTerminated, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
+import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
@@ -69,17 +70,6 @@ function UnityCallChatStatusEcho({
     visibility,
   )
   return null
-}
-
-function mergeCallParticipants(
-  previous: UnityCallParticipantRow[],
-  incoming: UnityCallParticipantRow[],
-): UnityCallParticipantRow[] {
-  const map = new Map(previous.map((row) => [row.userId, row]))
-  for (const row of incoming) {
-    map.set(row.userId, { ...(map.get(row.userId) ?? row), ...row })
-  }
-  return Array.from(map.values())
 }
 
 export default function UnityCallShow({
@@ -406,6 +396,15 @@ export default function UnityCallShow({
   const onStatus = handleCallTerminated
 
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
+
+  useEffect(() => {
+    return subscribeUnityCallStatus((payload) => {
+      if (payload.call.id !== call.id) {
+        return
+      }
+      handleCallTerminated(payload)
+    })
+  }, [call.id, handleCallTerminated])
 
   useEcho<UnityCallStatusEvent>(
     `unity-call.${call.id}`,

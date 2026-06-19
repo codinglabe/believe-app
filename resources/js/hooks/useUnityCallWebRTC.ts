@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { echo } from "@laravel/echo-react"
-import type { UnityCallParticipantRow } from "@/hooks/useUnityCallNotifications"
+import type { UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { subscribeUnityCallTerminated } from "@/lib/unityCallEvents"
+import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { invalidateAudioOutputCache } from "@/lib/callAudioOutput"
 import { normalizeSessionDescription, normalizeWebRtcSignal, webRtcSignalKey, buildUnityCallRtcConfiguration } from "@/lib/unityCallWebRTC"
 
@@ -30,10 +31,7 @@ type ChannelWithListen = {
   stopListening?: (event: string) => void
 }
 
-type UnityCallStatusPayload = {
-  reason: string
-  call: { id: number; status: string; chatRoomId?: number | null }
-}
+type UnityCallStatusPayload = UnityCallStatusEvent
 
 const MAX_GROUP_HOST_PEERS = 32
 
@@ -49,6 +47,8 @@ type UseUnityCallWebRTCOptions = {
   iceServers: RTCIceServer[]
   /** Keep WebRTC alive when the call UI unmounts (background / minimized call). */
   keepAlive?: boolean
+  /** Real-time participant updates from the call session channel. */
+  onSessionStatus?: (payload: UnityCallStatusEvent) => void
 }
 
 function buildRtcConfiguration(iceServers: RTCIceServer[]): RTCConfiguration {
@@ -118,8 +118,11 @@ export function useUnityCallWebRTC({
   mediaActive,
   iceServers,
   keepAlive = false,
+  onSessionStatus,
 }: UseUnityCallWebRTCOptions) {
   const userIdStr = String(userId)
+  const participantsRef = useRef(participants)
+  const onSessionStatusRef = useRef(onSessionStatus)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStreams, setRemoteStreams] = useState<UnityCallRemoteStream[]>([])
   const [mediaConnected, setMediaConnected] = useState(false)
@@ -148,15 +151,24 @@ export function useUnityCallWebRTC({
     rtcConfiguration.current = buildRtcConfiguration(iceServers)
   }, [iceServers])
 
+  useEffect(() => {
+    participantsRef.current = participants
+  }, [participants])
+
+  useEffect(() => {
+    onSessionStatusRef.current = onSessionStatus
+  }, [onSessionStatus])
+
   const acceptedPeerIds = useCallback((): string[] => {
     const hubId = String(callerId)
+    const activeParticipants = participantsRef.current
 
     if (!isGroupCall) {
       if (!isCaller) {
         return hubId !== userIdStr ? [hubId] : []
       }
 
-      return participants
+      return activeParticipants
         .filter(
           (p) =>
             p.userId !== userId &&
@@ -170,11 +182,11 @@ export function useUnityCallWebRTC({
       return hubId !== userIdStr ? [hubId] : []
     }
 
-    return participants
+    return activeParticipants
       .filter((p) => p.userId !== userId && p.role === "callee" && p.status === "accepted")
       .map((p) => String(p.userId))
       .slice(0, MAX_GROUP_HOST_PEERS)
-  }, [participants, userId, userIdStr, isGroupCall, isCaller, callerId])
+  }, [userId, userIdStr, isGroupCall, isCaller, callerId])
 
   const updateMediaConnected = useCallback(() => {
     const expectedPeers = acceptedPeerIds()
@@ -919,6 +931,14 @@ export function useUnityCallWebRTC({
       const statusPayload = payload as UnityCallStatusPayload
       if (statusPayload.call?.id !== callId) {
         return
+      }
+
+      if (Array.isArray(statusPayload.participants) && statusPayload.participants.length > 0) {
+        participantsRef.current = mergeCallParticipants(
+          participantsRef.current,
+          statusPayload.participants,
+        )
+        onSessionStatusRef.current?.(statusPayload)
       }
 
       if (["cancelled", "ended", "declined", "missed"].includes(statusPayload.reason)) {

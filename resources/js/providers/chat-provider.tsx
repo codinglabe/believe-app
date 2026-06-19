@@ -13,7 +13,7 @@ import {
   toInternalAppPath,
   unityCallShowPath,
 } from "@/lib/unityCall"
-import { dispatchUnityCallIncoming, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { dispatchUnityCallIncoming, dispatchUnityCallStatus, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 import { ChatContext } from "@/providers/chat-context"
@@ -594,6 +594,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
 
     channel.listen(".call.status", (payload: UnityCallStatusEvent) => {
+      dispatchUnityCallStatus(payload)
+
       if (isUnityCallTerminated(payload)) {
         dispatchUnityCallTerminated(payload)
       }
