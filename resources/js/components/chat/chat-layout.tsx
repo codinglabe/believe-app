@@ -11,7 +11,7 @@ import { chatAmbientBg, chatGradientBg, chatGradientText } from "./chat-brand"
 
 export function ChatLayout() {
   const isMobile = useIsMobile()
-  const { activeRoom, setActiveRoom } = useChat()
+  const { activeRoom, backToChatList } = useChat()
 
   const WelcomeScreen = () => (
     <div
@@ -81,7 +81,7 @@ export function ChatLayout() {
     return (
       <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
         {activeRoom ? (
-          <ChatArea isMobile onBack={() => setActiveRoom(null)} />
+          <ChatArea isMobile onBack={backToChatList} />
         ) : (
           <>
             <ChatHeader variant="mobile-list" />
