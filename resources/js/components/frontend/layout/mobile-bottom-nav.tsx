@@ -8,7 +8,7 @@ import {
   MobileGuestHubSheet,
 } from "@/components/frontend/layout/mobile-favorites-sheets"
 import { useMobileNav } from "@/contexts/mobile-nav-context"
-import { useOpenWalletPopup } from "@/hooks/use-open-wallet-popup"
+import { showWalletInMobileNav, useOpenWalletPopup } from "@/hooks/use-open-wallet-popup"
 import { mobileNavRouteContext } from "@/lib/mobile-nav-routes"
 import { resolveSiteMenuIcon } from "@/lib/site-menu-icons"
 import type { MobileNavMenuItem, MobileNavPayload } from "@/types/mobile-nav"
@@ -87,17 +87,31 @@ function NavTab({
   )
 }
 
-function roleAwareBottomNav(routes: ReturnType<typeof mobileNavRouteContext>): MobileNavMenuItem[] {
+function roleAwareBottomNav(
+  routes: ReturnType<typeof mobileNavRouteContext>,
+  showWalletInSlot2: boolean,
+): MobileNavMenuItem[] {
+  const slot2: MobileNavMenuItem = showWalletInSlot2
+    ? {
+        menuKey: "wallet",
+        title: "Wallet",
+        href: null,
+        icon: "Wallet",
+        opensWallet: true,
+        slot: 2,
+      }
+    : {
+        menuKey: routes.isAdmin || routes.isOrgUser || routes.hasCareAllianceRole ? "dashboard" : "organizations",
+        title: routes.slot2Title,
+        href: routes.slot2Href,
+        icon: routes.slot2Icon,
+        activePathPrefix: routes.slot2ActivePrefix,
+        slot: 2,
+      }
+
   return [
     { menuKey: "home", title: "Home", href: "/", icon: "Home", activePathPrefix: "/", slot: 1 },
-    {
-      menuKey: routes.isAdmin || routes.isOrgUser || routes.hasCareAllianceRole ? "dashboard" : "organizations",
-      title: routes.slot2Title,
-      href: routes.slot2Href,
-      icon: routes.slot2Icon,
-      activePathPrefix: routes.slot2ActivePrefix,
-      slot: 2,
-    },
+    slot2,
     { menuKey: "my_favorites", title: "Favorites", href: null, icon: "Star", isHub: true, slot: 3 },
     { menuKey: "chat", title: "Chat", href: routes.chatHref, icon: "MessageCircle", activePathPrefix: "/chat", slot: 4 },
     {
@@ -124,6 +138,7 @@ export default function MobileBottomNav() {
 
   const isLoggedIn = Boolean(auth?.user)
   const routes = useMemo(() => mobileNavRouteContext(auth), [auth])
+  const showWalletInSlot2 = showWalletInMobileNav(auth)
   const isSupporter = routes.isSupporter
   const {
     showWalletPopup,
@@ -139,8 +154,8 @@ export default function MobileBottomNav() {
     if (mobileNav?.bottomNavSlots?.length) {
       return mobileNav.bottomNavSlots
     }
-    return roleAwareBottomNav(routes)
-  }, [mobileNav, routes])
+    return roleAwareBottomNav(routes, showWalletInSlot2)
+  }, [mobileNav, routes, showWalletInSlot2])
 
   useEffect(() => {
     setFavoritesOpen(false)

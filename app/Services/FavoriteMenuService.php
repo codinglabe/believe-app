@@ -190,10 +190,12 @@ class FavoriteMenuService
             }
 
             $bottomDefaults = $this->defaultBottomNavSlotsForUser($user);
-            if ($quickKeys->contains('marketplace')) {
-                $bottomDefaults[2] = 'marketplace';
-            } elseif ($quickKeys->contains('unity_meet')) {
-                $bottomDefaults[2] = 'unity_meet';
+            if (! $this->walletVisibleForUser($user)) {
+                if ($quickKeys->contains('marketplace')) {
+                    $bottomDefaults[2] = 'marketplace';
+                } elseif ($quickKeys->contains('unity_meet')) {
+                    $bottomDefaults[2] = 'unity_meet';
+                }
             }
 
             foreach ($bottomDefaults as $slot => $menuKey) {
@@ -576,7 +578,7 @@ class FavoriteMenuService
         };
 
         if ($this->walletVisibleForUser($user)) {
-            $slots[4] = 'wallet';
+            $slots[2] = 'wallet';
         }
 
         return $slots;
