@@ -156,20 +156,25 @@ class UnityCallController extends Controller
         ]);
     }
 
-    public function markIncomingDelivered(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
+    public function markIncomingDelivered(Request $request, int $call, UnityCallService $calls): JsonResponse
     {
-        $this->authorizeCall($request, $call);
-        $calls->markCalleeIncomingDelivered($call, $request->user());
+        $unityCall = UnityCall::query()->find($call);
+        if ($unityCall === null) {
+            return response()->json(['ok' => false]);
+        }
+
+        $this->authorizeCall($request, $unityCall);
+        $calls->markCalleeIncomingDelivered($unityCall, $request->user());
 
         return response()->json(['ok' => true]);
     }
 
-    public function signal(Request $request, UnityCall $call): JsonResponse
+    public function signal(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
     {
         $this->authorizeCall($request, $call);
 
         $validated = $request->validate([
-            'type' => ['required', 'string', 'in:offer,answer,ice-candidate,offer-request'],
+            'type' => ['required', 'string', 'in:offer,answer,ice-candidate,offer-request,incoming-delivered'],
             'from' => ['required', 'string'],
             'to' => ['required', 'string'],
             'offer' => ['nullable', 'array'],
@@ -179,6 +184,12 @@ class UnityCallController extends Controller
 
         if ((int) $validated['from'] !== (int) $request->user()->id) {
             abort(403);
+        }
+
+        if ($validated['type'] === 'incoming-delivered') {
+            $calls->markCalleeIncomingDelivered($call, $request->user());
+
+            return response()->json(['ok' => true]);
         }
 
         if (! in_array($call->status, [UnityCall::STATUS_RINGING, UnityCall::STATUS_ACCEPTED], true)) {

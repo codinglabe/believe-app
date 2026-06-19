@@ -331,7 +331,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
       return
     }
 
-    notifyCalleeIncomingDelivered(incoming.call.id)
+    notifyCalleeIncomingDelivered(incoming.call.id, userId, incoming.caller.id)
   }, [blockedByActiveCall, incoming, userId])
 
   const handleAccept = async () => {

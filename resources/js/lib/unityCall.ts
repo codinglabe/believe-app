@@ -406,13 +406,30 @@ export async function postUnityCallJson<T = unknown>(
 const incomingDeliveredCalls = new Set<number>()
 
 /** Callee reports that the incoming-call UI is visible on their device (overlay or call screen). */
-export function notifyCalleeIncomingDelivered(callId: number): void {
-  if (!Number.isFinite(callId) || callId <= 0 || incomingDeliveredCalls.has(callId)) {
+export function notifyCalleeIncomingDelivered(
+  callId: number,
+  calleeUserId: number,
+  callerUserId: number,
+): void {
+  if (
+    !Number.isFinite(callId) ||
+    callId <= 0 ||
+    !Number.isFinite(calleeUserId) ||
+    !Number.isFinite(callerUserId) ||
+    incomingDeliveredCalls.has(callId)
+  ) {
     return
   }
 
   incomingDeliveredCalls.add(callId)
-  void postUnityCallJson(route("unity-calls.incoming-delivered", callId))
+
+  // Use the signal route — it ships with every Unity Call deploy. The dedicated
+  // incoming-delivered route can 404 when production route cache is stale.
+  void postUnityCallJson(route("unity-calls.signal", callId), {
+    type: "incoming-delivered",
+    from: String(calleeUserId),
+    to: String(callerUserId),
+  })
 }
 
 export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitResponse | null> {

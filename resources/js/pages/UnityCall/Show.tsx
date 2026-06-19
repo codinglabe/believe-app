@@ -222,8 +222,8 @@ export default function UnityCallShow({
     if (call.status !== "ringing" && call.status !== "accepted") {
       return
     }
-    notifyCalleeIncomingDelivered(call.id)
-  }, [call.id, call.status, isCaller, selfStatus])
+    notifyCalleeIncomingDelivered(call.id, authUserId, caller.id)
+  }, [authUserId, call.id, call.status, caller.id, isCaller, selfStatus])
 
   const leftParticipants = useMemo(
     () =>
