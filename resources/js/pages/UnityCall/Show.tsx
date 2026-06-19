@@ -20,7 +20,7 @@ import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
-import { dispatchUnityCallTerminated, isUnityCallTerminated, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
+import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTerminated, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
@@ -109,50 +109,11 @@ export default function UnityCallShow({
     retryPermission,
   } = useUnityCallSession()
 
-  useEffect(() => {
-    registerSession({
-      call,
-      caller,
-      participants,
-      isCaller,
-      isGroupCall,
-      participantStatus,
-      iceServers,
-      authUserId,
-    })
-  }, [authUserId, call.id, caller, iceServers, isCaller, isGroupCall, registerSession])
-
-  useEffect(() => {
-    updateSession({ call, participants, participantStatus })
-  }, [call, participants, participantStatus, updateSession])
-
-  useEffect(() => {
-    if (!liveSession || liveSession.call.id !== call.id) {
-      return
-    }
-
-    const sessionAccepted = liveSession.participants.some(
-      (participant) => participant.role === "callee" && participant.status === "accepted",
-    )
-    const localAccepted = participants.some(
-      (participant) => participant.role === "callee" && participant.status === "accepted",
-    )
-
-    if (liveSession.call.status !== call.status || (sessionAccepted && !localAccepted)) {
-      setCall((current) => ({ ...current, ...liveSession.call }))
-      setParticipants(liveSession.participants)
-    }
-  }, [call.id, call.status, liveSession, participants])
-
   const ringMode = useMemo(() => {
     if (typeof window === "undefined") {
       return false
     }
     return new URLSearchParams(window.location.search).get("ring") === "1"
-  }, [])
-
-  useEffect(() => {
-    refreshEchoAuthHeaders()
   }, [])
 
   const selfStatus = useMemo(
@@ -175,6 +136,72 @@ export default function UnityCallShow({
       ringingCallees.some((participant) => participant.incomingDelivered === true),
     [ringingCallees],
   )
+
+  useEffect(() => {
+    const isPendingIncomingCallee =
+      !isCaller && selfStatus === "ringing" && call.status === "ringing"
+
+    if (isPendingIncomingCallee) {
+      return
+    }
+
+    registerSession({
+      call,
+      caller,
+      participants,
+      isCaller,
+      isGroupCall,
+      participantStatus,
+      iceServers,
+      authUserId,
+    })
+  }, [
+    authUserId,
+    call,
+    caller,
+    iceServers,
+    isCaller,
+    isGroupCall,
+    participantStatus,
+    participants,
+    registerSession,
+    selfStatus,
+  ])
+
+  useEffect(() => {
+    const isPendingIncomingCallee =
+      !isCaller && selfStatus === "ringing" && call.status === "ringing"
+
+    if (isPendingIncomingCallee) {
+      return
+    }
+
+    updateSession({ call, participants, participantStatus })
+  }, [call, participants, participantStatus, selfStatus, isCaller, updateSession])
+
+  useEffect(() => {
+    if (!liveSession || liveSession.call.id !== call.id) {
+      return
+    }
+
+    const shouldSyncParticipants = liveSession.participants.some((sessionRow) => {
+      const localRow = participants.find((participant) => participant.userId === sessionRow.userId)
+      return (
+        !localRow ||
+        localRow.status !== sessionRow.status ||
+        localRow.incomingDelivered !== sessionRow.incomingDelivered
+      )
+    })
+
+    if (liveSession.call.status !== call.status || shouldSyncParticipants) {
+      setCall((current) => ({ ...current, ...liveSession.call }))
+      setParticipants(liveSession.participants)
+    }
+  }, [call.id, call.status, liveSession, participants])
+
+  useEffect(() => {
+    refreshEchoAuthHeaders()
+  }, [])
 
   useEffect(() => {
     if (isCaller || selfStatus !== "ringing") {
@@ -200,14 +227,17 @@ export default function UnityCallShow({
   )
 
   const callTimerAnchor = useMemo(() => {
+    if (!callConnected || !mediaConnected) {
+      return null
+    }
+    if (connectedAt !== null) {
+      return connectedAt
+    }
     if (call.answeredAt) {
       return new Date(call.answeredAt).getTime()
     }
-    if (connectedAt) {
-      return connectedAt
-    }
     return null
-  }, [call.answeredAt, connectedAt])
+  }, [call.answeredAt, callConnected, connectedAt, mediaConnected])
 
   useEffect(() => {
     if (mediaConnected && connectedAt === null) {
@@ -309,9 +339,17 @@ export default function UnityCallShow({
     return caller.avatar
   }, [isGroupCall, isCaller, participants, caller.avatar])
 
+  const isRingingCallee =
+    !isCaller &&
+    selfStatus === "ringing" &&
+    (call.status === "ringing" || call.status === "accepted")
+
   const statusLabel = useMemo(() => {
     if (ending || isTerminalCallStatus) {
       return "Call ended"
+    }
+    if (isRingingCallee) {
+      return "Incoming call"
     }
     if (callTimerAnchor !== null) {
       return formatElapsed(elapsed)
@@ -329,13 +367,14 @@ export default function UnityCallShow({
     if (callConnected && mediaConnected) {
       return formatElapsed(elapsed)
     }
-    if (connectionStatus === "idle") {
+    if (callConnected) {
       return "Connecting…"
     }
-    return connectionStatus
+    return "Connecting…"
   }, [
     ending,
     isTerminalCallStatus,
+    isRingingCallee,
     callTimerAnchor,
     isCaller,
     acceptedCallees.length,
@@ -345,12 +384,14 @@ export default function UnityCallShow({
     callConnected,
     mediaConnected,
     elapsed,
-    connectionStatus,
   ])
 
   const statusHint = useMemo(() => {
     if (ending || isTerminalCallStatus) {
       return "Returning to chat…"
+    }
+    if (isRingingCallee) {
+      return `${caller.name} is calling you`
     }
     if (permissionStatus === "denied") {
       return "Allow microphone in browser settings"
@@ -374,9 +415,25 @@ export default function UnityCallShow({
       return connectionStatus
     }
     return "Setting up call…"
-  }, [ending, isTerminalCallStatus, callConnected, mediaConnected, isAudioEnabled, speakerOn, isCaller, call.status, connectionStatus, permissionStatus, acceptedCallees.length, calleeIncomingVisible])
+  }, [
+    ending,
+    isTerminalCallStatus,
+    isRingingCallee,
+    caller.name,
+    callConnected,
+    mediaConnected,
+    isAudioEnabled,
+    speakerOn,
+    isCaller,
+    call.status,
+    connectionStatus,
+    permissionStatus,
+    acceptedCallees.length,
+    calleeIncomingVisible,
+  ])
 
   const showMediaControls =
+    !isRingingCallee &&
     Boolean(localStream) &&
     permissionStatus === "granted" &&
     !["ended", "cancelled", "declined", "missed"].includes(call.status)
@@ -408,6 +465,10 @@ export default function UnityCallShow({
         if (payload.call.answeredAt) {
           setCall((current) => ({ ...current, answeredAt: payload.call.answeredAt }))
         }
+        return
+      }
+
+      if (payload.reason === "callee_ringing") {
         return
       }
 
@@ -519,14 +580,50 @@ export default function UnityCallShow({
     setAccepting(false)
 
     if (ok && data) {
-      setCall({ ...data.call, joinUrl: data.join_url })
-      setParticipants(data.participants)
+      const nextCall = { ...data.call, joinUrl: data.join_url }
+      const nextParticipants = data.participants
+      setCall(nextCall)
+      setParticipants(nextParticipants)
+      registerSession({
+        call: nextCall,
+        caller: data.caller,
+        participants: nextParticipants,
+        isCaller: false,
+        isGroupCall,
+        participantStatus: "accepted",
+        iceServers,
+        authUserId,
+      })
+      dispatchUnityCallStatus({
+        reason: "accepted",
+        call: nextCall,
+        caller: data.caller,
+        participants: nextParticipants,
+      })
       unlockRemotePlayback()
     } else if (ok) {
-      setCall((current) => ({ ...current, status: "accepted" }))
-      setParticipants((current) =>
-        current.map((p) => (p.userId === authUserId ? { ...p, status: "accepted" } : p)),
+      const nextCall = { ...call, status: "accepted" as const }
+      const nextParticipants = participants.map((p) =>
+        p.userId === authUserId ? { ...p, status: "accepted" } : p,
       )
+      setCall(nextCall)
+      setParticipants(nextParticipants)
+      registerSession({
+        call: nextCall,
+        caller,
+        participants: nextParticipants,
+        isCaller: false,
+        isGroupCall,
+        participantStatus: "accepted",
+        iceServers,
+        authUserId,
+      })
+      dispatchUnityCallStatus({
+        reason: "accepted",
+        call: nextCall,
+        caller,
+        participants: nextParticipants,
+      })
       unlockRemotePlayback()
     }
   }
@@ -577,16 +674,15 @@ export default function UnityCallShow({
     })
   }
 
-  const isRingingCallee =
-    !isCaller &&
-    selfStatus === "ringing" &&
-    (call.status === "ringing" || call.status === "accepted")
-  const showRingingCalleeControls = isRingingCallee && !ringMode
+  const showRingingCalleeControls = isRingingCallee
   const showRejoinControls = isRejoinCallee || canAnswerLate
 
   const callPhase = useMemo(() => {
     if (ending || isTerminalCallStatus) {
       return "ended" as const
+    }
+    if (isRingingCallee) {
+      return "ringing" as const
     }
     if (callConnected && mediaConnected) {
       return "connected" as const
@@ -607,6 +703,7 @@ export default function UnityCallShow({
     call.status,
     callConnected,
     ending,
+    isRingingCallee,
     isTerminalCallStatus,
     mediaConnected,
     selfStatus,
@@ -630,7 +727,7 @@ export default function UnityCallShow({
         statusHint={statusHint}
         statusLabel={statusLabel}
         callPhase={callPhase}
-        pulseAvatar={!ending && !isTerminalCallStatus && (!callLive || !mediaConnected)}
+        pulseAvatar={!ending && !isTerminalCallStatus && (!callLive || !mediaConnected) && !isRingingCallee}
         isGroupCall={isGroupCall}
         groupCallerLine={groupCallerLine}
         isCaller={isCaller}
@@ -649,6 +746,7 @@ export default function UnityCallShow({
           unlockRemotePlayback()
         }}
         showRingingCalleeControls={showRingingCalleeControls}
+        isRingingCallee={isRingingCallee}
         showRejoinControls={showRejoinControls}
         isRejoinCallee={isRejoinCallee}
         ringMode={ringMode}
@@ -659,7 +757,11 @@ export default function UnityCallShow({
         permissionDenied={callConnected && !mediaConnected && permissionStatus === "denied"}
         onRetryPermission={() => retryPermission()}
         showConnectingSpinner={
-          callConnected && !mediaConnected && permissionStatus !== "denied" && remoteStreams.length === 0
+          !isRingingCallee &&
+          callConnected &&
+          !mediaConnected &&
+          permissionStatus !== "denied" &&
+          remoteStreams.length === 0
         }
         connectionStatus={connectionStatus}
         acceptedCallees={acceptedCallees}
