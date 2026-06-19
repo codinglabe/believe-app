@@ -26,6 +26,7 @@ import {
   User,
   Users,
   Video,
+  Wallet,
 } from "lucide-react"
 
 export const siteMenuIconMap: Record<string, LucideIcon> = {
@@ -55,6 +56,7 @@ export const siteMenuIconMap: Record<string, LucideIcon> = {
   User,
   Star,
   Circle,
+  Wallet,
 }
 
 export function resolveSiteMenuIcon(name?: string): LucideIcon {

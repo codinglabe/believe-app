@@ -36,6 +36,25 @@ class FavoriteMenuService
         4 => 'chat',
     ];
 
+    /** @var array<int, string> */
+    public const DEFAULT_BOTTOM_NAV_SLOTS_ORG = [
+        1 => 'home',
+        2 => 'dashboard',
+        4 => 'chat',
+    ];
+
+    /** @var list<string> */
+    public const DEFAULT_QUICK_KEYS_ORG = [
+        'donate',
+        'events',
+        'chat',
+        'unity_meet',
+        'marketplace',
+        'groups',
+        'gift_cards',
+        'social_feed',
+    ];
+
     /** @var list<string> */
     public const INTEREST_TAG_OPTIONS = [
         'supporting_organizations',
@@ -63,8 +82,10 @@ class FavoriteMenuService
             'favoriteMenuKeys' => $favoriteKeys,
             'quickFavorites' => $quickFavorites,
             'bottomNavSlots' => $bottomNav,
-            'menuCatalog' => $this->catalogGrouped($catalog),
-            'needsOnboarding' => $user->favorites_onboarding_completed_at === null,
+            'menuCatalog' => $this->catalogGrouped($catalog, $user),
+            'needsOnboarding' => $this->isSupporterUser($user) && $user->favorites_onboarding_completed_at === null,
+            'canCustomize' => $this->mobileNavRoleKey($user) !== null,
+            'canCustomizeQuick' => $this->isSupporterUser($user),
             'interestOptions' => $this->interestOptionsForFrontend(),
             'limits' => [
                 'quickMax' => self::MAX_QUICK_FAVORITES,
@@ -75,7 +96,7 @@ class FavoriteMenuService
 
     public function ensureDefaults(User $user): void
     {
-        if ($user->role !== 'user') {
+        if ($this->mobileNavRoleKey($user) === null) {
             return;
         }
 
@@ -89,8 +110,11 @@ class FavoriteMenuService
 
     public function seedDefaults(User $user): void
     {
-        DB::transaction(function () use ($user) {
-            foreach (self::DEFAULT_QUICK_KEYS as $index => $menuKey) {
+        $quickKeys = $this->defaultQuickKeysForUser($user);
+        $bottomSlots = $this->defaultBottomNavSlotsForUser($user);
+
+        DB::transaction(function () use ($user, $quickKeys, $bottomSlots) {
+            foreach ($quickKeys as $index => $menuKey) {
                 if (! MenuItem::query()->where('menu_key', $menuKey)->exists()) {
                     continue;
                 }
@@ -104,7 +128,7 @@ class FavoriteMenuService
                 ]);
             }
 
-            foreach (self::DEFAULT_BOTTOM_NAV_SLOTS as $slot => $menuKey) {
+            foreach ($bottomSlots as $slot => $menuKey) {
                 if (! MenuItem::query()->where('menu_key', $menuKey)->exists()) {
                     continue;
                 }
@@ -165,11 +189,13 @@ class FavoriteMenuService
                 ]);
             }
 
-            $bottomDefaults = self::DEFAULT_BOTTOM_NAV_SLOTS;
-            if ($quickKeys->contains('marketplace')) {
-                $bottomDefaults[2] = 'marketplace';
-            } elseif ($quickKeys->contains('unity_meet')) {
-                $bottomDefaults[2] = 'unity_meet';
+            $bottomDefaults = $this->defaultBottomNavSlotsForUser($user);
+            if (! $this->walletVisibleForUser($user)) {
+                if ($quickKeys->contains('marketplace')) {
+                    $bottomDefaults[2] = 'marketplace';
+                } elseif ($quickKeys->contains('unity_meet')) {
+                    $bottomDefaults[2] = 'unity_meet';
+                }
             }
 
             foreach ($bottomDefaults as $slot => $menuKey) {
@@ -221,18 +247,22 @@ class FavoriteMenuService
     {
         $allowedSlots = [1, 2, 4];
         $catalog = $this->visibleCatalogForUser($user)->keyBy('menu_key');
+        $defaultSlots = $this->defaultBottomNavSlotsForUser($user);
 
-        DB::transaction(function () use ($user, $slots, $allowedSlots, $catalog) {
+        DB::transaction(function () use ($user, $slots, $allowedSlots, $catalog, $defaultSlots) {
             UserFavoriteMenu::query()
                 ->where('user_id', $user->id)
                 ->where('placement', UserFavoriteMenu::PLACEMENT_BOTTOM_NAV)
                 ->delete();
 
             foreach ($allowedSlots as $slot) {
-                $menuKey = $slots[$slot] ?? self::DEFAULT_BOTTOM_NAV_SLOTS[$slot] ?? 'home';
+                $menuKey = $slots[$slot] ?? $defaultSlots[$slot] ?? 'home';
+                if ($menuKey === 'wallet' && ! $this->walletVisibleForUser($user)) {
+                    $menuKey = $defaultSlots[$slot] ?? 'chat';
+                }
                 $item = $catalog->get($menuKey);
                 if (! $item || ! $item->bottom_nav_eligible) {
-                    $menuKey = self::DEFAULT_BOTTOM_NAV_SLOTS[$slot] ?? 'home';
+                    $menuKey = $defaultSlots[$slot] ?? 'home';
                 }
 
                 UserFavoriteMenu::query()->create([
@@ -308,13 +338,21 @@ class FavoriteMenuService
 
         if ($user->role === 'user') {
             $query->where('supporter_visible', true);
-        } elseif (in_array($user->role, ['organization', 'organization_pending'], true)) {
+        } elseif ($user->hasNonprofitDashboardRole()) {
             $query->where('org_visible', true);
         } elseif ($user->role === 'admin') {
             $query->where('admin_visible', true);
+        } else {
+            return collect();
         }
 
-        return $query->orderBy('sort_order')->get();
+        return $query->orderBy('sort_order')->get()->filter(function (MenuItem $item) use ($user) {
+            if ($item->menu_key === 'wallet') {
+                return $this->walletVisibleForUser($user);
+            }
+
+            return true;
+        })->values();
     }
 
     /**
@@ -328,7 +366,7 @@ class FavoriteMenuService
             ->map(fn (string $key) => $catalog->firstWhere('menu_key', $key))
             ->filter()
             ->take(self::QUICK_GRID_LIMIT)
-            ->map(fn (MenuItem $item) => $this->serializeMenuItem($item))
+            ->map(fn (MenuItem $item) => $this->serializeMenuItem($item, $user))
             ->values()
             ->all();
     }
@@ -367,14 +405,15 @@ class FavoriteMenuService
             }
 
             $favorite = $slots->get($slot);
-            $menuKey = $favorite?->menu_key ?? (self::DEFAULT_BOTTOM_NAV_SLOTS[$slot] ?? 'home');
+            $defaultSlots = $this->defaultBottomNavSlotsForUser($user);
+            $menuKey = $favorite?->menu_key ?? ($defaultSlots[$slot] ?? 'home');
             $item = $catalog->firstWhere('menu_key', $menuKey);
             if (! $item) {
-                $item = $catalog->firstWhere('menu_key', self::DEFAULT_BOTTOM_NAV_SLOTS[$slot] ?? 'home');
+                $item = $catalog->firstWhere('menu_key', $defaultSlots[$slot] ?? 'home');
             }
 
             if ($item) {
-                $result[] = array_merge($this->serializeMenuItem($item), ['slot' => $slot]);
+                $result[] = array_merge($this->serializeMenuItem($item, $user), ['slot' => $slot]);
             }
         }
 
@@ -386,50 +425,44 @@ class FavoriteMenuService
      */
     private function resolveProfileItem(User $user, Collection $catalog): array
     {
-        if ($user->role === 'admin' || in_array($user->role, ['organization', 'organization_pending'], true)) {
-            return [
-                'menuKey' => 'dashboard',
-                'title' => 'Profile',
-                'href' => route('dashboard'),
-                'icon' => 'User',
-                'activePathPrefix' => '/dashboard',
-            ];
-        }
-
-        $profile = $catalog->firstWhere('menu_key', 'profile');
-
-        return $profile
-            ? $this->serializeMenuItem($profile)
-            : [
-                'menuKey' => 'profile',
-                'title' => 'Profile',
-                'href' => route('user.profile.index'),
-                'icon' => 'User',
-                'activePathPrefix' => '/profile',
-            ];
+        return [
+            'menuKey' => 'profile',
+            'title' => 'Profile',
+            'href' => $this->profileHrefForUser($user),
+            'icon' => 'User',
+            'activePathPrefix' => $this->profileActivePathForUser($user),
+        ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function serializeMenuItem(MenuItem $item): array
+    private function serializeMenuItem(MenuItem $item, User $user): array
     {
-        return [
+        $serialized = [
             'menuKey' => $item->menu_key,
             'title' => $item->title,
-            'href' => $this->resolveHref($item),
+            'href' => $this->resolveHref($item, $user),
             'icon' => $item->icon,
             'category' => $item->category,
-            'activePathPrefix' => $item->active_path_prefix,
+            'activePathPrefix' => $this->activePathForItem($item, $user),
             'requiresAuth' => $item->requires_auth,
             'bottomNavEligible' => $item->bottom_nav_eligible,
         ];
+
+        if ($item->menu_key === 'wallet' && $this->walletVisibleForUser($user)) {
+            $serialized['opensWallet'] = true;
+            $serialized['href'] = null;
+            $serialized['activePathPrefix'] = null;
+        }
+
+        return $serialized;
     }
 
     /**
      * @return array<string, list<array<string, mixed>>>
      */
-    private function catalogGrouped(Collection $catalog): array
+    private function catalogGrouped(Collection $catalog, User $user): array
     {
         $labels = [
             'home' => 'Home',
@@ -452,7 +485,7 @@ class FavoriteMenuService
                     'items' => [],
                 ];
             }
-            $grouped[$key]['items'][] = $this->serializeMenuItem($item);
+            $grouped[$key]['items'][] = $this->serializeMenuItem($item, $user);
         }
 
         return array_values($grouped);
@@ -477,8 +510,30 @@ class FavoriteMenuService
         ];
     }
 
-    public function resolveHref(MenuItem $item): string
+    public function resolveHref(MenuItem $item, ?User $user = null): string
     {
+        if ($user) {
+            if ($item->menu_key === 'wallet') {
+                return '#';
+            }
+
+            if ($item->menu_key === 'profile') {
+                return $this->profileHrefForUser($user);
+            }
+
+            if ($item->menu_key === 'dashboard') {
+                return $this->dashboardHrefForUser($user);
+            }
+
+            if ($item->menu_key === 'unity_meet' && ! $this->canAccessUnityMeet($user)) {
+                return $this->dashboardHrefForUser($user);
+            }
+
+            if ($item->requires_auth && ! auth()->check()) {
+                return Route::has('login') ? route('login') : '/login';
+            }
+        }
+
         if ($item->href) {
             return $item->href;
         }
@@ -488,5 +543,139 @@ class FavoriteMenuService
         }
 
         return '#';
+    }
+
+    public function isSupporterUser(User $user): bool
+    {
+        return $user->hasRole('user') || (string) $user->role === 'user';
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function defaultQuickKeysForUser(User $user): array
+    {
+        if ($this->isSupporterUser($user)) {
+            return self::DEFAULT_QUICK_KEYS;
+        }
+
+        if ($user->hasNonprofitDashboardRole() || $user->role === 'admin') {
+            return self::DEFAULT_QUICK_KEYS_ORG;
+        }
+
+        return self::DEFAULT_QUICK_KEYS;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function defaultBottomNavSlotsForUser(User $user): array
+    {
+        $slots = match (true) {
+            $this->isSupporterUser($user) => self::DEFAULT_BOTTOM_NAV_SLOTS,
+            $user->hasNonprofitDashboardRole(), $user->role === 'admin' => self::DEFAULT_BOTTOM_NAV_SLOTS_ORG,
+            default => self::DEFAULT_BOTTOM_NAV_SLOTS,
+        };
+
+        if ($this->walletVisibleForUser($user)) {
+            $slots[2] = 'wallet';
+        }
+
+        return $slots;
+    }
+
+    public function walletVisibleForUser(User $user): bool
+    {
+        if ($user->role === 'admin' || $user->hasRole('admin')) {
+            return false;
+        }
+
+        return $user->walletHeaderVisible();
+    }
+
+    public function profileHrefForUser(User $user): string
+    {
+        if ($user->role === 'admin' || $user->hasRole('admin')) {
+            return Route::has('dashboard') ? route('dashboard') : '/';
+        }
+
+        if ($user->hasNonprofitDashboardRole()) {
+            return $this->dashboardHrefForUser($user);
+        }
+
+        return Route::has('user.profile.index') ? route('user.profile.index') : '/profile';
+    }
+
+    public function dashboardHrefForUser(User $user): string
+    {
+        if ($user->hasRole('care_alliance') || (string) $user->role === 'care_alliance') {
+            return Route::has('care-alliance.dashboard') ? route('care-alliance.dashboard') : '/care-alliance/dashboard';
+        }
+
+        return Route::has('dashboard') ? route('dashboard') : '/dashboard';
+    }
+
+    public function profileActivePathForUser(User $user): string
+    {
+        if ($this->isSupporterUser($user)) {
+            return '/profile';
+        }
+
+        if ($user->hasRole('care_alliance') || (string) $user->role === 'care_alliance') {
+            return '/care-alliance/dashboard';
+        }
+
+        return '/dashboard';
+    }
+
+    public function activePathForItem(MenuItem $item, User $user): ?string
+    {
+        if ($item->menu_key === 'dashboard') {
+            if ($user->hasRole('care_alliance') || (string) $user->role === 'care_alliance') {
+                return '/care-alliance/dashboard';
+            }
+
+            return '/dashboard';
+        }
+
+        if ($item->menu_key === 'profile') {
+            return $this->profileActivePathForUser($user);
+        }
+
+        return $item->active_path_prefix;
+    }
+
+    public function canAccessUnityMeet(User $user): bool
+    {
+        if ($user->hasAnyRole(['user', 'organization', 'organization_pending', 'care_alliance'])) {
+            return true;
+        }
+
+        return in_array((string) $user->role, ['user', 'organization', 'organization_pending', 'care_alliance'], true);
+    }
+
+    public function mobileNavRoleKey(User $user): ?string
+    {
+        if ($this->isSupporterUser($user)) {
+            return 'user';
+        }
+
+        if ($user->hasRole('care_alliance') || (string) $user->role === 'care_alliance') {
+            return 'care_alliance';
+        }
+
+        if ($user->hasRole('organization') || (string) $user->role === 'organization') {
+            return 'organization';
+        }
+
+        if ($user->hasRole('organization_pending') || (string) $user->role === 'organization_pending') {
+            return 'organization_pending';
+        }
+
+        if ($user->hasRole('admin') || (string) $user->role === 'admin') {
+            return 'admin';
+        }
+
+        return null;
     }
 }

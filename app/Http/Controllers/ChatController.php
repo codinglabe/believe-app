@@ -212,21 +212,7 @@ class ChatController extends Controller
     public function getMessages(Request $request, ChatRoom $chatRoom)
     {
         $user = auth()->user();
-
-        // For public rooms, auto-join the user if not already a member
-        if ($chatRoom->type === 'public') {
-            if (!$chatRoom->members()->where('user_id', $user->id)->exists()) {
-                $chatRoom->members()->attach($user->id, [
-                    'role' => 'member',
-                    'joined_at' => now(),
-                ]);
-            }
-        } else {
-            // For private/direct rooms, check membership
-            if (!$chatRoom->members()->where('user_id', $user->id)->exists()) {
-                abort(403, 'You are not a member of this chat room');
-            }
-        }
+        $this->ensureChatRoomMember($chatRoom, $user);
 
         $page = $request->get('page', 1);
         $perPage = 20;
@@ -258,10 +244,7 @@ class ChatController extends Controller
             return response()->json(['error' => 'Message or attachment is required.'], 422);
         }
 
-        // Check if user is member of this chat room
-        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
-            abort(403, 'You are not a member of this chat room');
-        }
+        $this->ensureChatRoomMember($chatRoom, auth()->user());
 
         $attachmentsData = [];
         if ($request->hasFile('attachments')) {
@@ -487,15 +470,36 @@ class ChatController extends Controller
         $user1 = auth()->user();
         $user2 = User::find($request->input('user_id'));
 
-        // Check if a direct chat already exists between these two users
-        $existingRoom = ChatRoom::where('type', 'direct')
-            ->whereHas('members', function ($query) use ($user1, $user2) {
-                $query->whereIn('user_id', [$user1->id, $user2->id]);
-            }, '=', 2)
+        // Check if a direct chat already exists between these two users (both must be members).
+        $existingRoom = ChatRoom::query()
+            ->where('type', 'direct')
+            ->whereHas('members', fn ($query) => $query->where('users.id', $user1->id))
+            ->whereHas('members', fn ($query) => $query->where('users.id', $user2->id))
             ->first();
 
         if ($existingRoom) {
             return response()->json(['room' => $this->formatRoomForResponse($existingRoom, $user1)]);
+        }
+
+        // Heal orphaned 1:1 rooms when one participant had left but re-opens the conversation.
+        foreach ([$user1, $user2] as $soloUser) {
+            $otherUser = $soloUser->id === $user1->id ? $user2 : $user1;
+            $partialRoom = ChatRoom::query()
+                ->where('type', 'direct')
+                ->whereHas('members', fn ($query) => $query->where('users.id', $otherUser->id))
+                ->whereDoesntHave('members', fn ($query) => $query->where('users.id', $soloUser->id))
+                ->has('members', '=', 1)
+                ->orderByDesc('id')
+                ->first();
+
+            if ($partialRoom) {
+                $partialRoom->members()->attach($soloUser->id, [
+                    'role' => 'member',
+                    'joined_at' => now(),
+                ]);
+
+                return response()->json(['room' => $this->formatRoomForResponse($partialRoom->fresh(), $user1)]);
+            }
         }
 
         $room = DB::transaction(function () use ($user1, $user2) {
@@ -567,10 +571,7 @@ class ChatController extends Controller
             'is_typing' => 'required|boolean',
         ]);
 
-        // Check if user is member of this chat room
-        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
-            abort(403, 'You are not a member of this chat room');
-        }
+        $this->ensureChatRoomMember($chatRoom, auth()->user());
 
         broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->boolean('is_typing'), $chatRoom->type))->toOthers();
 
@@ -599,6 +600,41 @@ class ChatController extends Controller
         broadcast(new RoomCreated($chatRoom))->toOthers();
 
         return response()->json(['message' => 'Members added successfully.']);
+    }
+
+    private function userIsChatRoomMember(ChatRoom $chatRoom, int $userId): bool
+    {
+        return $chatRoom->members()->where('users.id', $userId)->exists();
+    }
+
+    /**
+     * Public groups auto-join; direct 1:1 chats re-attach the second participant when the room is not full.
+     */
+    private function ensureChatRoomMember(ChatRoom $chatRoom, User $user): void
+    {
+        if ($this->userIsChatRoomMember($chatRoom, (int) $user->id)) {
+            return;
+        }
+
+        if ($chatRoom->type === 'public') {
+            $chatRoom->members()->attach($user->id, [
+                'role' => 'member',
+                'joined_at' => now(),
+            ]);
+
+            return;
+        }
+
+        if ($chatRoom->type === 'direct' && $chatRoom->members()->count() < 2) {
+            $chatRoom->members()->attach($user->id, [
+                'role' => 'member',
+                'joined_at' => now(),
+            ]);
+
+            return;
+        }
+
+        abort(403, 'You are not a member of this chat room');
     }
 
     /**

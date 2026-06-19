@@ -11,6 +11,7 @@ class MenuItemSeeder extends Seeder
     {
         $items = [
             ['menu_key' => 'home', 'title' => 'Home', 'category' => 'home', 'href' => '/', 'icon' => 'Home', 'active_path_prefix' => '/', 'default_enabled' => true, 'bottom_nav_eligible' => true, 'sort_order' => 1],
+            ['menu_key' => 'dashboard', 'title' => 'Dashboard', 'category' => 'home', 'route_name' => 'dashboard', 'icon' => 'Activity', 'active_path_prefix' => '/dashboard', 'default_enabled' => true, 'supporter_visible' => false, 'bottom_nav_eligible' => true, 'requires_auth' => true, 'sort_order' => 2],
             ['menu_key' => 'donate', 'title' => 'Donate', 'category' => 'give', 'route_name' => 'donate', 'icon' => 'Heart', 'active_path_prefix' => '/donate', 'default_enabled' => true, 'bottom_nav_eligible' => true, 'interest_tags' => ['supporting_organizations', 'gift_cards'], 'sort_order' => 10],
             ['menu_key' => 'fundme', 'title' => 'FundMe', 'category' => 'give', 'route_name' => 'fundme.index', 'icon' => 'Megaphone', 'active_path_prefix' => '/believe-fundme', 'default_enabled' => false, 'interest_tags' => ['supporting_organizations'], 'sort_order' => 11],
             ['menu_key' => 'gift_cards', 'title' => 'Gift Cards', 'category' => 'give', 'route_name' => 'gift-cards.index', 'icon' => 'Gift', 'active_path_prefix' => '/gift-cards', 'default_enabled' => true, 'bottom_nav_eligible' => true, 'interest_tags' => ['gift_cards', 'shopping_deals'], 'sort_order' => 12],
@@ -35,6 +36,7 @@ class MenuItemSeeder extends Seeder
             ['menu_key' => 'nonprofit_news', 'title' => 'News', 'category' => 'media', 'href' => '/nonprofit-news', 'icon' => 'Newspaper', 'active_path_prefix' => '/nonprofit-news', 'default_enabled' => false, 'sort_order' => 53],
             ['menu_key' => 'explore', 'title' => 'Explore', 'category' => 'community', 'href' => '/explore-by-cause', 'icon' => 'Compass', 'active_path_prefix' => '/explore-by-cause', 'default_enabled' => false, 'requires_auth' => true, 'bottom_nav_eligible' => true, 'sort_order' => 26],
             ['menu_key' => 'donation_history', 'title' => 'Donation History', 'category' => 'give', 'route_name' => 'profile.donations', 'icon' => 'Clock', 'active_path_prefix' => '/profile/donations', 'default_enabled' => false, 'requires_auth' => true, 'sort_order' => 14],
+            ['menu_key' => 'wallet', 'title' => 'Wallet', 'category' => 'account', 'icon' => 'Wallet', 'default_enabled' => true, 'requires_auth' => true, 'bottom_nav_eligible' => true, 'admin_visible' => false, 'sort_order' => 85],
             ['menu_key' => 'profile', 'title' => 'Profile', 'category' => 'account', 'route_name' => 'user.profile.index', 'icon' => 'User', 'active_path_prefix' => '/profile', 'default_enabled' => true, 'requires_auth' => true, 'bottom_nav_eligible' => false, 'sort_order' => 90],
         ];
 

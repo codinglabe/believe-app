@@ -25,7 +25,22 @@ jobs:
       SSH_USE_DEPLOY_HOST: true
 
     steps:
+      - name: Reset self-hosted workspace
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          shopt -s dotglob nullglob
+          for item in * .[!.]* ..?*; do
+            [ -e "${item}" ] || continue
+            rm -rf "${item}"
+          done
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          clean: true
 
       - name: Setup SSH
         env:

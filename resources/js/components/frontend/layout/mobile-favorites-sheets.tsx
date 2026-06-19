@@ -121,7 +121,8 @@ export function MobileFavoritesHubSheet({
   onCloseFavorites,
   onOpenBrowse,
   onOpenCustomize,
-}: SheetProps & { onOpenCustomize: () => void }) {
+  canCustomize = mobileNav.canCustomize,
+}: SheetProps & { onOpenCustomize: () => void; canCustomize?: boolean }) {
   return (
     <AnimatePresence>
       {favoritesOpen && (
@@ -163,9 +164,11 @@ export function MobileFavoritesHubSheet({
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" onClick={onOpenCustomize} aria-label="Customize favorites" className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
-                  <Settings2 className="h-4 w-4" />
-                </button>
+                {canCustomize && (
+                  <button type="button" onClick={onOpenCustomize} aria-label="Customize favorites" className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
+                    <Settings2 className="h-4 w-4" />
+                  </button>
+                )}
                 <button type="button" onClick={onCloseFavorites} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
                   <X className="h-4 w-4" />
                 </button>
@@ -243,9 +246,11 @@ export function MobileBrowseAllSheet({
                             <span className="truncate text-sm font-medium">{item.title}</span>
                             <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/60" />
                           </Link>
-                          <button type="button" onClick={() => toggleStar(item.menuKey)} aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-amber-500">
-                            <Star className={cn("h-4 w-4", isFavorite && "fill-amber-400")} />
-                          </button>
+                          {mobileNav.canCustomizeQuick && (
+                            <button type="button" onClick={() => toggleStar(item.menuKey)} aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-amber-500">
+                              <Star className={cn("h-4 w-4", isFavorite && "fill-amber-400")} />
+                            </button>
+                          )}
                         </div>
                       )
                     })}
@@ -321,6 +326,8 @@ export function MobileCustomizeSheet({
                 ))}
               </select>
             </div>
+            {mobileNav.canCustomizeQuick && (
+              <>
             <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Favorite grid (up to {mobileNav.limits.quickMax})</p>
             <div className="space-y-1 pb-2">
               {mobileNav.menuCatalog.flatMap((g) => g.items).map((item) => {
@@ -338,6 +345,8 @@ export function MobileCustomizeSheet({
                 )
               })}
             </div>
+              </>
+            )}
           </motion.div>
         </>
       )}

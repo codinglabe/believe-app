@@ -28,7 +28,9 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
   const [startingCall, setStartingCall] = React.useState(false)
 
-  const isMember = activeRoom?.is_member || activeRoom?.members?.some((member) => member.id === currentUser?.id)
+  const isMember =
+    activeRoom?.is_member ||
+    activeRoom?.members?.some((member) => Number(member.id) === Number(currentUser?.id))
 
   if (!activeRoom) {
     return (
@@ -118,27 +120,29 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5 pr-1 sm:gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-full hover:bg-muted/80"
-            aria-label="Start audio call"
-            disabled={startingCall}
-            onClick={() => {
-              if (!activeRoom) {
-                return
-              }
-              if (!callNotificationsEnabled()) {
-                requestCallPermissionsPrompt()
-              }
-              setStartingCall(true)
-              void startAudioCall(activeRoom.id).finally(() => {
-                setStartingCall(false)
-              })
-            }}
-          >
-            <Phone className="h-5 w-5" />
-          </Button>
+          {activeRoom.type === "direct" ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full hover:bg-muted/80"
+              aria-label="Start audio call"
+              disabled={startingCall}
+              onClick={() => {
+                if (!activeRoom) {
+                  return
+                }
+                if (!callNotificationsEnabled()) {
+                  requestCallPermissionsPrompt()
+                }
+                setStartingCall(true)
+                void startAudioCall(activeRoom.id).finally(() => {
+                  setStartingCall(false)
+                })
+              }}
+            >
+              <Phone className="h-5 w-5" />
+            </Button>
+          ) : null}
           {activeRoom.type !== "direct" && !isMobile && (
             <Link href={getManageGroupsLink()}>
               <Button

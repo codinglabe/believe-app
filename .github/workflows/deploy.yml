@@ -20,7 +20,7 @@ jobs:
 
     env:
       PHP_VERSION: '8.4'
-      NODE_VERSION: '20'
+      NODE_VERSION: '24'
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       # GitHub runners must use VPS IPv4 — hostname/IPv6 often time out from Azure datacenters.
       SSH_CONNECT_HOST: ${{ vars.SSH_HOST != '' && vars.SSH_HOST || '72.60.226.88' }}
@@ -83,7 +83,22 @@ jobs:
         --exclude=auth.json
 
     steps:
+      - name: Reset self-hosted workspace
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          shopt -s dotglob nullglob
+          for item in * .[!.]* ..?*; do
+            [ -e "${item}" ] || continue
+            rm -rf "${item}"
+          done
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          clean: true
 
       - name: Deploy target
         run: |
@@ -143,15 +158,15 @@ jobs:
             chmod +x "${HOME}/bin/composer"
           fi
           export PATH="${HOME}/bin:${PATH}"
-          if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q '^v20\.'; then
+          if ! command -v node >/dev/null 2>&1 || ! node --version | grep -qE '^v(20|22|24)\.'; then
             export NVM_DIR="${HOME}/.nvm"
             if [ ! -s "${NVM_DIR}/nvm.sh" ]; then
               curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
             fi
             # shellcheck source=/dev/null
             . "${NVM_DIR}/nvm.sh"
-            nvm install 20
-            nvm use 20
+            nvm install 24
+            nvm use 24
           fi
           echo "${HOME}/bin" >> "${GITHUB_PATH}"
           if [ -s "${HOME}/.nvm/nvm.sh" ]; then

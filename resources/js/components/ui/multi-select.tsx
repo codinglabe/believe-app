@@ -68,8 +68,8 @@ export function MultiSelect({
           <ChevronsUpDown className="ml-2 h-5 w-5 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[var(--radix-popover-trigger-width)] p-0 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-lg rounded-lg" 
+      <PopoverContent
+        className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] max-w-md p-0 sm:w-[var(--radix-popover-trigger-width)]"
         align="start"
       >
         <Command className="bg-white dark:bg-gray-800">

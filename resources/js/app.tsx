@@ -23,6 +23,7 @@ import { ensureMobilePwaCookie, logPushDiagnostics, shouldAutoPromptForPushPermi
 import IncomingCallOverlay from './components/call/IncomingCallOverlay';
 import CallPermissionsPrompt from './components/call/CallPermissionsPrompt';
 import UnityCallGlobalListener from './components/call/UnityCallGlobalListener';
+import { UnityCallSessionProvider } from './contexts/unity-call-session-context';
 import { setupSwIncomingCallBridge } from './lib/swIncomingCallBridge';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
@@ -125,13 +126,15 @@ createInertiaApp({
 
         root.render(
           <NotificationProvider>
-            <App {...props} />
-            <IncomingCallOverlay authUserId={initialUserId ?? null} />
-            <CallPermissionsPrompt authUserId={initialUserId ?? null} />
-            <UnityCallGlobalListener authUserId={initialUserId ?? null} />
-            <Toaster position="top-right" gutter={8} />
-            <PwaInstallPrompt />
-            <PWAUpdatePrompt />
+            <UnityCallSessionProvider>
+              <App {...props} />
+              <IncomingCallOverlay authUserId={initialUserId ?? null} />
+              <CallPermissionsPrompt authUserId={initialUserId ?? null} />
+              <UnityCallGlobalListener authUserId={initialUserId ?? null} />
+              <Toaster position="top-right" gutter={8} />
+              <PwaInstallPrompt />
+              <PWAUpdatePrompt />
+            </UnityCallSessionProvider>
           </NotificationProvider>
         );
 

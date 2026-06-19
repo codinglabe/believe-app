@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import toast from "react-hot-toast"
 import { Link, router, usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import { resolveStorageUrl } from "@/lib/storage-url"
 import useAxios from "@/hooks/useAxios"
 import {
   ChevronDown,
@@ -71,7 +72,13 @@ function OrgAffiliationAvatar({
   const dim = size === "md" ? "h-10 w-10 rounded-lg text-sm" : "h-8 w-8 rounded-md text-xs"
 
   if (image) {
-    return <img src={image} alt="" className={cn("shrink-0 object-cover ring-1 ring-white/10", dim)} />
+    return (
+      <img
+        src={resolveStorageUrl(image) ?? image}
+        alt=""
+        className={cn("shrink-0 object-cover object-center ring-1 ring-white/10", dim)}
+      />
+    )
   }
 
   return (
@@ -194,15 +201,9 @@ export default function UserPage({
   // Get postFilter from page props
   const currentPostFilter = postFilter || (page.props as any).postFilter || 'user'
 
-  // Get cover image
-  const coverImage = user.cover_img
-    ? `/storage/${user.cover_img}`
-    : null
-
-  const userImage = user.image
-  const orgImage = user.image // Fallback, will be replaced by creator_image if available
-    ? `/storage/${user.image}`
-    : null
+  const coverImage = resolveStorageUrl(user.cover_img)
+  const userImage = resolveStorageUrl(user.image, "/placeholder.svg?height=128&width=128")
+  const orgImage = resolveStorageUrl(user.image)
 
   // Format dates
   const memberSince = user.created_at
