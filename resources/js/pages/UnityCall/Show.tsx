@@ -361,10 +361,7 @@ export default function UnityCallShow({
       return formatUnityCallElapsed(elapsed)
     }
     if (isCaller) {
-      const calleeJoined =
-        acceptedCallees.length > 0 ||
-        activeCall.status === "accepted" ||
-        selfStatus === "accepted"
+      const calleeJoined = acceptedCallees.length > 0 || activeCall.status === "accepted"
       if (calleeJoined) {
         if (callTimerAnchor !== null) {
           return formatUnityCallElapsed(elapsed)
@@ -715,11 +712,7 @@ export default function UnityCallShow({
     if (callConnected && mediaConnected) {
       return "connected" as const
     }
-    if (
-      acceptedCallees.length > 0 ||
-      activeCall.status === "accepted" ||
-      selfStatus === "accepted"
-    ) {
+    if (acceptedCallees.length > 0 || activeCall.status === "accepted") {
       return "connecting" as const
     }
     if (activeCall.status === "ringing") {

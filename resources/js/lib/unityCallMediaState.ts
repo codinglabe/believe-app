@@ -25,6 +25,7 @@ export function computeUnityCallMediaState(
   participantStatus?: string | null,
 ) {
   const normalizedParticipants = normalizeCallParticipants(call, participants)
+  const selfStatus =
     normalizedParticipants.find((p) => p.userId === authUserId)?.status ?? participantStatus ?? null
   const acceptedCallees = normalizedParticipants.filter(
     (p) => p.role === "callee" && p.status === "accepted",
