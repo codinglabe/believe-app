@@ -474,6 +474,14 @@ export async function fetchUnityCallChatRooms(): Promise<UnityCallChatRoomChanne
   return ok && data?.rooms ? data.rooms : []
 }
 
+export async function fetchUnityCallStatus(callId: number): Promise<UnityCallStatusEvent | null> {
+  const { ok, data } = await getUnityCallJson<{ status?: UnityCallStatusEvent | null }>(
+    route("unity-calls.status", callId),
+  )
+
+  return ok && data?.status ? data.status : null
+}
+
 export async function expireUnityCallRinging(
   callId: number,
 ): Promise<{ ok: boolean; status?: string; participant_status?: string; message?: string }> {

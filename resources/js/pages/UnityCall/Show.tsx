@@ -26,6 +26,7 @@ import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnity
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
+import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 
 type Props = {
@@ -356,7 +357,7 @@ export default function UnityCallShow({
         return
       }
 
-      setCall(payload.call)
+      setCall((current) => ({ ...current, ...payload.call }))
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
       if (payload.reason === "accepted") {
@@ -394,6 +395,17 @@ export default function UnityCallShow({
   )
 
   const onStatus = handleCallTerminated
+
+  const shouldPollCallStatus =
+    !ending &&
+    !isTerminalCallStatus &&
+    (call.status === "ringing" || (call.status === "accepted" && !mediaConnected))
+
+  useUnityCallStatusSync({
+    callId: call.id,
+    enabled: shouldPollCallStatus,
+    onStatus: handleCallTerminated,
+  })
 
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId, onStatus], "private")
 

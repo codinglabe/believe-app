@@ -36,6 +36,7 @@ import {
   terminateUnityCall,
 } from "@/lib/unityCall"
 import {
+  dispatchUnityCallStatus,
   dispatchUnityCallTerminated,
   isUnityCallTerminated,
   subscribeUnityCallStatus,
@@ -44,6 +45,7 @@ import {
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 
 export type UnityCallSessionSnapshot = {
   call: UnityCallPayload
@@ -144,7 +146,12 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   const handleSessionStatus = useCallback(
     (payload: UnityCallStatusEvent) => {
+      if (payload.reason === "incoming") {
+        return
+      }
+
       applyUnityCallStatus(payload)
+      dispatchUnityCallStatus(payload)
     },
     [applyUnityCallStatus],
   )
@@ -315,10 +322,12 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
         return {
           ...previous,
-          call: payload.call,
+          call: { ...previous.call, ...payload.call },
           participants: mergeCallParticipants(previous.participants, payload.participants),
         }
       })
+
+      dispatchUnityCallStatus(payload)
 
       if (payload.reason === "accepted" || payload.reason === "participant_left") {
         resyncCallRef.current()
@@ -378,6 +387,35 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     markUnityCallSessionActive(session.call.id)
     markUnityCallLiveOnPage(session.call.id)
   }, [mediaState?.callConnected, mediaState?.callLive, session])
+
+  const shouldPollCallStatus = Boolean(
+    session &&
+      !isUnityCallTerminated({
+        reason: session.call.status,
+        call: session.call,
+        caller: session.caller,
+        participants: session.participants,
+      }) &&
+      (session.call.status === "ringing" ||
+        (session.call.status === "accepted" && !webrtc.mediaConnected)),
+  )
+
+  const handlePolledStatus = useCallback(
+    (payload: UnityCallStatusEvent) => {
+      applyUnityCallStatus(payload)
+      dispatchUnityCallStatus(payload)
+      if (payload.reason === "accepted") {
+        resyncCallRef.current()
+      }
+    },
+    [applyUnityCallStatus],
+  )
+
+  useUnityCallStatusSync({
+    callId: session?.call.id ?? 0,
+    enabled: shouldPollCallStatus,
+    onStatus: handlePolledStatus,
+  })
 
   useEffect(() => {
     if (!session) {
