@@ -120,3 +120,45 @@ export function buildUnityCallRtcConfiguration(iceServers: RTCIceServer[]): RTCC
     rtcpMuxPolicy: "require",
   }
 }
+
+/** Unified Plan: addTrack already adds sendrecv — do not combine with offerToReceiveAudio. */
+export async function ensurePeerAudioTransceiver(
+  pc: RTCPeerConnection,
+  track: MediaStreamTrack | null,
+): Promise<boolean> {
+  if (!track) {
+    return false
+  }
+
+  track.enabled = true
+
+  let transceiver = pc
+    .getTransceivers()
+    .find((item) => item.sender.track?.kind === "audio" || item.receiver.track?.kind === "audio")
+
+  if (!transceiver) {
+    transceiver = pc.addTransceiver("audio", { direction: "sendrecv" })
+  }
+
+  if (transceiver.sender.track?.id !== track.id) {
+    await transceiver.sender.replaceTrack(track)
+  }
+
+  if (transceiver.direction !== "sendrecv" && transceiver.direction !== "sendonly") {
+    transceiver.direction = "sendrecv"
+  }
+
+  return true
+}
+
+export function resumeUnityCallRemotePlayback(): void {
+  if (typeof document === "undefined") {
+    return
+  }
+
+  document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
+    const audio = node as HTMLAudioElement
+    audio.muted = false
+    void audio.play().catch(() => {})
+  })
+}

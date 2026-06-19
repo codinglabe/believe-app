@@ -564,7 +564,11 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   return (
     <UnityCallSessionContext.Provider value={value}>
-      {showRemoteAudio ? <UnityCallRemoteAudio stream={mergedRemoteStream} speakerOn={speakerOn} /> : null}
+      {showRemoteAudio
+        ? webrtc.remoteStreams.map(({ peerId, stream }) => (
+            <UnityCallRemoteAudio key={peerId} stream={stream} speakerOn={speakerOn} />
+          ))
+        : null}
       {children}
       {showFloatingBar && session ? (
         <UnityCallFloatingBar

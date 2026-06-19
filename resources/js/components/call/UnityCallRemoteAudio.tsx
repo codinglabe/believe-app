@@ -19,14 +19,16 @@ export function UnityCallRemoteAudio({ stream, speakerOn }: Props) {
 
     audio.srcObject = stream
     audio.autoplay = true
+    audio.volume = 1
     ;(audio as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
+    audio.setAttribute("playsinline", "true")
     audio.muted = false
 
     const ensurePlayback = () => {
-      void applyRemoteAudioOutput(audio, speakerOn).then(() => {
-        if (audio.paused) {
-          void audio.play().catch(() => {})
-        }
+      audio.muted = false
+      audio.volume = 1
+      void applyRemoteAudioOutput(audio, speakerOn).finally(() => {
+        void audio.play().catch(() => {})
       })
     }
 
@@ -44,7 +46,9 @@ export function UnityCallRemoteAudio({ stream, speakerOn }: Props) {
     stream.addEventListener("addtrack", onTrackChange)
     stream.addEventListener("removetrack", onTrackChange)
 
-    const retryTimers = [150, 500, 1500, 3000].map((delay) => window.setTimeout(ensurePlayback, delay))
+    const retryTimers = [0, 150, 500, 1500, 3000, 5000].map((delay) =>
+      window.setTimeout(ensurePlayback, delay),
+    )
 
     const onVisibility = () => {
       ensurePlayback()

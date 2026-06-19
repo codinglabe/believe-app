@@ -17,6 +17,7 @@ import {
   unityCallChatUrl,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
+import { resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
@@ -446,12 +447,11 @@ export default function UnityCallShow({
     (isCaller ? acceptedCallees.length > 0 || activeCall.status === "accepted" : callConnected)
 
   const unlockRemotePlayback = useCallback(() => {
+    resumeUnityCallRemotePlayback()
     document.querySelectorAll('audio[data-unity-call-remote="1"]').forEach((node) => {
       const audio = node as HTMLAudioElement
-      void applyRemoteAudioOutput(audio, speakerOn).then(() => {
-        if (audio.paused) {
-          void audio.play().catch(() => {})
-        }
+      void applyRemoteAudioOutput(audio, speakerOn).finally(() => {
+        void audio.play().catch(() => {})
       })
     })
   }, [speakerOn])
