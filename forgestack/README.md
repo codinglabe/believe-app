@@ -6,9 +6,15 @@ Do **not** point the browser at `wss://believeinunity.test:8080` unless Reverb i
 
 ## 1. Nginx (one-time per machine)
 
-After ForgeStack regenerates `forgestack-sites.conf`, ensure the `believeinunity.test` `server { }` block includes the locations from [`nginx-reverb-locations.conf`](./nginx-reverb-locations.conf) (before the `location ~ \.php$` block).
+After ForgeStack regenerates `forgestack-sites.conf`, run from `backend/`:
 
-Reload nginx from the ForgeStack app or restart ForgeStack.
+```powershell
+.\forgestack\apply-reverb-nginx.ps1
+```
+
+That adds an `include` to the project file [`nginx-reverb-locations.conf`](./nginx-reverb-locations.conf) inside the `believeinunity.test` server block (before `location ~ \.php$`).
+
+Or paste those locations manually if you prefer. Reload nginx from ForgeStack when prompted.
 
 ## 2. `.env` (local ForgeStack)
 
@@ -20,11 +26,13 @@ REVERB_HOST=believeinunity.test
 REVERB_PORT=443
 REVERB_SCHEME=https
 
-VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
-VITE_REVERB_HOST="${REVERB_HOST}"
-VITE_REVERB_PORT="${REVERB_PORT}"
-VITE_REVERB_SCHEME="${REVERB_SCHEME}"
+VITE_REVERB_APP_KEY=your-reverb-app-key
+VITE_REVERB_HOST=believeinunity.test
+VITE_REVERB_PORT=443
+VITE_REVERB_SCHEME=https
 ```
+
+Use **literal** values for `VITE_REVERB_*` (Vite does not expand `${REVERB_*}` from `.env`). After changing them, restart `npm run dev`.
 
 `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` are what the **browser** uses (wss on 443).
 
