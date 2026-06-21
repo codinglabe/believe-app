@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Idempotent +5 Believe Points reward on successful donation.
+ * Idempotent +5 BRP (Believe Reward Points) on successful donation.
  */
 class BelievePointsRewardService
 {
@@ -46,20 +46,18 @@ class BelievePointsRewardService
             }
 
             $points = PaymentTransaction::REWARD_POINTS_AMOUNT;
-            $user->addBelievePoints((float) $points);
-
-            BelievePointsLedgerEntry::create([
-                'user_id' => $user->id,
-                'payment_transaction_id' => $paymentTx?->id,
-                'amount' => $points,
-                'entry_type' => BelievePointsLedgerEntry::TYPE_REWARD,
-                'description' => 'Reward for completed donation',
-                'metadata' => [
+            $user->addRewardPoints(
+                $points,
+                'donation',
+                $donation->id,
+                'Reward for completed donation',
+                [
                     'donation_id' => $donation->id,
                     'organization_id' => $donation->organization_id,
                     'payment_method' => $donation->payment_method,
-                ],
-            ]);
+                    'payment_transaction_id' => $paymentTx?->id,
+                ]
+            );
 
             $donation->update(['reward_points_issued' => true]);
 
@@ -70,7 +68,7 @@ class BelievePointsRewardService
                 ]);
             }
 
-            Log::info('Believe Points donation reward issued', [
+            Log::info('Donation BRP reward issued', [
                 'donation_id' => $donation->id,
                 'user_id' => $user->id,
                 'points' => $points,

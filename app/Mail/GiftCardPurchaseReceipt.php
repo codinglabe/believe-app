@@ -16,15 +16,19 @@ class GiftCardPurchaseReceipt extends Mailable
     use Queueable, SerializesModels;
 
     public GiftCard $giftCard;
+
     public ?Session $session;
+
+    public bool $readyNotification;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(GiftCard $giftCard, ?Session $session = null)
+    public function __construct(GiftCard $giftCard, ?Session $session = null, bool $readyNotification = false)
     {
         $this->giftCard = $giftCard->load(['user', 'organization']);
         $this->session = $session;
+        $this->readyNotification = $readyNotification;
     }
 
     /**
@@ -32,8 +36,12 @@ class GiftCardPurchaseReceipt extends Mailable
      */
     public function envelope(): Envelope
     {
+        $brand = $this->giftCard->brand_name ?? 'Gift Card';
+
         return new Envelope(
-            subject: 'Gift Card Purchase Receipt - ' . ($this->giftCard->brand_name ?? 'Gift Card'),
+            subject: $this->readyNotification
+                ? 'Your gift card is ready - '.$brand
+                : 'Gift Card Purchase Receipt - '.$brand,
         );
     }
 
@@ -47,6 +55,7 @@ class GiftCardPurchaseReceipt extends Mailable
             with: [
                 'giftCard' => $this->giftCard,
                 'session' => $this->session,
+                'readyNotification' => $this->readyNotification,
             ],
         );
     }

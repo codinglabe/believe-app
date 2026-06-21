@@ -359,6 +359,11 @@ return [
         // No need to set PHAZE_WEBHOOK_API_KEY in .env anymore
     ],
 
+    'gift_cards' => [
+        /** Hours to wait before Phaze fulfillment for Believe Points redemptions. */
+        'fulfillment_delay_hours' => (int) env('GIFT_CARD_FULFILLMENT_DELAY_HOURS', 72),
+    ],
+
     'mediamtx' => [
         // Public URL where users open the browser publish page (e.g. https://stream.yourapp.com). Required for "Go Live from browser" (no OBS).
         'publish_url' => env('MEDIAMTX_PUBLISH_URL', ''),

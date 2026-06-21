@@ -78,7 +78,7 @@ class DonationPaymentController extends Controller
 
         if ($success) {
             return redirect(route('donations.success').'?donation_id='.$donation->id)
-                ->with('success', 'PayPal payment completed! You earned +5 Believe Points.');
+                ->with('success', 'PayPal payment completed! You earned +5 BRP (Believe Reward Points).');
         }
 
         return redirect()->route('donate')->withErrors([

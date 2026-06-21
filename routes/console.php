@@ -34,6 +34,10 @@ Schedule::command('drops:dispatch-due')
     ->everyMinute()
     ->withoutOverlapping();
 
+Schedule::command('gift-cards:fulfill-due')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 // Process scheduled Facebook posts
 Schedule::command('facebook:process-scheduled')
     ->everyMinute()

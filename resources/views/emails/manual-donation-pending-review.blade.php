@@ -33,7 +33,7 @@
     </div>
 
     <div class="content">
-        Once the organization verifies your payment, you will receive a confirmation email and push notification, plus +5 Believe Points.
+        Once the organization verifies your payment, you will receive a confirmation email and push notification, plus +5 BRP (Believe Reward Points).
     </div>
 
     <div class="divider"></div>

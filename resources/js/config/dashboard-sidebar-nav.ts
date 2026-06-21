@@ -811,6 +811,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'admin',
                     },
                     {
+                        title: 'Gift card redemptions',
+                        href: '/admin/gift-card-redemptions',
+                        icon: Clock,
+                        role: 'admin',
+                    },
+                    {
                         title: 'Phaze balance',
                         href: '/admin/phaze-balance',
                         icon: Landmark,

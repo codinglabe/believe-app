@@ -91,7 +91,7 @@ class ManualPaymentVerificationController extends Controller
             $request->input('admin_notes')
         );
 
-        return back()->with('success', 'Payment approved. +5 Believe Points reward issued to donor.');
+        return back()->with('success', 'Payment approved. +5 BRP (Believe Reward Points) issued to donor.');
     }
 
     public function reject(Request $request, PaymentTransaction $paymentTransaction): RedirectResponse

@@ -1069,6 +1069,43 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Deduct Available (purchased) Believe Points for a gift card redemption.
+     * Gifted BP cannot be used for gift cards.
+     */
+    public function deductAvailableBelievePointsForGiftCard(float $amount): bool
+    {
+        $amount = round(max(0, (float) $amount), 2);
+        if ($amount <= 0) {
+            return true;
+        }
+
+        $this->refresh();
+        $purchased = round((float) ($this->believe_points ?? 0), 2);
+
+        if ($purchased < $amount - 0.000001) {
+            return false;
+        }
+
+        $this->decrement('believe_points', $amount);
+        ProcessBelievePointsAutoReplenishJob::dispatch($this->id)->afterResponse();
+
+        return true;
+    }
+
+    /**
+     * Refund Available BP deducted for a pending or failed delayed gift card redemption.
+     */
+    public function refundAvailableBelievePointsForGiftCard(float $amount): void
+    {
+        $amount = round(max(0, (float) $amount), 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $this->increment('believe_points', $amount);
+    }
+
+    /**
      * Deduct Believe Points for a gift-card purchase, consuming gifted balance first when the SKU allows it.
      *
      * @return array{from_gifted: float, from_purchased: float}|null Null if insufficient balance.

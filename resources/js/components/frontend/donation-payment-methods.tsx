@@ -206,7 +206,7 @@ export function DonationPaymentMethods({
 
       {(paymentMethod === "cashapp" || paymentMethod === "zelle" || paymentMethod === "venmo_manual") && (
         <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-4 text-sm text-amber-900 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100">
-          After clicking &quot;Make My Impact&quot;, you&apos;ll see payment instructions. Transfer manually, then confirm payment. An admin will verify and you&apos;ll receive +5 Believe Points.
+          After clicking &quot;Make My Impact&quot;, you&apos;ll see payment instructions. Transfer manually, then confirm payment. An admin will verify and you&apos;ll receive +5 BRP (Believe Reward Points).
         </div>
       )}
 

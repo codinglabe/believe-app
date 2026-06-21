@@ -74,7 +74,7 @@ export default function ManualDonationConfirm({ donation, instructions, reward_p
 
           <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300 mb-6">
             <Gift className="h-4 w-4" />
-            You will receive +{reward_points} Believe Points after admin verification
+            You will receive +{reward_points} BRP (Believe Reward Points) after admin verification
           </div>
 
           <form onSubmit={submit} className="space-y-4">

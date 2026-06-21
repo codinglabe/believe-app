@@ -241,8 +241,7 @@ export default function PurchaseDetailsPage({
     const isValidForm = isValidAmount && selectedOrganizationId
 
     const believePointsSufficientForSku =
-        data.amount > 0 &&
-        (skuAllowsGifted ? totalBelievePoints >= data.amount : purchasedBelievePoints >= data.amount)
+        data.amount > 0 && purchasedBelievePoints >= data.amount
 
     return (
         <FrontendLayout>
@@ -592,18 +591,15 @@ export default function PurchaseDetailsPage({
                                                                 )}
                                                             </div>
                                                             <div className="text-sm text-muted-foreground">
-                                                                Total: {totalBelievePoints.toFixed(2)} points
-                                                                <span className="block text-xs mt-0.5">
-                                                                    Purchased {purchasedBelievePoints.toFixed(2)}
-                                                                    {giftedBelievePoints > 0 && (
-                                                                        <span className="text-amber-600 dark:text-amber-400">
-                                                                            {' '}· Gifted {giftedBelievePoints.toFixed(2)}
-                                                                        </span>
-                                                                    )}
-                                                                </span>
+                                                                Available BP: {purchasedBelievePoints.toFixed(2)} points
+                                                                {giftedBelievePoints > 0 && (
+                                                                    <span className="block text-xs mt-0.5 text-amber-600 dark:text-amber-400">
+                                                                        Gifted BP ({giftedBelievePoints.toFixed(2)}) cannot be used for gift cards.
+                                                                    </span>
+                                                                )}
                                                                 {believePointsSufficientForSku && (
                                                                     <span className="text-green-600 dark:text-green-400 ml-2 block sm:inline">
-                                                                        (About {(totalBelievePoints - data.amount).toFixed(2)} points remaining after purchase)
+                                                                        ({(purchasedBelievePoints - data.amount).toFixed(2)} Available BP remaining after redemption)
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -611,18 +607,16 @@ export default function PurchaseDetailsPage({
                                                     </label>
                                                 </div>
 
-                                                {!skuAllowsGifted && giftedBelievePoints > 0 && (
+                                                {giftedBelievePoints > 0 && (
                                                     <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md p-2">
-                                                        Gifted Believe Points cannot be used for Visa or Mastercard products. This card can only be paid with your purchased Believe Points balance.
+                                                        Gift cards can only be redeemed with Available (purchased) Believe Points. Gifted BP can still be sent to other supporters as gifts.
                                                     </p>
                                                 )}
 
                                                 {paymentMethod === 'believe_points' && !believePointsSufficientForSku && (
                                                     <p className="text-sm text-destructive flex items-center gap-1">
                                                         <CheckCircle className="h-4 w-4" />
-                                                        {skuAllowsGifted
-                                                            ? `You need ${data.amount.toFixed(2)} points but only have ${totalBelievePoints.toFixed(2)} points.`
-                                                            : `You need ${data.amount.toFixed(2)} purchased points for this card; you have ${purchasedBelievePoints.toFixed(2)} purchased (${giftedBelievePoints.toFixed(2)} gifted cannot be applied here).`}
+                                                        {`You need ${data.amount.toFixed(2)} Available BP but only have ${purchasedBelievePoints.toFixed(2)}.`}
                                                     </p>
                                                 )}
                                             </div>

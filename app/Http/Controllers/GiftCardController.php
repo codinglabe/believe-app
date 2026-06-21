@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\GiftCardRedemptionCapacityReachedException;
 use App\Exceptions\InsufficientPhazeBalanceException;
 use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\GiftCardGiftedPointsPolicy;
+use App\Services\GiftCardRedemptionService;
 use App\Services\GiftCardRevenueShareService;
 use App\Services\GiftCardService;
 use App\Services\PhazeBalanceService;
@@ -28,10 +30,16 @@ class GiftCardController extends Controller
 
     protected PhazeBalanceService $phazeBalanceService;
 
-    public function __construct(GiftCardService $giftCardService, PhazeBalanceService $phazeBalanceService)
-    {
+    protected GiftCardRedemptionService $giftCardRedemptionService;
+
+    public function __construct(
+        GiftCardService $giftCardService,
+        PhazeBalanceService $phazeBalanceService,
+        GiftCardRedemptionService $giftCardRedemptionService,
+    ) {
         $this->giftCardService = $giftCardService;
         $this->phazeBalanceService = $phazeBalanceService;
+        $this->giftCardRedemptionService = $giftCardRedemptionService;
         Stripe::setApiKey(config('services.stripe.secret'));
     }
 
@@ -540,317 +548,88 @@ class GiftCardController extends Controller
                 ], 403);
             }
 
-            $phazeBalanceResponse = $this->rejectIfInsufficientPhazeBalance($purchaseAmount, $isInertiaRequest);
-            if ($phazeBalanceResponse !== null) {
-                DB::rollBack();
+            $phazeBalanceResponse = null;
+            if ($paymentMethod !== 'believe_points') {
+                $phazeBalanceResponse = $this->rejectIfInsufficientPhazeBalance($purchaseAmount, $isInertiaRequest);
+                if ($phazeBalanceResponse !== null) {
+                    DB::rollBack();
 
-                return $phazeBalanceResponse;
+                    return $phazeBalanceResponse;
+                }
             }
 
-            // Handle Believe Points payment
+            // Handle Believe Points payment (delayed Phaze fulfillment)
             if ($paymentMethod === 'believe_points') {
-                $pointsRequired = $purchaseAmount; // 1$ = 1 believe point
-                $user->refresh(); // Get latest balance
+                $pointsRequired = $purchaseAmount;
+                $user->refresh();
 
-                $brandForPolicy = $selectedBrand['productName'] ?? $validated['brand_name'];
-                $productAllowsGifted = GiftCardGiftedPointsPolicy::isAllowedForGiftedRedemption($brandForPolicy);
-
-                if ($user->totalBelievePointsBalance() < $pointsRequired) {
+                if ($user->currentBelievePoints() < $pointsRequired) {
                     DB::rollBack();
-                    $have = $user->totalBelievePointsBalance();
+                    $have = $user->currentBelievePoints();
+                    $message = "Insufficient Believe Points. You need {$pointsRequired} Available BP but only have {$have}.";
+
                     if ($isInertiaRequest) {
                         return back()->withErrors([
-                            'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$have} points.",
+                            'payment_method' => $message,
                         ]);
                     }
 
                     return response()->json([
                         'success' => false,
-                        'message' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$have} points.",
+                        'message' => $message,
                     ], 400);
                 }
 
-                $pointsSplit = $user->deductBelievePointsForGiftCard($pointsRequired, $productAllowsGifted);
-                if ($pointsSplit === null) {
+                try {
+                    $giftCard = $this->giftCardRedemptionService->submit(
+                        $user,
+                        $validated,
+                        $selectedBrand,
+                        $purchaseAmount,
+                        $currency,
+                    );
+                } catch (GiftCardRedemptionCapacityReachedException $e) {
                     DB::rollBack();
-                    $purchased = round((float) ($user->believe_points ?? 0), 2);
-                    $gifted = round((float) ($user->gifted_believe_points ?? 0), 2);
-                    $msg = ! $productAllowsGifted
-                        ? "This card cannot be paid with Gifted Believe Points (Visa/Mastercard). You need {$pointsRequired} purchased Believe Points; you have {$purchased}. Your Gifted balance ({$gifted}) can be used on other retail gift cards."
-                        : 'Unable to apply Believe Points to this purchase. Please try again.';
 
                     if ($isInertiaRequest) {
                         return back()->withErrors([
-                            'payment_method' => $msg,
+                            'payment_method' => $e->userMessage(),
+                            'error' => $e->userTitle(),
                         ]);
                     }
 
                     return response()->json([
                         'success' => false,
-                        'message' => $msg,
+                        'message' => $e->userMessage(),
+                        'title' => $e->userTitle(),
+                    ], 503);
+                } catch (\RuntimeException $e) {
+                    DB::rollBack();
+
+                    if ($isInertiaRequest) {
+                        return back()->withErrors([
+                            'payment_method' => $e->getMessage(),
+                        ]);
+                    }
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage(),
                     ], 400);
-                }
-
-                // `$selectedBrand` from the Phaze lookup above is used for meta (same as Stripe flow).
-
-                // Process gift card purchase directly (skip Stripe)
-                $orderId = \Illuminate\Support\Str::uuid()->toString();
-                $phazePurchaseData = [
-                    'productId' => (int) $validated['productId'],
-                    'amount' => $purchaseAmount,
-                    'currency' => $currency,
-                    'orderId' => $orderId,
-                    'externalUserId' => (string) $user->id,
-                ];
-
-                $phazePurchaseResult = $this->giftCardService->purchaseGiftCard($phazePurchaseData);
-
-                Log::info('Phaze purchase result for Believe Points', [
-                    'result' => $phazePurchaseResult,
-                    'has_card_number' => isset($phazePurchaseResult['cardNumber']) || isset($phazePurchaseResult['card_number']),
-                    'card_number_keys' => array_keys($phazePurchaseResult ?? []),
-                ]);
-
-                if (! $phazePurchaseResult) {
-                    // Refund points if Phaze purchase fails
-                    $user->refundBelievePointsGiftCardBuckets($pointsSplit['from_gifted'], $pointsSplit['from_purchased']);
-                    DB::rollBack();
-
-                    // Get more specific error message from logs or Phaze response
-                    $errorMessage = 'Failed to purchase gift card from the provider. Your points have been refunded. Please try again later or contact support if the issue persists.';
-
-                    if ($isInertiaRequest) {
-                        return back()->withErrors([
-                            'payment_method' => $errorMessage,
-                        ]);
-                    }
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $errorMessage,
-                    ], 500);
-                }
-
-                // Check if Phaze returned an error in the response
-                if (! $this->giftCardService->isPurchaseSuccessful($phazePurchaseResult)) {
-                    // Refund points if Phaze purchase has error
-                    $user->refundBelievePointsGiftCardBuckets($pointsSplit['from_gifted'], $pointsSplit['from_purchased']);
-                    DB::rollBack();
-
-                    $phazeError = $phazePurchaseResult['error'] ?? 'Unknown error from gift card provider';
-                    $errorMessage = 'Gift card purchase failed: '.$phazeError.'. Your points have been refunded.';
-
-                    Log::error('Phaze purchase returned error for Believe Points', [
-                        'phaze_error' => $phazeError,
-                        'phaze_response' => $phazePurchaseResult,
-                        'gift_card_data' => $phazePurchaseData,
-                    ]);
-
-                    if ($isInertiaRequest) {
-                        return back()->withErrors([
-                            'payment_method' => $errorMessage,
-                        ]);
-                    }
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $errorMessage,
-                    ], 500);
-                }
-
-                // Calculate commissions from Phaze response (same as Stripe flow)
-                $revenueSplit = GiftCardRevenueShareService::calculateFromPhazeResponse($phazePurchaseResult, $purchaseAmount);
-                $commissionPercentage = $revenueSplit['commission_percentage'];
-                $totalCommission = $revenueSplit['total_commission'];
-                $platformCommission = $revenueSplit['platform_commission'];
-                $nonprofitCommission = $revenueSplit['nonprofit_commission'];
-                $merchantRevenue = $revenueSplit['merchant_revenue'];
-
-                if ($totalCommission !== null && $totalCommission > 0) {
-                    Log::info('Gift card commission calculated (Believe Points)', [
-                        'purchase_amount' => $purchaseAmount,
-                        'provider_commission' => $totalCommission,
-                        'biu_revenue_share' => $platformCommission,
-                        'organization_revenue' => $nonprofitCommission,
-                        'phaze_response_keys' => array_keys($phazePurchaseResult),
-                    ]);
-                } else {
-                    Log::warning('Gift card commission is zero or not found (Believe Points)', [
-                        'purchase_amount' => $purchaseAmount,
-                        'phaze_response' => $phazePurchaseResult,
-                    ]);
-                }
-
-                // Generate unique card number (same as Stripe flow)
-                $cardNumber = $this->generateCardNumber();
-
-                // Ensure brand name is set (same as Stripe flow)
-                $finalBrandName = $selectedBrand['productName'] ?? $validated['brand_name'];
-                if (empty($finalBrandName)) {
-                    $finalBrandName = 'Gift Card #'.($validated['productId'] ?? 'Unknown');
-                }
-
-                // Create gift card record with all commission details (same structure as Stripe)
-                $giftCard = GiftCard::create([
-                    'user_id' => $user->id,
-                    'organization_id' => $validated['organization_id'],
-                    'card_number' => $cardNumber, // Generate card number first (like Stripe)
-                    'amount' => $purchaseAmount,
-                    'brand' => $finalBrandName, // Add brand field (same as Stripe)
-                    'brand_name' => $finalBrandName,
-                    'country' => $validated['country'] ?? null,
-                    'currency' => $currency,
-                    'status' => 'active',
-                    'payment_method' => 'believe_points',
-                    'purchased_at' => now(), // Mark as purchased
-                    'expires_at' => isset($phazePurchaseResult['expiresAt'])
-                        ? \Carbon\Carbon::parse($phazePurchaseResult['expiresAt'])
-                        : (isset($phazePurchaseResult['expires_at'])
-                            ? \Carbon\Carbon::parse($phazePurchaseResult['expires_at'])
-                            : now()->addYear()), // Default 1 year expiration (same as Stripe)
-                    'commission_percentage' => $commissionPercentage,
-                    'total_commission' => $totalCommission,
-                    'platform_commission' => $platformCommission,
-                    'nonprofit_commission' => $nonprofitCommission,
-                    'merchant_revenue' => $merchantRevenue,
-                    'meta' => $selectedBrand ? [
-                        'productId' => $selectedBrand['productId'] ?? null,
-                        'productImage' => $selectedBrand['productImage'] ?? null,
-                        'denominations' => $selectedBrand['denominations'] ?? [],
-                        'valueRestrictions' => $selectedBrand['valueRestrictions'] ?? [],
-                        'productDescription' => $selectedBrand['productDescription'] ?? null,
-                        'termsAndConditions' => $selectedBrand['termsAndConditions'] ?? null,
-                        'howToUse' => $selectedBrand['howToUse'] ?? null,
-                        'expiryAndValidity' => $selectedBrand['expiryAndValidity'] ?? null,
-                        'discount' => $selectedBrand['discount'] ?? 0,
-                    ] : null,
-                ]);
-
-                // Update gift card with Phaze purchase details (same as Stripe flow)
-                $existingMeta = $giftCard->meta ?? [];
-                $updateData = [
-                    'external_id' => $phazePurchaseResult['id'] ?? null,
-                    'voucher' => $phazePurchaseResult['voucher'] ?? null,
-                    'phaze_disbursement_id' => $phazePurchaseResult['id'] ?? null,
-                    'code' => $phazePurchaseResult['code'] ?? null,
-                    'pin' => $phazePurchaseResult['pin'] ?? null,
-                    'meta' => array_merge($existingMeta, [
-                        'phaze_purchase' => $phazePurchaseResult, // Store full purchase response
-                        'orderId' => $orderId, // Store orderId for webhook matching
-                        'phaze_purchase_id' => $phazePurchaseResult['id'] ?? null,
-                        'phaze_status' => $phazePurchaseResult['status'] ?? 'pending',
-                        'phaze_initial_response' => $phazePurchaseResult, // Keep initial response
-                        'believe_points_used' => $pointsRequired,
-                        'believe_points_from_gifted' => $pointsSplit['from_gifted'],
-                        'believe_points_from_purchased' => $pointsSplit['from_purchased'],
-                        'allowed_for_gifted_points' => $productAllowsGifted,
-                        'commission_calculation' => $revenueSplit['commission_calculation'],
-                    ]),
-                ];
-
-                // Update card_number if provided in Phaze response (same as Stripe flow)
-                if (isset($phazePurchaseResult['cardNumber']) && ! empty($phazePurchaseResult['cardNumber'])) {
-                    $updateData['card_number'] = $phazePurchaseResult['cardNumber'];
-                    Log::info('Card number found in Phaze initial response (cardNumber)', [
-                        'gift_card_id' => $giftCard->id,
-                    ]);
-                } elseif (isset($phazePurchaseResult['card_number']) && ! empty($phazePurchaseResult['card_number'])) {
-                    $updateData['card_number'] = $phazePurchaseResult['card_number'];
-                    Log::info('Card number found in Phaze initial response (card_number)', [
-                        'gift_card_id' => $giftCard->id,
-                    ]);
-                } else {
-                    // Card number not in initial response
-                    // Phaze API returns card_number when purchase status changes to "completed" via webhook
-                    // The initial response shows status "pending", so card_number will come later
-                    // We already have a generated card_number, so we keep it
-                    Log::info('Card number not in Phaze initial response (status: pending), will be updated via webhook when purchase completes', [
-                        'gift_card_id' => $giftCard->id,
-                        'phaze_purchase_id' => $phazePurchaseResult['id'] ?? null,
-                        'phaze_status' => $phazePurchaseResult['status'] ?? 'pending',
-                        'generated_card_number' => $cardNumber,
-                    ]);
-                }
-
-                // If Phaze returns voucher/card details, update them
-                if (isset($phazePurchaseResult['voucher'])) {
-                    $updateData['voucher'] = $phazePurchaseResult['voucher'];
-                }
-
-                // Update gift card with all Phaze response data
-                $giftCard->update($updateData);
-                Log::info('Gift card updated with Phaze response data (Believe Points)', [
-                    'gift_card_id' => $giftCard->id,
-                    'updated_fields' => array_keys($updateData),
-                ]);
-
-                $this->recordPhazeBalanceDeduction($giftCard, (float) $purchaseAmount, $orderId);
-
-                // Create transaction record
-                $transactionMeta = array_merge([
-                    'gift_card_id' => $giftCard->id,
-                    'believe_points_used' => $pointsRequired,
-                    'believe_points_from_gifted' => $pointsSplit['from_gifted'],
-                    'believe_points_from_purchased' => $pointsSplit['from_purchased'],
-                    'allowed_for_gifted_points' => $productAllowsGifted,
-                    'phaze_order_id' => $phazePurchaseResult['orderId'] ?? null,
-                    'brand' => $validated['brand_name'],
-                ], GiftCardRevenueShareService::ledgerMetaSlice(
-                    (float) $purchaseAmount,
-                    $totalCommission !== null ? (float) $totalCommission : null,
-                    $platformCommission !== null ? (float) $platformCommission : null,
-                    $nonprofitCommission !== null ? (float) $nonprofitCommission : null,
-                    (float) $merchantRevenue
-                ));
-
-                if ($phazePurchaseResult) {
-                    $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
-                    $transactionMeta['phaze_status'] = $phazePurchaseResult['status'] ?? 'pending';
-                }
-
-                Transaction::record([
-                    'user_id' => $user->id,
-                    'related_id' => $giftCard->id,
-                    'related_type' => GiftCard::class,
-                    'type' => 'purchase',
-                    'status' => Transaction::STATUS_COMPLETED,
-                    'amount' => $purchaseAmount,
-                    'fee' => 0,
-                    'currency' => $currency,
-                    'payment_method' => 'believe_points',
-                    'transaction_id' => 'believe_points_gift_card_'.$giftCard->id,
-                    'meta' => $transactionMeta,
-                    'processed_at' => now(),
-                ]);
-
-                // Reload gift card to get latest status
-                $giftCard = $giftCard->fresh()->load(['user', 'organization']);
-
-                // Send email with PDF receipt (same as Stripe flow)
-                $recipientEmail = $giftCard->user ? $giftCard->user->email : $user->email;
-                if ($recipientEmail && $giftCard->status !== 'failed') {
-                    try {
-                        // For Believe Points, session is null
-                        \Illuminate\Support\Facades\Mail::to($recipientEmail)->send(
-                            new \App\Mail\GiftCardPurchaseReceipt($giftCard, null)
-                        );
-                        $giftCard->update(['is_sent' => true]);
-                    } catch (\Exception $e) {
-                        Log::error('Failed to send gift card receipt email (Believe Points): '.$e->getMessage());
-                    }
                 }
 
                 DB::commit();
 
+                $this->giftCardRedemptionService->scheduleFulfillmentJob($giftCard);
+
                 if ($isInertiaRequest) {
-                    // Redirect to success page with gift card ID for Believe Points purchases
                     return redirect()->route('gift-cards.success', ['gift_card_id' => $giftCard->id])
-                        ->with('success', 'Gift card purchased successfully using Believe Points!');
+                        ->with('success', 'Gift card redemption submitted successfully.');
                 }
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Gift card purchased successfully using Believe Points!',
+                    'message' => 'Gift card redemption submitted successfully.',
                     'redirect' => route('gift-cards.success', ['gift_card_id' => $giftCard->id]),
                 ]);
             }
@@ -967,12 +746,7 @@ class GiftCardController extends Controller
      */
     private function generateCardNumber(): string
     {
-        do {
-            // Generate 16-digit card number
-            $cardNumber = str_pad((string) mt_rand(0, 9999999999999999), 16, '0', STR_PAD_LEFT);
-        } while (GiftCard::where('card_number', $cardNumber)->exists());
-
-        return $cardNumber;
+        return GiftCard::generateUniqueCardNumber();
     }
 
     /**
@@ -1061,6 +835,8 @@ class GiftCardController extends Controller
                         'paymentMethod' => 'believe_points',
                         'phazePurchaseData' => $phazePurchaseData,
                         'phazeDisbursementData' => $phazeDisbursementData,
+                        'pendingFulfillment' => $giftCard->isPendingFulfillment(),
+                        'scheduledFulfillmentAt' => $giftCard->scheduled_fulfillment_at?->toIso8601String(),
                         'user' => [
                             'name' => $giftCard->user->name ?? $user->name,
                             'email' => $giftCard->user->email ?? $user->email,
@@ -1125,6 +901,8 @@ class GiftCardController extends Controller
                         'paymentMethod' => 'believe_points',
                         'phazePurchaseData' => $phazePurchaseData,
                         'phazeDisbursementData' => $phazeDisbursementData,
+                        'pendingFulfillment' => $giftCard->isPendingFulfillment(),
+                        'scheduledFulfillmentAt' => $giftCard->scheduled_fulfillment_at?->toIso8601String(),
                         'user' => [
                             'name' => $giftCard->user->name ?? $user->name,
                             'email' => $giftCard->user->email ?? $user->email,

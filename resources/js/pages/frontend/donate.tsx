@@ -1163,7 +1163,7 @@ export default function DonatePage({
                 <div className="rounded-xl border border-purple-200/60 bg-gradient-to-r from-purple-50/90 to-blue-50/50 p-4 dark:border-purple-700/40 dark:from-purple-900/35 dark:to-blue-950/25">
                   <div className="flex items-center gap-2 text-sm font-semibold text-purple-800 dark:text-purple-200">
                     <Gift className="h-4 w-4 shrink-0" />
-                    You will receive +{rewardPointsAmount} Believe Points after confirmation
+                    You will receive +{rewardPointsAmount} BRP (Believe Reward Points) after confirmation
                   </div>
                 </div>
                 {topOrganizations.length > 0 ? (

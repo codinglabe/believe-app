@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\GiftCardStatus;
 use App\Models\GiftCard;
 use App\Services\GiftCardRevenueShareService;
 use Illuminate\Http\Request;
@@ -100,6 +101,18 @@ class PhazeWebhookController extends Controller
                 return response()->json(['error' => 'Gift card not found'], 404);
             }
 
+            if (in_array($giftCard->status, [
+                GiftCardStatus::PendingFulfillment->value,
+                GiftCardStatus::Processing->value,
+            ], true)) {
+                Log::info('Phaze webhook ignored — gift card awaiting delayed fulfillment pipeline', [
+                    'gift_card_id' => $giftCard->id,
+                    'status' => $giftCard->status,
+                ]);
+
+                return response()->json(['message' => 'Ignored — awaiting internal fulfillment'], 200);
+            }
+
             DB::beginTransaction();
 
             $resolved = GiftCardRevenueShareService::resolveProviderCommission($payload, (float) $giftCard->amount);
@@ -166,7 +179,7 @@ class PhazeWebhookController extends Controller
                     'error' => $error,
                 ]);
             } elseif ($status === 'completed' || $status === 'success') {
-                $updateData['status'] = 'active';
+                $updateData['status'] = GiftCardStatus::Completed->value;
             }
 
             $giftCard->update($updateData);

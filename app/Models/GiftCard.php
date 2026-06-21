@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\GiftCardStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -30,6 +32,13 @@ class GiftCard extends Model
         'stripe_session_id',
         'phaze_disbursement_id',
         'purchased_at',
+        'requested_at',
+        'scheduled_fulfillment_at',
+        'fulfilled_at',
+        'fulfillment_locked_at',
+        'last_fulfillment_attempt_at',
+        'fulfillment_attempt_count',
+        'failure_reason',
         'expires_at',
         'meta',
     ];
@@ -43,6 +52,12 @@ class GiftCard extends Model
         'merchant_revenue' => 'decimal:8',
         'is_sent' => 'boolean',
         'purchased_at' => 'datetime',
+        'requested_at' => 'datetime',
+        'scheduled_fulfillment_at' => 'datetime',
+        'fulfilled_at' => 'datetime',
+        'fulfillment_locked_at' => 'datetime',
+        'last_fulfillment_attempt_at' => 'datetime',
+        'fulfillment_attempt_count' => 'integer',
         'expires_at' => 'datetime',
         'meta' => 'array',
     ];
@@ -59,12 +74,44 @@ class GiftCard extends Model
 
     public function isActive(): bool
     {
-        return $this->status === 'active' &&
-               (!$this->expires_at || $this->expires_at->isFuture());
+        return GiftCardStatus::isFulfilled($this->status)
+               && (! $this->expires_at || $this->expires_at->isFuture());
     }
 
     public function isExpired(): bool
     {
         return $this->expires_at && $this->expires_at->isPast();
+    }
+
+    public function isPendingFulfillment(): bool
+    {
+        return $this->status === GiftCardStatus::PendingFulfillment->value;
+    }
+
+    public function statusLabel(): string
+    {
+        return GiftCardStatus::tryFrom($this->status)?->label() ?? (string) $this->status;
+    }
+
+    public static function generateUniqueCardNumber(): string
+    {
+        do {
+            $cardNumber = str_pad((string) mt_rand(0, 9999999999999999), 16, '0', STR_PAD_LEFT);
+        } while (self::query()->where('card_number', $cardNumber)->exists());
+
+        return $cardNumber;
+    }
+
+    /**
+     * @param  Builder<GiftCard>  $query
+     * @return Builder<GiftCard>
+     */
+    public function scopeDueForFulfillment(Builder $query): Builder
+    {
+        return $query
+            ->where('payment_method', 'believe_points')
+            ->where('status', GiftCardStatus::PendingFulfillment->value)
+            ->whereNotNull('scheduled_fulfillment_at')
+            ->where('scheduled_fulfillment_at', '<=', now());
     }
 }

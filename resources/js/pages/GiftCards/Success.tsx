@@ -43,13 +43,24 @@ interface SuccessProps {
     paymentMethod?: string
     phazePurchaseData?: any
     phazeDisbursementData?: any
+    pendingFulfillment?: boolean
+    scheduledFulfillmentAt?: string | null
     user?: {
         name: string
         email: string
     } | null
 }
 
-export default function SuccessPage({ giftCard, sessionId, paymentMethod, phazePurchaseData, phazeDisbursementData, user }: SuccessProps) {
+export default function SuccessPage({
+    giftCard,
+    sessionId,
+    paymentMethod,
+    phazePurchaseData,
+    phazeDisbursementData,
+    pendingFulfillment = false,
+    scheduledFulfillmentAt,
+    user,
+}: SuccessProps) {
     const [copied, setCopied] = useState(false)
 
     const formatCurrency = (amount: number) => {
@@ -323,19 +334,27 @@ export default function SuccessPage({ giftCard, sessionId, paymentMethod, phazeP
     }
 
     return (
-        <ProfileLayout title="Payment Successful" description="Your gift card purchase has been completed">
-            <Head title="Gift Card Purchase Successful" />
+        <ProfileLayout
+            title={pendingFulfillment ? "Redemption Submitted" : "Payment Successful"}
+            description={pendingFulfillment ? "Your gift card redemption is queued for fulfillment" : "Your gift card purchase has been completed"}
+        >
+            <Head title={pendingFulfillment ? "Gift Card Redemption Submitted" : "Gift Card Purchase Successful"} />
 
             <div className="space-y-6">
-                {/* Success Message - Enhanced Design */}
+                {/* Success / Submitted Message */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5 }}
                 >
-                    <Card className="bg-gradient-to-br from-green-50 via-green-100/50 to-emerald-50 dark:from-green-900/20 dark:via-green-800/10 dark:to-emerald-900/20 border-2 border-green-300 dark:border-green-700 shadow-xl overflow-hidden relative">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-green-200/30 dark:bg-green-800/20 rounded-full -mr-16 -mt-16 blur-2xl"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-200/30 dark:bg-emerald-800/20 rounded-full -ml-12 -mb-12 blur-2xl"></div>
+                    <Card className={
+                        pendingFulfillment
+                            ? "bg-gradient-to-br from-blue-50 via-blue-100/50 to-indigo-50 dark:from-blue-900/20 dark:via-blue-800/10 dark:to-indigo-900/20 border-2 border-blue-300 dark:border-blue-700 shadow-xl overflow-hidden relative"
+                            : "bg-gradient-to-br from-green-50 via-green-100/50 to-emerald-50 dark:from-green-900/20 dark:via-green-800/10 dark:to-emerald-900/20 border-2 border-green-300 dark:border-green-700 shadow-xl overflow-hidden relative"
+                    }>
+                        <div className={`absolute top-0 right-0 w-32 h-32 rounded-full -mr-16 -mt-16 blur-2xl ${
+                            pendingFulfillment ? "bg-blue-200/30 dark:bg-blue-800/20" : "bg-green-200/30 dark:bg-green-800/20"
+                        }`}></div>
                         <CardContent className="pt-8 pb-8 relative z-10">
                             <div className="flex flex-col items-center text-center">
                                 <motion.div
@@ -344,38 +363,61 @@ export default function SuccessPage({ giftCard, sessionId, paymentMethod, phazeP
                                     transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
                                     className="relative mb-6"
                                 >
-                                    <div className="p-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 shadow-lg">
-                                        <CheckCircle className="h-16 w-16 text-white" />
+                                    <div className={`p-6 rounded-full shadow-lg ${
+                                        pendingFulfillment
+                                            ? "bg-gradient-to-br from-blue-400 to-indigo-500"
+                                            : "bg-gradient-to-br from-green-400 to-emerald-500"
+                                    }`}>
+                                        {pendingFulfillment ? (
+                                            <Calendar className="h-16 w-16 text-white" />
+                                        ) : (
+                                            <CheckCircle className="h-16 w-16 text-white" />
+                                        )}
                                     </div>
-                                    <div className="absolute -top-2 -right-2">
-                                        <PartyPopper className="h-8 w-8 text-yellow-400 animate-bounce" />
-                                    </div>
+                                    {!pendingFulfillment && (
+                                        <div className="absolute -top-2 -right-2">
+                                            <PartyPopper className="h-8 w-8 text-yellow-400 animate-bounce" />
+                                        </div>
+                                    )}
                                 </motion.div>
                                 <motion.h1
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     transition={{ delay: 0.3 }}
-                                    className="text-4xl font-bold mb-3 bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent"
+                                    className={`text-4xl font-bold mb-3 bg-clip-text text-transparent ${
+                                        pendingFulfillment
+                                            ? "bg-gradient-to-r from-blue-600 to-indigo-600"
+                                            : "bg-gradient-to-r from-green-600 to-emerald-600"
+                                    }`}
                                 >
-                                    Payment Successful!
+                                    {pendingFulfillment ? "Gift Card Redemption Submitted" : "Payment Successful!"}
                                 </motion.h1>
                                 <motion.p
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     transition={{ delay: 0.4 }}
-                                    className="text-gray-600 dark:text-gray-300 text-lg mb-2"
+                                    className="text-gray-600 dark:text-gray-300 text-lg mb-2 max-w-xl"
                                 >
-                                    Your gift card has been purchased successfully
+                                    {pendingFulfillment
+                                        ? "Your virtual gift card will be delivered within 72 hours. You will receive an email and in-app notification once your gift card is ready."
+                                        : "Your gift card has been purchased successfully"}
                                 </motion.p>
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    transition={{ delay: 0.5 }}
-                                    className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mt-2"
-                                >
-                                    <Sparkles className="h-4 w-4" />
-                                    <span>Your gift card is ready to use!</span>
-                                </motion.div>
+                                {pendingFulfillment && scheduledFulfillmentAt && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Scheduled fulfillment: {new Date(scheduledFulfillmentAt).toLocaleString()}
+                                    </p>
+                                )}
+                                {!pendingFulfillment && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: 0.5 }}
+                                        className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mt-2"
+                                    >
+                                        <Sparkles className="h-4 w-4" />
+                                        <span>Your gift card is ready to use!</span>
+                                    </motion.div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -416,7 +458,7 @@ export default function SuccessPage({ giftCard, sessionId, paymentMethod, phazeP
                                     </div>
 
                                     {/* Voucher Code - Enhanced */}
-                                    {giftCard.voucher && (
+                                    {!pendingFulfillment && giftCard.voucher && (
                                         <div className="space-y-3">
                                             <Label className="text-base font-semibold block">Voucher Code</Label>
                                             <div className="flex items-center gap-3">
@@ -451,7 +493,7 @@ export default function SuccessPage({ giftCard, sessionId, paymentMethod, phazeP
                                     )}
 
                                     {/* Card Number - Show if available */}
-                                    {giftCard.card_number && (
+                                    {!pendingFulfillment && giftCard.card_number && (
                                         <div className="space-y-3">
                                             <Label className="text-base font-semibold block">Card Number</Label>
                                             <div className="flex items-center gap-3">

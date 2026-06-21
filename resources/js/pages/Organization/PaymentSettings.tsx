@@ -284,9 +284,9 @@ export default function OrganizationPaymentSettings({
           <div className="flex items-start gap-3">
             <Gift className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold text-purple-900 dark:text-purple-100">Believe Points reward</p>
+              <p className="font-semibold text-purple-900 dark:text-purple-100">BRP reward</p>
               <p className="text-purple-800/80 dark:text-purple-200/80 mt-0.5">
-                Every successful donation gives donors <strong>+5 Believe Points</strong>, regardless of payment method.
+                Every successful donation gives donors <strong>+5 BRP (Believe Reward Points)</strong>, regardless of payment method.
               </p>
             </div>
           </div>
