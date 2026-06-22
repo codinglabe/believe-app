@@ -17,7 +17,6 @@ import {
     isBridgeKycPending,
     isBridgeKybPending,
     isWalletBridgeAccountVerified,
-    resolveKycStatusAfterBridgeSubmission,
     formatBridgeVerificationStatusLabel,
     type WalletBridgeStatusPayload,
 } from '@/lib/bridge-verification'
@@ -67,8 +66,6 @@ interface WalletPopupProps {
 
 // Use the getCsrfToken from wallet utils
 const getCsrfToken = getWalletCsrfToken
-
-const BRIDGE_KYC_SUBMITTED_STORAGE_PREFIX = 'bridge_kyc_submitted_'
 
 interface SharedData {
     auth: {
@@ -203,67 +200,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [showVerificationIframe, setShowVerificationIframe] = useState(false)
     const [isLoadingVerificationWidget, setIsLoadingVerificationWidget] = useState(false)
     const [verificationModalWidgetUrl, setVerificationModalWidgetUrl] = useState<string | null>(null)
-    const [kycSubmitted, setKycSubmitted] = useState(false) // Track if KYC has been submitted
-    const bridgeKycSubmittedStorageKey = auth?.user?.id
-        ? `${BRIDGE_KYC_SUBMITTED_STORAGE_PREFIX}${auth.user.id}`
-        : null
 
-    const persistBridgeKycSubmitted = (submitted: boolean) => {
-        if (!bridgeKycSubmittedStorageKey) {
-            return
-        }
+    const applyBackendKycStatus = (backendStatus: string) => {
+        setKycStatus(backendStatus as typeof kycStatus)
 
-        if (submitted) {
-            sessionStorage.setItem(bridgeKycSubmittedStorageKey, '1')
-        } else {
-            sessionStorage.removeItem(bridgeKycSubmittedStorageKey)
-        }
-    }
-
-    const markBridgeKycSubmitted = (nextStatus?: typeof kycStatus) => {
-        setKycSubmitted(true)
-        persistBridgeKycSubmitted(true)
-        setVerificationType('kyc')
-        setRequiresVerification(true)
-        if (nextStatus) {
-            setKycStatus(nextStatus)
-        } else {
-            setKycStatus((current) => (current === 'not_started' ? 'under_review' : current))
-        }
-    }
-
-    const clearBridgeKycSubmitted = () => {
-        setKycSubmitted(false)
-        persistBridgeKycSubmitted(false)
-    }
-
-    const applyBackendKycStatus = (
-        backendStatus: string,
-        options?: { forceSubmitted?: boolean },
-    ) => {
-        const storedSubmitted =
-            bridgeKycSubmittedStorageKey != null &&
-            sessionStorage.getItem(bridgeKycSubmittedStorageKey) === '1'
-        const resolved = resolveKycStatusAfterBridgeSubmission(
-            kycStatus,
-            backendStatus,
-            kycSubmitted || storedSubmitted || options?.forceSubmitted === true,
-        )
-
-        setKycStatus(resolved.status as typeof kycStatus)
-        setKycSubmitted(resolved.submitted)
-        persistBridgeKycSubmitted(resolved.submitted)
-
-        if (resolved.status === 'approved') {
+        if (backendStatus === 'approved') {
             setRequiresVerification(false)
-            clearBridgeKycSubmitted()
-        } else if (resolved.submitted) {
+        } else if (backendStatus !== 'not_started') {
             setRequiresVerification(true)
             setVerificationType('kyc')
         }
     }
 
-    const refreshKycStatusAfterSubmission = async (forceSubmitted = false) => {
+    const refreshKycStatusAfterSubmission = async () => {
         try {
             const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
                 method: 'GET',
@@ -282,9 +231,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             const statusData = await statusResponse.json()
             if (statusData.success && statusData.kyc_status) {
-                applyBackendKycStatus(statusData.kyc_status, { forceSubmitted })
-            } else if (forceSubmitted) {
-                markBridgeKycSubmitted()
+                applyBackendKycStatus(statusData.kyc_status)
             }
 
             if (statusData.requires_verification !== undefined) {
@@ -295,14 +242,13 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
         } catch (error) {
             console.error('Failed to refresh KYC status:', error)
-            if (forceSubmitted) {
-                markBridgeKycSubmitted()
-            }
         }
     }
     const [tosIframeUrl, setTosIframeUrl] = useState<string | null>(null)
     const [signedAgreementId, setSignedAgreementId] = useState<string | null>(null)
     const processedTosAgreementIdsRef = useRef<Set<string>>(new Set())
+    const lastBridgeStatusCheckRef = useRef(0)
+    const bridgeStatusCheckMinIntervalMs = 5000
 
     // Custom KYC form state
     const [kycFormData, setKycFormData] = useState({
@@ -435,15 +381,15 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [isOpen, auth?.user])
 
+    // Remove legacy sessionStorage flags from older builds — backend kyc_status is the source of truth.
     useEffect(() => {
-        if (!isOpen || !bridgeKycSubmittedStorageKey) {
+        if (!isOpen || !auth?.user?.id) {
             return
         }
 
-        if (sessionStorage.getItem(bridgeKycSubmittedStorageKey) === '1') {
-            setKycSubmitted(true)
-        }
-    }, [isOpen, bridgeKycSubmittedStorageKey])
+        sessionStorage.removeItem(`bridge_kyc_submitted_${auth.user.id}`)
+        sessionStorage.removeItem(`bridge_kyc_customer_${auth.user.id}`)
+    }, [isOpen, auth?.user?.id])
 
     // Auto-switch to correct KYB step when business-related fields are requested
     useEffect(() => {
@@ -516,7 +462,13 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }, [requestedFields, verificationType])
 
     // Check Bridge status and fetch balance - moved outside useEffect so it can be called from other functions
-    const checkBridgeAndFetchBalance = async () => {
+    const checkBridgeAndFetchBalance = async (options?: { force?: boolean }) => {
+        const now = Date.now()
+        if (!options?.force && now - lastBridgeStatusCheckRef.current < bridgeStatusCheckMinIntervalMs) {
+            return
+        }
+        lastBridgeStatusCheckRef.current = now
+
         if (isInitialLoading) {
             setIsInitialLoading(true)
         } else {
@@ -879,7 +831,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }
 
     useEffect(() => {
-        if (!isOpen || !isBridgeKycPending(kycStatus, kycSubmitted)) {
+        if (!isOpen || !isBridgeKycPending(kycStatus)) {
             return
         }
 
@@ -888,7 +840,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }, 30000)
 
         return () => window.clearInterval(interval)
-    }, [isOpen, kycStatus, kycSubmitted])
+    }, [isOpen, kycStatus])
 
     // On open: only restore an already-connected wallet from local DB — do not auto-link Bridge.
     // New connections start on the Connect Wallet screen until the user clicks Connect.
@@ -901,7 +853,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             setVerificationModalWidgetUrl(null)
             return
         }
-        checkBridgeAndFetchBalance()
+        checkBridgeAndFetchBalance({ force: true })
     }, [isOpen])
 
 
@@ -921,7 +873,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 const action = event.data.action
                 if (action === 'close') {
                     setTosIframeUrl(null)
-                    setTimeout(() => checkBridgeAndFetchBalance(), 500)
+                    setTimeout(() => checkBridgeAndFetchBalance({ force: true }), 500)
                     return
                 }
                 if (action === 'checkStatus') {
@@ -980,7 +932,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         showSuccessToast('Terms of Service accepted successfully')
 
                         setTimeout(() => {
-                            checkBridgeAndFetchBalance()
+                            checkBridgeAndFetchBalance({ force: true })
                         }, 1000)
                     } catch (error) {
                         processedTosAgreementIdsRef.current.delete(agreementId)
@@ -999,8 +951,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     isBridgePersonaVerificationCompleteMessage(event.data) ||
                     event.data.type === 'persona:inquiry:complete'
                 ) {
-                    void refreshKycStatusAfterSubmission(true)
-                    void checkBridgeAndFetchBalance()
+                    void refreshKycStatusAfterSubmission()
+                    void checkBridgeAndFetchBalance({ force: true })
                 } else if (event.data.type === 'persona:inquiry:status') {
                     void refreshKycStatusAfterSubmission()
                 }
@@ -1684,7 +1636,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 setTosStatus(bridgeStatus.tosStatus)
 
                 if (statusData.kyc_status) {
-                    setKycStatus(statusData.kyc_status)
+                    applyBackendKycStatus(statusData.kyc_status)
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
@@ -1763,7 +1715,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 })
                 setTosStatus(initBridgeStatus.tosStatus)
                 if (data.data.kyc_status) {
-                    setKycStatus(data.data.kyc_status)
+                    applyBackendKycStatus(data.data.kyc_status)
                 }
                 if (data.data.kyb_status) {
                     setKybStatus(data.data.kyb_status)
@@ -2574,54 +2526,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     const isInstantlyApproved = kycStatusFromResponse === 'approved'
 
                     if (isInstantlyApproved) {
-                        // Instantly approved - same behavior as KYB
                         showSuccessToast('KYC verification approved instantly! You can now access your wallet.')
                         setKycStatus('approved')
-                        clearBridgeKycSubmitted()
                         setRequiresVerification(false)
 
-                        // Refresh wallet status to show wallet screen
                         setTimeout(() => {
                             checkBridgeAndFetchBalance()
                         }, 500)
                     } else {
-                        // Not instantly approved - show waiting screen
-                    showSuccessToast('KYC data submitted successfully. Verification is pending.')
-                        markBridgeKycSubmitted('under_review')
-                        // Force a re-render to show waiting screen immediately
-                        console.log('KYC submitted - setting waiting screen state', {
-                            kycSubmitted: true,
-                            kycStatus: 'under_review',
-                            verificationType: 'kyc'
-                        })
-                    // Refresh status from backend to ensure sync
-                    setTimeout(() => {
-                        fetch(`/wallet/bridge/status?t=${Date.now()}`, {
-                            method: 'GET',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': getCsrfToken(),
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-store',
-                        })
-                            .then(res => res.json())
-                            .then(statusData => {
-                                if (statusData.success) {
-                                    if (statusData.kyc_status) {
-                                        applyBackendKycStatus(statusData.kyc_status, { forceSubmitted: true })
-                                    }
-                                    if (statusData.requires_verification !== undefined) {
-                                        setRequiresVerification(statusData.requires_verification)
-                                    }
-                                    if (statusData.verification_type) {
-                                        setVerificationType(statusData.verification_type)
-                                    }
-                                }
-                            })
-                            .catch(err => console.error('Failed to refresh KYC status:', err))
-                    }, 500)
+                        showSuccessToast('KYC data submitted successfully. Verification is pending.')
+                        setTimeout(() => {
+                            void refreshKycStatusAfterSubmission()
+                        }, 500)
                     }
                 } else {
                     showErrorToast(data.message || 'Failed to submit KYC data')
@@ -2649,13 +2565,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setVerificationModalWidgetUrl(null)
 
         if (verificationType === 'kyc') {
-            markBridgeKycSubmitted()
             showSuccessToast('Verification submitted. We will update your status when review is complete.')
-            void refreshKycStatusAfterSubmission(true)
         } else {
             showSuccessToast('Business verification submitted. We will update your status when review is complete.')
         }
 
+        void refreshKycStatusAfterSubmission()
         void checkBridgeAndFetchBalance()
     }
 
@@ -2666,12 +2581,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setVerificationModalWidgetUrl(embedUrl ?? linkUrl)
     }
 
-    const openBridgeVerificationWidget = async () => {
+    const openBridgeVerificationWidget = async (options?: { endorsement?: 'base' | 'cards' }) => {
         const linkType = verificationType || 'kyc'
+        const endorsement = options?.endorsement ?? 'base'
 
         setShowVerificationIframe(true)
 
-        // Always fetch a fresh cards endorsement link (individual KYC or business KYB) — never cached standard URLs.
         setIsLoadingVerificationWidget(true)
         setVerificationModalWidgetUrl(null)
 
@@ -2691,7 +2606,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 cache: 'no-store',
                 body: JSON.stringify({
                     redirect_url: `${window.location.origin}${callbackPath}`,
-                    endorsement: 'cards',
+                    endorsement,
                 }),
             })
 
@@ -2728,15 +2643,15 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             throw new Error('Could not load the verification widget. Try opening in a new tab.')
         } catch (error) {
-            console.error('Failed to create cards verification link:', error)
+            console.error('Failed to open Bridge verification:', error)
             showErrorToast(error instanceof Error ? error.message : 'Failed to create verification link')
             setShowVerificationIframe(false)
         } finally {
             setIsLoadingVerificationWidget(false)
         }
-
-        return
     }
+
+    const openCardsEndorsementVerification = () => openBridgeVerificationWidget({ endorsement: 'cards' })
 
     const handleRefresh = async () => {
         setIsLoading(true)
@@ -3582,7 +3497,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             expiryDate="12/25"
                                             cvv="123"
                                             onBack={() => setActionView('main')}
-                                            onOpenCardsEndorsementVerification={openBridgeVerificationWithUrl}
+                                            onOpenCardsEndorsementVerification={openCardsEndorsementVerification}
                                             onCardCreated={() => {
                                                 // Refresh card wallet status after card is created
                                                 setHasCardWallet(null)
@@ -3859,14 +3774,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             // PRIORITY: For KYC - if submitted and pending, show simple waiting screen instead of full verification screen
                                             // Check if user is a regular user (not organization)
                                             const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-                                            const isKycSubmittedAndPending = isBridgeKycPending(kycStatus, kycSubmitted)
-                                            const isKycStatusPending =
+                                            const isKycPending = isRegularUser &&
                                                 verificationType === 'kyc' &&
-                                                isBridgeKycPending(kycStatus, false)
-                                            
-                                            const isKycPending = isRegularUser && 
-                                                verificationType === 'kyc' && 
-                                                (isKycSubmittedAndPending || isKycStatusPending)
+                                                isBridgeKycPending(kycStatus)
                                             
                                             if (isKycPending) {
                                                 return 'kyc_waiting' // Show simple waiting screen
@@ -3897,7 +3807,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             >
                                                 <KycVerificationStatusPanel
                                                     kycStatus={kycStatus}
-                                                    kycSubmitted={kycSubmitted}
                                                     onRefresh={() => void checkBridgeAndFetchBalance()}
                                                     isRefreshing={isLoading}
                                                 />
@@ -4101,7 +4010,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                         verificationType={verificationType}
                                                                         kycStatus={kycStatus}
                                                                         kybStatus={kybStatus}
-                                                                        kycSubmitted={kycSubmitted}
                                                                         isLoading={isLoading}
                                                                         isLoadingVerificationWidget={isLoadingVerificationWidget}
                                                                         onOpenVerification={() => void openBridgeVerificationWidget()}
@@ -4121,10 +4029,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     {/* Status Badge - Show for all "in progress" statuses */}
                                                     {/* Bridge KYC/KYB statuses: not_started, incomplete, under_review, awaiting_questionnaire, awaiting_ubo, approved, rejected, paused, offboarded */}
                                                     {(verificationType === 'kyb'
-                                                        ? kybStatus !== 'approved' &&
-                                                          kybStatus !== 'rejected' &&
-                                                          kybStatus !== 'not_started'
-                                                        : isBridgeKycPending(kycStatus, kycSubmitted)) && (
+                                                        ? isBridgeKybPending(kybStatus)
+                                                        : isBridgeKycPending(kycStatus)) && (
                                                             <motion.div
                                                                 initial={{ opacity: 0 }}
                                                                 animate={{ opacity: 1 }}
@@ -4138,9 +4044,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                         {formatBridgeVerificationStatusLabel(
                                                                             verificationType === 'kyb'
                                                                                 ? kybStatus
-                                                                                : kycStatus === 'not_started' && kycSubmitted
-                                                                                  ? 'under_review'
-                                                                                  : kycStatus,
+                                                                                : kycStatus,
                                                                         )}
                                                                         . This usually takes a few minutes.
                                                                     </span>

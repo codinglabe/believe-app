@@ -12,7 +12,6 @@ interface BridgePersonaVerificationPanelProps {
     verificationType: "kyc" | "kyb" | null
     kycStatus: string
     kybStatus: string
-    kycSubmitted?: boolean
     isLoading?: boolean
     isLoadingVerificationWidget?: boolean
     onOpenVerification: () => void
@@ -24,17 +23,15 @@ export function BridgePersonaVerificationPanel({
     verificationType,
     kycStatus,
     kybStatus,
-    kycSubmitted = false,
     isLoading = false,
     isLoadingVerificationWidget = false,
     onOpenVerification,
     onRefresh,
 }: BridgePersonaVerificationPanelProps) {
-    if (verificationType === "kyc" && isBridgeKycPending(kycStatus, kycSubmitted)) {
+    if (verificationType === "kyc" && isBridgeKycPending(kycStatus)) {
         return (
             <KycVerificationStatusPanel
                 kycStatus={kycStatus}
-                kycSubmitted={kycSubmitted}
                 compact
                 onRefresh={onRefresh}
                 isRefreshing={isLoading}

@@ -14,6 +14,7 @@ use App\Models\WalletFee;
 use App\Models\Transaction;
 use App\Models\LiquidationAddress;
 use App\Services\BridgeService;
+use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -25,9 +26,12 @@ class BridgeWalletController extends Controller
 {
     protected BridgeService $bridgeService;
 
-    public function __construct(BridgeService $bridgeService)
+    protected WalletTransactionNotifier $walletTransactionNotifier;
+
+    public function __construct(BridgeService $bridgeService, WalletTransactionNotifier $walletTransactionNotifier)
     {
         $this->bridgeService = $bridgeService;
+        $this->walletTransactionNotifier = $walletTransactionNotifier;
     }
 
     public function initializeBridge(Request $request)
@@ -175,6 +179,11 @@ class BridgeWalletController extends Controller
                     'redirect_uri' => $verificationRedirectUri,
                 ];
 
+                $profilePhone = $entity->contact_number ?? $entity->phone ?? null;
+                if (is_string($profilePhone) && trim($profilePhone) !== '') {
+                    $kycLinkData['phone'] = trim($profilePhone);
+                }
+
                 Log::info('Creating Bridge KYC Link', [
                     'is_org_user' => $isOrgUser,
                     'kyc_link_data' => $kycLinkData,
@@ -217,7 +226,12 @@ class BridgeWalletController extends Controller
                 if ($isOrgUser) {
                     $integration->kyb_status = $response['kyb_status'] ?? $responseKycStatus;
                 }
-                // Prefer GET ?endorsement=cards; fall back to KYC link resource when Bridge sandbox 500s.
+
+                if ($customerId && is_string($profilePhone ?? null) && trim($profilePhone) !== '') {
+                    $this->bridgeService->remediateCardsEndorsementBlockers($customerId, trim($profilePhone));
+                }
+
+                // Prefer GET ?endorsement=cards; never persist base KYC link as cards link when base is approved.
                 $this->refreshCardsEndorsementKycLink($integration, $isOrgUser, $verificationRedirectUri);
                 if (! $isOrgUser && empty($integration->kyc_link_url) && ! empty($response['kyc_link'])) {
                     $integration->kyc_link_url = $response['kyc_link'];
@@ -1023,19 +1037,10 @@ class BridgeWalletController extends Controller
             // Customer exists locally from a prior Connect — refresh from Bridge API
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
 
-            $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
+            $customer = $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
             $integration->refresh();
 
-            if (! empty($integration->bridge_customer_id)) {
-                $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
-                if (($customerResult['success'] ?? false)
-                    && $this->bridgeService->customerNeedsCardsEndorsementFlow($customerResult['data'] ?? [])) {
-                    $this->refreshCardsEndorsementKycLink($integration, $isOrgUser);
-                    $integration->refresh();
-                }
-            }
-
-            $needsVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
+            $needsVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser, $customer);
 
             // Check TOS status from Bridge API via customer endorsements
             $tosStatusFromBridge = $integration->tos_status ?? 'pending';
@@ -1058,9 +1063,12 @@ class BridgeWalletController extends Controller
             }
 
             try {
-                $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
-                if ($customerResult['success'] && isset($customerResult['data'])) {
-                    $customer = $customerResult['data'];
+                if ($customer === null && ! empty($integration->bridge_customer_id)) {
+                    $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+                    $customer = ($customerResult['success'] ?? false) ? ($customerResult['data'] ?? null) : null;
+                }
+
+                if (is_array($customer)) {
                     $endorsements = $customer['endorsements'] ?? [];
                     
                     // Also check has_accepted_terms_of_service from Bridge
@@ -1362,25 +1370,68 @@ class BridgeWalletController extends Controller
                 ? ($integration->kyb_link_id ?? $integration->kyc_link_id)
                 : $integration->kyc_link_id;
 
-            $linkResult = $this->bridgeService->resolveCardsEndorsementKycLink(
-                $integration->bridge_customer_id,
-                $redirectUri,
-                $kycLinkId,
-            );
+            $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
+
+            $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
+            $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
+
+            $requestedEndorsement = strtolower((string) $request->input('endorsement', 'base'));
+
+            if ($requestedEndorsement === 'cards') {
+                $linkResult = $this->bridgeService->resolveCardsEndorsementKycLink(
+                    $integration->bridge_customer_id,
+                    $redirectUri,
+                    $effectiveKycLinkId,
+                    $preferredPhone,
+                    true,
+                );
+            } else {
+                $linkResult = $this->bridgeService->resolveBaseKycLink(
+                    $integration->bridge_customer_id,
+                    $redirectUri,
+                    $kycLinkId,
+                );
+            }
+
+            if ($linkResult['cards_already_approved'] ?? false) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Cards verification is already complete.',
+                    'data' => [
+                        'cards_already_approved' => true,
+                        'endorsement' => 'cards',
+                    ],
+                ]);
+            }
+
+            if ($requestedEndorsement === 'cards' && ($linkResult['phone_required'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Add a valid US phone number in E.164 format (e.g. +12025550100) to your profile before cards verification.',
+                    'error_code' => 'cards_endorsement_phone_required',
+                    'endorsement' => 'cards',
+                    'cards_endorsement_issues' => $linkResult['cards_endorsement_issues'] ?? ['phone_number_invalid_format'],
+                ], 400);
+            }
 
             if (! ($linkResult['success'] ?? false)) {
-                Log::error('Cards endorsement KYC/KYB link failed', [
+                $isCards = $requestedEndorsement === 'cards';
+                Log::error($isCards ? 'Cards endorsement KYC/KYB link failed' : 'Base KYC/KYB link failed', [
                     'integration_id' => $integration->id,
                     'customer_id' => $integration->bridge_customer_id,
                     'link_type' => $linkType,
+                    'endorsement' => $requestedEndorsement,
                     'error' => $linkResult['error'] ?? null,
                 ]);
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cards verification link is temporarily unavailable from Bridge. Please try again in a moment.',
-                    'error_code' => 'cards_endorsement_kyc_link_failed',
-                    'endorsement' => 'cards',
+                    'message' => $isCards
+                        ? 'Cards verification link is temporarily unavailable from Bridge. Please try again in a moment.'
+                        : 'Identity verification link is temporarily unavailable from Bridge. Please try again in a moment.',
+                    'error_code' => $isCards ? 'cards_endorsement_kyc_link_failed' : 'kyc_link_failed',
+                    'endorsement' => $requestedEndorsement,
                     'bridge_error' => $linkResult['error'] ?? null,
                 ], 502);
             }
@@ -1433,8 +1484,6 @@ class BridgeWalletController extends Controller
             } else {
                 $integration->kyc_link_id = $linkId;
                 $integration->kyc_link_url = $linkUrl;
-                // Cards endorsement re-verification must not reset an already-approved base KYC status.
-                $requestedEndorsement = $request->input('endorsement', 'cards');
                 if ($requestedEndorsement !== 'cards' && $integration->kyc_status !== 'approved') {
                     // Bridge KYC statuses: not_started, incomplete, under_review, awaiting_questionnaire, approved, rejected, paused, offboarded
                     $integration->kyc_status = 'not_started';
@@ -1449,7 +1498,7 @@ class BridgeWalletController extends Controller
                     'link_id' => $linkId,
                     'link_url' => $linkUrl,
                     'widget_url' => $widgetUrl, // Widget URL for iframe
-                    'endorsement' => 'cards',
+                    'endorsement' => $requestedEndorsement === 'cards' ? 'cards' : 'base',
                 ],
             ]);
         } catch (\Exception $e) {
@@ -2821,11 +2870,33 @@ class BridgeWalletController extends Controller
 
             $redirectUri = $request->input('redirect_url');
 
+            $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
+            $kycLinkId = $integration->kyb_link_id ?? $integration->kyc_link_id;
+            $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
+
             $linkResult = $this->bridgeService->resolveCardsEndorsementKycLink(
                 $integration->bridge_customer_id,
                 is_string($redirectUri) && $redirectUri !== '' ? $redirectUri : null,
-                $integration->kyb_link_id ?? $integration->kyc_link_id,
+                $effectiveKycLinkId,
+                $this->resolveIntegratablePhoneForCards($integration),
             );
+
+            if ($linkResult['cards_already_approved'] ?? false) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Cards verification is already complete.',
+                    'data' => ['cards_already_approved' => true],
+                ]);
+            }
+
+            if ($linkResult['phone_required'] ?? false) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A valid US phone number is required for cards verification.',
+                    'error_code' => 'cards_endorsement_phone_required',
+                ], 400);
+            }
 
             if (! ($linkResult['success'] ?? false) || empty($linkResult['url'])) {
                 return response()->json([
@@ -2980,6 +3051,8 @@ class BridgeWalletController extends Controller
                 ]);
 
                 DB::commit();
+
+                $this->walletTransactionNotifier->notify($orgUser, $transaction);
 
                 return response()->json([
                     'success' => true,
@@ -3299,6 +3372,11 @@ class BridgeWalletController extends Controller
 
                 $senderUser->refresh();
                 $recipientUser->refresh();
+
+                if (! $bridgeTransferId) {
+                    $this->walletTransactionNotifier->notify($senderUser, $senderTransaction);
+                    $this->walletTransactionNotifier->notify($recipientUser, $recipientTransaction);
+                }
 
                 return response()->json([
                     'success' => true,
@@ -3676,17 +3754,27 @@ class BridgeWalletController extends Controller
                 $integration->kyc_status = $bridgeKycStatus;
             }
         } else {
-            $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
-            if ($bridgeKycStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
-                $integration->kyc_status = 'approved';
-            } elseif ($bridgeKycStatus !== '') {
-                $integration->kyc_status = $bridgeKycStatus;
-            } elseif (
-                in_array($customerStatus, ['not_started', 'incomplete'], true)
-                && $integration->kyc_status === 'approved'
-            ) {
-                // Stale local KYC after reset — Bridge customer has not completed verification yet
-                $integration->kyc_status = $customerStatus;
+            $baseInfo = $this->bridgeService->getBaseEndorsementInfo($customer);
+
+            if ($baseInfo['exists'] ?? false) {
+                $baseStatus = strtolower((string) ($baseInfo['status'] ?? ''));
+                if ($baseStatus === 'approved') {
+                    $integration->kyc_status = 'approved';
+                } elseif ($baseStatus !== '') {
+                    $integration->kyc_status = $baseStatus;
+                }
+            } else {
+                $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
+                if ($bridgeKycStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
+                    $integration->kyc_status = 'approved';
+                } elseif ($bridgeKycStatus !== '') {
+                    $integration->kyc_status = $bridgeKycStatus;
+                } elseif (
+                    in_array($customerStatus, ['not_started', 'incomplete'], true)
+                    && $integration->kyc_status === 'approved'
+                ) {
+                    $integration->kyc_status = $customerStatus;
+                }
             }
         }
     }
@@ -3776,33 +3864,40 @@ class BridgeWalletController extends Controller
     /**
      * Whether local integration reflects an approved Bridge account (KYC for individuals, KYB+KYC for orgs).
      */
-    private function integrationVerificationApproved(BridgeIntegration $integration, bool $isOrgUser): bool
+    private function integrationVerificationApproved(BridgeIntegration $integration, bool $isOrgUser, ?array $customer = null): bool
     {
         if (empty($integration->bridge_customer_id)) {
             return false;
         }
 
-        $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
-        $customer = ($customerResult['success'] ?? false) ? ($customerResult['data'] ?? []) : [];
-
-        // Cards endorsement is required for wallet + card issuance (Bridge cards KYC docs).
-        if ($this->bridgeService->customerNeedsCardsEndorsementFlow($customer)) {
-            return false;
+        if ($customer === null) {
+            $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            $customer = ($customerResult['success'] ?? false) ? ($customerResult['data'] ?? []) : [];
         }
 
+        $baseInfo = $this->bridgeService->getBaseEndorsementInfo($customer);
+        $customerActive = strtolower((string) ($customer['status'] ?? '')) === 'active';
+
+        // Wallet access requires base KYC — cards endorsement is only for card issuance.
         if ($isOrgUser) {
             $kybApproved = $integration->kyb_status === 'approved'
                 || strtolower((string) ($customer['kyb_status'] ?? '')) === 'approved';
             $kycApproved = $integration->kyc_status === 'approved'
                 || strtolower((string) ($customer['kyc_status'] ?? '')) === 'approved';
-            $customerActive = strtolower((string) ($customer['status'] ?? '')) === 'active';
 
-            return $kybApproved || $kycApproved || $customerActive;
+            if ($baseInfo['approved'] ?? false) {
+                return $kybApproved || $kycApproved || $customerActive;
+            }
+
+            return ($kybApproved && $kycApproved) || $customerActive;
+        }
+
+        if ($baseInfo['approved'] ?? false) {
+            return true;
         }
 
         $kycApproved = $integration->kyc_status === 'approved'
             || strtolower((string) ($customer['kyc_status'] ?? '')) === 'approved';
-        $customerActive = strtolower((string) ($customer['status'] ?? '')) === 'active';
 
         return $kycApproved || $customerActive;
     }
@@ -3823,11 +3918,24 @@ class BridgeWalletController extends Controller
             ? ($integration->kyb_link_id ?? $integration->kyc_link_id)
             : $integration->kyc_link_id;
 
+        $integration->loadMissing('integratable');
+        $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
+
+        $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+        $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
+        $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
+
         $result = $this->bridgeService->resolveCardsEndorsementKycLink(
             $integration->bridge_customer_id,
             $redirectUri,
-            $kycLinkId,
+            $effectiveKycLinkId,
+            $preferredPhone,
+            false,
         );
+
+        if ($result['cards_already_approved'] ?? false) {
+            return;
+        }
 
         if (! ($result['success'] ?? false) || empty($result['url'])) {
             Log::warning('Could not refresh cards endorsement KYC/KYB link', [
@@ -3877,16 +3985,16 @@ class BridgeWalletController extends Controller
      * Pull customer KYC/KYB/TOS/wallet state from Bridge into bridge_integrations.
      * Used after database cleanup when Bridge still has the customer.
      */
-    private function syncIntegrationFromBridgeApi(BridgeIntegration $integration, bool $isOrgUser): void
+    private function syncIntegrationFromBridgeApi(BridgeIntegration $integration, bool $isOrgUser): ?array
     {
         if (empty($integration->bridge_customer_id)) {
-            return;
+            return null;
         }
 
         try {
             $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
             if (! $customerResult['success'] || empty($customerResult['data'])) {
-                return;
+                return null;
             }
 
             $customer = $customerResult['data'];
@@ -3918,7 +4026,7 @@ class BridgeWalletController extends Controller
                 $integration->save();
             }
 
-            $isApproved = $this->integrationVerificationApproved($integration, $isOrgUser);
+            $isApproved = $this->integrationVerificationApproved($integration, $isOrgUser, $customer);
             $primaryWallet = $integration->primaryWallet;
             $hasWallet = ! empty($integration->bridge_wallet_id)
                 || ($primaryWallet !== null && ! empty($primaryWallet->bridge_wallet_id));
@@ -3929,12 +4037,14 @@ class BridgeWalletController extends Controller
                     'customer_id' => $integration->bridge_customer_id,
                 ]);
 
-                $webhookController = new BridgeWebhookController($this->bridgeService);
+                $webhookController = new BridgeWebhookController($this->bridgeService, $this->walletTransactionNotifier);
                 $webhookController->createWalletVirtualAccountAndCardAccount(
                     $integration->fresh(),
                     $integration->bridge_customer_id
                 );
             }
+
+            return $customer;
         } catch (\Exception $e) {
             Log::warning('Failed to sync Bridge customer into local integration', [
                 'integration_id' => $integration->id,
@@ -3942,6 +4052,8 @@ class BridgeWalletController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+
+        return null;
     }
 
     /**
@@ -4901,6 +5013,28 @@ class BridgeWalletController extends Controller
 
             if (!$result['success']) {
                 throw new \Exception($result['error'] ?? 'Failed to create withdrawal');
+            }
+
+            $transferId = $result['data']['id'] ?? $result['data']['transfer_id'] ?? null;
+            $amount = (float) $validated['amount'];
+
+            DB::beginTransaction();
+
+            try {
+                if (! $user->withdrawFund($amount, 'bridge', [
+                    'bridge_transfer_id' => $transferId,
+                    'external_account_id' => $validated['external_account_id'],
+                    'payment_rail' => $validated['payment_rail'] ?? 'ach',
+                    'bridge_customer_id' => $integration->bridge_customer_id,
+                    'bridge_wallet_id' => $bridgeWalletId,
+                ], null, null, 'pending')) {
+                    throw new \Exception('Insufficient balance for withdrawal');
+                }
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
             }
 
             return response()->json([
@@ -6634,6 +6768,16 @@ class BridgeWalletController extends Controller
         string $customerId,
         bool $isOrgUser,
     ): \Illuminate\Http\JsonResponse {
+        $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
+        $autoResult = $this->bridgeService->attemptCardsEndorsementAutoResolution($customerId, $preferredPhone);
+
+        if ($autoResult['cards_already_approved'] ?? false) {
+            Log::info('Cards endorsement approved after auto-resolution — issuing card', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+            ]);
+        }
+
         $issueResult = $this->bridgeService->issueVirtualCard($integration, $customerId, $isOrgUser);
 
         if ($issueResult['success'] ?? false) {
@@ -6720,22 +6864,54 @@ class BridgeWalletController extends Controller
             'environment' => $this->bridgeService->isSandbox() ? 'sandbox' : 'production',
         ]);
 
-        $this->bridgeService->remediateCardsEndorsementBlockers(
-            $customerId,
-            $this->resolveIntegratablePhoneForCards($integration),
-        );
+        $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
 
-        $kycLinkId = $integration->kyc_link_id;
+        $autoResult = $this->bridgeService->attemptCardsEndorsementAutoResolution($customerId, $preferredPhone);
+        if ($autoResult['cards_already_approved'] ?? false) {
+            $isOrgUser = $integration->integratable_type === Organization::class;
+
+            return $this->issueVirtualCardResponse($integration, $customerId, $isOrgUser);
+        }
+
+        if ($this->bridgeService->cardsEndorsementBlockedByPhoneOnly($customerId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cards verification needs a valid US phone number on your profile (E.164 format, e.g. +12025550100). Update your phone in account settings, then try again.',
+                'error_code' => 'cards_endorsement_phone_required',
+                'cards_endorsement_issues' => ['phone_number_invalid_format'],
+            ], 400);
+        }
+
         $redirectUri = url('/wallet/kyc-callback');
+
+        $customerResult = $this->bridgeService->getCustomer($customerId);
+        $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
+        $kycLinkId = $baseApproved ? null : $integration->kyc_link_id;
 
         $kycLinkResult = $this->bridgeService->getCardsEndorsementKycLink(
             $customerId,
             $redirectUri,
             $kycLinkId,
+            $preferredPhone,
         );
 
-        if (! ($kycLinkResult['success'] ?? false) && ! empty($integration->kyc_link_url)) {
-            Log::warning('Using stored integration KYC link as cards endorsement fallback', [
+        if ($kycLinkResult['cards_already_approved'] ?? false) {
+            $isOrgUser = $integration->integratable_type === Organization::class;
+
+            return $this->issueVirtualCardResponse($integration, $customerId, $isOrgUser);
+        }
+
+        if ($kycLinkResult['phone_required'] ?? false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cards verification needs a valid US phone number on your profile (E.164 format, e.g. +12025550100). Update your phone in account settings, then try again.',
+                'error_code' => 'cards_endorsement_phone_required',
+                'cards_endorsement_issues' => $kycLinkResult['cards_endorsement_issues'] ?? ['phone_number_invalid_format'],
+            ], 400);
+        }
+
+        if (! ($kycLinkResult['success'] ?? false) && ! $baseApproved && ! empty($integration->kyc_link_url)) {
+            Log::warning('Using stored integration KYC link as cards endorsement fallback (base KYC not yet approved)', [
                 'integration_id' => $integration->id,
                 'customer_id' => $customerId,
                 'error' => $kycLinkResult['error'] ?? null,

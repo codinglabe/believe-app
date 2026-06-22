@@ -5,12 +5,11 @@ import { Clock, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
     formatBridgeVerificationStatusLabel,
-    isBridgeVerificationPending,
+    isBridgeVerificationAwaitingReview,
 } from "@/lib/bridge-verification"
 
 interface KycVerificationStatusPanelProps {
     kycStatus: string
-    kycSubmitted?: boolean
     compact?: boolean
     onRefresh?: () => void
     isRefreshing?: boolean
@@ -20,16 +19,14 @@ interface KycVerificationStatusPanelProps {
 
 export function KycVerificationStatusPanel({
     kycStatus,
-    kycSubmitted = false,
     compact = false,
     onRefresh,
     isRefreshing = false,
     title = "KYC Verification Pending",
     description = "Your identity verification has been submitted and is being reviewed by Bridge.",
 }: KycVerificationStatusPanelProps) {
-    const pending = isBridgeVerificationPending(kycStatus, kycSubmitted)
-    const displayStatus = kycStatus === "not_started" && kycSubmitted ? "under_review" : kycStatus
-    const statusLabel = formatBridgeVerificationStatusLabel(displayStatus)
+    const pending = isBridgeVerificationAwaitingReview(kycStatus)
+    const statusLabel = formatBridgeVerificationStatusLabel(kycStatus)
 
     if (!pending && kycStatus !== "rejected") {
         return null

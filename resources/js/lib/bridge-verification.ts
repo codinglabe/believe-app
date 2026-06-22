@@ -105,40 +105,49 @@ export function applyWalletBridgeStatusPayload(payload: WalletBridgeStatusPayloa
   }
 }
 
-/** True when Bridge KYC/KYB is submitted and still awaiting a final outcome. */
-export function isBridgeVerificationPending(
+/** True when the user has submitted and Bridge is processing — not when they still need to open Persona. */
+export function isBridgeVerificationAwaitingReview(
   status: string | null | undefined,
-  submitted = false,
 ): boolean {
-  if (submitted && status !== "approved" && status !== "rejected") {
-    return true
-  }
-
-  if (!status || status === "not_started" || status === "approved" || status === "rejected") {
+  if (!status) {
     return false
   }
 
-  return true
+  return (
+    status === "under_review" ||
+    status === "awaiting_questionnaire" ||
+    status === "awaiting_ubo" ||
+    status === "paused" ||
+    status === "pending"
+  )
 }
 
-export function isBridgeKycPending(
+/** User still needs to complete verification (ToS done but Persona not finished, etc.). */
+export function isBridgeVerificationActionRequired(
   status: string | null | undefined,
-  kycSubmitted = false,
 ): boolean {
-  return isBridgeVerificationPending(status, kycSubmitted)
+  return status === "not_started" || status === "incomplete"
 }
 
-export function isBridgeKybPending(
+/** @alias isBridgeVerificationAwaitingReview */
+export function isBridgeVerificationPending(
   status: string | null | undefined,
-  kybSubmitted = false,
 ): boolean {
-  return isBridgeVerificationPending(status, kybSubmitted)
+  return isBridgeVerificationAwaitingReview(status)
+}
+
+export function isBridgeKycPending(status: string | null | undefined): boolean {
+  return isBridgeVerificationAwaitingReview(status)
+}
+
+export function isBridgeKybPending(status: string | null | undefined): boolean {
+  return isBridgeVerificationAwaitingReview(status)
 }
 
 export function formatBridgeVerificationStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     not_started: "Not started",
-    incomplete: "Incomplete",
+    incomplete: "Needs completion",
     under_review: "Under review",
     pending: "Pending review",
     awaiting_questionnaire: "Awaiting questionnaire",
@@ -150,31 +159,6 @@ export function formatBridgeVerificationStatusLabel(status: string): string {
   }
 
   return labels[status] ?? status.replace(/_/g, " ")
-}
-
-export function resolveKycStatusAfterBridgeSubmission(
-  currentStatus: string,
-  backendStatus: string | undefined,
-  kycSubmitted: boolean,
-): { status: string; submitted: boolean } {
-  const nextStatus = backendStatus ?? currentStatus
-
-  if (nextStatus === "approved") {
-    return { status: "approved", submitted: false }
-  }
-
-  if (nextStatus === "rejected") {
-    return { status: "rejected", submitted: true }
-  }
-
-  if (kycSubmitted || isBridgeKycPending(nextStatus)) {
-    return {
-      status: nextStatus === "not_started" ? "under_review" : nextStatus,
-      submitted: true,
-    }
-  }
-
-  return { status: nextStatus, submitted: kycSubmitted }
 }
 
 /** Match WalletPopup: org wallet is ready only after KYB + KYC + wallet exist. */

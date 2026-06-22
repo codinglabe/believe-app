@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\BoardMember;
 use App\Support\SupporterSubscriptionService;
 use App\Models\Transaction;
+use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -147,7 +148,7 @@ class WalletController extends Controller
                 $entityUser = $user;
             }
 
-            // Try to fetch balance from Bridge first
+            // Optional: read Bridge wallet balance for diagnostics (never overwrite local ledger)
             $bridgeBalance = null;
             $bridgeService = app(\App\Services\BridgeService::class);
             
@@ -160,43 +161,27 @@ class WalletController extends Controller
                 if ($integration && $integration->bridge_customer_id) {
                     $isSandbox = $bridgeService->isSandbox();
                     
-                    // Try to get wallet ID (works in both sandbox and production)
                     $walletId = $integration->bridge_wallet_id ?? 
                                ($integration->primaryWallet ? $integration->primaryWallet->bridge_wallet_id : null);
                     
-                    // In sandbox, virtual accounts don't have wallet IDs, so try virtual_account_id
-                    if (!$walletId && $isSandbox && $integration->primaryWallet && $integration->primaryWallet->virtual_account_id) {
-                        // In sandbox, virtual accounts don't hold balances, but we can try to get customer info
-                        // For now, we'll skip Bridge fetch in sandbox since virtual accounts don't have balances
-                        $walletId = null;
-                    }
-                    
-                    // Try to get balance from Bridge wallet (production mode)
                     if ($walletId && !$isSandbox) {
                         $walletResult = $bridgeService->getWallet($integration->bridge_customer_id, $walletId);
                         
                         if ($walletResult['success'] && isset($walletResult['data'])) {
                             $walletData = $walletResult['data'];
                             $bridgeBalance = (float) ($walletData['balance'] ?? $walletData['available_balance'] ?? $walletData['total_balance'] ?? 0);
-                            
-                            // Update local balance to match Bridge balance
-                            if ($bridgeBalance !== null) {
-                                $entityUser->balance = $bridgeBalance;
-                                $entityUser->save();
-                            }
                         }
                     }
                 }
             } catch (\Exception $bridgeError) {
-                // Log but don't fail - fall back to local balance
                 \Illuminate\Support\Facades\Log::warning('Failed to fetch Bridge balance', [
                     'error' => $bridgeError->getMessage(),
                     'user_id' => $user->id,
                 ]);
             }
 
-            // Use Bridge balance if available, otherwise use local balance
-            $balance = $bridgeBalance !== null ? $bridgeBalance : (float) ($entityUser->balance ?? 0);
+            // Local ledger (users.balance) is the source of truth for the wallet UI
+            $balance = (float) ($entityUser->balance ?? 0);
             
             // Check if user has active subscription
             // For regular users: check for WALLET subscription specifically
@@ -216,7 +201,7 @@ class WalletController extends Controller
                 'bridge_balance' => $bridgeBalance,
                 'currency' => 'USD',
                 'connected' => true,
-                'source' => $bridgeBalance !== null ? 'bridge' : ($isOrgUser ? 'organization' : 'user'),
+                'source' => 'ledger',
                 'has_subscription' => $hasSubscription,
                 'supporter_tier' => SupporterSubscriptionService::currentTierSlug($entityUser),
             ];
@@ -1194,7 +1179,7 @@ class WalletController extends Controller
                 $senderUser->decrement('balance', $amount);
                 
                 // Record sender transaction
-                $senderUser->recordTransaction([
+                $senderTransaction = $senderUser->recordTransaction([
                     'type' => 'transfer_out',
                     'amount' => $amount,
                     'status' => 'completed',
@@ -1212,9 +1197,9 @@ class WalletController extends Controller
 
                 // Add to recipient
                 $recipientUser->increment('balance', $amount);
-                
+
                 // Record recipient transaction
-                $recipientUser->recordTransaction([
+                $recipientTransaction = $recipientUser->recordTransaction([
                     'type' => 'transfer_in',
                     'amount' => $amount,
                     'status' => 'completed',
@@ -1231,6 +1216,9 @@ class WalletController extends Controller
                 ]);
 
                 DB::commit();
+
+                app(WalletTransactionNotifier::class)->notify($senderUser, $senderTransaction);
+                app(WalletTransactionNotifier::class)->notify($recipientUser, $recipientTransaction);
 
                 // Get updated balances
                 $senderUser->refresh();
@@ -1326,7 +1314,7 @@ class WalletController extends Controller
                 $orgUser->increment('balance', $amount);
                 
                 // Record deposit transaction
-                $orgUser->recordTransaction([
+                $depositTransaction = $orgUser->recordTransaction([
                     'type' => 'deposit',
                     'amount' => $amount,
                     'status' => 'completed',
@@ -1341,6 +1329,8 @@ class WalletController extends Controller
                 ]);
 
                 DB::commit();
+
+                app(WalletTransactionNotifier::class)->notify($orgUser, $depositTransaction);
 
                 // Get updated balance
                 $orgUser->refresh();

@@ -336,35 +336,42 @@ class BridgeService
     public function getTosLink(string $email, ?string $redirectUri = null): array
     {
         $data = ['email' => $email];
-        
+
+        if ($redirectUri) {
+            $data['redirect_uri'] = $redirectUri;
+        }
+
         Log::info('Bridge Service: getTosLink called', [
             'email' => $email,
             'redirect_uri' => $redirectUri ?? 'null (not provided)',
             'request_data' => $data,
         ]);
-        
+
         $result = $this->makeRequest('POST', '/customers/tos_links', $data);
-        
-        // Append redirect_uri if provided
+
+        // Fallback: append redirect_uri when Bridge omits it from the response URL.
         if ($result['success'] && $redirectUri && isset($result['data']['url'])) {
-            $urlBefore = $result['data']['url'];
-            $separator = strpos($result['data']['url'], '?') !== false ? '&' : '?';
-            $result['data']['url'] .= $separator . 'redirect_uri=' . urlencode($redirectUri);
-            
-            Log::info('Bridge Service: Added redirect_uri to TOS URL', [
-                'url_before' => $urlBefore,
-                'url_after' => $result['data']['url'],
-                'redirect_uri' => $redirectUri,
-            ]);
+            $url = $result['data']['url'];
+            if (! str_contains($url, 'redirect_uri=')) {
+                $urlBefore = $url;
+                $separator = str_contains($url, '?') ? '&' : '?';
+                $result['data']['url'] = $url.$separator.'redirect_uri='.urlencode($redirectUri);
+
+                Log::info('Bridge Service: Appended redirect_uri to TOS URL', [
+                    'url_before' => $urlBefore,
+                    'url_after' => $result['data']['url'],
+                    'redirect_uri' => $redirectUri,
+                ]);
+            }
         } else {
-            Log::info('Bridge Service: TOS link response (redirect_uri not added)', [
+            Log::info('Bridge Service: TOS link response', [
                 'success' => $result['success'] ?? false,
                 'has_url' => isset($result['data']['url']),
-                'redirect_uri_provided' => !empty($redirectUri),
+                'redirect_uri_provided' => ! empty($redirectUri),
                 'tos_url' => $result['data']['url'] ?? 'N/A',
             ]);
         }
-        
+
         return $result;
     }
 
@@ -525,10 +532,79 @@ class BridgeService
     }
 
     /**
-     * Cards endorsement KYC link — prefers GET /customers/{id}/kyc_link?endorsement=cards.
-     * When Bridge sandbox returns 500 on that endpoint, falls back to the KYC link resource
-     * (POST /kyc_links with endorsements: cards) or plain GET /customers/{id}/kyc_link
-     * for customers that already have the cards endorsement.
+     * Base wallet KYC link — GET /customers/{id}/kyc_link (no endorsement param).
+     * Use this for wallet identity verification, not cards issuance.
+     *
+     * @see https://apidocs.bridge.xyz/platform/customers/customers/kyclinks
+     */
+    public function resolveBaseKycLink(
+        string $customerId,
+        ?string $redirectUri = null,
+        ?string $kycLinkId = null,
+    ): array {
+        $result = ['success' => false, 'error' => 'Failed to get base KYC link'];
+
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            if ($attempt > 1) {
+                sleep(1);
+            }
+
+            $attemptRedirect = $attempt <= 2 ? $redirectUri : null;
+            $fetchResult = $this->getCustomerKycLink($customerId, null, $attemptRedirect);
+            $url = $this->extractKycLinkUrl($fetchResult);
+
+            if ($url !== null) {
+                Log::info('Base KYC link resolved via GET /customers/{id}/kyc_link', [
+                    'customer_id' => $customerId,
+                    'attempt' => $attempt,
+                ]);
+
+                return [
+                    'success' => true,
+                    'url' => $url,
+                    'data' => $fetchResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
+                    'source' => 'customer_kyc_link_base',
+                    'endorsement' => 'base',
+                ];
+            }
+
+            if (($fetchResult['status'] ?? 0) !== 500) {
+                $result = $fetchResult;
+                break;
+            }
+        }
+
+        if ($kycLinkId) {
+            $linkResult = $this->getKYCLink($kycLinkId);
+            $url = $this->extractKycLinkUrl($linkResult);
+
+            if ($url !== null) {
+                Log::info('Base KYC link resolved via stored kyc_links resource', [
+                    'customer_id' => $customerId,
+                    'kyc_link_id' => $kycLinkId,
+                ]);
+
+                return [
+                    'success' => true,
+                    'url' => $url,
+                    'data' => $linkResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
+                    'source' => 'kyc_links_resource',
+                    'endorsement' => 'base',
+                ];
+            }
+        }
+
+        return [
+            'success' => false,
+            'error' => is_array($result) ? ($result['error'] ?? 'Failed to get base KYC link') : 'Failed to get base KYC link',
+            'endorsement' => 'base',
+        ];
+    }
+
+    /**
+     * Cards endorsement KYC link — GET /customers/{id}/kyc_link?endorsement=cards per Bridge docs.
+     * When base KYC is already approved, never reuse the base KYC link resource (full Persona flow).
+     * Attempts phone remediation + polling first so cards may auto-approve without Persona.
      *
      * @see https://apidocs.bridge.xyz/platform/cards/overview/kyc
      */
@@ -536,6 +612,8 @@ class BridgeService
         string $customerId,
         ?string $redirectUri = null,
         ?string $kycLinkId = null,
+        ?string $preferredPhone = null,
+        bool $attemptAutoResolution = false,
     ): array {
         if ($this->isSandbox()) {
             $this->ensureCardsProductEnabled();
@@ -550,17 +628,44 @@ class BridgeService
         }
 
         $this->ensureCustomerHasCardsEndorsement($customerId);
-        $this->remediateCardsEndorsementBlockers($customerId);
 
-        // Fast path: KYC link resource (avoids Bridge sandbox 500 on GET ?endorsement=cards).
-        if ($kycLinkId) {
-            $linkResult = $this->getKYCLink($kycLinkId);
+        $customerResult = $this->getCustomer($customerId);
+        $customerData = $customerResult['data'] ?? [];
+        $baseApproved = $this->getBaseEndorsementInfo($customerData)['approved'] ?? false;
+
+        if ($attemptAutoResolution) {
+            $autoResult = $this->attemptCardsEndorsementAutoResolution($customerId, $preferredPhone);
+            if ($autoResult['cards_already_approved'] ?? false) {
+                return [
+                    'success' => true,
+                    'cards_already_approved' => true,
+                    'endorsement' => 'cards',
+                    'source' => 'auto_resolution',
+                ];
+            }
+        }
+
+        if ($this->cardsEndorsementBlockedByPhoneOnly($customerId)) {
+            return [
+                'success' => false,
+                'error' => 'A valid phone number is required for cards verification.',
+                'endorsement' => 'cards',
+                'phone_required' => true,
+                'cards_endorsement_issues' => ['phone_number_invalid_format'],
+            ];
+        }
+
+        // Stored kyc_link_id is the base KYC link — only use before base endorsement is approved.
+        $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
+
+        if ($effectiveKycLinkId) {
+            $linkResult = $this->getKYCLink($effectiveKycLinkId);
             $url = $this->extractKycLinkUrl($linkResult);
 
             if ($url !== null) {
-                Log::info('Cards endorsement KYC link resolved via KYC link resource', [
+                Log::info('Cards endorsement KYC link resolved via KYC link resource (base KYC not yet approved)', [
                     'customer_id' => $customerId,
-                    'kyc_link_id' => $kycLinkId,
+                    'kyc_link_id' => $effectiveKycLinkId,
                 ]);
 
                 return [
@@ -575,13 +680,12 @@ class BridgeService
 
         $result = ['success' => false, 'error' => 'Failed to get cards endorsement KYC link'];
 
-        // Bridge docs: GET /customers/{id}/kyc_link?endorsement=cards
-        for ($attempt = 1; $attempt <= 2; $attempt++) {
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
             if ($attempt > 1) {
                 sleep(1);
             }
 
-            $attemptRedirect = $attempt === 1 ? $redirectUri : null;
+            $attemptRedirect = $attempt <= 2 ? $redirectUri : null;
             $result = $this->getCustomerKycLink($customerId, 'cards', $attemptRedirect);
             $url = $this->extractKycLinkUrl($result);
 
@@ -605,31 +709,7 @@ class BridgeService
             }
         }
 
-        $plainResult = $this->getCustomerKycLink($customerId, null, $redirectUri);
-        $plainUrl = $this->extractKycLinkUrl($plainResult);
-
-        if ($plainUrl !== null) {
-            $customerResult = $this->getCustomer($customerId);
-            $endorsementInfo = $this->getCardsEndorsementInfo($customerResult['data'] ?? []);
-
-            if ($endorsementInfo['exists'] ?? false) {
-                Log::warning('GET ?endorsement=cards failed — using customer kyc_link without endorsement param', [
-                    'customer_id' => $customerId,
-                    'cards_get_error' => $result['error'] ?? null,
-                    'cards_get_status' => $result['status'] ?? null,
-                ]);
-
-                return [
-                    'success' => true,
-                    'url' => $plainUrl,
-                    'data' => $plainResult['data'] ?? ['url' => $plainUrl],
-                    'source' => 'customer_kyc_link_with_cards_endorsement',
-                    'endorsement' => 'cards',
-                ];
-            }
-        }
-
-        $createResult = $this->createCardsEndorsementKycLinkFallback($customerId, $redirectUri);
+        $createResult = $this->createCardsEndorsementKycLinkFallback($customerId, $redirectUri, $preferredPhone);
         if ($createResult['success'] ?? false) {
             return $createResult;
         }
@@ -639,7 +719,7 @@ class BridgeService
 
         Log::error('Cards endorsement KYC link unavailable — all resolution paths failed', [
             'customer_id' => $customerId,
-            'kyc_link_id' => $kycLinkId,
+            'base_kyc_approved' => $baseApproved,
             'status' => $result['status'] ?? null,
             'error' => $lastError,
             'cards_endorsement_issues' => $issues,
@@ -655,9 +735,21 @@ class BridgeService
         ];
     }
 
-    public function getCardsEndorsementKycLink(string $customerId, ?string $redirectUri = null, ?string $kycLinkId = null): array
-    {
-        $resolved = $this->resolveCardsEndorsementKycLink($customerId, $redirectUri, $kycLinkId);
+    public function getCardsEndorsementKycLink(
+        string $customerId,
+        ?string $redirectUri = null,
+        ?string $kycLinkId = null,
+        ?string $preferredPhone = null,
+    ): array {
+        $resolved = $this->resolveCardsEndorsementKycLink($customerId, $redirectUri, $kycLinkId, $preferredPhone);
+
+        if ($resolved['cards_already_approved'] ?? false) {
+            return [
+                'success' => true,
+                'cards_already_approved' => true,
+                'source' => $resolved['source'] ?? 'auto_resolution',
+            ];
+        }
 
         if ($resolved['success'] ?? false) {
             return [
@@ -671,7 +763,90 @@ class BridgeService
             'success' => false,
             'error' => $resolved['error'] ?? 'Failed to get cards endorsement verification link',
             'cards_endorsement_issues' => $resolved['cards_endorsement_issues'] ?? null,
+            'phone_required' => $resolved['phone_required'] ?? false,
         ];
+    }
+
+    /**
+     * Sync phone to Bridge and poll for cards endorsement approval (no Persona when blockers clear).
+     */
+    public function attemptCardsEndorsementAutoResolution(string $customerId, ?string $preferredPhone = null): array
+    {
+        $this->remediateCardsEndorsementBlockers($customerId, $preferredPhone);
+
+        for ($attempt = 0; $attempt < 6; $attempt++) {
+            if ($attempt > 0) {
+                sleep(2);
+            }
+
+            $customerResult = $this->getCustomer($customerId);
+            if (! ($customerResult['success'] ?? false)) {
+                continue;
+            }
+
+            $endorsementInfo = $this->getCardsEndorsementInfo($customerResult['data'] ?? []);
+            if ($endorsementInfo['approved'] ?? false) {
+                Log::info('Cards endorsement auto-approved after remediation', [
+                    'customer_id' => $customerId,
+                    'attempt' => $attempt + 1,
+                ]);
+
+                return ['success' => true, 'cards_already_approved' => true];
+            }
+
+            if ($attempt === 0 && $this->cardsEndorsementBlockedByPhoneOnly($customerId)) {
+                break;
+            }
+        }
+
+        return [
+            'success' => false,
+            'issues' => $this->getCardsEndorsementIssues($customerId),
+        ];
+    }
+
+    /**
+     * Parse base endorsement status from a Bridge customer payload.
+     */
+    public function getBaseEndorsementInfo(array $customerData): array
+    {
+        foreach ($customerData['endorsements'] ?? [] as $endorsement) {
+            if (strtolower($endorsement['name'] ?? '') !== 'base') {
+                continue;
+            }
+
+            $status = strtolower($endorsement['status'] ?? '');
+
+            return [
+                'exists' => true,
+                'approved' => $status === 'approved',
+                'status' => $status,
+                'endorsement' => $endorsement,
+            ];
+        }
+
+        return ['exists' => false, 'approved' => false, 'status' => null, 'endorsement' => null];
+    }
+
+    /**
+     * Cards is blocked only by phone format (all other cards requirements already complete).
+     */
+    public function cardsEndorsementBlockedByPhoneOnly(string $customerId): bool
+    {
+        $customerResult = $this->getCustomer($customerId);
+        if (! ($customerResult['success'] ?? false)) {
+            return false;
+        }
+
+        $endorsementInfo = $this->getCardsEndorsementInfo($customerResult['data'] ?? []);
+        if ($endorsementInfo['approved'] ?? false) {
+            return false;
+        }
+
+        $issues = $endorsementInfo['endorsement']['requirements']['issues'] ?? [];
+
+        return is_array($issues)
+            && $issues === ['phone_number_invalid_format'];
     }
 
     /**
@@ -695,8 +870,11 @@ class BridgeService
     /**
      * POST /kyc_links with cards endorsement when GET ?endorsement=cards is unavailable.
      */
-    protected function createCardsEndorsementKycLinkFallback(string $customerId, ?string $redirectUri = null): array
-    {
+    protected function createCardsEndorsementKycLinkFallback(
+        string $customerId,
+        ?string $redirectUri = null,
+        ?string $preferredPhone = null,
+    ): array {
         $customerResult = $this->getCustomer($customerId);
         if (! ($customerResult['success'] ?? false)) {
             return ['success' => false, 'error' => 'Bridge customer not found'];
@@ -722,6 +900,11 @@ class BridgeService
 
         if ($redirectUri) {
             $payload['redirect_uri'] = $redirectUri;
+        }
+
+        $phone = $this->resolvePhoneForCardsEndorsement($customer, $preferredPhone);
+        if ($phone !== null) {
+            $payload['phone'] = $phone;
         }
 
         $result = $this->createKYCLink($payload);
@@ -767,14 +950,21 @@ class BridgeService
 
         $customer = $customerResult['data'];
         $currentPhone = trim((string) ($customer['phone'] ?? ''));
-        $candidate = $preferredPhone ?: $currentPhone;
+        $normalized = $this->resolvePhoneForCardsEndorsement($customer, $preferredPhone ?: $currentPhone);
 
-        if ($candidate === '') {
+        if ($normalized === null) {
+            Log::info('No valid cards phone available for Bridge customer update', [
+                'customer_id' => $customerId,
+                'issues' => $issues,
+                'preferred_phone' => $preferredPhone,
+                'current_phone' => $currentPhone !== '' ? $currentPhone : null,
+            ]);
+
             return;
         }
 
-        $normalized = $this->normalizePhoneE164($candidate);
-        if ($normalized === null || $normalized === $currentPhone) {
+        // Phone already on Bridge — do not PATCH again (Bridge may keep stale issue until KYC completes).
+        if ($normalized === $currentPhone) {
             return;
         }
 
@@ -787,6 +977,32 @@ class BridgeService
             'error' => $updateResult['error'] ?? null,
             'issues' => $issues,
         ]);
+    }
+
+    /**
+     * Resolve a phone number acceptable for Bridge cards (US customers require +1).
+     */
+    public function resolvePhoneForCardsEndorsement(array $customer, ?string $preferredPhone): ?string
+    {
+        $candidate = $preferredPhone ?: trim((string) ($customer['phone'] ?? ''));
+        $normalized = $this->normalizePhoneE164($candidate);
+
+        if ($normalized === null) {
+            return null;
+        }
+
+        $country = strtoupper((string) (
+            $customer['country']
+            ?? $customer['residential_address']['country']
+            ?? ''
+        ));
+        $isUsCustomer = in_array($country, ['USA', 'US', 'UNITED STATES'], true);
+
+        if ($isUsCustomer && ! preg_match('/^\+1\d{10}$/', $normalized)) {
+            return null;
+        }
+
+        return $normalized;
     }
 
     /**
@@ -830,14 +1046,14 @@ class BridgeService
             return;
         }
 
-        $updateResult = $this->updateCustomer($customerId, [
-            'endorsements' => ['base', 'sepa', 'cards'],
+        $requestResult = $this->requestEndorsement($customerId, [
+            'endorsement_type' => 'cards',
         ]);
 
         Log::info('Requested cards endorsement on Bridge customer before KYC link', [
             'customer_id' => $customerId,
-            'success' => $updateResult['success'] ?? false,
-            'error' => $updateResult['error'] ?? null,
+            'success' => $requestResult['success'] ?? false,
+            'error' => $requestResult['error'] ?? null,
         ]);
     }
 
@@ -2427,6 +2643,28 @@ class BridgeService
     }
 
     /**
+     * Event categories Bridge should deliver to our webhook endpoint.
+     *
+     * @return list<string>
+     */
+    public static function webhookEventCategories(): array
+    {
+        return [
+            'customer',
+            'kyc_link',
+            'liquidation_address.drain',
+            'static_memo.activity',
+            'transfer',
+            'virtual_account.activity',
+            'bridge_wallet.activity',
+            'card_account',
+            'card_transaction',
+            'posted_card_account_transaction',
+            'card_withdrawal',
+        ];
+    }
+
+    /**
      * Create a webhook with all event categories
      * 
      * @param string $webhookUrl The webhook URL
@@ -2436,18 +2674,7 @@ class BridgeService
     {
         $data = [
             'url' => $webhookUrl,
-            'event_categories' => [
-                'customer',
-                'kyc_link',
-                'liquidation_address.drain',
-                'static_memo.activity',
-                'transfer',
-                'virtual_account.activity',
-                'card_account',
-                'card_transaction',
-                'posted_card_account_transaction',
-                'card_withdrawal',
-            ],
+            'event_categories' => self::webhookEventCategories(),
             // Bridge API requires event_epoch to be one of: "beginning_of_time" or "webhook_creation"
             // "beginning_of_time" - receive all historical events
             // "webhook_creation" - only receive events from webhook creation time forward
@@ -2475,18 +2702,7 @@ class BridgeService
     {
         // If no event categories provided, use all supported categories
         if (empty($eventCategories)) {
-            $eventCategories = [
-                'customer',
-                'kyc_link',
-                'liquidation_address.drain',
-                'static_memo.activity',
-                'transfer',
-                'virtual_account.activity',
-                'card_account',
-                'card_transaction',
-                'posted_card_account_transaction',
-                'card_withdrawal',
-            ];
+            $eventCategories = self::webhookEventCategories();
         }
 
         $data = [
@@ -2535,11 +2751,32 @@ class BridgeService
                             $activateResult = $this->activateWebhook(
                                 $webhook['id'],
                                 $webhookUrl,
-                                $webhook['event_categories'] ?? []
+                                self::webhookEventCategories()
                             );
                             
                             if ($activateResult['success']) {
                                 return $activateResult;
+                            }
+                        }
+
+                        $requiredCategories = self::webhookEventCategories();
+                        $currentCategories = $webhook['event_categories'] ?? [];
+                        $missingCategories = array_values(array_diff($requiredCategories, $currentCategories));
+
+                        if ($missingCategories !== []) {
+                            Log::info('Updating Bridge webhook event categories', [
+                                'webhook_id' => $webhook['id'] ?? null,
+                                'missing_categories' => $missingCategories,
+                            ]);
+
+                            $syncResult = $this->activateWebhook(
+                                $webhook['id'],
+                                $webhookUrl,
+                                $requiredCategories
+                            );
+
+                            if ($syncResult['success']) {
+                                return $syncResult;
                             }
                         }
 

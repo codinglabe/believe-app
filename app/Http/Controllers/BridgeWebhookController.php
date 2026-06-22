@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\BridgeService;
+use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -18,9 +19,12 @@ class BridgeWebhookController extends Controller
 {
     protected BridgeService $bridgeService;
 
-    public function __construct(BridgeService $bridgeService)
+    protected WalletTransactionNotifier $walletTransactionNotifier;
+
+    public function __construct(BridgeService $bridgeService, WalletTransactionNotifier $walletTransactionNotifier)
     {
         $this->bridgeService = $bridgeService;
+        $this->walletTransactionNotifier = $walletTransactionNotifier;
     }
 
     /**
@@ -135,6 +139,10 @@ class BridgeWebhookController extends Controller
 
                 case 'static_memo.activity':
                     $this->handleStaticMemoActivity($eventType, $eventObject, $eventObjectStatus);
+                    break;
+
+                case 'bridge_wallet.activity':
+                    $this->handleBridgeWalletActivity($eventType, $eventObject, $eventObjectStatus, $eventObjectChanges);
                     break;
 
                 case 'wallet':
@@ -286,12 +294,8 @@ class BridgeWebhookController extends Controller
                 return false;
             }
 
-            // Hash the signed payload twice with SHA256
-            $hash = hash('sha256', $signedPayload, true);
-            $doubleHash = hash('sha256', $hash, true);
-
-            // Verify the signature
-            $result = openssl_verify($doubleHash, $signatureBytes, $publicKey, OPENSSL_ALGO_SHA256);
+            // Bridge docs: verify RSA-SHA256 over "{timestamp}.{raw_body}"
+            $result = openssl_verify($signedPayload, $signatureBytes, $publicKey, OPENSSL_ALGO_SHA256);
 
             if ($result === 1) {
                 Log::info('Bridge webhook signature verified successfully');
@@ -1002,8 +1006,8 @@ class BridgeWebhookController extends Controller
     /**
      * Handle transfer events
      * 
-     * Per Bridge.xyz docs: Transfer events track the state of money transfers
-     * States: payment_submitted, payment_processed, failed, etc.
+     * Per Bridge.xyz docs: Transfer events track the state of money transfers.
+     * Terminal state for crediting recipients: payment_processed (funds_received is in-flight).
      */
     private function handleTransferEvent(string $eventType, array $eventObject, ?string $status, array $changes)
     {
@@ -1152,6 +1156,10 @@ class BridgeWebhookController extends Controller
 
                 $transaction->meta = $meta;
                 $transaction->save();
+
+                if ($mappedStatus === 'completed' && $oldStatus !== 'completed' && $transaction->user) {
+                    $this->walletTransactionNotifier->notify($transaction->user, $transaction);
+                }
             }
 
             Log::info('Bridge transfer event processed', [
@@ -1209,6 +1217,12 @@ class BridgeWebhookController extends Controller
             return;
         }
 
+        if (in_array($type, ['refunded', 'refund_failed'], true)) {
+            $this->reverseVirtualAccountDeposit($integration, $eventObject, $eventType);
+
+            return;
+        }
+
         // Handle payment_processed - deposit completed
         if ($type === 'payment_processed' || $state === 'payment_processed') {
             try {
@@ -1234,20 +1248,28 @@ class BridgeWebhookController extends Controller
                 }
 
                 $depositAmount = (float) ($amount ?? 0);
+                $depositId = $eventObject['deposit_id'] ?? null;
                 if ($depositAmount > 0) {
-                    // Check if transaction already exists
-                    $existingTransaction = Transaction::where('user_id', $user->id)
+                    $existingQuery = Transaction::where('user_id', $user->id)
                         ->where('type', 'deposit')
-                        ->whereJsonContains('meta->virtual_account_id', $virtualAccountId)
-                        ->whereJsonContains('meta->activity_id', $activityId)
-                        ->first();
+                        ->where('status', 'completed');
+
+                    if ($depositId) {
+                        $existingQuery->whereJsonContains('meta->deposit_id', $depositId);
+                    } else {
+                        $existingQuery
+                            ->whereJsonContains('meta->virtual_account_id', $virtualAccountId)
+                            ->whereJsonContains('meta->activity_id', $activityId);
+                    }
+
+                    $existingTransaction = $existingQuery->first();
 
                     if (!$existingTransaction) {
                         // Add balance to user
                         $user->increment('balance', $depositAmount);
 
                         // Record deposit transaction
-                        $user->recordTransaction([
+                        $depositTransaction = $user->recordTransaction([
                             'type' => 'deposit',
                             'amount' => $depositAmount,
                             'status' => 'completed',
@@ -1255,12 +1277,15 @@ class BridgeWebhookController extends Controller
                             'meta' => [
                                 'virtual_account_id' => $virtualAccountId,
                                 'activity_id' => $activityId,
+                                'deposit_id' => $depositId,
                                 'customer_id' => $customerId,
                                 'bridge_event_type' => $eventType,
                                 'bridge_state' => $state,
                             ],
                             'processed_at' => now(),
                         ]);
+
+                        $this->walletTransactionNotifier->notify($user, $depositTransaction);
 
                         Log::info('Bridge virtual account deposit processed', [
                             'user_id' => $user->id,
@@ -1514,6 +1539,22 @@ class BridgeWebhookController extends Controller
         ]);
 
         // Handle static memo deposits similar to virtual account deposits
+        if (in_array($type, ['refund', 'refunded'], true) && $customerId) {
+            try {
+                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+                if ($integration) {
+                    $this->reverseStaticMemoDeposit($integration, $eventObject, $eventType);
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception processing static memo refund', [
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return;
+        }
+
         if ($type === 'payment_processed' && $customerId && $amount) {
             try {
                 $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
@@ -1526,18 +1567,26 @@ class BridgeWebhookController extends Controller
 
                     if ($user) {
                         $depositAmount = (float) $amount;
-                        
-                        // Check if transaction already exists
-                        $existingTransaction = Transaction::where('user_id', $user->id)
+                        $depositId = $eventObject['deposit_id'] ?? null;
+
+                        $existingQuery = Transaction::where('user_id', $user->id)
                             ->where('type', 'deposit')
-                            ->whereJsonContains('meta->static_memo_id', $staticMemoId)
-                            ->whereJsonContains('meta->activity_id', $activityId)
-                            ->first();
+                            ->where('status', 'completed');
+
+                        if ($depositId) {
+                            $existingQuery->whereJsonContains('meta->deposit_id', $depositId);
+                        } else {
+                            $existingQuery
+                                ->whereJsonContains('meta->static_memo_id', $staticMemoId)
+                                ->whereJsonContains('meta->activity_id', $activityId);
+                        }
+
+                        $existingTransaction = $existingQuery->first();
 
                         if (!$existingTransaction) {
                             $user->increment('balance', $depositAmount);
 
-                            $user->recordTransaction([
+                            $depositTransaction = $user->recordTransaction([
                                 'type' => 'deposit',
                                 'amount' => $depositAmount,
                                 'status' => 'completed',
@@ -1545,11 +1594,14 @@ class BridgeWebhookController extends Controller
                                 'meta' => [
                                     'static_memo_id' => $staticMemoId,
                                     'activity_id' => $activityId,
+                                    'deposit_id' => $depositId,
                                     'customer_id' => $customerId,
                                     'bridge_event_type' => $eventType,
                                 ],
                                 'processed_at' => now(),
                             ]);
+
+                            $this->walletTransactionNotifier->notify($user, $depositTransaction);
 
                             Log::info('Bridge static memo deposit processed', [
                                 'user_id' => $user->id,
@@ -1569,9 +1621,334 @@ class BridgeWebhookController extends Controller
     }
 
     /**
-     * Handle wallet events
-     * 
-     * Per Bridge.xyz docs: Wallet events track wallet status changes
+     * Handle bridge_wallet.activity events (wallet transaction history).
+     *
+     * Event types: bridge_wallet.activity.created | bridge_wallet.activity.updated
+     * event_object matches GET /customers/{id}/wallets/{id}/history entries.
+     */
+    private function handleBridgeWalletActivity(string $eventType, array $eventObject, ?string $status, array $changes): void
+    {
+        $activityId = $eventObject['id'] ?? null;
+        $bridgeWalletId = $eventObject['bridge_wallet_id'] ?? null;
+        $activityType = strtolower(trim((string) ($eventObject['type'] ?? '')));
+        $amount = $eventObject['amount'] ?? null;
+        $availableBalance = $eventObject['available_balance'] ?? null;
+        $paymentRoute = is_array($eventObject['payment_route'] ?? null) ? $eventObject['payment_route'] : [];
+        $customerId = $paymentRoute['customer_id'] ?? null;
+
+        Log::info('Bridge wallet activity event', [
+            'activity_id' => $activityId,
+            'bridge_wallet_id' => $bridgeWalletId,
+            'activity_type' => $activityType,
+            'amount' => $amount,
+            'available_balance' => $availableBalance,
+            'event_type' => $eventType,
+            'payment_route_type' => $paymentRoute['type'] ?? null,
+            'customer_id' => $customerId,
+        ]);
+
+        $integration = $this->resolveIntegrationForBridgeWalletActivity($customerId, $bridgeWalletId);
+        if ($integration === null) {
+            Log::warning('Bridge integration not found for wallet activity', [
+                'activity_id' => $activityId,
+                'bridge_wallet_id' => $bridgeWalletId,
+                'customer_id' => $customerId,
+            ]);
+
+            return;
+        }
+
+        if ($bridgeWalletId !== null) {
+            $this->syncBridgeWalletFromActivity($integration, $bridgeWalletId, $availableBalance, $eventObject);
+        }
+
+        $user = $this->resolveIntegrationWalletUser($integration);
+        if ($user === null) {
+            return;
+        }
+
+        match ($activityType) {
+            'deposit', 'direct_deposit' => $this->processBridgeWalletActivityDeposit(
+                $user,
+                $eventObject,
+                $eventType,
+                $activityId,
+                $paymentRoute,
+                $bridgeWalletId,
+            ),
+            'withdrawal' => $this->completeBridgeWalletWithdrawal($user, $eventObject, $paymentRoute),
+            'return', 'undeliverable' => $this->refundBridgeWalletWithdrawal($user, $eventObject, $eventType, $paymentRoute),
+            'card_spend', 'card_refund' => Log::info('Bridge wallet card activity recorded (ledger unchanged)', [
+                'user_id' => $user->id,
+                'activity_id' => $activityId,
+                'activity_type' => $activityType,
+            ]),
+            default => Log::info('Bridge wallet activity ignored', [
+                'activity_id' => $activityId,
+                'activity_type' => $activityType,
+            ]),
+        };
+    }
+
+    private function resolveIntegrationForBridgeWalletActivity(?string $customerId, ?string $bridgeWalletId): ?BridgeIntegration
+    {
+        if ($customerId) {
+            $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+            if ($integration !== null) {
+                return $integration;
+            }
+        }
+
+        if ($bridgeWalletId) {
+            $wallet = BridgeWallet::where('bridge_wallet_id', $bridgeWalletId)->first();
+            if ($wallet !== null) {
+                return $wallet->bridgeIntegration;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $eventObject
+     */
+    private function syncBridgeWalletFromActivity(
+        BridgeIntegration $integration,
+        string $bridgeWalletId,
+        mixed $availableBalance,
+        array $eventObject,
+    ): void {
+        try {
+            $wallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+                ->where('bridge_wallet_id', $bridgeWalletId)
+                ->first();
+
+            if ($wallet === null) {
+                return;
+            }
+
+            $updates = [
+                'wallet_metadata' => $eventObject,
+                'last_balance_sync' => now(),
+            ];
+
+            if ($availableBalance !== null && $availableBalance !== '') {
+                $updates['balance'] = (float) $availableBalance;
+                $updates['currency'] = strtoupper((string) ($eventObject['currency'] ?? $wallet->currency ?? 'USD'));
+            }
+
+            $wallet->update($updates);
+        } catch (\Exception $e) {
+            Log::error('Failed to sync Bridge wallet from activity', [
+                'bridge_wallet_id' => $bridgeWalletId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Credit the local ledger for inbound Bridge wallet funds (deduped against VA/transfer webhooks).
+     *
+     * @param  array<string, mixed>  $eventObject
+     * @param  array<string, mixed>  $paymentRoute
+     */
+    private function processBridgeWalletActivityDeposit(
+        User $user,
+        array $eventObject,
+        string $eventType,
+        ?string $activityId,
+        array $paymentRoute,
+        ?string $bridgeWalletId,
+    ): void {
+        $depositAmount = (float) ($eventObject['amount'] ?? 0);
+        if ($depositAmount <= 0 || $activityId === null) {
+            return;
+        }
+
+        $depositId = $paymentRoute['deposit_id'] ?? null;
+        $transferId = $paymentRoute['transfer_id'] ?? null;
+
+        if (Transaction::where('user_id', $user->id)
+            ->whereJsonContains('meta->bridge_wallet_activity_id', $activityId)
+            ->exists()) {
+            Log::info('Bridge wallet activity deposit already processed', ['activity_id' => $activityId]);
+
+            return;
+        }
+
+        if ($depositId) {
+            $byDeposit = Transaction::where('user_id', $user->id)
+                ->where('type', 'deposit')
+                ->whereIn('status', ['completed', 'refunded'])
+                ->whereJsonContains('meta->deposit_id', $depositId)
+                ->exists();
+            if ($byDeposit) {
+                Log::info('Bridge wallet activity deposit skipped: virtual/static memo deposit already recorded', [
+                    'deposit_id' => $depositId,
+                    'activity_id' => $activityId,
+                ]);
+
+                return;
+            }
+        }
+
+        if ($transferId) {
+            $byTransfer = Transaction::where('user_id', $user->id)
+                ->whereIn('type', ['transfer_in', 'deposit'])
+                ->whereIn('status', ['completed', 'pending'])
+                ->where(function ($query) use ($transferId): void {
+                    $query->whereJsonContains('meta->bridge_transfer_id', $transferId)
+                        ->orWhereJsonContains('meta->transfer_id', $transferId);
+                })
+                ->exists();
+            if ($byTransfer) {
+                Log::info('Bridge wallet activity deposit skipped: transfer already recorded', [
+                    'transfer_id' => $transferId,
+                    'activity_id' => $activityId,
+                ]);
+
+                return;
+            }
+        }
+
+        try {
+            DB::transaction(function () use ($user, $depositAmount, $activityId, $depositId, $transferId, $bridgeWalletId, $paymentRoute, $eventObject, $eventType): void {
+                $user->increment('balance', $depositAmount);
+
+                $depositTransaction = $user->recordTransaction([
+                    'type' => 'deposit',
+                    'amount' => $depositAmount,
+                    'status' => 'completed',
+                    'payment_method' => 'bridge',
+                    'meta' => [
+                        'bridge_wallet_activity_id' => $activityId,
+                        'bridge_wallet_id' => $bridgeWalletId,
+                        'deposit_id' => $depositId,
+                        'bridge_transfer_id' => $transferId,
+                        'payment_route_type' => $paymentRoute['type'] ?? null,
+                        'bridge_wallet_activity_type' => $eventObject['type'] ?? null,
+                        'bridge_event_type' => $eventType,
+                        'source' => $eventObject['source'] ?? null,
+                    ],
+                    'processed_at' => now(),
+                ]);
+
+                $this->walletTransactionNotifier->notify($user, $depositTransaction);
+
+                Log::info('Bridge wallet activity deposit processed', [
+                    'user_id' => $user->id,
+                    'activity_id' => $activityId,
+                    'amount' => $depositAmount,
+                    'deposit_id' => $depositId,
+                ]);
+            });
+        } catch (\Exception $e) {
+            Log::error('Exception processing bridge wallet activity deposit', [
+                'user_id' => $user->id,
+                'activity_id' => $activityId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Mark a pending bank withdrawal complete when Bridge wallet activity confirms outflow.
+     *
+     * @param  array<string, mixed>  $eventObject
+     * @param  array<string, mixed>  $paymentRoute
+     */
+    private function completeBridgeWalletWithdrawal(User $user, array $eventObject, array $paymentRoute): void
+    {
+        $transferId = $paymentRoute['transfer_id'] ?? null;
+        if ($transferId === null) {
+            return;
+        }
+
+        $transaction = Transaction::where('user_id', $user->id)
+            ->where('type', 'withdrawal')
+            ->whereJsonContains('meta->bridge_transfer_id', $transferId)
+            ->first();
+
+        if ($transaction === null || $transaction->status === 'completed') {
+            return;
+        }
+
+        $transaction->status = 'completed';
+        $transaction->processed_at = now();
+        $meta = is_array($transaction->meta) ? $transaction->meta : [];
+        $meta['bridge_wallet_activity_id'] = $eventObject['id'] ?? null;
+        $meta['bridge_wallet_activity_type'] = $eventObject['type'] ?? null;
+        $transaction->meta = $meta;
+        $transaction->save();
+
+        $this->walletTransactionNotifier->notify($user, $transaction);
+
+        Log::info('Bridge wallet withdrawal marked completed from activity', [
+            'user_id' => $user->id,
+            'transaction_id' => $transaction->id,
+            'transfer_id' => $transferId,
+        ]);
+    }
+
+    /**
+     * Refund a failed/returned bank withdrawal back to the local ledger.
+     *
+     * @param  array<string, mixed>  $eventObject
+     * @param  array<string, mixed>  $paymentRoute
+     */
+    private function refundBridgeWalletWithdrawal(User $user, array $eventObject, string $eventType, array $paymentRoute): void
+    {
+        $transferId = $paymentRoute['transfer_id'] ?? null;
+        $activityId = $eventObject['id'] ?? null;
+
+        if ($transferId === null) {
+            return;
+        }
+
+        $transaction = Transaction::where('user_id', $user->id)
+            ->where('type', 'withdrawal')
+            ->whereJsonContains('meta->bridge_transfer_id', $transferId)
+            ->whereIn('status', ['pending', 'completed'])
+            ->first();
+
+        if ($transaction === null) {
+            return;
+        }
+
+        $meta = is_array($transaction->meta) ? $transaction->meta : [];
+        if (($meta['bridge_wallet_refund_activity_id'] ?? null) === $activityId) {
+            return;
+        }
+
+        DB::transaction(function () use ($user, $transaction, $eventObject, $eventType, $activityId): void {
+            $amount = (float) $transaction->amount;
+            if ($amount > 0) {
+                $user->increment('balance', $amount);
+            }
+
+            $meta = is_array($transaction->meta) ? $transaction->meta : [];
+            $meta['bridge_wallet_refund_activity_id'] = $activityId;
+            $meta['bridge_wallet_refund_type'] = $eventObject['type'] ?? null;
+            $meta['bridge_wallet_refund_event_type'] = $eventType;
+            $meta['refunded_at'] = now()->toIso8601String();
+            $transaction->meta = $meta;
+            $transaction->status = 'failed';
+            $transaction->save();
+
+            Log::info('Bridge wallet withdrawal refunded after return/undeliverable activity', [
+                'user_id' => $user->id,
+                'transaction_id' => $transaction->id,
+                'amount' => $amount,
+                'activity_id' => $activityId,
+            ]);
+        });
+    }
+
+    /**
+     * Handle legacy wallet resource events (status/address updates).
+     *
+     * @param  array<string, mixed>  $eventObject
+     * @param  array<string, mixed>  $changes
      */
     private function handleWalletEvent(string $eventType, array $eventObject, ?string $status, array $changes)
     {
@@ -1757,13 +2134,13 @@ class BridgeWebhookController extends Controller
         $state = strtolower(trim($state));
 
         $stateMap = [
-            // Completed states
+            // Completed states — only terminal Bridge transfer states credit recipients
             'payment_processed' => 'completed',
             'completed' => 'completed',
-            'funds_received' => 'completed', // Funds received means transfer is complete
-            
+
             // Pending states
             'awaiting_funds' => 'pending',
+            'funds_received' => 'pending',
             'payment_submitted' => 'pending',
             'in_review' => 'pending',
             'processing' => 'pending',
@@ -1791,6 +2168,152 @@ class BridgeWebhookController extends Controller
         }
 
         return $mappedStatus;
+    }
+
+    /**
+     * Resolve the wallet owner user from a Bridge integration (org → org user).
+     */
+    private function resolveIntegrationWalletUser(BridgeIntegration $integration): ?User
+    {
+        $integratable = $integration->integratable;
+        if ($integratable === null) {
+            return null;
+        }
+
+        if ($integration->integratable_type === Organization::class) {
+            return $integratable->user ?? null;
+        }
+
+        return $integratable instanceof User ? $integratable : null;
+    }
+
+    /**
+     * Reverse a completed virtual-account deposit when Bridge sends refunded/refund_failed.
+     */
+    private function reverseVirtualAccountDeposit(BridgeIntegration $integration, array $eventObject, string $eventType): void
+    {
+        $user = $this->resolveIntegrationWalletUser($integration);
+        if ($user === null) {
+            Log::warning('Cannot reverse virtual account deposit: user not found', [
+                'integration_id' => $integration->id,
+            ]);
+
+            return;
+        }
+
+        $depositId = $eventObject['deposit_id'] ?? null;
+        $virtualAccountId = $eventObject['virtual_account_id'] ?? null;
+        $activityId = $eventObject['id'] ?? null;
+
+        $query = Transaction::where('user_id', $user->id)
+            ->where('type', 'deposit')
+            ->where('status', 'completed');
+
+        if ($depositId) {
+            $query->whereJsonContains('meta->deposit_id', $depositId);
+        } elseif ($virtualAccountId && $activityId) {
+            $query
+                ->whereJsonContains('meta->virtual_account_id', $virtualAccountId)
+                ->whereJsonContains('meta->activity_id', $activityId);
+        } else {
+            Log::warning('Cannot reverse virtual account deposit: missing deposit_id', [
+                'integration_id' => $integration->id,
+                'activity_id' => $activityId,
+            ]);
+
+            return;
+        }
+
+        $transaction = $query->first();
+        if ($transaction === null) {
+            Log::info('No completed virtual account deposit found to reverse', [
+                'user_id' => $user->id,
+                'deposit_id' => $depositId,
+                'virtual_account_id' => $virtualAccountId,
+            ]);
+
+            return;
+        }
+
+        $this->reverseCompletedDeposit($user, $transaction, $eventObject, $eventType);
+    }
+
+    /**
+     * Reverse a completed static-memo deposit when Bridge sends refund.
+     */
+    private function reverseStaticMemoDeposit(BridgeIntegration $integration, array $eventObject, string $eventType): void
+    {
+        $user = $this->resolveIntegrationWalletUser($integration);
+        if ($user === null) {
+            return;
+        }
+
+        $depositId = $eventObject['deposit_id'] ?? null;
+        $staticMemoId = $eventObject['static_memo_id'] ?? null;
+        $activityId = $eventObject['id'] ?? null;
+
+        $query = Transaction::where('user_id', $user->id)
+            ->where('type', 'deposit')
+            ->where('status', 'completed');
+
+        if ($depositId) {
+            $query->whereJsonContains('meta->deposit_id', $depositId);
+        } elseif ($staticMemoId && $activityId) {
+            $query
+                ->whereJsonContains('meta->static_memo_id', $staticMemoId)
+                ->whereJsonContains('meta->activity_id', $activityId);
+        } else {
+            return;
+        }
+
+        $transaction = $query->first();
+        if ($transaction === null) {
+            Log::info('No completed static memo deposit found to reverse', [
+                'user_id' => $user->id,
+                'deposit_id' => $depositId,
+                'static_memo_id' => $staticMemoId,
+            ]);
+
+            return;
+        }
+
+        $this->reverseCompletedDeposit($user, $transaction, $eventObject, $eventType);
+    }
+
+    /**
+     * Decrement ledger balance and mark a completed deposit as refunded.
+     */
+    private function reverseCompletedDeposit(User $user, Transaction $transaction, array $eventObject, string $eventType): void
+    {
+        if ($transaction->status === 'refunded') {
+            return;
+        }
+
+        DB::transaction(function () use ($user, $transaction, $eventObject, $eventType): void {
+            $amount = (float) $transaction->amount;
+            if ($amount <= 0) {
+                return;
+            }
+
+            $user->decrement('balance', min($amount, (float) $user->balance));
+
+            $meta = is_array($transaction->meta) ? $transaction->meta : [];
+            $meta['refunded_at'] = now()->toIso8601String();
+            $meta['refund_activity_id'] = $eventObject['id'] ?? null;
+            $meta['bridge_refund_type'] = $eventObject['type'] ?? null;
+            $meta['bridge_refund_event_type'] = $eventType;
+
+            $transaction->meta = $meta;
+            $transaction->status = 'refunded';
+            $transaction->save();
+
+            Log::info('Bridge deposit reversed after refund event', [
+                'user_id' => $user->id,
+                'transaction_id' => $transaction->id,
+                'amount' => $amount,
+                'deposit_id' => $eventObject['deposit_id'] ?? null,
+            ]);
+        });
     }
 
     /**
@@ -3048,7 +3571,12 @@ class BridgeWebhookController extends Controller
                         'success' => $cardAccountResult['success'] ?? false,
                                 'message' => $errorMessage,
                     ]);
-                    
+
+                            $cardsReady = $this->bridgeService->ensureCardsProductEnabled();
+                            $cardsEnabled = ($cardsReady['success'] ?? false)
+                                || ($cardsReady['already_enabled'] ?? false)
+                                || ($cardsReady['skipped'] ?? false);
+
                             // Only try to fetch card accounts again if cards are enabled
                             // (avoiding another error if cards product is not enabled)
                             if ($cardsEnabled) {

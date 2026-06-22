@@ -14,7 +14,7 @@ interface VirtualCardProps {
     cvv?: string
     onBack: () => void
     onCardCreated?: () => void
-    onOpenCardsEndorsementVerification?: (kycLinkUrl: string) => void
+    onOpenCardsEndorsementVerification?: () => void
 }
 
 export function VirtualCard({
@@ -33,7 +33,7 @@ export function VirtualCard({
     const [hasCardAccount, setHasCardAccount] = useState<boolean | null>(null)
     const [isLoadingCardAccount, setIsLoadingCardAccount] = useState(true)
     const [isCreatingCardAccount, setIsCreatingCardAccount] = useState(false)
-    const [pendingCardsEndorsementUrl, setPendingCardsEndorsementUrl] = useState<string | null>(null)
+    const [needsCardsVerification, setNeedsCardsVerification] = useState(false)
     const [issueCardError, setIssueCardError] = useState<string | null>(null)
     const [cardData, setCardData] = useState<{
         cardNumber?: string
@@ -143,16 +143,26 @@ export function VirtualCard({
 
             const data = await response.json()
             if (data.success) {
-                setPendingCardsEndorsementUrl(null)
+                setNeedsCardsVerification(false)
                 showSuccessToast('Card issued successfully!')
                 await checkCardAccount()
                 if (onCardCreated) {
                     onCardCreated()
                 }
-            } else if (data.error_code === 'cards_endorsement_kyc_required' && data.kyc_link_url) {
-                setPendingCardsEndorsementUrl(data.kyc_link_url)
+            } else if (data.error_code === 'cards_endorsement_kyc_required') {
+                setNeedsCardsVerification(true)
                 setIssueCardError(data.message || 'Complete cards verification to issue your card.')
                 showErrorToast(data.message || 'Complete cards verification to issue your card.')
+            } else if (data.error_code === 'cards_endorsement_phone_required') {
+                setNeedsCardsVerification(false)
+                setIssueCardError(
+                    data.message ||
+                        'Add a valid US phone number in E.164 format (e.g. +12025550100) to your profile, then try again.',
+                )
+                showErrorToast(
+                    data.message ||
+                        'Add a valid US phone number in E.164 format (e.g. +12025550100) to your profile, then try again.',
+                )
             } else if (data.error_code === 'cards_endorsement_kyc_link_failed') {
                 setIssueCardError(data.message || 'Failed to get cards verification link.')
                 showErrorToast(data.message || 'Failed to get cards verification link.')
@@ -188,11 +198,11 @@ export function VirtualCard({
     }
 
     const handleOpenCardsEndorsementVerification = () => {
-        if (!pendingCardsEndorsementUrl || !onOpenCardsEndorsementVerification) {
+        if (!onOpenCardsEndorsementVerification) {
             return
         }
 
-        onOpenCardsEndorsementVerification(pendingCardsEndorsementUrl)
+        onOpenCardsEndorsementVerification()
     }
 
     const handleDoubleClick = () => {
@@ -284,7 +294,7 @@ export function VirtualCard({
                                 <p className="text-xs text-destructive max-w-xs pt-1">{issueCardError}</p>
                             )}
                         </div>
-                        {pendingCardsEndorsementUrl && onOpenCardsEndorsementVerification ? (
+                        {needsCardsVerification && onOpenCardsEndorsementVerification ? (
                             <Button
                                 onClick={handleOpenCardsEndorsementVerification}
                                 className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
