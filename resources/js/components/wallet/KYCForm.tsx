@@ -43,6 +43,8 @@ export function KYCForm({
     const shouldShowForm = !shouldShowWaitingScreen
 
     if (shouldShowWaitingScreen) {
+        const displayStatus = kycStatus === 'not_started' && kycSubmitted ? 'under_review' : kycStatus
+
         return (
             <div className="flex flex-col items-center justify-center py-8 px-4 space-y-4 w-full">
                 <motion.div
@@ -55,6 +57,9 @@ export function KYCForm({
                 </motion.div>
                 <div className="text-center space-y-2">
                     <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
+                    <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                        Status: {displayStatus.replace(/_/g, ' ')}
+                    </div>
                     <p className="text-sm text-muted-foreground max-w-sm">
                         Your KYC information has been successfully submitted and is being reviewed.
                     </p>

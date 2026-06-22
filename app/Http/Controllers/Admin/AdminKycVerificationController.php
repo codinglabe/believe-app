@@ -519,12 +519,22 @@ class AdminKycVerificationController extends Controller
 
         // Create a KYC link if not exists
         try {
-            if (!$integration->kyc_link_id) {
-                $result = $this->bridgeService->createKYCLink($integration->bridge_customer_id ?? null);
-                
+            $integratable = $integration->integratable;
+            $email = trim($integratable->email ?? '');
+            $fullName = trim($integratable->name ?? '');
+
+            if (! $integration->kyc_link_id && $email !== '' && $fullName !== '') {
+                $result = $this->bridgeService->createKYCLink([
+                    'full_name' => $fullName,
+                    'email' => $email,
+                    'type' => 'individual',
+                    'endorsements' => ['cards'],
+                    'redirect_uri' => url('/wallet/kyc-callback'),
+                ]);
+
                 if ($result['success'] && isset($result['data']['id'])) {
                     $integration->kyc_link_id = $result['data']['id'];
-                    $integration->kyc_link_url = $result['data']['url'] ?? null;
+                    $integration->kyc_link_url = $result['data']['kyc_link'] ?? $result['data']['url'] ?? null;
                     $integration->save();
                 }
             }

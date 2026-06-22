@@ -141,6 +141,25 @@ class BridgeIntegration extends Model
     }
 
     /**
+     * Bridge ToS DB values: pending, approved (legacy code may still say "accepted").
+     */
+    public static function normalizeTosStatus(?string $status): string
+    {
+        $status = strtolower(trim((string) $status));
+
+        if (in_array($status, ['approved', 'accepted'], true)) {
+            return 'approved';
+        }
+
+        return 'pending';
+    }
+
+    public static function isTosAccepted(?string $status): bool
+    {
+        return in_array(strtolower(trim((string) $status)), ['approved', 'accepted'], true);
+    }
+
+    /**
      * Check if KYC is approved
      */
     public function isKYCApproved(): bool

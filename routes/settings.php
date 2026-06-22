@@ -51,6 +51,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
             // Bridge Settings - Admin Only
             Route::get('/settings/bridge', [\App\Http\Controllers\BridgeSettingsController::class, 'index'])->name('bridge.index');
             Route::post('/settings/bridge', [\App\Http\Controllers\BridgeSettingsController::class, 'update'])->name('bridge.update');
+            Route::post('/settings/bridge/enable-cards', [\App\Http\Controllers\BridgeSettingsController::class, 'enableCards'])->name('bridge.enable-cards');
 
             // Application Settings - Admin Only
             Route::get('/settings/application', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'index'])->name('application.index');

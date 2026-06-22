@@ -86,11 +86,22 @@ export function SplashScreen() {
     )
 }
 
-export function BalanceSkeleton() {
+export function BalanceSkeleton({ variant = 'compact' }: { variant?: 'hero' | 'compact' }) {
+    const isHero = variant === 'hero'
+
     return (
-        <div className="text-center py-4 space-y-2">
-            <Skeleton className="h-4 w-24 mx-auto" />
-            <Skeleton className="h-10 w-32 mx-auto" />
+        <div className={isHero ? 'p-4' : 'px-4 pt-3 pb-2 border-b border-border/60'}>
+            <div className={`rounded-xl border border-border bg-card ${isHero ? 'p-4 space-y-3' : 'px-4 py-3 space-y-2'}`}>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Skeleton className={`rounded-lg ${isHero ? 'h-7 w-7' : 'h-6 w-6'}`} />
+                        <Skeleton className="h-3.5 w-28" />
+                    </div>
+                    <Skeleton className={`rounded-lg ${isHero ? 'h-7 w-7' : 'h-6 w-6'}`} />
+                </div>
+                <Skeleton className={`${isHero ? 'h-10 w-40' : 'h-7 w-32'}`} />
+                {isHero && <Skeleton className="h-3 w-36" />}
+            </div>
         </div>
     )
 }
@@ -127,17 +138,23 @@ export function SearchResultsSkeleton() {
 
 export function ActivitySkeleton() {
     return (
-        <div className="space-y-3 p-4">
-            {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center gap-3 p-3 border border-border rounded-lg">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-3 w-1/2" />
+        <div className="border-t border-border/60">
+            <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+                <Skeleton className="h-3.5 w-3.5 rounded" />
+                <Skeleton className="h-3.5 w-24" />
+            </div>
+            <div className="space-y-1.5 px-3 pb-3">
+                {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                        <Skeleton className="h-8 w-8 rounded-lg" />
+                        <div className="flex-1 space-y-1.5">
+                            <Skeleton className="h-3.5 w-3/4" />
+                            <Skeleton className="h-3 w-1/2" />
+                        </div>
+                        <Skeleton className="h-4 w-14" />
                     </div>
-                    <Skeleton className="h-6 w-16" />
-                </div>
-            ))}
+                ))}
+            </div>
         </div>
     )
 }

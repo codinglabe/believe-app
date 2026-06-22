@@ -30,24 +30,38 @@ class BridgeSettingsController extends Controller
         }
 
         $bridge = PaymentMethod::getConfig('bridge');
+        $additionalConfig = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
 
         $defaultWebhookUrl = config('app.url') . '/webhooks/bridge';
 
         $settings = [
             'bridge_mode_environment' => $bridge->mode_environment ?? 'sandbox',
-            
+
             // Sandbox credentials
             'bridge_sandbox_api_key' => $bridge->sandbox_api_key ?? null,
             'bridge_sandbox_webhook_url' => $bridge->sandbox_webhook_url ?? $defaultWebhookUrl,
             'bridge_sandbox_webhook_id' => $bridge->sandbox_webhook_id ?? null,
             'bridge_sandbox_webhook_public_key' => $bridge->sandbox_webhook_public_key ?? null,
             'bridge_sandbox_badge_url' => $bridge->sandbox_badge_url ?? null,
-            
+
             // Live credentials
             'bridge_live_api_key' => $bridge->live_api_key ?? null,
             'bridge_live_webhook_id' => $bridge->live_webhook_id ?? null,
             'bridge_live_webhook_public_key' => $bridge->live_webhook_public_key ?? null,
             'bridge_live_badge_url' => $bridge->live_badge_url ?? null,
+
+            // Cards + Cashier Stripe
+            'bridge_sandbox_stripe_account_id' => $additionalConfig['sandbox_stripe_account_id'] ?? null,
+            'bridge_live_stripe_account_id' => $additionalConfig['live_stripe_account_id'] ?? null,
+            'bridge_cards_program_type' => $additionalConfig['cards_program_type'] ?? 'consumer',
+            'bridge_cards_enabled_at' => $additionalConfig['cards_enabled_at'] ?? null,
+            'bridge_cards_enable_stripe_account_id' => $additionalConfig['cards_enable_stripe_account_id'] ?? null,
+            'bridge_resolved_stripe_account_id' => $this->bridgeService->resolveStripeAccountIdForCards(),
+            'stripe_cashier_configured' => $this->bridgeService->isStripeConfiguredForCards(),
+            'stripe_issuing_readiness' => $this->bridgeService->getStripeIssuingReadiness(),
+            'bridge_stripe_app_install_url' => $additionalConfig['stripe_app_install_url']
+                ?? 'https://marketplace.stripe.com/apps/install/link/com.stripe.bridge.cards?redirect_uri=https://dashboard.bridge.xyz/app/cards',
+
             'app_url' => config('app.url'),
         ];
 
@@ -68,16 +82,30 @@ class BridgeSettingsController extends Controller
 
         $request->validate([
             'bridge_mode_environment' => ['required', 'string', 'in:sandbox,live'],
-            
+
             // Sandbox credentials
             'bridge_sandbox_api_key' => ['nullable', 'string', 'max:255'],
             'bridge_sandbox_webhook_url' => ['nullable', 'url', 'max:500'],
             'bridge_sandbox_badge_url' => ['nullable', 'url', 'max:500'],
-            
+
             // Live credentials
             'bridge_live_api_key' => ['nullable', 'string', 'max:255'],
             'bridge_live_badge_url' => ['nullable', 'url', 'max:500'],
+
+            // Cards + Cashier Stripe
+            'bridge_sandbox_stripe_account_id' => ['nullable', 'string', 'max:255'],
+            'bridge_live_stripe_account_id' => ['nullable', 'string', 'max:255'],
+            'bridge_cards_program_type' => ['nullable', 'string', 'in:consumer,commercial'],
+            'bridge_stripe_app_install_url' => ['nullable', 'url', 'max:500'],
         ]);
+
+        $existingBridge = PaymentMethod::getConfig('bridge');
+        $additionalConfig = is_array($existingBridge?->additional_config) ? $existingBridge->additional_config : [];
+
+        $additionalConfig['sandbox_stripe_account_id'] = $request->bridge_sandbox_stripe_account_id ?: null;
+        $additionalConfig['live_stripe_account_id'] = $request->bridge_live_stripe_account_id ?: null;
+        $additionalConfig['cards_program_type'] = $request->bridge_cards_program_type ?: 'consumer';
+        $additionalConfig['stripe_app_install_url'] = $request->bridge_stripe_app_install_url ?: null;
 
         // Prepare Bridge config
         $bridgeConfig = [
@@ -86,12 +114,13 @@ class BridgeSettingsController extends Controller
             'live_api_key' => $request->bridge_live_api_key,
             'sandbox_badge_url' => $request->bridge_sandbox_badge_url,
             'live_badge_url' => $request->bridge_live_badge_url,
+            'additional_config' => $additionalConfig,
         ];
 
         // Get webhook URL for sandbox (use custom URL if provided, otherwise default)
-        $sandboxWebhookUrl = $request->bridge_sandbox_webhook_url 
+        $sandboxWebhookUrl = $request->bridge_sandbox_webhook_url
             ?: (config('app.url') . '/webhooks/bridge');
-        
+
         // Store sandbox webhook URL
         $bridgeConfig['sandbox_webhook_url'] = $sandboxWebhookUrl;
 
@@ -99,11 +128,11 @@ class BridgeSettingsController extends Controller
         $liveWebhookUrl = config('app.url') . '/webhooks/bridge';
 
         // Create/activate webhooks for sandbox if API key is provided
-        if (!empty($request->bridge_sandbox_api_key)) {
+        if (! empty($request->bridge_sandbox_api_key)) {
             try {
                 // Create new BridgeService instance with sandbox credentials directly
                 $sandboxService = new BridgeService($request->bridge_sandbox_api_key, 'sandbox');
-                
+
                 // Find or create and activate webhook with custom URL
                 $webhookResult = $sandboxService->findOrCreateWebhook($sandboxWebhookUrl);
 
@@ -129,11 +158,11 @@ class BridgeSettingsController extends Controller
         }
 
         // Create/activate webhooks for live if API key is provided
-        if (!empty($request->bridge_live_api_key)) {
+        if (! empty($request->bridge_live_api_key)) {
             try {
                 // Create new BridgeService instance with live credentials directly
                 $liveService = new BridgeService($request->bridge_live_api_key, 'live');
-                
+
                 // Find or create and activate webhook (live always uses default URL)
                 $webhookResult = $liveService->findOrCreateWebhook($liveWebhookUrl);
 
@@ -161,10 +190,33 @@ class BridgeSettingsController extends Controller
         // Save configuration
         PaymentMethod::setConfig('bridge', $bridgeConfig);
 
-        // Update environment variables if needed (optional - you might want to update .env file)
-        // For now, we'll just save to database
-
         return redirect()->back()->with('success', 'Bridge settings updated successfully.');
     }
-}
 
+    /**
+     * Link Bridge sandbox cards to the Laravel Cashier Stripe account (POST /cards/enable).
+     */
+    public function enableCards(Request $request)
+    {
+        if (auth()->user()->role !== 'admin') {
+            abort(403, 'Only administrators can enable Bridge cards.');
+        }
+
+        $request->validate([
+            'bridge_cards_program_type' => ['nullable', 'string', 'in:consumer,commercial'],
+        ]);
+
+        if (! $this->bridgeService->isSandbox()) {
+            return redirect()->back()->with('error', 'Bridge cards enable is only available in sandbox mode.');
+        }
+
+        $programType = $request->input('bridge_cards_program_type') ?: $this->bridgeService->getCardsProgramType();
+        $result = $this->bridgeService->enableCardsProduct($programType, true);
+
+        if ($result['success'] ?? false) {
+            return redirect()->back()->with('success', 'Bridge cards product linked to your Cashier Stripe account successfully.');
+        }
+
+        return redirect()->back()->with('error', $result['error'] ?? 'Failed to enable Bridge cards product.');
+    }
+}

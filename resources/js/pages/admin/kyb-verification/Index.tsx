@@ -319,45 +319,25 @@ export default function AdminKybVerificationIndex({ submissions, stats, filters,
           </div>
         </motion.div>
 
-        {/* Direct Bridge Submission Toggle */}
+        {/* KYB is completed via Bridge Persona modal in the wallet — custom forms and approval mode are disabled */}
         <motion.div variants={itemVariants}>
-          <Card className="border-l-4 border-l-blue-500">
+          <Card className="border-l-4 border-l-purple-500">
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Send className="h-5 w-5 text-blue-500" />
-                    <div>
-                      <Label className="text-base font-semibold">Direct Bridge Submission</Label>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {directBridgeSubmission 
-                          ? "New KYB submissions will be sent directly to Bridge immediately and stored in database."
-                          : "New KYB submissions will be stored locally and require admin approval before sending to Bridge."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <Badge className={cn(
-                      "mb-2",
-                      directBridgeSubmission 
-                        ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400"
-                        : "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400"
-                    )}>
-                      {directBridgeSubmission ? "Direct Mode" : "Approval Mode"}
-                    </Badge>
-                  </div>
-                  <Switch
-                    checked={directBridgeSubmission}
-                    onCheckedChange={handleToggleDirectBridge}
-                    disabled={isUpdatingSetting}
-                  />
+              <div className="flex items-start gap-3">
+                <Send className="h-5 w-5 text-purple-500 mt-0.5" />
+                <div>
+                  <Label className="text-base font-semibold">Bridge Persona verification</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Organizations complete KYB in the wallet using the Bridge window (Persona). Custom in-app forms and
+                    admin approval before Bridge submission are no longer used.
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </motion.div>
+
+        {/* Legacy direct-submission toggle removed — Persona modal only */}
 
         {/* Stats Cards */}
         <motion.div variants={itemVariants}>

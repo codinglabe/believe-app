@@ -206,6 +206,87 @@ export const formatCurrency = (amount: number | null, decimals: number = 2): str
 }
 
 /**
+ * Origins allowed to postMessage from Bridge/Persona verification iframes.
+ */
+export const isAllowedBridgePersonaMessageOrigin = (origin: string): boolean => {
+    if (origin === window.location.origin) {
+        return true
+    }
+
+    const allowedHosts = [
+        'bridge.withpersona.com',
+        'withpersona.com',
+        'bridge.xyz',
+        'sandbox.bridge.xyz',
+    ]
+
+    return allowedHosts.some((host) => origin.includes(host))
+}
+
+/**
+ * Persona/Bridge widget signals the user finished the flow (e.g. clicked Done).
+ */
+export const isBridgePersonaVerificationCompleteMessage = (data: unknown): boolean => {
+    if (!data || typeof data !== 'object') {
+        return false
+    }
+
+    const payload = data as Record<string, unknown>
+
+    if (payload.action === 'close') {
+        return true
+    }
+
+    const type = typeof payload.type === 'string' ? payload.type : ''
+    if (
+        type === 'persona:inquiry:complete' ||
+        type === 'persona:complete' ||
+        type === 'persona:dialog:complete' ||
+        type === 'persona:inquiry:exit'
+    ) {
+        return true
+    }
+
+    if (payload.name === 'complete' || payload.event === 'complete') {
+        return true
+    }
+
+    return false
+}
+
+/**
+ * Convert Bridge/Persona verify URL to embeddable widget URL (Bridge docs: /verify → /widget + iframe-origin).
+ */
+export const convertBridgeVerifyLinkToWidgetUrl = (linkUrl: string): string => {
+    try {
+        const url = new URL(linkUrl)
+        if (url.pathname.includes('/verify')) {
+            url.pathname = url.pathname.replace('/verify', '/widget')
+        }
+        url.searchParams.set('iframe-origin', window.location.origin)
+        return url.toString()
+    } catch {
+        return linkUrl
+    }
+}
+
+/**
+ * Prefer stored widget URL; otherwise derive from verify/link URL.
+ */
+export const resolveBridgeVerificationWidgetUrl = (
+    widgetUrl: string | null | undefined,
+    linkUrl: string | null | undefined,
+): string | null => {
+    if (widgetUrl) {
+        return convertBridgeVerifyLinkToWidgetUrl(widgetUrl)
+    }
+    if (linkUrl) {
+        return convertBridgeVerifyLinkToWidgetUrl(linkUrl)
+    }
+    return null
+}
+
+/**
  * Format date for display
  */
 export const formatDate = (dateString: string): string => {

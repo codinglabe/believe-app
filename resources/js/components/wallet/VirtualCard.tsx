@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from 'framer-motion'
-import { ArrowLeft, CreditCard, Shield, Snowflake, Unlock, Eye, EyeOff, Copy, Check, Lock, Loader2, Plus } from 'lucide-react'
+import { ArrowLeft, CreditCard, Shield, Snowflake, Unlock, Eye, EyeOff, Copy, Check, Lock, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getCsrfToken } from './utils'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
@@ -14,6 +14,7 @@ interface VirtualCardProps {
     cvv?: string
     onBack: () => void
     onCardCreated?: () => void
+    onOpenCardsEndorsementVerification?: (kycLinkUrl: string) => void
 }
 
 export function VirtualCard({
@@ -22,7 +23,8 @@ export function VirtualCard({
     expiryDate: propExpiryDate,
     cvv: propCvv,
     onBack,
-    onCardCreated
+    onCardCreated,
+    onOpenCardsEndorsementVerification,
 }: VirtualCardProps) {
     const [isFlipped, setIsFlipped] = useState(false)
     const [isFrozen, setIsFrozen] = useState(false)
@@ -31,6 +33,8 @@ export function VirtualCard({
     const [hasCardAccount, setHasCardAccount] = useState<boolean | null>(null)
     const [isLoadingCardAccount, setIsLoadingCardAccount] = useState(true)
     const [isCreatingCardAccount, setIsCreatingCardAccount] = useState(false)
+    const [pendingCardsEndorsementUrl, setPendingCardsEndorsementUrl] = useState<string | null>(null)
+    const [issueCardError, setIssueCardError] = useState<string | null>(null)
     const [cardData, setCardData] = useState<{
         cardNumber?: string
         cardholderName?: string
@@ -122,6 +126,7 @@ export function VirtualCard({
 
     const handleCreateCardAccount = async () => {
         setIsCreatingCardAccount(true)
+        setIssueCardError(null)
         try {
             const response = await fetch('/wallet/bridge/card-account', {
                 method: 'POST',
@@ -138,22 +143,53 @@ export function VirtualCard({
 
             const data = await response.json()
             if (data.success) {
-                showSuccessToast('Card account created successfully!')
-                // Refresh card account status
+                setPendingCardsEndorsementUrl(null)
+                showSuccessToast('Card issued successfully!')
                 await checkCardAccount()
-                // Notify parent component that card was created
                 if (onCardCreated) {
                     onCardCreated()
                 }
+            } else if (data.error_code === 'cards_endorsement_kyc_required' && data.kyc_link_url) {
+                setPendingCardsEndorsementUrl(data.kyc_link_url)
+                setIssueCardError(data.message || 'Complete cards verification to issue your card.')
+                showErrorToast(data.message || 'Complete cards verification to issue your card.')
+            } else if (data.error_code === 'stripe_cardholder_missing') {
+                setIssueCardError(
+                    data.message ||
+                        'Install the Bridge Cards Stripe App on your Stripe Sandbox, then Enable Bridge Cards in Settings.'
+                )
+                showErrorToast(data.message || 'Stripe cardholder not ready. Check Bridge + Stripe setup.')
+            } else if (data.error_code === 'cards_endorsement_required') {
+                setIssueCardError(data.message || 'Complete cards verification to issue your card.')
+                showErrorToast(data.message || 'Complete cards verification to issue your card.')
+            } else if (data.error_code === 'cards_endorsement_not_approved') {
+                setIssueCardError(data.message || 'Cards verification is pending approval.')
+                showErrorToast(data.message || 'Cards verification is pending approval.')
+            } else if (data.error_code === 'missing_date_of_birth' && data.requires_kyc) {
+                setIssueCardError(data.message || 'Complete identity verification before issuing a card.')
+                showErrorToast(data.message || 'Complete identity verification before issuing a card.')
+            } else if (data.requires_kyc || data.error_code === 'missing_required_fields') {
+                setIssueCardError(data.message || 'Complete identity verification before issuing a card.')
+                showErrorToast(data.message || 'Complete identity verification before issuing a card.')
             } else {
+                setIssueCardError(data.message || 'Failed to create card account')
                 showErrorToast(data.message || 'Failed to create card account')
             }
         } catch (error) {
             console.error('Failed to create card account:', error)
+            setIssueCardError('Failed to create card account. Please try again.')
             showErrorToast('Failed to create card account. Please try again.')
         } finally {
             setIsCreatingCardAccount(false)
         }
+    }
+
+    const handleOpenCardsEndorsementVerification = () => {
+        if (!pendingCardsEndorsementUrl || !onOpenCardsEndorsementVerification) {
+            return
+        }
+
+        onOpenCardsEndorsementVerification(pendingCardsEndorsementUrl)
     }
 
     const handleDoubleClick = () => {
@@ -195,7 +231,7 @@ export function VirtualCard({
                         </Button>
                         <div className="flex items-center gap-2">
                             <CreditCard className="h-5 w-5 text-primary" />
-                            <h3 className="text-lg font-semibold">Virtual Card</h3>
+                            <h3 className="text-lg font-semibold">Cards</h3>
                         </div>
                     </div>
                     <div className="flex items-center justify-center py-12">
@@ -206,7 +242,7 @@ export function VirtualCard({
         )
     }
 
-    // Show create card account if it doesn't exist
+    // No card on file — offer issue card
     if (hasCardAccount === false) {
         return (
             <motion.div
@@ -217,7 +253,6 @@ export function VirtualCard({
                 className="p-4 space-y-4"
             >
                 <div className="space-y-4">
-                    {/* Header */}
                     <div className="flex items-center gap-3">
                         <Button
                             variant="ghost"
@@ -229,38 +264,50 @@ export function VirtualCard({
                         </Button>
                         <div className="flex items-center gap-2">
                             <CreditCard className="h-5 w-5 text-primary" />
-                            <h3 className="text-lg font-semibold">Virtual Card</h3>
+                            <h3 className="text-lg font-semibold">Cards</h3>
                         </div>
                     </div>
 
-                    {/* Create Card Account */}
-                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                        <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center">
-                            <CreditCard className="h-12 w-12 text-muted-foreground" />
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 space-y-4 px-4">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                            <CreditCard className="h-8 w-8 text-muted-foreground" />
                         </div>
-                        <div className="text-center space-y-2">
-                            <h3 className="text-lg font-semibold">No Card Account</h3>
-                            <p className="text-sm text-muted-foreground max-w-sm">
-                                You don't have a virtual card account yet. Create one to get started with your card.
+                        <div className="text-center space-y-1">
+                            <p className="text-sm font-medium">No card available</p>
+                            <p className="text-xs text-muted-foreground max-w-xs">
+                                Issue a virtual card linked to your wallet balance.
                             </p>
-                        </div>
-                        <Button
-                            onClick={handleCreateCardAccount}
-                            disabled={isCreatingCardAccount}
-                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                        >
-                            {isCreatingCardAccount ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Creating...
-                                </>
-                            ) : (
-                                <>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Create Card Account
-                                </>
+                            {issueCardError && (
+                                <p className="text-xs text-destructive max-w-xs pt-1">{issueCardError}</p>
                             )}
-                        </Button>
+                        </div>
+                        {pendingCardsEndorsementUrl && onOpenCardsEndorsementVerification ? (
+                            <Button
+                                onClick={handleOpenCardsEndorsementVerification}
+                                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                            >
+                                <Shield className="h-4 w-4 mr-2" />
+                                Complete Cards Verification
+                            </Button>
+                        ) : (
+                            <Button
+                                onClick={handleCreateCardAccount}
+                                disabled={isCreatingCardAccount}
+                                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                            >
+                                {isCreatingCardAccount ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Issuing…
+                                    </>
+                                ) : (
+                                    <>
+                                        <CreditCard className="h-4 w-4 mr-2" />
+                                        Issue Card
+                                    </>
+                                )}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </motion.div>
@@ -288,7 +335,7 @@ export function VirtualCard({
                     </Button>
                     <div className="flex items-center gap-2">
                         <CreditCard className="h-5 w-5 text-primary" />
-                        <h3 className="text-lg font-semibold">Virtual Card</h3>
+                        <h3 className="text-lg font-semibold">Cards</h3>
                     </div>
                 </div>
 

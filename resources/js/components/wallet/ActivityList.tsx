@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react'
+import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight } from 'lucide-react'
 import { Activity as ActivityType } from './types'
 import { formatDate, formatCurrency } from './utils'
 
@@ -14,6 +14,48 @@ interface ActivityListProps {
     onActivityClick?: (activity: ActivityType) => void
 }
 
+function getActivityMeta(activity: ActivityType) {
+    const isTransferSent = activity.type === 'transfer_sent'
+    const isTransferReceived = activity.type === 'transfer_received'
+    const isDonation = activity.type === 'donation'
+    const isDeposit = activity.type === 'deposit'
+    const isDonationOutgoing = isDonation && activity.is_outgoing === true
+    const isOutgoing = isTransferSent || isDonationOutgoing
+
+    let label: string
+    if (isTransferSent) {
+        label = `Sent to ${activity.donor_name}`
+    } else if (isTransferReceived) {
+        label = `Received from ${activity.donor_name}`
+    } else if (isDeposit) {
+        label = `Deposit · ${activity.donor_name}`
+    } else if (isDonationOutgoing) {
+        label = `Donation to ${activity.donor_name}`
+    } else {
+        label = `Donation from ${activity.donor_name}`
+    }
+
+    let icon: React.ReactNode
+    let iconClass: string
+    let amountClass: string
+
+    if (isOutgoing) {
+        icon = <ArrowUpRight className="h-3.5 w-3.5" />
+        iconClass = 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+        amountClass = 'text-purple-600 dark:text-purple-400'
+    } else if (isDeposit) {
+        icon = <Plus className="h-3.5 w-3.5" />
+        iconClass = 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+        amountClass = 'text-blue-600 dark:text-blue-400'
+    } else {
+        icon = <ArrowDownLeft className="h-3.5 w-3.5" />
+        iconClass = 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+        amountClass = 'text-blue-600 dark:text-blue-400'
+    }
+
+    return { label, icon, iconClass, amountClass, isOutgoing }
+}
+
 export function ActivityList({
     activities,
     isLoading,
@@ -22,159 +64,110 @@ export function ActivityList({
     onScroll,
     onSeeMore,
     showSeeMore = false,
-    onActivityClick
+    onActivityClick,
 }: ActivityListProps) {
-    if (isLoading) {
-        return (
-            <div className="text-center py-8">
-                <RefreshCw className="h-6 w-6 text-muted-foreground mx-auto mb-3 animate-spin" />
-                <p className="text-sm text-muted-foreground">Loading activity...</p>
-            </div>
-        )
-    }
-
-    if (activities.length === 0) {
-        return (
-            <div className="text-center py-12">
-                <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                <p className="text-sm text-muted-foreground">No transactions yet</p>
-            </div>
-        )
-    }
-
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
         const target = e.currentTarget
         const { scrollTop, scrollHeight, clientHeight } = target
-        
-        // Check if we can scroll in this direction
         const isScrollingDown = e.deltaY > 0
         const isScrollingUp = e.deltaY < 0
         const isAtTop = scrollTop === 0
         const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1
-        
-        // Only stop propagation if we can scroll in the current direction
-        // This prevents parent scrolling when ActivityList is being scrolled
+
         if ((isScrollingDown && !isAtBottom) || (isScrollingUp && !isAtTop)) {
             e.stopPropagation()
         }
     }
 
     return (
-        <div 
-            className={`flex-1 p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-h-[350px] min-h-0 overflow-y-auto ${
-                hasMore ? '' : ''
-            }`}
-            onScroll={(e) => {
-                // Stop scroll event from propagating to parent
-                e.stopPropagation()
-                if (hasMore) {
-                    onScroll(e)
-                }
-            }}
-            onWheel={handleWheel}
-            style={{ maxHeight: '350px' }}
-        >
-            <div className="space-y-2">
-                {activities.map((activity) => {
-                    const isTransferSent = activity.type === 'transfer_sent'
-                    const isTransferReceived = activity.type === 'transfer_received'
-                    const isDonation = activity.type === 'donation'
-                    const isDeposit = activity.type === 'deposit'
-                    const isDonationOutgoing = isDonation && activity.is_outgoing === true
-                    const isDonationReceived = isDonation && activity.is_outgoing !== true
-                    const isOutgoing = isTransferSent || isDonationOutgoing
-                    
-                    return (
-                        <motion.div
-                            key={activity.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            onClick={() => onActivityClick?.(activity)}
-                            className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors ${
-                                onActivityClick ? 'cursor-pointer' : ''
-                            }`}
-                        >
-                            <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
-                                <div className={`p-2 rounded-lg flex-shrink-0 ${
-                                    isTransferSent 
-                                        ? 'bg-red-500/10' 
-                                        : isTransferReceived 
-                                        ? 'bg-blue-500/10'
-                                        : isDeposit
-                                        ? 'bg-emerald-500/10'
-                                        : 'bg-green-500/10'
-                                }`}>
-                                    {isTransferSent ? (
-                                        <ArrowUpRight className="h-4 w-4 text-red-500" />
-                                    ) : isTransferReceived ? (
-                                        <ArrowDownLeft className="h-4 w-4 text-blue-500" />
-                                    ) : isDeposit ? (
-                                        <Plus className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <ArrowDownLeft className="h-4 w-4 text-green-500" />
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                    <p className="text-sm font-medium break-words sm:truncate">
-                                        {isTransferSent 
-                                            ? `Sent to ${activity.donor_name}`
-                                            : isTransferReceived
-                                            ? `Received from ${activity.donor_name}`
-                                            : isDeposit
-                                            ? `Deposit - ${activity.donor_name}`
-                                            : `Donation from ${activity.donor_name}`
-                                        }
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        {formatDate(activity.date)}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right">
-                                <p className={`text-base sm:text-sm font-semibold ${
-                                    isTransferSent 
-                                        ? 'text-red-600'
-                                        : isTransferReceived || isDeposit
-                                        ? 'text-green-600'
-                                        : 'text-green-600'
-                                }`}>
-                                    {isTransferSent ? '-' : '+'}${formatCurrency(activity.amount)}
-                                </p>
-                                <div className="flex flex-col items-end sm:items-end gap-1">
-                                    {isDonation && activity.frequency !== 'one-time' && (
-                                        <p className="text-xs text-muted-foreground capitalize">
-                                            {activity.frequency}
-                                        </p>
-                                    )}
-                                    {isTransferSent && activity.recipient_type && (
-                                        <p className="text-xs text-muted-foreground capitalize">
-                                            {activity.recipient_type}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        </motion.div>
-                    )
-                })}
-            </div>
-            
-            {isLoadingMore && (
-                <div className="text-center py-4">
-                    <RefreshCw className="h-5 w-5 text-muted-foreground mx-auto animate-spin" />
+        <div className="flex flex-col flex-1 min-h-0 border-t border-border/60">
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                <div className="flex items-center gap-2">
+                    <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+                    <h3 className="text-xs font-semibold text-foreground">Recent activity</h3>
                 </div>
-            )}
-            
-            {showSeeMore && onSeeMore && (
-                <div className="text-center pt-4">
+                {showSeeMore && onSeeMore && activities.length > 0 && (
                     <button
+                        type="button"
                         onClick={onSeeMore}
-                        className="text-sm text-primary hover:text-primary/80 font-medium cursor-pointer"
+                        className="flex items-center gap-0.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:underline"
                     >
-                        See More
+                        View all
+                        <ChevronRight className="h-3 w-3" />
                     </button>
+                )}
+            </div>
+
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-10 px-4">
+                    <RefreshCw className="h-5 w-5 text-muted-foreground animate-spin mb-2" />
+                    <p className="text-xs text-muted-foreground">Loading activity…</p>
+                </div>
+            ) : activities.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 px-4 mx-4 mb-4 rounded-xl border border-dashed border-border">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted mb-2">
+                        <Activity className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium">No transactions yet</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 text-center">
+                        Deposits and transfers will appear here
+                    </p>
+                </div>
+            ) : (
+                <div
+                    className="flex-1 px-3 pb-3 wallet-scroll-nested max-h-[320px] min-h-0 overflow-y-auto"
+                    onScroll={(e) => {
+                        e.stopPropagation()
+                        if (hasMore) {
+                            onScroll(e)
+                        }
+                    }}
+                    onWheel={handleWheel}
+                    style={{ maxHeight: '320px' }}
+                >
+                    <div className="space-y-1.5">
+                        {activities.map((activity, index) => {
+                            const { label, icon, iconClass, amountClass, isOutgoing } = getActivityMeta(activity)
+
+                            return (
+                                <motion.button
+                                    key={activity.id}
+                                    type="button"
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.2, delay: Math.min(index * 0.04, 0.2) }}
+                                    onClick={() => onActivityClick?.(activity)}
+                                    className={`w-full flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left hover:border-border hover:bg-muted/40 transition-colors ${
+                                        onActivityClick ? 'cursor-pointer' : ''
+                                    }`}
+                                >
+                                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
+                                        {icon}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium truncate">{label}</p>
+                                        <p className="text-[11px] text-muted-foreground">{formatDate(activity.date)}</p>
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                        <p className={`text-sm font-semibold tabular-nums ${amountClass}`}>
+                                            {isOutgoing ? '−' : '+'}${formatCurrency(activity.amount)}
+                                        </p>
+                                        {activity.frequency && activity.frequency !== 'one-time' && activity.type === 'donation' && (
+                                            <p className="text-[10px] text-muted-foreground capitalize">{activity.frequency}</p>
+                                        )}
+                                    </div>
+                                </motion.button>
+                            )
+                        })}
+                    </div>
+
+                    {isLoadingMore && (
+                        <div className="flex justify-center py-3">
+                            <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     )
 }
-

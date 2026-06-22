@@ -1,44 +1,35 @@
 import { motion } from 'framer-motion'
-import { RefreshCw } from 'lucide-react'
-import { formatCurrency } from './utils'
+import { BalanceCard, BalanceCardVariant } from './BalanceCard'
 
 interface BalanceDisplayProps {
     balance: number | null
     isLoading: boolean
     onRefresh: () => void
+    isSandbox?: boolean
+    variant?: BalanceCardVariant
 }
 
-export function BalanceDisplay({ balance, isLoading, onRefresh }: BalanceDisplayProps) {
+export function BalanceDisplay({
+    balance,
+    isLoading,
+    onRefresh,
+    isSandbox = false,
+    variant = 'compact',
+}: BalanceDisplayProps) {
     return (
         <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="p-4 pb-2 border-b border-border"
+            transition={{ duration: 0.25 }}
+            className="px-4 pt-3 pb-2 border-b border-border/60 bg-background/80 backdrop-blur-sm sticky top-0 z-10"
         >
-            <div className="text-center py-4">
-                <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Balance</p>
-                <div className="flex items-center justify-center gap-2">
-                    <motion.span
-                        key={balance}
-                        initial={{ scale: 1.2 }}
-                        animate={{ scale: 1 }}
-                        transition={{ duration: 0.3 }}
-                        className="text-3xl font-bold"
-                    >
-                        ${formatCurrency(balance)}
-                    </motion.span>
-                    <button
-                        onClick={onRefresh}
-                        className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                        disabled={isLoading}
-                        title="Refresh balance"
-                    >
-                        <RefreshCw className={`h-4 w-4 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                </div>
-            </div>
+            <BalanceCard
+                balance={balance}
+                isLoading={isLoading}
+                onRefresh={onRefresh}
+                isSandbox={isSandbox}
+                variant={variant}
+            />
         </motion.div>
     )
 }
-

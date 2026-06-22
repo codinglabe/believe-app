@@ -105,6 +105,78 @@ export function applyWalletBridgeStatusPayload(payload: WalletBridgeStatusPayloa
   }
 }
 
+/** True when Bridge KYC/KYB is submitted and still awaiting a final outcome. */
+export function isBridgeVerificationPending(
+  status: string | null | undefined,
+  submitted = false,
+): boolean {
+  if (submitted && status !== "approved" && status !== "rejected") {
+    return true
+  }
+
+  if (!status || status === "not_started" || status === "approved" || status === "rejected") {
+    return false
+  }
+
+  return true
+}
+
+export function isBridgeKycPending(
+  status: string | null | undefined,
+  kycSubmitted = false,
+): boolean {
+  return isBridgeVerificationPending(status, kycSubmitted)
+}
+
+export function isBridgeKybPending(
+  status: string | null | undefined,
+  kybSubmitted = false,
+): boolean {
+  return isBridgeVerificationPending(status, kybSubmitted)
+}
+
+export function formatBridgeVerificationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    not_started: "Not started",
+    incomplete: "Incomplete",
+    under_review: "Under review",
+    pending: "Pending review",
+    awaiting_questionnaire: "Awaiting questionnaire",
+    awaiting_ubo: "Awaiting UBO information",
+    paused: "Paused",
+    offboarded: "Offboarded",
+    approved: "Approved",
+    rejected: "Rejected",
+  }
+
+  return labels[status] ?? status.replace(/_/g, " ")
+}
+
+export function resolveKycStatusAfterBridgeSubmission(
+  currentStatus: string,
+  backendStatus: string | undefined,
+  kycSubmitted: boolean,
+): { status: string; submitted: boolean } {
+  const nextStatus = backendStatus ?? currentStatus
+
+  if (nextStatus === "approved") {
+    return { status: "approved", submitted: false }
+  }
+
+  if (nextStatus === "rejected") {
+    return { status: "rejected", submitted: true }
+  }
+
+  if (kycSubmitted || isBridgeKycPending(nextStatus)) {
+    return {
+      status: nextStatus === "not_started" ? "under_review" : nextStatus,
+      submitted: true,
+    }
+  }
+
+  return { status: nextStatus, submitted: kycSubmitted }
+}
+
 /** Match WalletPopup: org wallet is ready only after KYB + KYC + wallet exist. */
 type AuthLike = {
   user?: { role?: string; current_plan_id?: number | null } | null

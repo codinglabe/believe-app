@@ -124,7 +124,7 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
             </div>
 
             <div
-                className={`flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${
+                className={`flex-1 wallet-scroll-nested ${
                     hasMore ? 'overflow-y-auto' : 'overflow-hidden'
                 }`}
                 onScroll={hasMore ? handleScroll : undefined}

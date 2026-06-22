@@ -10,29 +10,47 @@ use Laravel\Cashier\Cashier;
 class StripeConfigService
 {
     /**
+     * Resolve the credential bucket for a Stripe environment.
+     */
+    public static function credentialPrefix(string $environment): string
+    {
+        return match (strtolower(trim($environment))) {
+            'live' => 'live',
+            'test' => 'test',
+            default => 'sandbox',
+        };
+    }
+
+    public static function isLiveEnvironment(string $environment): bool
+    {
+        return self::credentialPrefix($environment) === 'live';
+    }
+
+    /**
      * Get Stripe credentials from database based on environment
-     * 
-     * @param string $environment 'sandbox' or 'live'
+     *
+     * @param string $environment 'sandbox', 'test', or 'live'
      * @return array|null Returns ['publishable_key' => ..., 'secret_key' => ..., 'webhook_secret' => ...] or null
      */
     public static function getCredentials(string $environment = 'sandbox'): ?array
     {
         try {
             $stripe = PaymentMethod::getConfig('stripe');
-            
+
             if (!$stripe) {
                 return null;
             }
 
-            // Determine which credentials to use based on environment
-            if ($environment === 'sandbox' || $environment === 'test') {
-                $publishableKey = $stripe->test_publishable_key;
-                $secretKey = $stripe->test_secret_key;
-                $webhookSecret = $stripe->test_webhook_secret;
-            } else {
-                $publishableKey = $stripe->live_publishable_key;
-                $secretKey = $stripe->live_secret_key;
-                $webhookSecret = $stripe->live_webhook_secret;
+            $prefix = self::credentialPrefix($environment);
+            $publishableKey = $stripe->{"{$prefix}_publishable_key"};
+            $secretKey = $stripe->{"{$prefix}_secret_key"};
+            $webhookSecret = $stripe->{"{$prefix}_webhook_secret"};
+
+            // Legacy: sandbox mode previously stored keys under test_* columns.
+            if ($prefix === 'sandbox' && (empty($publishableKey) || empty($secretKey))) {
+                $publishableKey = $publishableKey ?: $stripe->test_publishable_key;
+                $secretKey = $secretKey ?: $stripe->test_secret_key;
+                $webhookSecret = $webhookSecret ?: $stripe->test_webhook_secret;
             }
 
             // If no credentials found, return null (will fallback to .env)
@@ -55,16 +73,90 @@ class StripeConfigService
 
     /**
      * Get the current Stripe environment from database
-     * 
-     * @return string 'sandbox' or 'live'
+     *
+     * @return string 'sandbox', 'test', or 'live'
      */
     public static function getEnvironment(): string
     {
         try {
             $stripe = PaymentMethod::getConfig('stripe');
-            return $stripe->mode_environment ?? 'sandbox';
+            $environment = strtolower(trim((string) ($stripe->mode_environment ?? 'sandbox')));
+
+            return in_array($environment, ['sandbox', 'test', 'live'], true) ? $environment : 'sandbox';
         } catch (\Exception $e) {
             return 'sandbox';
+        }
+    }
+
+    /**
+     * Donation product column for the given environment.
+     */
+    public static function donationProductColumn(string $environment): string
+    {
+        return self::credentialPrefix($environment).'_donation_product_id';
+    }
+
+    /**
+     * Read stored donation product id, with legacy sandbox → test fallback.
+     */
+    public static function getStoredDonationProductId(PaymentMethod $stripe, string $environment): ?string
+    {
+        $column = self::donationProductColumn($environment);
+        $productId = $stripe->{$column};
+
+        if ($column === 'sandbox_donation_product_id' && empty($productId)) {
+            $productId = $stripe->test_donation_product_id;
+        }
+
+        return $productId ?: null;
+    }
+
+    /**
+     * Account ID column for the given environment.
+     */
+    public static function accountIdColumn(string $environment): string
+    {
+        return self::credentialPrefix($environment).'_account_id';
+    }
+
+    /**
+     * Resolve Stripe platform account ID (acct_...) using stored credentials.
+     */
+    public static function resolveAccountId(string $environment): ?string
+    {
+        $credentials = self::getCredentials($environment);
+
+        if (! $credentials || empty($credentials['secret_key'])) {
+            return null;
+        }
+
+        return self::resolveAccountIdWithSecretKey($credentials['secret_key']);
+    }
+
+    /**
+     * Resolve Stripe platform account ID directly from a secret key.
+     */
+    public static function resolveAccountIdWithSecretKey(string $secretKey): ?string
+    {
+        $secretKey = trim($secretKey);
+
+        if ($secretKey === '') {
+            return null;
+        }
+
+        try {
+            $stripe = new \Stripe\StripeClient(['api_key' => $secretKey]);
+            $account = $stripe->accounts->retrieve();
+
+            $accountId = $account->id ?? null;
+
+            return is_string($accountId) && str_starts_with($accountId, 'acct_') ? $accountId : null;
+        } catch (\Throwable $e) {
+            Log::warning('Failed to resolve Stripe account ID', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
         }
     }
 
@@ -132,9 +224,7 @@ class StripeConfigService
             }
 
             // Get product ID based on environment
-            $productId = $env === 'sandbox' || $env === 'test' 
-                ? $stripe->test_donation_product_id 
-                : $stripe->live_donation_product_id;
+            $productId = self::getStoredDonationProductId($stripe, $env);
 
             // If product ID exists, verify it's still valid
             if ($productId) {
@@ -171,9 +261,7 @@ class StripeConfigService
             ]);
 
             // Save the product ID
-            $updateData = $env === 'sandbox' || $env === 'test'
-                ? ['test_donation_product_id' => $product->id]
-                : ['live_donation_product_id' => $product->id];
+            $updateData = [self::donationProductColumn($env) => $product->id];
             
             $stripe->update($updateData);
 

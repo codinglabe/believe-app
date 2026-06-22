@@ -21,21 +21,49 @@ interface SettingsProps {
   stripe_mode: "automatic" | "manual"
   stripe_client_id: string | null
   stripe_client_secret: string | null
-  stripe_mode_environment: "sandbox" | "live"
+  stripe_mode_environment: "sandbox" | "test" | "live"
+  
+  // Sandbox credentials
+  stripe_sandbox_publishable_key: string | null
+  stripe_sandbox_secret_key: string | null
+  stripe_sandbox_customer_id: string | null
+  stripe_sandbox_account_id: string | null
   
   // Test credentials
   stripe_test_publishable_key: string | null
   stripe_test_secret_key: string | null
   stripe_test_customer_id: string | null
+  stripe_test_account_id: string | null
   
   // Live credentials
   stripe_live_publishable_key: string | null
   stripe_live_secret_key: string | null
   stripe_live_customer_id: string | null
+  stripe_live_account_id: string | null
 }
 
 interface Props {
   settings: SettingsProps
+}
+
+type StripeEnvironment = "sandbox" | "test" | "live"
+
+const stripeEnvironmentLabels: Record<StripeEnvironment, string> = {
+  sandbox: "Sandbox",
+  test: "Test",
+  live: "Live",
+}
+
+const stripePublishablePlaceholders: Record<StripeEnvironment, string> = {
+  sandbox: "Enter Sandbox Publishable Key (pk_test_...)",
+  test: "Enter Test Publishable Key (pk_test_...)",
+  live: "Enter Live Publishable Key (pk_live_...)",
+}
+
+const stripeSecretPlaceholders: Record<StripeEnvironment, string> = {
+  sandbox: "Enter Sandbox Secret Key (sk_test_...)",
+  test: "Enter Test Secret Key (sk_test_...)",
+  live: "Enter Live Secret Key (sk_live_...)",
 }
 
 export default function PaymentMethodSettings({ settings }: Props) {
@@ -49,6 +77,10 @@ export default function PaymentMethodSettings({ settings }: Props) {
     stripe_client_id: settings.stripe_client_id || "",
     stripe_client_secret: settings.stripe_client_secret || "",
     stripe_mode_environment: settings.stripe_mode_environment,
+
+    // Sandbox credentials
+    stripe_sandbox_publishable_key: settings.stripe_sandbox_publishable_key || "",
+    stripe_sandbox_secret_key: settings.stripe_sandbox_secret_key || "",
     
     // Test credentials
     stripe_test_publishable_key: settings.stripe_test_publishable_key || "",
@@ -65,10 +97,80 @@ export default function PaymentMethodSettings({ settings }: Props) {
   const [showStripePublishable, setShowStripePublishable] = React.useState(false)
   const [showStripeSecret, setShowStripeSecret] = React.useState(false)
   
-  // Current Stripe environment (sandbox = test, live = live)
-  const [stripeEnvironment, setStripeEnvironment] = React.useState<"sandbox" | "live">(
-    settings.stripe_mode_environment || "sandbox"
+  const [stripeEnvironment, setStripeEnvironment] = React.useState<StripeEnvironment>(
+    (settings.stripe_mode_environment as StripeEnvironment) || "sandbox"
   )
+
+  React.useEffect(() => {
+    setStripeEnvironment((settings.stripe_mode_environment as StripeEnvironment) || "sandbox")
+  }, [
+    settings.stripe_mode_environment,
+    settings.stripe_sandbox_account_id,
+    settings.stripe_test_account_id,
+    settings.stripe_live_account_id,
+  ])
+
+  const stripeAccountIdByEnvironment: Record<StripeEnvironment, string | null | undefined> = {
+    sandbox: settings.stripe_sandbox_account_id,
+    test: settings.stripe_test_account_id,
+    live: settings.stripe_live_account_id,
+  }
+
+  const stripeCustomerIdByEnvironment: Record<StripeEnvironment, string | null | undefined> = {
+    sandbox: settings.stripe_sandbox_customer_id,
+    test: settings.stripe_test_customer_id,
+    live: settings.stripe_live_customer_id,
+  }
+
+  const stripePublishableKeyByEnvironment: Record<StripeEnvironment, string> = {
+    sandbox: data.stripe_sandbox_publishable_key,
+    test: data.stripe_test_publishable_key,
+    live: data.stripe_live_publishable_key,
+  }
+
+  const stripeSecretKeyByEnvironment: Record<StripeEnvironment, string> = {
+    sandbox: data.stripe_sandbox_secret_key,
+    test: data.stripe_test_secret_key,
+    live: data.stripe_live_secret_key,
+  }
+
+  const setStripePublishableKey = (environment: StripeEnvironment, value: string) => {
+    if (environment === "sandbox") {
+      setData("stripe_sandbox_publishable_key", value)
+      return
+    }
+    if (environment === "test") {
+      setData("stripe_test_publishable_key", value)
+      return
+    }
+    setData("stripe_live_publishable_key", value)
+  }
+
+  const setStripeSecretKey = (environment: StripeEnvironment, value: string) => {
+    if (environment === "sandbox") {
+      setData("stripe_sandbox_secret_key", value)
+      return
+    }
+    if (environment === "test") {
+      setData("stripe_test_secret_key", value)
+      return
+    }
+    setData("stripe_live_secret_key", value)
+  }
+
+  const stripePublishableError =
+    stripeEnvironment === "sandbox"
+      ? errors.stripe_sandbox_publishable_key
+      : stripeEnvironment === "test"
+        ? errors.stripe_test_publishable_key
+        : errors.stripe_live_publishable_key
+
+  const stripeSecretError =
+    stripeEnvironment === "sandbox"
+      ? errors.stripe_sandbox_secret_key
+      : stripeEnvironment === "test"
+        ? errors.stripe_test_secret_key
+        : errors.stripe_live_secret_key
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -204,35 +306,48 @@ export default function PaymentMethodSettings({ settings }: Props) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* Resolved Stripe account for active mode */}
+                  {stripeAccountIdByEnvironment[stripeEnvironment] ? (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm text-blue-800 dark:text-blue-200">
+                        <strong>Stripe Account ({stripeEnvironmentLabels[stripeEnvironment]}):</strong>{" "}
+                        <code className="font-mono text-xs sm:text-sm">
+                          {stripeAccountIdByEnvironment[stripeEnvironment]}
+                        </code>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-muted/50 rounded-md border border-border">
+                      <p className="text-sm text-muted-foreground">
+                        Save valid {stripeEnvironmentLabels[stripeEnvironment]} keys to resolve your Stripe account ID (
+                        <code className="font-mono text-xs">acct_...</code>).
+                      </p>
+                    </div>
+                  )}
+
                   {/* Stripe Credentials - Dynamic based on environment */}
                   <div className="space-y-4">
                     {/* Show customer ID if available */}
-                    {(stripeEnvironment === "sandbox" ? settings.stripe_test_customer_id : settings.stripe_live_customer_id) && (
+                    {stripeCustomerIdByEnvironment[stripeEnvironment] && (
                       <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200 dark:border-green-800">
                         <p className="text-sm text-green-700 dark:text-green-300">
-                          <strong>Customer ID:</strong> {stripeEnvironment === "sandbox" ? settings.stripe_test_customer_id : settings.stripe_live_customer_id}
+                          <strong>Customer ID:</strong> {stripeCustomerIdByEnvironment[stripeEnvironment]}
                         </p>
                       </div>
                     )}
 
                     <div className="space-y-2">
                       <Label htmlFor="stripe_publishable_key">
-                        {stripeEnvironment === "sandbox" ? "Test" : "Live"} Publishable Key
+                        {stripeEnvironmentLabels[stripeEnvironment]} Publishable Key
                       </Label>
                       <div className="relative">
                         <Input
                           id="stripe_publishable_key"
                           type={showStripePublishable ? "text" : "password"}
-                          value={stripeEnvironment === "sandbox" ? data.stripe_test_publishable_key : data.stripe_live_publishable_key}
-                          onChange={(e) => {
-                            if (stripeEnvironment === "sandbox") {
-                              setData("stripe_test_publishable_key", e.target.value)
-                            } else {
-                              setData("stripe_live_publishable_key", e.target.value)
-                            }
-                          }}
+                          value={stripePublishableKeyByEnvironment[stripeEnvironment]}
+                          onChange={(e) => setStripePublishableKey(stripeEnvironment, e.target.value)}
                           className="pr-10"
-                          placeholder={stripeEnvironment === "sandbox" ? "Enter Test Publishable Key (pk_test_...)" : "Enter Live Publishable Key (pk_live_...)"}
+                          placeholder={stripePublishablePlaceholders[stripeEnvironment]}
                         />
                         <Button
                           type="button"
@@ -248,30 +363,22 @@ export default function PaymentMethodSettings({ settings }: Props) {
                           )}
                         </Button>
                       </div>
-                      {(errors.stripe_test_publishable_key || errors.stripe_live_publishable_key) && (
-                        <p className="text-sm text-red-500 mt-1">
-                          {stripeEnvironment === "sandbox" ? errors.stripe_test_publishable_key : errors.stripe_live_publishable_key}
-                        </p>
+                      {stripePublishableError && (
+                        <p className="text-sm text-red-500 mt-1">{stripePublishableError}</p>
                       )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="stripe_secret_key">
-                        {stripeEnvironment === "sandbox" ? "Test" : "Live"} Secret Key
+                        {stripeEnvironmentLabels[stripeEnvironment]} Secret Key
                       </Label>
                       <div className="relative">
                         <Input
                           id="stripe_secret_key"
                           type={showStripeSecret ? "text" : "password"}
-                          value={stripeEnvironment === "sandbox" ? data.stripe_test_secret_key : data.stripe_live_secret_key}
-                          onChange={(e) => {
-                            if (stripeEnvironment === "sandbox") {
-                              setData("stripe_test_secret_key", e.target.value)
-                            } else {
-                              setData("stripe_live_secret_key", e.target.value)
-                            }
-                          }}
+                          value={stripeSecretKeyByEnvironment[stripeEnvironment]}
+                          onChange={(e) => setStripeSecretKey(stripeEnvironment, e.target.value)}
                           className="pr-10"
-                          placeholder={stripeEnvironment === "sandbox" ? "Enter Test Secret Key (sk_test_...)" : "Enter Live Secret Key (sk_live_...)"}
+                          placeholder={stripeSecretPlaceholders[stripeEnvironment]}
                         />
                         <Button
                           type="button"
@@ -287,33 +394,32 @@ export default function PaymentMethodSettings({ settings }: Props) {
                           )}
                         </Button>
                       </div>
-                      {(errors.stripe_test_secret_key || errors.stripe_live_secret_key) && (
-                        <p className="text-sm text-red-500 mt-1">
-                          {stripeEnvironment === "sandbox" ? errors.stripe_test_secret_key : errors.stripe_live_secret_key}
-                        </p>
+                      {stripeSecretError && (
+                        <p className="text-sm text-red-500 mt-1">{stripeSecretError}</p>
                       )}
                     </div>
 
                     {/* Environment Dropdown at the bottom */}
                     <div className="space-y-2 border-t pt-4">
-                      <Label htmlFor="stripe_environment">Environment</Label>
+                      <Label htmlFor="stripe_environment">Active Mode</Label>
                       <Select
                         value={stripeEnvironment}
-                        onValueChange={(value: "sandbox" | "live") => {
+                        onValueChange={(value: StripeEnvironment) => {
                           setStripeEnvironment(value)
                           setData("stripe_mode_environment", value)
                         }}
                       >
                         <SelectTrigger id="stripe_environment">
-                          <SelectValue placeholder="Select environment" />
+                          <SelectValue placeholder="Select mode" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="sandbox">Sandbox (Test)</SelectItem>
+                          <SelectItem value="sandbox">Sandbox</SelectItem>
+                          <SelectItem value="test">Test</SelectItem>
                           <SelectItem value="live">Live</SelectItem>
                         </SelectContent>
                       </Select>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Select Sandbox for test mode or Live for production. Customer will be created/fetched automatically when you save.
+                        Choose which Stripe account the app uses. Sandbox is for Bridge Issuing / isolated sandbox keys, Test for Stripe test mode, and Live for production.
                       </p>
                     </div>
                   </div>

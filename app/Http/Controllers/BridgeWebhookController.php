@@ -431,6 +431,22 @@ class BridgeWebhookController extends Controller
 
         DB::transaction(function () use ($integration, $eventType, $eventObject, $status, $changes, $customerId) {
             $statusUpdated = false;
+            $customerStatus = strtolower((string) ($eventObject['status'] ?? $status ?? ''));
+
+            if (
+                $customerStatus === 'not_started'
+                && $integration->integratable_type !== Organization::class
+                && $integration->kyc_status === 'approved'
+            ) {
+                $integration->kyc_status = 'not_started';
+                $statusUpdated = true;
+
+                Log::info('Reset stale KYC status for new Bridge customer', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'event_type' => $eventType,
+                ]);
+            }
 
             // Handle status transitions from event_object_changes
             if (!empty($changes)) {
@@ -563,7 +579,7 @@ class BridgeWebhookController extends Controller
             // Update TOS status if TOS was accepted
             if ($hasAcceptedTos || $tosAcceptedFromEndorsements || $signedAgreementId) {
                 $oldTosStatus = $integration->tos_status;
-                $newTosStatus = 'accepted';
+                $newTosStatus = BridgeIntegration::normalizeTosStatus('approved');
 
                 if ($oldTosStatus !== $newTosStatus) {
                     $integration->tos_status = $newTosStatus;
@@ -698,16 +714,27 @@ class BridgeWebhookController extends Controller
             }
 
             if ($isApproved && $integration->bridge_customer_id) {
-                Log::info('Account is approved - triggering resource creation', [
-                    'integration_id' => $integration->id,
-                    'customer_id' => $customerId,
-                    'is_business' => $isBusiness,
-                    'kyb_status' => $integration->kyb_status,
-                    'kyc_status' => $integration->kyc_status,
-                ]);
+                $bridgeCustomerStatus = strtolower((string) ($eventObject['status'] ?? ''));
 
-                // Auto-create wallet, virtual account, card account, and liquidation address when approved
-                $this->createWalletVirtualAccountAndCardAccount($integration, $customerId);
+                if ($bridgeCustomerStatus !== 'active') {
+                    Log::info('Bridge customer not active yet - skipping resource creation', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'bridge_customer_status' => $bridgeCustomerStatus ?: 'unknown',
+                        'event_type' => $eventType,
+                    ]);
+                } else {
+                    Log::info('Account is approved - triggering resource creation', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'is_business' => $isBusiness,
+                        'kyb_status' => $integration->kyb_status,
+                        'kyc_status' => $integration->kyc_status,
+                    ]);
+
+                    // Auto-create wallet, virtual account, card account, and liquidation address when approved
+                    $this->createWalletVirtualAccountAndCardAccount($integration, $customerId);
+                }
             } else {
                 Log::info('Account not approved yet - skipping resource creation', [
                     'integration_id' => $integration->id,
@@ -767,6 +794,33 @@ class BridgeWebhookController extends Controller
         
         if (!$integration && $customerId) {
             $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+        }
+
+        if (
+            $integration
+            && $customerId
+            && $integration->bridge_customer_id
+            && $integration->bridge_customer_id !== $customerId
+        ) {
+            Log::warning('Bridge KYC link event: customer_id mismatch — skipping stale webhook', [
+                'integration_id' => $integration->id,
+                'integration_customer_id' => $integration->bridge_customer_id,
+                'event_customer_id' => $customerId,
+                'link_id' => $linkId,
+                'event_type' => $eventType,
+            ]);
+
+            return;
+        }
+
+        if (str_contains(strtolower($eventType), 'deleted')) {
+            Log::info('Bridge KYC link deleted — skipping status sync and resource creation', [
+                'link_id' => $linkId,
+                'customer_id' => $customerId,
+                'event_type' => $eventType,
+            ]);
+
+            return;
         }
 
         // Also try to find by email if available (for KYC links created before customer_id is assigned)
@@ -1773,6 +1827,18 @@ class BridgeWebhookController extends Controller
         // Refresh integration to ensure we have the latest statuses from database
         $integration->refresh();
 
+        $customerResult = $this->bridgeService->getCustomer($customerId);
+        $bridgeCustomerStatus = strtolower((string) ($customerResult['data']['status'] ?? ''));
+        if ($bridgeCustomerStatus !== 'active') {
+            Log::info('Bridge customer not active on API — skipping resource creation', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'bridge_customer_status' => $bridgeCustomerStatus ?: 'unknown',
+            ]);
+
+            return;
+        }
+
         // For business accounts, ONLY kyb_status must be approved (not KYC)
         // For individual accounts, only kyc_status needs to be approved
         $isBusiness = $integration->integratable_type === \App\Models\Organization::class;
@@ -2576,7 +2642,7 @@ class BridgeWebhookController extends Controller
                     $customerResult = $this->bridgeService->getCustomer($customerId);
                     if ($customerResult['success'] && isset($customerResult['data'])) {
                         $customer = $customerResult['data'];
-                        $hasDateOfBirth = !empty($customer['birth_date'] ?? null);
+                        $hasDateOfBirth = $this->bridgeService->customerHasDateOfBirth($customer);
 
                         // If Bridge doesn't have birth_date, try to get it from submission_data and update Bridge
                         if (!$hasDateOfBirth) {
@@ -2640,15 +2706,61 @@ class BridgeWebhookController extends Controller
                                 }
                             }
 
-                            if (!$hasDateOfBirth) {
+                            if (! $hasDateOfBirth) {
                                 $shouldCreateCardAccount = false;
-                                Log::info('Skipping card account creation - customer does not have date of birth on file', [
+                                Log::info('Skipping card account creation - individual needs cards endorsement KYC (date of birth not confirmed)', [
                                     'integration_id' => $integration->id,
                                     'customer_id' => $customerId,
                                     'submission_id' => $submission->id ?? null,
                                     'has_submission' => $submission ? true : false,
                                     'has_submission_data' => $submission && $submission->submission_data ? true : false,
                                     'has_birth_date_in_submission' => isset($submissionData['birth_date']),
+                                    'needs_cards_endorsement' => $this->bridgeService->customerNeedsCardsEndorsementFlow($customer),
+                                ]);
+                            }
+                        }
+
+                        if ($shouldCreateCardAccount && $this->bridgeService->customerNeedsCardsEndorsementFlow($customer)) {
+                            $endorsementInfo = $this->bridgeService->getCardsEndorsementInfo($customer);
+
+                            if (! $endorsementInfo['approved']) {
+                                if (! $endorsementInfo['exists']) {
+                                    Log::info('Requesting cards endorsement for individual account', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                    ]);
+
+                                    $endorsementResult = $this->bridgeService->requestEndorsement($customerId, [
+                                        'endorsement_type' => 'cards',
+                                    ]);
+
+                                    if ($endorsementResult['success']) {
+                                        Log::info('Cards endorsement requested successfully for individual account', [
+                                            'integration_id' => $integration->id,
+                                            'customer_id' => $customerId,
+                                            'endorsement_data' => $endorsementResult['data'] ?? null,
+                                        ]);
+                                    } else {
+                                        Log::warning('Failed to request cards endorsement for individual account', [
+                                            'integration_id' => $integration->id,
+                                            'customer_id' => $customerId,
+                                            'error' => $endorsementResult['error'] ?? 'Unknown error',
+                                        ]);
+                                    }
+                                } else {
+                                    Log::info('Cards endorsement exists but not approved yet for individual account', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'endorsement_status' => $endorsementInfo['status'],
+                                    ]);
+                                }
+
+                                $shouldCreateCardAccount = false;
+                                Log::info('Skipping card account creation for individual account - cards endorsement not approved', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'endorsement_exists' => $endorsementInfo['exists'],
+                                    'endorsement_status' => $endorsementInfo['status'],
                                 ]);
                             }
                         }
@@ -2719,17 +2831,9 @@ class BridgeWebhookController extends Controller
                 if ($shouldCreateCardAccount) {
                 // Create card account - Bridge.xyz API may auto-create, but we explicitly create it
                 // POST /customers/{customerId}/card_accounts
-                // Determine chain and currency based on environment
-                $isSandbox = $this->bridgeService->isSandbox();
-                $chain = $isSandbox ? 'ethereum' : 'solana';
-                    $currency = $isSandbox ? 'usdc' : 'usdc';
+                $cardData = $this->bridgeService->buildCardAccountPayloadForIntegration($integration);
                 
-                $cardData = [
-                    'chain' => $chain,
-                    'currency' => $currency,
-                ];
-                
-                $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+                $cardAccountResult = $this->bridgeService->issueVirtualCard($integration, $customerId, $isBusiness);
 
                 if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
                     $cardAccountData = $cardAccountResult['data'];
@@ -2803,7 +2907,7 @@ class BridgeWebhookController extends Controller
                                                         ]);
                                                         
                                                         // Retry card account creation
-                                                        $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+                                                        $cardAccountResult = $this->bridgeService->issueVirtualCard($integration, $customerId, $isBusiness);
                                                         
                                                         if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
                                                             $cardAccountData = $cardAccountResult['data'];
@@ -2858,7 +2962,7 @@ class BridgeWebhookController extends Controller
                                         ]);
                                         
                                         // Retry card account creation
-                                        $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+                                        $cardAccountResult = $this->bridgeService->issueVirtualCard($integration, $customerId, $isBusiness);
                                         
                                         if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
                                             $cardAccountData = $cardAccountResult['data'];
@@ -2898,7 +3002,7 @@ class BridgeWebhookController extends Controller
                                     ]);
 
                                     // Retry creating card account after enabling
-                                    $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+                                    $cardAccountResult = $this->bridgeService->issueVirtualCard($integration, $customerId, $isBusiness);
 
                                     if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
                                         $cardAccountData = $cardAccountResult['data'];

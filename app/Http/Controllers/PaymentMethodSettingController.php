@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\StripePaymentSettingsProvisioningJob;
 use App\Models\PaymentMethod;
+use App\Services\StripeConfigService;
 use App\Services\StripeEnvironmentSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -36,15 +37,23 @@ class PaymentMethodSettingController extends Controller
 
             'stripe_mode_environment' => $stripe->mode_environment ?? 'sandbox',
 
-            // Separate test credentials
+            // Sandbox credentials (Bridge Issuing / isolated sandbox account)
+            'stripe_sandbox_publishable_key' => $stripe->sandbox_publishable_key ?? null,
+            'stripe_sandbox_secret_key' => $stripe->sandbox_secret_key ?? null,
+            'stripe_sandbox_customer_id' => $stripe->sandbox_customer_id ?? null,
+            'stripe_sandbox_account_id' => $stripe->sandbox_account_id ?? null,
+
+            // Test credentials
             'stripe_test_publishable_key' => $stripe->test_publishable_key ?? null,
             'stripe_test_secret_key' => $stripe->test_secret_key ?? null,
             'stripe_test_customer_id' => $stripe->test_customer_id ?? null,
+            'stripe_test_account_id' => $stripe->test_account_id ?? null,
 
             // Separate live credentials
             'stripe_live_publishable_key' => $stripe->live_publishable_key ?? null,
             'stripe_live_secret_key' => $stripe->live_secret_key ?? null,
             'stripe_live_customer_id' => $stripe->live_customer_id ?? null,
+            'stripe_live_account_id' => $stripe->live_account_id ?? null,
         ];
 
         return Inertia::render('settings/payment-methods', [
@@ -67,7 +76,11 @@ class PaymentMethodSettingController extends Controller
             'paypal_client_secret' => ['nullable', 'string', 'max:255'],
             'paypal_mode_environment' => ['required', 'string', 'in:sandbox,live'],
 
-            'stripe_mode_environment' => ['required', 'string', 'in:sandbox,live'],
+            'stripe_mode_environment' => ['required', 'string', 'in:sandbox,test,live'],
+
+            // Sandbox credentials
+            'stripe_sandbox_publishable_key' => ['nullable', 'string', 'max:255'],
+            'stripe_sandbox_secret_key' => ['nullable', 'string', 'max:255'],
 
             // Test credentials
             'stripe_test_publishable_key' => ['nullable', 'string', 'max:255'],
@@ -90,7 +103,8 @@ class PaymentMethodSettingController extends Controller
         $environmentChanged = $oldStripe && ($oldEnvironment !== $request->stripe_mode_environment);
         $credentialsChanged = $this->stripeCredentialsChanged($oldStripe, $request);
         $stripeCredentialsAddedFirstTime = ! $oldStripe && (
-            trim((string) $request->stripe_test_secret_key) !== ''
+            trim((string) $request->stripe_sandbox_secret_key) !== ''
+            || trim((string) $request->stripe_test_secret_key) !== ''
             || trim((string) $request->stripe_live_secret_key) !== ''
         );
 
@@ -107,23 +121,36 @@ class PaymentMethodSettingController extends Controller
         // Prepare Stripe config (customer IDs and webhook secrets are filled by StripePaymentSettingsProvisioningJob)
         $stripeConfig = [
             'mode_environment' => $request->stripe_mode_environment,
+            'sandbox_publishable_key' => $request->stripe_sandbox_publishable_key,
+            'sandbox_secret_key' => $request->stripe_sandbox_secret_key,
             'test_publishable_key' => $request->stripe_test_publishable_key,
             'test_secret_key' => $request->stripe_test_secret_key,
             'live_publishable_key' => $request->stripe_live_publishable_key,
             'live_secret_key' => $request->stripe_live_secret_key,
         ];
 
+        if ($oldStripe && $this->stripeSandboxKeysChanged($oldStripe, $request)) {
+            $stripeConfig['sandbox_customer_id'] = null;
+            $stripeConfig['sandbox_account_id'] = null;
+            $stripeConfig['sandbox_webhook_secret'] = null;
+            $stripeConfig['sandbox_donation_product_id'] = null;
+        }
+
         if ($oldStripe && $this->stripeTestKeysChanged($oldStripe, $request)) {
             $stripeConfig['test_customer_id'] = null;
+            $stripeConfig['test_account_id'] = null;
             $stripeConfig['test_webhook_secret'] = null;
             $stripeConfig['test_donation_product_id'] = null;
         }
 
         if ($oldStripe && $this->stripeLiveKeysChanged($oldStripe, $request)) {
             $stripeConfig['live_customer_id'] = null;
+            $stripeConfig['live_account_id'] = null;
             $stripeConfig['live_webhook_secret'] = null;
             $stripeConfig['live_donation_product_id'] = null;
         }
+
+        $stripeConfig = $this->attachResolvedStripeAccountIds($stripeConfig);
 
         PaymentMethod::setConfig('stripe', $stripeConfig);
 
@@ -159,8 +186,15 @@ class PaymentMethodSettingController extends Controller
             return false;
         }
 
-        return $this->stripeTestKeysChanged($old, $request)
+        return $this->stripeSandboxKeysChanged($old, $request)
+            || $this->stripeTestKeysChanged($old, $request)
             || $this->stripeLiveKeysChanged($old, $request);
+    }
+
+    private function stripeSandboxKeysChanged(PaymentMethod $old, Request $request): bool
+    {
+        return $this->normStripeKey($old->sandbox_publishable_key) !== $this->normStripeKey($request->stripe_sandbox_publishable_key)
+            || $this->normStripeKey($old->sandbox_secret_key) !== $this->normStripeKey($request->stripe_sandbox_secret_key);
     }
 
     private function stripeTestKeysChanged(PaymentMethod $old, Request $request): bool
@@ -173,5 +207,28 @@ class PaymentMethodSettingController extends Controller
     {
         return $this->normStripeKey($old->live_publishable_key) !== $this->normStripeKey($request->stripe_live_publishable_key)
             || $this->normStripeKey($old->live_secret_key) !== $this->normStripeKey($request->stripe_live_secret_key);
+    }
+
+    /**
+     * @param  array<string, mixed>  $stripeConfig
+     * @return array<string, mixed>
+     */
+    private function attachResolvedStripeAccountIds(array $stripeConfig): array
+    {
+        foreach (['sandbox', 'test', 'live'] as $environment) {
+            $secretKey = trim((string) ($stripeConfig["{$environment}_secret_key"] ?? ''));
+
+            if ($secretKey === '') {
+                continue;
+            }
+
+            $accountId = StripeConfigService::resolveAccountIdWithSecretKey($secretKey);
+
+            if ($accountId) {
+                $stripeConfig["{$environment}_account_id"] = $accountId;
+            }
+        }
+
+        return $stripeConfig;
     }
 }

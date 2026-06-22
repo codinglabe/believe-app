@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\BridgeIntegration;
+use App\Models\BridgeWallet;
 use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Cashier\Cashier;
 
 class BridgeService
 {
@@ -479,50 +482,208 @@ class BridgeService
     }
 
     /**
-     * Get KYC link for an existing customer
-     * GET /customers/{customerID}/kyc_link
-     * 
-     * @param string $customerId The Bridge customer ID
-     * @param string|null $endorsement Optional endorsement type (e.g., 'cards')
-     * @return array
+     * Get KYC link for an existing customer (GET /customers/{id}/kyc_link).
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/customers/retrieve-a-hosted-kyc-link-for-an-existing-customer
      */
-    public function getCustomerKycLink(string $customerId, ?string $endorsement = null): array
-    {
-        try {
-            $url = "{$this->baseUrl}/customers/{$customerId}/kyc_link";
-            
-            // Add endorsement parameter if provided
-            if ($endorsement) {
-                $url .= "?endorsement={$endorsement}";
-            }
-            
-            $response = $this->httpClient([
-                'Api-Key' => $this->apiKey,
-                'Accept' => 'application/json',
-            ])->get($url);
-            
-            if ($response->successful()) {
-                return ['success' => true, 'data' => $response->json()];
-            }
-            
+    public function getCustomerKycLink(
+        string $customerId,
+        ?string $endorsement = null,
+        ?string $redirectUri = null,
+    ): array {
+        $query = [];
+
+        if ($endorsement) {
+            $query['endorsement'] = $endorsement;
+        }
+
+        if ($redirectUri) {
+            $query['redirect_uri'] = $redirectUri;
+        }
+
+        $result = $this->makeRequest('GET', "/customers/{$customerId}/kyc_link", $query);
+
+        if (! ($result['success'] ?? false)) {
             Log::warning('Failed to get customer KYC link', [
                 'customer_id' => $customerId,
-                'status' => $response->status(),
-                'response' => $response->body(),
+                'endorsement' => $endorsement,
+                'status' => $result['status'] ?? null,
+                'error' => $result['error'] ?? null,
             ]);
-            
-            return [
-                'success' => false, 
-                'error' => $response->body(),
-                'status' => $response->status(),
-            ];
-        } catch (\Exception $e) {
-            Log::error('Exception getting customer KYC link', [
-                'customer_id' => $customerId,
-                'error' => $e->getMessage(),
-            ]);
-            return ['success' => false, 'error' => $e->getMessage()];
         }
+
+        return $result;
+    }
+
+    /**
+     * Cards endorsement KYC link — prefers GET /customers/{id}/kyc_link?endorsement=cards.
+     * When Bridge sandbox returns 500 on that endpoint, falls back to the KYC link resource
+     * (POST /kyc_links with endorsements: cards) or plain GET /customers/{id}/kyc_link
+     * for customers that already have the cards endorsement.
+     *
+     * @see https://apidocs.bridge.xyz/platform/cards/overview/kyc
+     */
+    public function resolveCardsEndorsementKycLink(
+        string $customerId,
+        ?string $redirectUri = null,
+        ?string $kycLinkId = null,
+    ): array {
+        if ($this->isSandbox()) {
+            $this->ensureCardsProductEnabled();
+        }
+
+        $this->ensureCustomerHasCardsEndorsement($customerId);
+
+        $result = ['success' => false, 'error' => 'Failed to get cards endorsement KYC link'];
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            if ($attempt > 1) {
+                sleep(1);
+            }
+
+            $attemptRedirect = $attempt === 1 ? $redirectUri : null;
+            $result = $this->getCustomerKycLink($customerId, 'cards', $attemptRedirect);
+            $url = $this->extractKycLinkUrl($result);
+
+            if ($url !== null) {
+                Log::info('Cards endorsement KYC link resolved via GET ?endorsement=cards', [
+                    'customer_id' => $customerId,
+                    'attempt' => $attempt,
+                ]);
+
+                return [
+                    'success' => true,
+                    'url' => $url,
+                    'data' => $result['data'] ?? ['url' => $url],
+                    'source' => 'customer_kyc_link_cards',
+                    'endorsement' => 'cards',
+                ];
+            }
+
+            if (($result['status'] ?? 0) !== 500) {
+                break;
+            }
+        }
+
+        if ($kycLinkId) {
+            $linkResult = $this->getKYCLink($kycLinkId);
+            $url = $this->extractKycLinkUrl($linkResult);
+
+            if ($url !== null) {
+                Log::warning('GET ?endorsement=cards failed — using KYC link resource fallback', [
+                    'customer_id' => $customerId,
+                    'kyc_link_id' => $kycLinkId,
+                    'cards_get_error' => $result['error'] ?? null,
+                ]);
+
+                return [
+                    'success' => true,
+                    'url' => $url,
+                    'data' => $linkResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
+                    'source' => 'kyc_links_resource',
+                    'endorsement' => 'cards',
+                ];
+            }
+        }
+
+        $plainResult = $this->getCustomerKycLink($customerId, null, $redirectUri);
+        $plainUrl = $this->extractKycLinkUrl($plainResult);
+
+        if ($plainUrl !== null) {
+            $customerResult = $this->getCustomer($customerId);
+            $hasCards = ($customerResult['success'] ?? false)
+                && ($this->getCardsEndorsementInfo($customerResult['data'] ?? [])['exists'] ?? false);
+
+            if ($hasCards) {
+                Log::warning('GET ?endorsement=cards failed — using customer kyc_link without endorsement param', [
+                    'customer_id' => $customerId,
+                    'cards_get_error' => $result['error'] ?? null,
+                ]);
+
+                return [
+                    'success' => true,
+                    'url' => $plainUrl,
+                    'data' => $plainResult['data'] ?? ['url' => $plainUrl],
+                    'source' => 'customer_kyc_link_with_cards_endorsement',
+                    'endorsement' => 'cards',
+                ];
+            }
+        }
+
+        $lastError = $result['error'] ?? 'Failed to get cards endorsement KYC link';
+
+        Log::error('Cards endorsement KYC link unavailable — all resolution paths failed', [
+            'customer_id' => $customerId,
+            'kyc_link_id' => $kycLinkId,
+            'status' => $result['status'] ?? null,
+            'error' => $lastError,
+        ]);
+
+        return [
+            'success' => false,
+            'error' => $lastError,
+            'endorsement' => 'cards',
+            'source' => 'customer_kyc_link_cards',
+        ];
+    }
+
+    public function getCardsEndorsementKycLink(string $customerId, ?string $redirectUri = null, ?string $kycLinkId = null): array
+    {
+        $resolved = $this->resolveCardsEndorsementKycLink($customerId, $redirectUri, $kycLinkId);
+
+        if ($resolved['success'] ?? false) {
+            return [
+                'success' => true,
+                'url' => $resolved['url'] ?? $this->extractKycLinkUrl($resolved),
+            ];
+        }
+
+        return [
+            'success' => false,
+            'error' => $resolved['error'] ?? 'Failed to get cards endorsement verification link',
+        ];
+    }
+
+    protected function ensureCustomerHasCardsEndorsement(string $customerId): void
+    {
+        $customerResult = $this->getCustomer($customerId);
+        if (! ($customerResult['success'] ?? false)) {
+            return;
+        }
+
+        $endorsementInfo = $this->getCardsEndorsementInfo($customerResult['data'] ?? []);
+        if ($endorsementInfo['exists'] ?? false) {
+            return;
+        }
+
+        $updateResult = $this->updateCustomer($customerId, [
+            'endorsements' => ['base', 'sepa', 'cards'],
+        ]);
+
+        Log::info('Requested cards endorsement on Bridge customer before KYC link', [
+            'customer_id' => $customerId,
+            'success' => $updateResult['success'] ?? false,
+            'error' => $updateResult['error'] ?? null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function extractKycLinkUrl(array $result): ?string
+    {
+        if (! ($result['success'] ?? false)) {
+            return null;
+        }
+
+        $data = $result['data'] ?? [];
+
+        $url = $data['url']
+            ?? $data['kyc_link']
+            ?? $data['link_url']
+            ?? null;
+
+        return is_string($url) && $url !== '' ? $url : null;
     }
 
     /**
@@ -531,63 +692,94 @@ class BridgeService
      * @param string $kycLinkUrl The original KYC link URL
      * @return string|null The widget URL for iframe, or null if conversion fails
      */
-    public function convertKycLinkToWidgetUrl(string $kycLinkUrl): ?string
+    public function convertKycLinkToWidgetUrl(string $kycLinkUrl, ?string $iframeOrigin = null): ?string
     {
         try {
-            // Parse the KYC link URL to extract parameters
-            // Example: https://bridge.withpersona.com/verify?fields[developer_id]=xxx&fields[email_address]=xxx&fields[iqt_token]=xxx&environment-id=xxx&inquiry-template-id=xxx&reference-id=xxx
-            
+            $iframeOrigin = $iframeOrigin ?: request()->getSchemeAndHttpHost();
+
+            // Bridge docs: replace /verify with /widget and pass iframe-origin
+            if (str_contains($kycLinkUrl, '/widget')) {
+                return $this->appendIframeOriginToPersonaUrl($kycLinkUrl, $iframeOrigin);
+            }
+
+            if (str_contains($kycLinkUrl, '/verify')) {
+                $widgetUrl = str_replace('/verify', '/widget', $kycLinkUrl);
+
+                return $this->appendIframeOriginToPersonaUrl($widgetUrl, $iframeOrigin);
+            }
+
+            // Fallback: rebuild widget URL from verify query params
             $parsedUrl = parse_url($kycLinkUrl);
-            if (!$parsedUrl || !isset($parsedUrl['query'])) {
+            if (! $parsedUrl || ! isset($parsedUrl['query'])) {
                 Log::warning('Invalid KYC link URL format', ['url' => $kycLinkUrl]);
+
                 return null;
             }
 
             parse_str($parsedUrl['query'], $params);
-            
-            // Extract required parameters
+
             $iqtToken = $params['fields']['iqt_token'] ?? null;
             $environmentId = $params['environment-id'] ?? null;
             $inquiryTemplateId = $params['inquiry-template-id'] ?? null;
             $developerId = $params['fields']['developer_id'] ?? null;
 
-            if (!$iqtToken || !$environmentId || !$inquiryTemplateId) {
+            if (! $iqtToken || ! $inquiryTemplateId) {
                 Log::warning('Missing required parameters in KYC link', [
                     'url' => $kycLinkUrl,
-                    'params' => $params
+                    'params' => $params,
                 ]);
+
                 return null;
             }
 
-            // Determine environment (sandbox or production)
-            $environment = $this->baseUrl === 'https://api.sandbox.bridge.xyz/v0' ? 'sandbox' : 'production';
-            
-            // Build widget URL
-            $widgetUrl = 'https://bridge.withpersona.com/widget?' . http_build_query([
+            $environment = $this->isSandbox() ? 'sandbox' : 'production';
+
+            $query = [
                 'environment' => $environment,
                 'inquiry-template-id' => $inquiryTemplateId,
                 'fields[iqt_token]' => $iqtToken,
-                'iframe-origin' => request()->getSchemeAndHttpHost(),
-            ]);
+                'iframe-origin' => $iframeOrigin,
+            ];
 
-            // Add developer_id if present
+            if ($environmentId) {
+                $query['environment-id'] = $environmentId;
+            }
+
             if ($developerId) {
-                $widgetUrl .= '&fields[developer_id]=' . urlencode($developerId);
+                $query['fields[developer_id]'] = $developerId;
             }
 
-            // Add email if present
             if (isset($params['fields']['email_address'])) {
-                $widgetUrl .= '&fields[email_address]=' . urlencode($params['fields']['email_address']);
+                $query['fields[email_address]'] = $params['fields']['email_address'];
             }
 
-            return $widgetUrl;
+            return 'https://bridge.withpersona.com/widget?' . http_build_query($query);
         } catch (\Exception $e) {
             Log::error('Failed to convert KYC link to widget URL', [
                 'url' => $kycLinkUrl,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return null;
         }
+    }
+
+    private function appendIframeOriginToPersonaUrl(string $url, string $iframeOrigin): string
+    {
+        $parts = parse_url($url);
+        if (! $parts) {
+            return $url;
+        }
+
+        parse_str($parts['query'] ?? '', $query);
+        $query['iframe-origin'] = $iframeOrigin;
+
+        $scheme = $parts['scheme'] ?? 'https';
+        $host = $parts['host'] ?? '';
+        $path = $parts['path'] ?? '';
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+
+        return $scheme . '://' . $host . $port . $path . '?' . http_build_query($query);
     }
 
     /**
@@ -792,30 +984,382 @@ class BridgeService
     // ==================== CARD ACCOUNTS ====================
 
     /**
-     * Enable cards product for sandbox environment
-     * This initializes the cards product in sandbox with default funding strategy
-     * 
-     * @return array Response indicating success or error
+     * Link Bridge sandbox cards to the Laravel Cashier Stripe account (POST /cards/enable).
+     *
+     * @see https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox
      */
-    public function enableCardsProduct(): array
+    public function enableCardsProduct(?string $programType = null, bool $force = false): array
     {
-        // Endpoint: POST /cards/enable
-        // This sets up the sandbox environment with default funding strategy
-        return $this->makeRequest('POST', '/cards/enable', []);
+        if (! $this->isSandbox()) {
+            return [
+                'success' => false,
+                'error' => 'POST /cards/enable is only supported in Bridge sandbox.',
+            ];
+        }
+
+        if ($force) {
+            $bridge = PaymentMethod::getConfig('bridge');
+            if ($bridge) {
+                $config = is_array($bridge->additional_config) ? $bridge->additional_config : [];
+                unset($config['cards_enabled_at']);
+                $bridge->update(['additional_config' => $config]);
+            }
+        }
+
+        $stripeAccountId = $this->resolveStripeAccountIdForCards();
+        if (! $stripeAccountId) {
+            return [
+                'success' => false,
+                'error' => 'Stripe account ID could not be resolved. Configure Laravel Cashier Stripe keys under Settings → Stripe & PayPal, or set a Stripe Account ID override in Bridge settings.',
+            ];
+        }
+
+        $programType = $programType ?? $this->getCardsProgramType();
+
+        $result = $this->makeRequest('POST', '/cards/enable', [
+            'stripe_account_id' => $stripeAccountId,
+            'program_type' => $programType,
+        ]);
+
+        if ($result['success']) {
+            $this->persistCardsEnableMetadata($stripeAccountId, $programType);
+
+            return $result;
+        }
+
+        $errorMessage = strtolower((string) ($result['error'] ?? ''));
+        if (str_contains($errorMessage, 'already enabled')) {
+            $this->persistCardsEnableMetadata($stripeAccountId, $programType);
+
+            return [
+                'success' => true,
+                'already_enabled' => true,
+                'data' => $result['response'] ?? null,
+            ];
+        }
+
+        return $result;
     }
 
     /**
-     * Create a card account for a customer
-     * 
-     * @param string $customerId Bridge customer ID
-     * @param array $cardData Card account data (optional, Bridge may auto-create)
-     * @return array Response with card account data or error
+     * Ensure sandbox cards product is linked to Cashier Stripe (idempotent).
+     */
+    public function ensureCardsProductEnabled(): array
+    {
+        if (! $this->isSandbox()) {
+            return ['success' => true, 'skipped' => true];
+        }
+
+        $bridge = PaymentMethod::getConfig('bridge');
+        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+
+        if (! empty($config['cards_enabled_at'])) {
+            return ['success' => true, 'already_enabled' => true];
+        }
+
+        return $this->enableCardsProduct();
+    }
+
+    /**
+     * Resolve Stripe Connect/platform account ID for Bridge cards enable.
+     * Uses Cashier (PaymentMethod stripe row) with optional Bridge settings override.
+     */
+    public function resolveStripeAccountIdForCards(): ?string
+    {
+        $bridge = PaymentMethod::getConfig('bridge');
+        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+
+        $overrideKey = $this->isSandbox() ? 'sandbox_stripe_account_id' : 'live_stripe_account_id';
+        $override = trim((string) ($config[$overrideKey] ?? ''));
+
+        if ($override !== '' && str_starts_with($override, 'acct_')) {
+            return $override;
+        }
+
+        $stripeEnv = $this->isSandbox() ? 'sandbox' : 'live';
+
+        if (! StripeConfigService::configureStripe($stripeEnv)) {
+            StripeConfigService::configureStripe('sandbox');
+        }
+
+        try {
+            $account = Cashier::stripe()->accounts->retrieve();
+
+            return $account->id ?? null;
+        } catch (\Throwable $e) {
+            Log::warning('Failed to resolve Stripe account ID for Bridge cards via Cashier', [
+                'environment' => $this->environment,
+                'stripe_env' => $stripeEnv,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function getCardsProgramType(): string
+    {
+        $bridge = PaymentMethod::getConfig('bridge');
+        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+        $type = strtolower((string) ($config['cards_program_type'] ?? 'consumer'));
+
+        return in_array($type, ['consumer', 'commercial'], true) ? $type : 'consumer';
+    }
+
+    public function isStripeConfiguredForCards(): bool
+    {
+        $stripeEnv = $this->isSandbox() ? 'sandbox' : 'live';
+
+        return StripeConfigService::getCredentials($stripeEnv) !== null
+            || ! empty(config('cashier.secret'))
+            || ! empty(config('services.stripe.secret'));
+    }
+
+    /**
+     * Check whether Cashier's Stripe account has Issuing enabled (Bridge Cards app installed).
+     */
+    public function getStripeIssuingReadiness(): array
+    {
+        $accountId = $this->resolveStripeAccountIdForCards();
+
+        if (! $accountId) {
+            return [
+                'configured' => false,
+                'account_id' => null,
+                'issuing_enabled' => false,
+                'needs_bridge_stripe_app' => true,
+                'message' => 'Configure Stripe keys under Settings → Stripe & PayPal first.',
+            ];
+        }
+
+        $stripeEnv = $this->isSandbox() ? 'sandbox' : 'live';
+        StripeConfigService::configureStripe($stripeEnv);
+
+        try {
+            Cashier::stripe()->issuing->cardholders->all(['limit' => 1]);
+
+            return [
+                'configured' => true,
+                'account_id' => $accountId,
+                'issuing_enabled' => true,
+                'needs_bridge_stripe_app' => false,
+                'message' => 'Stripe Issuing is active on this account.',
+            ];
+        } catch (\Throwable $e) {
+            $message = $e->getMessage();
+            $needsApp = stripos($message, 'not set up to use Issuing') !== false
+                || stripos($message, 'issuing') !== false;
+
+            return [
+                'configured' => true,
+                'account_id' => $accountId,
+                'issuing_enabled' => false,
+                'needs_bridge_stripe_app' => $needsApp,
+                'message' => $needsApp
+                    ? 'Install the Bridge Cards Stripe App on your Stripe Sandbox, then click Enable Bridge Cards here. (Sandbox keys still start with sk_test_ — that is normal.)'
+                    : $message,
+            ];
+        }
+    }
+
+    private function persistCardsEnableMetadata(string $stripeAccountId, string $programType): void
+    {
+        $bridge = PaymentMethod::getConfig('bridge');
+
+        if (! $bridge) {
+            return;
+        }
+
+        $config = is_array($bridge->additional_config) ? $bridge->additional_config : [];
+        $config['cards_enabled_at'] = now()->toIso8601String();
+        $config['cards_enable_stripe_account_id'] = $stripeAccountId;
+        $config['cards_program_type'] = $programType;
+
+        $bridge->update(['additional_config' => $config]);
+    }
+
+    /**
+     * Create a card account for a customer (legacy Bridge API — deprecated for issuance).
+     *
+     * @deprecated Card creation migrated to Stripe Issuing — use issueVirtualCard().
      */
     public function createCardAccount(string $customerId, array $cardData = []): array
     {
-        // Correct endpoint: /customers/{customerId}/card_accounts
-        // Bridge API may auto-create card accounts, but we can explicitly create them
         return $this->makeRequest('POST', "/customers/{$customerId}/card_accounts", $cardData);
+    }
+
+    /**
+     * Issue a virtual card using Stripe Issuing + Bridge wallet (current Bridge cards flow).
+     */
+    public function issueVirtualCard(BridgeIntegration $integration, string $customerId, bool $isBusiness = false): array
+    {
+        return app(BridgeStripeIssuingService::class)->issueVirtualCard($integration, $customerId, $isBusiness);
+    }
+
+    /**
+     * Resolve an existing issued virtual card for UI display.
+     */
+    public function getVirtualCard(BridgeIntegration $integration, string $customerId): array
+    {
+        return app(BridgeStripeIssuingService::class)->getVirtualCard($integration, $customerId);
+    }
+
+    public function isStripeIssuingMigrationError(array $bridgeApiResult): bool
+    {
+        $message = strtolower((string) ($bridgeApiResult['error'] ?? ''));
+        $code = strtolower((string) ($bridgeApiResult['response']['code'] ?? ''));
+
+        return $code === 'not_allowed'
+            && str_contains($message, 'migrated to stripe issuing');
+    }
+
+    /**
+     * Parse cards endorsement status from a Bridge customer payload.
+     */
+    public function getCardsEndorsementInfo(array $customerData): array
+    {
+        $status = null;
+        $exists = false;
+        $approved = false;
+        $endorsementData = null;
+
+        foreach ($customerData['endorsements'] ?? [] as $endorsement) {
+            if (strtolower($endorsement['name'] ?? '') !== 'cards') {
+                continue;
+            }
+
+            $exists = true;
+            $status = strtolower($endorsement['status'] ?? '');
+            $approved = $status === 'approved';
+            $endorsementData = $endorsement;
+            break;
+        }
+
+        return [
+            'exists' => $exists,
+            'approved' => $approved,
+            'status' => $status,
+            'endorsement' => $endorsementData,
+        ];
+    }
+
+    /**
+     * Bridge may omit top-level birth_date even when KYC captured DOB in endorsement requirements.
+     */
+    public function customerHasDateOfBirth(array $customerData): bool
+    {
+        if (! empty($customerData['birth_date'])) {
+            return true;
+        }
+
+        foreach ($customerData['endorsements'] ?? [] as $endorsement) {
+            $complete = $endorsement['requirements']['complete'] ?? [];
+
+            if (in_array('date_of_birth', $complete, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Cards issuance requires the cards endorsement KYC flow when not yet approved.
+     *
+     * @see https://apidocs.bridge.xyz/platform/cards/overview/kyc
+     */
+    public function customerNeedsCardsEndorsementFlow(array $customerData): bool
+    {
+        $endorsementInfo = $this->getCardsEndorsementInfo($customerData);
+
+        if ($endorsementInfo['approved']) {
+            return false;
+        }
+
+        if (! $endorsementInfo['exists']) {
+            return true;
+        }
+
+        return ! in_array($endorsementInfo['status'], ['approved'], true);
+    }
+
+    /**
+     * Resolve the on-chain wallet address linked to a Bridge integration.
+     */
+    public function resolveIntegrationWalletAddress(BridgeIntegration $integration): ?string
+    {
+        $integration->loadMissing('primaryWallet');
+
+        $isSandbox = $this->isSandbox();
+        $primaryWallet = $integration->primaryWallet;
+
+        if ($primaryWallet?->wallet_address) {
+            return $primaryWallet->wallet_address;
+        }
+
+        if ($primaryWallet && $isSandbox && $primaryWallet->virtual_account_id) {
+            $address = $this->extractVirtualAccountAddress($primaryWallet->virtual_account_details);
+            if ($address) {
+                return $address;
+            }
+        }
+
+        $wallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+            ->where('is_primary', true)
+            ->first();
+
+        if ($wallet?->wallet_address) {
+            return $wallet->wallet_address;
+        }
+
+        if ($wallet && $isSandbox && $wallet->virtual_account_id) {
+            return $this->extractVirtualAccountAddress($wallet->virtual_account_details);
+        }
+
+        return null;
+    }
+
+    /**
+     * Build card account create payload per Bridge legacy card guide.
+     */
+    public function buildCardAccountPayload(?string $walletAddress = null): array
+    {
+        $isSandbox = $this->isSandbox();
+
+        $payload = [
+            'chain' => $isSandbox ? 'ethereum' : 'solana',
+            'currency' => 'usdc',
+        ];
+
+        if ($walletAddress) {
+            $payload['crypto_account'] = [
+                'type' => 'bridge_wallet',
+                'address' => $walletAddress,
+            ];
+        }
+
+        return $payload;
+    }
+
+    public function buildCardAccountPayloadForIntegration(BridgeIntegration $integration): array
+    {
+        return $this->buildCardAccountPayload($this->resolveIntegrationWalletAddress($integration));
+    }
+
+    /**
+     * @param mixed $virtualAccountDetails
+     */
+    private function extractVirtualAccountAddress($virtualAccountDetails): ?string
+    {
+        if (is_string($virtualAccountDetails)) {
+            $virtualAccountDetails = json_decode($virtualAccountDetails, true) ?? [];
+        }
+
+        if (! is_array($virtualAccountDetails)) {
+            return null;
+        }
+
+        return $virtualAccountDetails['destination']['address'] ?? null;
     }
 
     /**
@@ -1183,34 +1727,56 @@ class BridgeService
      * @param string $paymentRail Payment rail for withdrawal (default: 'ach', can be 'ach' or 'wire')
      * @return array
      */
-    public function createTransferToExternalAccount(string $customerId, string $walletId, string $externalAccountId, float $amount, string $currency = 'USD', string $paymentRail = 'ach'): array
-    {
-        // Convert USD to USDB for bridge_wallet payment rail
+    public function createTransferToExternalAccount(
+        string $customerId,
+        string $walletId,
+        string $externalAccountId,
+        float $amount,
+        string $currency = 'USD',
+        string $paymentRail = 'ach',
+        ?string $achReference = null,
+        ?string $wireMessage = null,
+    ): array {
+        // Per Bridge USD integration guide: offramp source uses bridge_wallet + usdc
         $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdc' : strtolower($currency);
-        
-        // Validate payment rail
-        $validPaymentRails = ['ach', 'wire'];
-        if (!in_array(strtolower($paymentRail), $validPaymentRails)) {
+
+        $paymentRail = strtolower($paymentRail);
+        $validPaymentRails = ['ach', 'wire', 'ach_same_day'];
+        if (! in_array($paymentRail, $validPaymentRails, true)) {
             return [
                 'success' => false,
-                'error' => 'Invalid payment rail. Must be "ach" or "wire"',
+                'error' => 'Invalid payment rail. Must be "ach", "ach_same_day", or "wire"',
                 'error_code' => 'INVALID_PAYMENT_RAIL',
             ];
         }
 
+        $formattedAmount = number_format($amount, 2, '.', '');
+
+        $destination = [
+            'payment_rail' => $paymentRail,
+            'currency' => strtolower($currency),
+            'external_account_id' => $externalAccountId,
+            // Bridge offramp examples also include amount on destination
+            'amount' => $formattedAmount,
+        ];
+
+        if ($achReference !== null && $achReference !== '' && in_array($paymentRail, ['ach', 'ach_same_day'], true)) {
+            $destination['ach_reference'] = $achReference;
+        }
+
+        if ($wireMessage !== null && $wireMessage !== '' && $paymentRail === 'wire') {
+            $destination['wire_message'] = $wireMessage;
+        }
+
         $transferData = [
-            'amount' => number_format($amount, 2, '.', ''),
+            'amount' => $formattedAmount,
             'on_behalf_of' => $customerId,
             'source' => [
                 'payment_rail' => 'bridge_wallet',
                 'currency' => $bridgeCurrency,
                 'bridge_wallet_id' => $walletId,
             ],
-            'destination' => [
-                'payment_rail' => strtolower($paymentRail), // 'ach' or 'wire'
-                'currency' => strtolower($currency),
-                'external_account_id' => $externalAccountId,
-            ],
+            'destination' => $destination,
         ];
 
         return $this->createTransfer($transferData);

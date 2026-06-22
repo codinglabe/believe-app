@@ -1,6 +1,16 @@
-import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, Menu } from 'lucide-react'
+import { motion } from 'framer-motion'
+import {
+    Plus,
+    ArrowUpRight,
+    ArrowDownLeft,
+    LayoutGrid,
+    Wallet,
+    Copy,
+    Check,
+} from 'lucide-react'
 import { ActionView } from './types'
-import { formatCurrency } from './utils'
+import { formatAddress } from './utils'
+import { BalanceCard } from './BalanceCard'
 
 interface WalletScreenProps {
     walletBalance: number | null
@@ -13,83 +23,114 @@ interface WalletScreenProps {
     onActionViewChange: (view: ActionView) => void
 }
 
+interface QuickAction {
+    id: ActionView
+    label: string
+    description: string
+    icon: React.ReactNode
+}
+
+const quickActions: QuickAction[] = [
+    {
+        id: 'addMoney',
+        label: 'Deposit',
+        description: 'Add funds',
+        icon: <Plus className="h-4 w-4" />,
+    },
+    {
+        id: 'send',
+        label: 'Send',
+        description: 'Transfer out',
+        icon: <ArrowUpRight className="h-4 w-4" />,
+    },
+    {
+        id: 'receive',
+        label: 'Receive',
+        description: 'Get paid',
+        icon: <ArrowDownLeft className="h-4 w-4" />,
+    },
+    {
+        id: 'services_menu',
+        label: 'More',
+        description: 'Bank & cards',
+        icon: <LayoutGrid className="h-4 w-4" />,
+    },
+]
+
 export function WalletScreen({
     walletBalance,
+    walletAddress,
     isLoading,
+    copied,
+    isSandbox,
     onRefresh,
+    onCopyAddress,
     onActionViewChange,
 }: WalletScreenProps) {
     return (
-        <div className="p-4 space-y-4">
-            {/* Balance - Prominent display */}
-            <div className="text-center py-4">
-                <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Balance</p>
-                <div className="flex items-center justify-center gap-2">
-                    <span className="text-3xl font-bold">
-                        ${formatCurrency(walletBalance)}
-                    </span>
-                    <button
-                        onClick={onRefresh}
-                        className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                        disabled={isLoading}
-                        title="Refresh balance"
-                    >
-                        <RefreshCw className={`h-4 w-4 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
+        <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="p-4 space-y-4"
+        >
+            <BalanceCard
+                balance={walletBalance}
+                isLoading={isLoading}
+                onRefresh={onRefresh}
+                isSandbox={isSandbox}
+                variant="hero"
+            />
+
+            {/* Wallet address */}
+            {walletAddress && (
+                <button
+                    type="button"
+                    onClick={onCopyAddress}
+                    className="w-full flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-left hover:border-purple-500/40 hover:bg-muted/60 transition-colors group"
+                >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600">
+                        <Wallet className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Wallet address</p>
+                        <p className="text-xs font-mono truncate text-foreground">{formatAddress(walletAddress, 32)}</p>
+                    </div>
+                    <div className="shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
+                        {copied ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                            <Copy className="h-4 w-4" />
+                        )}
+                    </div>
+                </button>
+            )}
+
+            {/* Quick actions */}
+            <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground px-0.5">Quick actions</p>
+                <div className="grid grid-cols-2 gap-2">
+                    {quickActions.map((action, index) => (
+                        <motion.button
+                            key={action.id}
+                            type="button"
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.2, delay: index * 0.05 }}
+                            onClick={() => onActionViewChange(action.id)}
+                            className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left hover:border-purple-500/30 hover:bg-muted/40 transition-all group"
+                        >
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm group-hover:scale-105 transition-transform">
+                                {action.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-sm font-medium">{action.label}</p>
+                                <p className="text-[11px] text-muted-foreground">{action.description}</p>
+                            </div>
+                        </motion.button>
+                    ))}
                 </div>
             </div>
-
-            {/* Transfer/Deposit Actions - MetaMask style */}
-            <div className="grid grid-cols-4 gap-2 pb-4 border-b border-border">
-                <button
-                    onClick={() => onActionViewChange('addMoney')}
-                    className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                >
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                        <Plus className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-xs font-medium">Deposit</span>
-                </button>
-                <button
-                    onClick={() => onActionViewChange('send')}
-                    className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                >
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                        <ArrowUpRight className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-xs font-medium">Send</span>
-                </button>
-                <button
-                    onClick={() => onActionViewChange('receive')}
-                    className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                >
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                        <ArrowDownLeft className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-xs font-medium">Receive</span>
-                </button>
-                {/* Swap button - commented out */}
-                {/* <button
-                    onClick={() => onActionViewChange('swap')}
-                    className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                >
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                        <ArrowRightLeft className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-xs font-medium">Swap</span>
-                </button> */}
-                <button
-                    onClick={() => onActionViewChange('services_menu')}
-                    className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                >
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                        <Menu className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-xs font-medium">More</span>
-                </button>
-            </div>
-
-        </div>
+        </motion.div>
     )
 }
-

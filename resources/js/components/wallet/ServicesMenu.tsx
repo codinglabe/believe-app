@@ -1,10 +1,9 @@
-import { Building2, CreditCard, ArrowUpRight, Plus, Loader2 } from 'lucide-react'
+import { Building2, CreditCard, Plus, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { ActionView } from './types'
 
 interface ServicesMenuProps {
     onNavigate: (view: ActionView) => void
-    hasCardWallet?: boolean | null
     isCheckingCardWallet?: boolean
     hasBankAccounts?: boolean | null
     isCheckingBankAccounts?: boolean
@@ -13,7 +12,6 @@ interface ServicesMenuProps {
 
 export function ServicesMenu({
     onNavigate,
-    hasCardWallet,
     isCheckingCardWallet,
     hasBankAccounts,
     isCheckingBankAccounts,
@@ -72,16 +70,10 @@ export function ServicesMenu({
                             </div>
                         ) : (
                             <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg mb-2 group-hover:scale-110 transition-transform">
-                                {hasCardWallet === false ? (
-                                    <Plus className="h-4 w-4 text-white" />
-                                ) : (
-                                    <CreditCard className="h-4 w-4 text-white" />
-                                )}
+                                <CreditCard className="h-4 w-4 text-white" />
                             </div>
                         )}
-                        <p className="text-sm font-medium text-center">
-                            {hasCardWallet === false ? 'Create Card' : 'Virtual Card'}
-                        </p>
+                        <p className="text-sm font-medium text-center">Cards</p>
                     </button>
                 </div>
             </div>

@@ -7,10 +7,14 @@ interface WithdrawToExternalProps {
     externalAccounts: ExternalAccount[]
     selectedExternalAccount: string
     withdrawAmount: string
+    withdrawPaymentRail: 'ach' | 'wire'
     walletBalance: number | null
     isLoading: boolean
+    isSandbox?: boolean
+    bankWithdrawalAvailable?: boolean
     onAccountChange: (accountId: string) => void
     onAmountChange: (amount: string) => void
+    onPaymentRailChange: (rail: 'ach' | 'wire') => void
     onWithdraw: () => void
     onAddBankAccount?: () => void
 }
@@ -19,16 +23,48 @@ export function WithdrawToExternal({
     externalAccounts,
     selectedExternalAccount,
     withdrawAmount,
+    withdrawPaymentRail,
     walletBalance,
     isLoading,
+    isSandbox = false,
+    bankWithdrawalAvailable = true,
     onAccountChange,
     onAmountChange,
+    onPaymentRailChange,
     onWithdraw,
     onAddBankAccount,
 }: WithdrawToExternalProps) {
     const verifiedAccounts = externalAccounts.filter(acc => acc.status === 'verified')
     const amount = parseFloat(withdrawAmount) || 0
-    const isValid = selectedExternalAccount && withdrawAmount && amount > 0 && walletBalance !== null && amount <= walletBalance
+    const isValid = bankWithdrawalAvailable && selectedExternalAccount && withdrawAmount && amount > 0 && walletBalance !== null && amount <= walletBalance
+
+    if (!bankWithdrawalAvailable) {
+        return (
+            <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="p-4 space-y-4"
+            >
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                                Bank withdrawal unavailable
+                            </p>
+                            <p className="text-xs text-amber-800 dark:text-amber-200">
+                                {isSandbox
+                                    ? 'Sandbox wallets use virtual accounts for deposits only. Bridge bank offramps require a production Bridge wallet.'
+                                    : 'Complete wallet verification and create a Bridge wallet before withdrawing to a linked bank account.'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </motion.div>
+        )
+    }
 
     if (verifiedAccounts.length === 0) {
         return (
@@ -112,6 +148,39 @@ export function WithdrawToExternal({
                     )}
                 </div>
 
+                {/* Payment Rail */}
+                <div>
+                    <label className="text-xs text-muted-foreground mb-1.5 block">
+                        Transfer Method
+                    </label>
+                    <div className="inline-flex rounded-lg border border-border bg-muted p-0.5">
+                        <button
+                            type="button"
+                            onClick={() => onPaymentRailChange('ach')}
+                            disabled={isLoading}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 ${
+                                withdrawPaymentRail === 'ach'
+                                    ? 'bg-background text-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            ACH
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onPaymentRailChange('wire')}
+                            disabled={isLoading}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 ${
+                                withdrawPaymentRail === 'wire'
+                                    ? 'bg-background text-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            Wire
+                        </button>
+                    </div>
+                </div>
+
                 {/* Amount Input */}
                 <div>
                     <div className="flex items-center justify-between mb-1.5">
@@ -165,7 +234,9 @@ export function WithdrawToExternal({
                                 Withdrawal Processing Time
                             </p>
                             <p className="text-xs text-blue-800 dark:text-blue-200">
-                                ACH withdrawals typically take 1-3 business days to process. Wire transfers may be faster but may incur additional fees.
+                                {withdrawPaymentRail === 'wire'
+                                    ? 'Wire withdrawals are typically faster but may incur additional fees.'
+                                    : 'ACH withdrawals typically take 1-3 business days to process.'}
                             </p>
                         </div>
                     </div>

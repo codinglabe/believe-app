@@ -98,7 +98,7 @@ export function KYBForm({
     }
 
     return (
-        <div className="space-y-2 sm:space-y-3 max-h-[250px] sm:max-h-[350px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full -mx-0">
+        <div className="space-y-2 sm:space-y-3 max-h-[250px] sm:max-h-[350px] overflow-y-auto overflow-x-hidden wallet-scroll-nested w-full -mx-0">
             {/* Step Indicator with Labels */}
             <div className="mb-3 space-y-2">
                 <div className="flex items-center gap-1">
