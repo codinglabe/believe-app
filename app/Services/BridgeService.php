@@ -917,23 +917,32 @@ class BridgeService
             // Remove bridge_wallet_id in sandbox (not used with Ethereum payment rail)
             unset($destination['bridge_wallet_id']);
         } else {
-            $paymentRail = $destination['payment_rail'] ?? '';
+            $paymentRail = strtolower((string) ($destination['payment_rail'] ?? ''));
             $hasAddress = ! empty($destination['address']);
             $hasBridgeWalletId = ! empty($destination['bridge_wallet_id']);
 
-            if ($paymentRail === 'bridge_wallet' && ! $hasBridgeWalletId) {
+            // Per Bridge API: bridge_wallet_id requires payment_rail = chain name (solana, ethereum, etc.)
+            if ($paymentRail === 'bridge_wallet') {
                 return [
                     'success' => false,
-                    'error' => 'bridge_wallet_id is required in production mode when using the bridge_wallet payment rail.',
-                    'error_code' => 'MISSING_BRIDGE_WALLET_ID',
+                    'error' => 'destination.payment_rail must be the wallet chain (e.g. solana, ethereum), not bridge_wallet, when using bridge_wallet_id.',
+                    'error_code' => 'INVALID_PAYMENT_RAIL',
                 ];
             }
 
-            if ($paymentRail !== 'bridge_wallet' && ! $hasAddress && ! $hasBridgeWalletId) {
+            if ($hasBridgeWalletId && $paymentRail === '') {
                 return [
                     'success' => false,
-                    'error' => 'Destination address is required in production mode for address-based payment rails. Please provide a valid wallet address you control.',
-                    'error_code' => 'MISSING_DESTINATION_ADDRESS',
+                    'error' => 'destination.payment_rail (chain name) is required when using bridge_wallet_id.',
+                    'error_code' => 'MISSING_PAYMENT_RAIL',
+                ];
+            }
+
+            if (! $hasBridgeWalletId && ! $hasAddress) {
+                return [
+                    'success' => false,
+                    'error' => 'Destination address or bridge_wallet_id is required in production mode.',
+                    'error_code' => 'MISSING_DESTINATION',
                 ];
             }
         }
@@ -2023,35 +2032,61 @@ class BridgeService
     }
 
     /**
+     * Resolve the on-chain network for a Bridge custodial wallet.
+     */
+    public function resolveWalletChain(string $customerId, string $walletId, ?string $fallback = 'solana'): string
+    {
+        $result = $this->getWallet($customerId, $walletId);
+        if (($result['success'] ?? false) && ! empty($result['data']['chain'])) {
+            return strtolower((string) $result['data']['chain']);
+        }
+
+        $normalized = strtolower((string) ($fallback ?? 'solana'));
+
+        return in_array($normalized, ['usd', 'fiat'], true) ? 'solana' : $normalized;
+    }
+
+    /**
      * Create a virtual account for USD deposits to Bridge wallet
-     * 
-     * Per Bridge.xyz docs:
-     * - Sandbox: Uses dummy data with Ethereum payment rail and auto-generated address
-     * - Production: Uses bridge_wallet payment rail with actual wallet ID
-     * 
+     *
+     * Per Bridge API: production destination uses chain name as payment_rail + bridge_wallet_id.
+     *
      * @param string $customerId Bridge customer ID
-     * @param string $walletId Bridge wallet ID (not used in sandbox)
+     * @param string $walletId Bridge wallet ID
      * @param string $currency Currency (default: USD)
+     * @param string|null $chain Wallet chain (solana, ethereum, base, etc.)
      * @return array
      */
-    public function createVirtualAccountForWallet(string $customerId, string $walletId, string $currency = 'USD'): array
-    {
+    public function createVirtualAccountForWallet(
+        string $customerId,
+        string $walletId,
+        string $currency = 'USD',
+        ?string $chain = null,
+    ): array {
         $source = [
             'currency' => strtolower($currency),
         ];
 
-        // In sandbox mode: Use dummy data per Bridge.xyz documentation
-        // Sandbox uses Ethereum payment rail with auto-generated address and USDC currency
-            $destination = [
-            'currency' => 'usdc',
-            ];
-
         if ($this->isSandbox()) {
-            $destination['payment_rail'] = 'ethereum';
-            $destination['address'] = $this->generateEthereumAddress();
+            $destination = [
+                'payment_rail' => 'ethereum',
+                'currency' => 'usdc',
+                'address' => $this->generateEthereumAddress(),
+            ];
         } else {
-            $destination['payment_rail'] = 'bridge_wallet';
-            $destination['bridge_wallet_id'] = $walletId;
+            $walletChain = $chain
+                ? strtolower($chain)
+                : $this->resolveWalletChain($customerId, $walletId);
+
+            if (in_array($walletChain, ['usd', 'fiat'], true)) {
+                $walletChain = $this->resolveWalletChain($customerId, $walletId);
+            }
+
+            $destination = [
+                'payment_rail' => $walletChain,
+                'currency' => 'usdc',
+                'bridge_wallet_id' => $walletId,
+            ];
         }
 
         return $this->createVirtualAccount($customerId, $source, $destination);

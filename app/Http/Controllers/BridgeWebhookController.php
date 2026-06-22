@@ -1961,6 +1961,14 @@ class BridgeWebhookController extends Controller
             ]);
         }
 
+        $primaryWalletRecord = BridgeWallet::where('bridge_integration_id', $integration->id)
+            ->where('is_primary', true)
+            ->first();
+        $walletChain = strtolower((string) ($primaryWalletRecord?->chain ?? 'solana'));
+        if (in_array($walletChain, ['usd', 'fiat'], true) && $walletId) {
+            $walletChain = $this->bridgeService->resolveWalletChain($customerId, $walletId);
+        }
+
         // 2. Create Virtual Account (works in both sandbox and production)
         // Per Bridge.xyz docs: Virtual accounts in sandbox use dummy data
         try {
@@ -1991,7 +1999,8 @@ class BridgeWebhookController extends Controller
                     $virtualAccountResult = $this->bridgeService->createVirtualAccountForWallet(
                         $customerId,
                         $walletId,
-                        'USD'
+                        'USD',
+                        $walletChain,
                     );
                 } else {
                     // Production mode without wallet: Create virtual account with ACH push

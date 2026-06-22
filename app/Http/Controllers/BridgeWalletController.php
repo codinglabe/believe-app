@@ -895,10 +895,12 @@ class BridgeWalletController extends Controller
                 if ($chain === 'solana' || $chain === 'ethereum' || $chain === 'usd' || $chain === 'USD') {
                     // Create virtual account for chain wallet or USD account
                     if ($chain === 'usd' || $chain === 'USD') {
+                        $vaChain = 'solana';
                         $virtualAccountResult = $this->bridgeService->createVirtualAccountForWallet(
                             $integration->bridge_customer_id,
                             $walletData['id'] ?? null,
-                            'USD'
+                            'USD',
+                            $vaChain,
                         );
                     } else {
                         $virtualAccountResult = $this->bridgeService->createVirtualAccountForChainWallet(
@@ -4655,10 +4657,16 @@ class BridgeWalletController extends Controller
                     ], 422);
                 }
 
+                $walletChain = strtolower((string) ($wallet->chain ?? $integration->wallet_chain ?? 'solana'));
+                if (in_array($walletChain, ['usd', 'fiat'], true)) {
+                    $walletChain = $this->bridgeService->resolveWalletChain($customerId, $bridgeWalletId);
+                }
+
                 $result = $this->bridgeService->createVirtualAccountForWallet(
                     $customerId,
                     $bridgeWalletId,
                     'USD',
+                    $walletChain,
                 );
             } else {
                 $result = $this->bridgeService->createVirtualAccount(
