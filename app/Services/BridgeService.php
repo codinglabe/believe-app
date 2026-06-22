@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BridgeIntegration;
 use App\Models\BridgeWallet;
 use App\Models\PaymentMethod;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -1683,10 +1684,7 @@ class BridgeService
     public function ensureCardsProductEnabled(): array
     {
         if ($this->isSandbox()) {
-            $bridge = PaymentMethod::getConfig('bridge');
-            $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
-
-            if (! empty($config['cards_enabled_at'])) {
+            if ($this->isCardsEnabledOnDeveloperAccount()) {
                 return ['success' => true, 'already_enabled' => true];
             }
 
@@ -1694,8 +1692,9 @@ class BridgeService
         }
 
         $readiness = $this->getStripeIssuingReadiness();
+        $bridgeCards = $this->fetchCardsDeveloperAccountStatus(true);
 
-        if ($readiness['issuing_enabled'] ?? false) {
+        if (($readiness['issuing_enabled'] ?? false) && ($bridgeCards['enabled'] ?? false)) {
             $accountId = (string) ($readiness['account_id'] ?? '');
             if ($accountId !== '') {
                 $this->persistCardsEnableMetadata($accountId, $this->getCardsProgramType());
@@ -1706,6 +1705,16 @@ class BridgeService
                 'already_enabled' => true,
                 'production' => true,
                 'account_id' => $readiness['account_id'] ?? null,
+            ];
+        }
+
+        if (($readiness['issuing_enabled'] ?? false) && ! ($bridgeCards['enabled'] ?? false)) {
+            return [
+                'success' => false,
+                'production' => true,
+                'error' => 'Stripe Issuing is active, but Bridge Cards is not enabled on your Bridge developer account yet. Complete Bridge cards onboarding before requesting the cards endorsement.',
+                'needs_bridge_stripe_app' => false,
+                'help_url' => 'https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing',
             ];
         }
 
@@ -1836,6 +1845,126 @@ class BridgeService
         $config['cards_program_type'] = $programType;
 
         $bridge->update(['additional_config' => $config]);
+        $this->clearCardsDeveloperAccountStatusCache();
+    }
+
+    /**
+     * Probe Bridge for an active card program on this developer account.
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/cards/get-a-listing-of-your-card-programs-card-designs
+     *
+     * @return array{enabled: bool, checked_at: string, source: string, error?: string|null}
+     */
+    public function fetchCardsDeveloperAccountStatus(bool $forceRefresh = false): array
+    {
+        $cacheKey = $this->cardsDeveloperAccountStatusCacheKey();
+
+        if (! $forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && array_key_exists('enabled', $cached)) {
+                return $cached;
+            }
+        }
+
+        if (empty($this->apiKey)) {
+            return [
+                'enabled' => false,
+                'checked_at' => now()->toIso8601String(),
+                'source' => 'missing_api_key',
+                'error' => 'Bridge API key is not configured.',
+            ];
+        }
+
+        $result = $this->makeRequest('GET', '/developer/cards/designs');
+
+        if ($result['success'] ?? false) {
+            $status = [
+                'enabled' => true,
+                'checked_at' => now()->toIso8601String(),
+                'source' => 'bridge_api',
+            ];
+        } elseif ($this->isCardsDeveloperAccountNotEnabledError($result)) {
+            $status = [
+                'enabled' => false,
+                'checked_at' => now()->toIso8601String(),
+                'source' => 'bridge_api',
+            ];
+        } else {
+            Log::warning('Bridge cards developer status probe failed — defaulting to disabled', [
+                'environment' => $this->environment,
+                'error' => $result['error'] ?? null,
+                'status' => $result['status'] ?? null,
+            ]);
+
+            $status = [
+                'enabled' => false,
+                'checked_at' => now()->toIso8601String(),
+                'source' => 'probe_error',
+                'error' => $result['error'] ?? 'Unable to verify Bridge Cards status.',
+            ];
+        }
+
+        Cache::put($cacheKey, $status, now()->addMinutes(5));
+
+        return $status;
+    }
+
+    public function clearCardsDeveloperAccountStatusCache(): void
+    {
+        Cache::forget($this->cardsDeveloperAccountStatusCacheKey());
+    }
+
+    private function cardsDeveloperAccountStatusCacheKey(): string
+    {
+        return 'bridge:cards_developer_enabled:'.$this->environment;
+    }
+
+    /**
+     * Whether Bridge Cards is enabled on this developer account (GET /developer/cards/designs).
+     */
+    public function isCardsEnabledOnDeveloperAccount(bool $forceRefresh = false): bool
+    {
+        return (bool) ($this->fetchCardsDeveloperAccountStatus($forceRefresh)['enabled'] ?? false);
+    }
+
+    /**
+     * Bridge indicates Cards is not enabled for this developer account.
+     */
+    public function isCardsDeveloperAccountNotEnabledError(array $bridgeApiResult): bool
+    {
+        if ($this->isCardsProductNotEnabledError($bridgeApiResult)) {
+            return true;
+        }
+
+        $errorMessage = strtolower((string) ($bridgeApiResult['error'] ?? ''));
+        $errorCode = strtolower((string) ($bridgeApiResult['response']['code'] ?? ''));
+
+        return $errorCode === 'not_allowed'
+            || str_contains($errorMessage, 'cards is not enabled')
+            || str_contains($errorMessage, 'card program');
+    }
+
+    /**
+     * KYC endorsements for Connect Wallet — cards when Cards is enabled on the developer account, otherwise base.
+     *
+     * @return list<string>
+     */
+    public function resolveConnectWalletEndorsements(): array
+    {
+        return $this->isCardsEnabledOnDeveloperAccount() ? ['cards'] : ['base'];
+    }
+
+    /**
+     * Bridge rejected a cards endorsement because Cards is not enabled for this developer.
+     */
+    public function isCardsEndorsementNotAllowedError(array $bridgeApiResult): bool
+    {
+        $errorMessage = strtolower((string) ($bridgeApiResult['error'] ?? ''));
+        $errorCode = strtolower((string) ($bridgeApiResult['response']['code'] ?? ''));
+
+        return $errorCode === 'not_allowed'
+            || str_contains($errorMessage, 'endorsement not allowed')
+            || str_contains($errorMessage, 'cards is not enabled');
     }
 
     /**

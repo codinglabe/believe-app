@@ -524,13 +524,26 @@ class AdminKycVerificationController extends Controller
             $fullName = trim($integratable->name ?? '');
 
             if (! $integration->kyc_link_id && $email !== '' && $fullName !== '') {
+                $endorsements = $this->bridgeService->resolveConnectWalletEndorsements();
                 $result = $this->bridgeService->createKYCLink([
                     'full_name' => $fullName,
                     'email' => $email,
                     'type' => 'individual',
-                    'endorsements' => ['cards'],
+                    'endorsements' => $endorsements,
                     'redirect_uri' => url('/wallet/kyc-callback'),
                 ]);
+
+                if (! $result['success']
+                    && $endorsements === ['cards']
+                    && $this->bridgeService->isCardsEndorsementNotAllowedError($result)) {
+                    $result = $this->bridgeService->createKYCLink([
+                        'full_name' => $fullName,
+                        'email' => $email,
+                        'type' => 'individual',
+                        'endorsements' => ['base'],
+                        'redirect_uri' => url('/wallet/kyc-callback'),
+                    ]);
+                }
 
                 if ($result['success'] && isset($result['data']['id'])) {
                     $integration->kyc_link_id = $result['data']['id'];

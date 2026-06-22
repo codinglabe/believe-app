@@ -116,8 +116,11 @@ class BridgeWalletController extends Controller
                 if ($integration->bridge_customer_id) {
                     $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
                     $integration->refresh();
-                    $this->refreshCardsEndorsementKycLink($integration, $isOrgUser);
-                    $integration->refresh();
+
+                    if ($this->bridgeService->isCardsEnabledOnDeveloperAccount()) {
+                        $this->refreshCardsEndorsementKycLink($integration, $isOrgUser);
+                        $integration->refresh();
+                    }
                 }
 
                 $kycWidgetUrl = $integration->kyc_link_url
@@ -146,15 +149,6 @@ class BridgeWalletController extends Controller
             DB::beginTransaction();
 
             try {
-                if ($this->bridgeService->isSandbox()) {
-                    $cardsEnableResult = $this->bridgeService->ensureCardsProductEnabled();
-                    if (! ($cardsEnableResult['success'] ?? false)
-                        && empty($cardsEnableResult['skipped'])
-                        && empty($cardsEnableResult['already_enabled'])) {
-                        throw new \Exception($cardsEnableResult['error'] ?? 'Failed to enable Bridge cards product. Link Stripe under Settings → Bridge Wallet.');
-                    }
-                }
-
                 // Get required fields
                 $email = trim($entity->email ?? $user->email ?? '');
                 $fullName = $isOrgUser
@@ -169,13 +163,14 @@ class BridgeWalletController extends Controller
                     throw new \Exception('Name is required');
                 }
 
-                // Create KYC Link — Bridge docs: POST /kyc_links with endorsements + redirect_uri
+                // Cards endorsement when Bridge Cards is enabled on the developer account; otherwise base wallet KYC only.
                 $verificationRedirectUri = url($isOrgUser ? '/wallet/kyb-callback' : '/wallet/kyc-callback');
+                $connectEndorsements = $this->bridgeService->resolveConnectWalletEndorsements();
                 $kycLinkData = [
                     'full_name' => $fullName,
                     'email' => $email,
                     'type' => $isOrgUser ? 'business' : 'individual',
-                    'endorsements' => ['cards'],
+                    'endorsements' => $connectEndorsements,
                     'redirect_uri' => $verificationRedirectUri,
                 ];
 
@@ -186,10 +181,24 @@ class BridgeWalletController extends Controller
 
                 Log::info('Creating Bridge KYC Link', [
                     'is_org_user' => $isOrgUser,
+                    'endorsements' => $connectEndorsements,
+                    'cards_enabled_on_developer' => $this->bridgeService->isCardsEnabledOnDeveloperAccount(),
                     'kyc_link_data' => $kycLinkData,
                 ]);
 
                 $kycLinkResult = $this->bridgeService->createKYCLink($kycLinkData);
+
+                if (! $kycLinkResult['success']
+                    && $connectEndorsements === ['cards']
+                    && $this->bridgeService->isCardsEndorsementNotAllowedError($kycLinkResult)) {
+                    Log::warning('Bridge rejected cards endorsement on connect — falling back to base', [
+                        'email' => $email,
+                        'error' => $kycLinkResult['error'] ?? null,
+                    ]);
+
+                    $kycLinkData['endorsements'] = ['base'];
+                    $kycLinkResult = $this->bridgeService->createKYCLink($kycLinkData);
+                }
 
                 if (!$kycLinkResult['success']) {
                     throw new \Exception($kycLinkResult['error'] ?? 'Failed to create KYC Link');
