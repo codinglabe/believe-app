@@ -70,23 +70,39 @@ interface AutoReplenishProps {
   last_replenish_at: string | null
 }
 
-/** Matches `BelievePointController@index` `feePreview` (buyer pays gross-up like donate “cover fees”). */
+/** Matches `BelievePointController@index` fee preview for Add Believe Points purchases. */
 interface BelievePointsFeePreview {
   mode: "buyer_covers"
   rail: "card" | "bank"
-  base_gift_usd: number
+  bp_amount_usd: number
+  platform_fee_usd: number
+  processing_fee_usd: number
   checkout_total_usd: number
-  processing_fee_estimate: number
+  brp_earned: number
+  bp_availability: string
   card_processing_fee_usd: number
   ach_processing_fee_usd: number
-  bank_reward_points: number
-  believe_points_credit_usd: number
+  brp_value: number
+  platform_fee_percent: number
+  card_brp_rate: number
+  ach_brp_rate: number
+  card_hold_hours: number
+}
+
+interface PurchaseSettings {
+  brp_value: number
+  platform_fee_percent: number
+  card_brp_rate: number
+  ach_brp_rate: number
+  card_hold_hours: number
 }
 
 interface PageProps {
   currentBalance: number
+  processingBalance?: number
   minPurchaseAmount: number
   maxPurchaseAmount: number
+  purchaseSettings?: PurchaseSettings
   purchases: {
     data: Purchase[]
     links: any
@@ -162,6 +178,7 @@ const defaultAutoReplenish: AutoReplenishProps = {
 
 export default function BelievePointsIndex({
   currentBalance,
+  processingBalance = 0,
   minPurchaseAmount,
   maxPurchaseAmount,
   purchases,
@@ -173,16 +190,30 @@ export default function BelievePointsIndex({
     flash,
     auth,
     feePreview: feePreviewProp,
+    purchaseSettings: purchaseSettingsProp,
     availableMethods: availableMethodsProp = {},
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
   } = page.props
+  const purchaseSettings = purchaseSettingsProp ?? {
+    brp_value: 0.005,
+    platform_fee_percent: 1,
+    card_brp_rate: 2,
+    ach_brp_rate: 1,
+    card_hold_hours: 24,
+  }
   const availableMethods = availableMethodsProp
-  const feePreview = feePreviewProp ?? null
   const isSupporter = auth?.user?.role === 'user' || !auth?.user?.role
   const [paymentMethod, setPaymentMethod] = useState<BelievePointsPaymentMethodId>(() =>
-    defaultPaymentMethod(availableMethods)
+    defaultPaymentMethod(availableMethodsProp)
   )
+  const isAchPayment = paymentMethod === "stripe_ach"
+  const isCardPayment = paymentMethod === "stripe_card"
+  const feePreview = feePreviewProp ?? null
+  const cardHoldLabel =
+    purchaseSettings.card_hold_hours === 1
+      ? "After 1-Hour Security Review"
+      : `After ${purchaseSettings.card_hold_hours}-Hour Security Review`
   const [formData, setFormData] = useState({
     amount: "",
     policyAccepted: false,
@@ -249,9 +280,10 @@ export default function BelievePointsIndex({
       const n = parseFloat(raw)
       const inRange =
         raw !== "" && !Number.isNaN(n) && n >= minPurchaseAmount && n <= maxPurchaseAmount
-      if (inRange && isStripeRail(paymentMethod)) {
+      if (inRange) {
         q.fee_preview_amount = n
         q.fee_preview_rail = paymentMethod === "stripe_ach" ? "bank" : "card"
+        q.fee_preview_include_stripe = isStripeRail(paymentMethod) ? 1 : 0
       }
       setFeePreviewLoading(true)
       router.get(route("believe-points.index"), q, {
@@ -497,8 +529,13 @@ export default function BelievePointsIndex({
                         {formatPoints(currentBalance)}
                       </p>
                       <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">
-                        ≈ {formatCurrency(currentBalance)} in Believe Points (1:1 with USD)
+                        Available BP · ≈ {formatCurrency(currentBalance)} (1 BP = $1 USD)
                       </p>
+                      {processingBalance > 0 && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                          Processing BP: {formatPoints(processingBalance)} (pending security review or settlement)
+                        </p>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -536,7 +573,8 @@ export default function BelievePointsIndex({
                       </Badge>
                     </div>
                     <CardDescription className="max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                      Choose a payment method below. You receive 1 Believe Point (BP) per $1 USD.
+                      Choose a payment method below. You receive 1 Believe Point (BP) per $1 USD purchased.
+                      Card and ACH checkouts earn BRP at configured rates; purchased BP first goes into Processing BP.
                     </CardDescription>
                   </div>
                 </div>
@@ -589,11 +627,13 @@ export default function BelievePointsIndex({
                       </p>
                       <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Payment method</p>
                       <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                        {isStripeRail(paymentMethod)
-                          ? "ACH is cheaper to process and earns Believe Reward Points (BRP) on this BP purchase."
-                          : isManualMethod(paymentMethod)
-                            ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
-                            : "Complete checkout with your selected payment provider."}
+                        {isAchPayment
+                          ? `Earn ${purchaseSettings.ach_brp_rate} BRP per $1. BP goes into Processing BP and becomes available after ACH settlement.`
+                          : isCardPayment
+                            ? `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP goes into Processing BP and becomes available ${cardHoldLabel.toLowerCase()}.`
+                            : isManualMethod(paymentMethod)
+                              ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
+                              : "Complete checkout with your selected payment provider."}
                       </p>
                     </div>
 
@@ -677,7 +717,7 @@ export default function BelievePointsIndex({
                       <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">Fees &amp; what you get</p>
                     </div>
 
-                  {feePreview && isStripeRail(paymentMethod) && (
+                  {feePreview && validPurchaseAmount && (
                     <div
                       className={cn(
                         "relative overflow-hidden rounded-lg border border-gray-200 bg-white p-5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800",
@@ -692,63 +732,60 @@ export default function BelievePointsIndex({
                       )}
                       <div className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
                         <Receipt className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                        Checkout total (you pay processing)
+                        Purchase summary
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        The amount you type is how many Believe Points you receive. Stripe checkout includes an estimated
-                        processing add-on so pricing matches card vs bank rates (same model as covering fees on donations).
-                      </p>
                       <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
                         <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
-                          <span>Believe Points credit</span>
+                          <span>BP Amount</span>
                           <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
-                            {formatCurrency(feePreview.base_gift_usd)}
+                            {formatCurrency(feePreview.bp_amount_usd)}
                           </span>
                         </li>
                         <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
-                          <span>Est. processing add-on ({paymentMethod === "stripe_ach" ? "ACH" : "card"})</span>
+                          <span>Processing Fee</span>
                           <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
-                            {formatCurrency(feePreview.processing_fee_estimate)}
+                            {formatCurrency(feePreview.processing_fee_usd)}
                           </span>
                         </li>
-                        <li className="flex flex-wrap justify-between gap-2 pt-0.5">
-                          <span className="font-medium text-gray-900 dark:text-white">Total charged in Stripe</span>
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                          <span>Platform Fee ({feePreview.platform_fee_percent}%)</span>
+                          <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                            {formatCurrency(feePreview.platform_fee_usd)}
+                          </span>
+                        </li>
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                          <span className="font-medium text-gray-900 dark:text-white">Total Charged</span>
                           <span className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">
                             {formatCurrency(feePreview.checkout_total_usd)}
                           </span>
                         </li>
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                          <span>BRP Earned</span>
+                          <span className="font-semibold tabular-nums text-blue-800 dark:text-blue-200">
+                            {Math.round(feePreview.brp_earned).toLocaleString("en-US")} BRP
+                          </span>
+                        </li>
+                        <li className="flex flex-wrap justify-between gap-2 pt-0.5">
+                          <span>BP Availability</span>
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {feePreview.bp_availability}
+                          </span>
+                        </li>
                       </ul>
                       <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                        Modeled Stripe fee on that {paymentMethod === "stripe_ach" ? "ACH" : "card"} charge (informational):{" "}
-                        <span className="font-medium tabular-nums text-gray-700 dark:text-gray-300">
-                          {formatCurrency(
-                            paymentMethod === "stripe_ach"
-                              ? feePreview.ach_processing_fee_usd
-                              : feePreview.card_processing_fee_usd,
-                          )}
-                        </span>
-                        .
+                        1 BRP = {formatCurrency(feePreview.brp_value)}. Purchased BP is credited to Processing BP first.
                       </p>
-                      {paymentMethod === "stripe_ach" && (
-                        <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-3 text-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-indigo-950/30">
-                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500">
-                            <Gift className="h-4 w-4 text-white" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">Reward points with bank payment</p>
-                            <p className="text-gray-600 dark:text-gray-300">
-                              For this amount you&apos;ll earn{" "}
-                              <span className="font-semibold tabular-nums text-blue-800 dark:text-blue-200">
-                                {feePreview.bank_reward_points.toLocaleString("en-US", {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </span>{" "}
-                              reward points ($1 = 0.10 reward points). These credit your Merchant Hub balance. Card
-                              checkout does not include this bonus.
-                            </p>
-                          </div>
-                        </div>
+                      {isStripeRail(paymentMethod) && (
+                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                          Modeled Stripe fee on {isAchPayment ? "ACH" : "card"} charge (informational):{" "}
+                          <span className="font-medium tabular-nums text-gray-700 dark:text-gray-300">
+                            {formatCurrency(
+                              isAchPayment
+                                ? feePreview.ach_processing_fee_usd
+                                : feePreview.card_processing_fee_usd,
+                            )}
+                          </span>
+                        </p>
                       )}
                     </div>
                   )}
@@ -766,7 +803,7 @@ export default function BelievePointsIndex({
                           </span>
                         </p>
                         <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">
-                          1:1 with the amount you enter above (points credit; checkout total may be higher with fees)
+                          {formatPoints(amountNum)} BP · credited to Processing BP first
                         </p>
                       </div>
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-purple-500 text-white shadow-sm sm:h-14 sm:w-14 sm:self-center">
@@ -787,8 +824,12 @@ export default function BelievePointsIndex({
                       </li>
                       <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
+                        <span>Card: earn {purchaseSettings.card_brp_rate} BRP per $1. ACH: earn {purchaseSettings.ach_brp_rate} BRP per $1. BRP value = {formatCurrency(purchaseSettings.brp_value)} each.</span>
+                      </li>
+                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
                         <span>
-                          Bank (ACH) usually has a lower add-on than card; ACH checkout earns Believe Reward Points (BRP) on the BP purchase amount. Points usually credit when Stripe confirms payment; ACH debits can take a few business days.
+                          Purchased BP goes into Processing BP. Card BP becomes available {cardHoldLabel.toLowerCase()}. ACH BP becomes available after ACH settlement.
                         </span>
                       </li>
                     </ul>

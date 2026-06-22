@@ -9,7 +9,7 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentTransaction;
 use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
-use App\Services\DonationProcessingFeeEstimator;
+use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\StripeEnvironmentSyncService;
 use App\Support\PayPalClientBuilder;
 use App\Support\PayPalReturnUrl;
@@ -58,12 +58,14 @@ class BelievePointsPurchasePaymentService
     {
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false);
 
         $purchase = BelievePointPurchase::create([
             'user_id' => $user->id,
             'amount' => $netPointsUsd,
-            'checkout_total' => $netPointsUsd,
+            'checkout_total' => $breakdown['checkout_total_usd'],
             'processing_fee_estimate' => 0,
+            'platform_fee' => $breakdown['platform_fee_usd'],
             'points' => $points,
             'status' => 'pending',
             'source' => 'manual',
@@ -99,12 +101,14 @@ class BelievePointsPurchasePaymentService
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false);
 
         $purchase = BelievePointPurchase::create([
             'user_id' => $user->id,
             'amount' => $netPointsUsd,
-            'checkout_total' => $netPointsUsd,
+            'checkout_total' => $breakdown['checkout_total_usd'],
             'processing_fee_estimate' => 0,
+            'platform_fee' => $breakdown['platform_fee_usd'],
             'points' => $points,
             'status' => 'pending',
             'source' => 'manual',
@@ -129,7 +133,7 @@ class BelievePointsPurchasePaymentService
                 'description' => 'Purchase '.$points.' Believe Points',
                 'amount' => [
                     'currency_code' => 'USD',
-                    'value' => number_format($netPointsUsd, 2, '.', ''),
+                    'value' => number_format($breakdown['checkout_total_usd'], 2, '.', ''),
                 ],
                 'custom_id' => (string) $purchase->id,
             ]],
@@ -190,12 +194,10 @@ class BelievePointsPurchasePaymentService
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-
-        $checkoutTotalUsd = $feeRail === 'bank'
-            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
-            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
-        $checkoutTotalUsd = round($checkoutTotalUsd, 2);
-        $processingFeeAddon = round(max(0, $checkoutTotalUsd - $netPointsUsd), 2);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, $feeRail, true);
+        $checkoutTotalUsd = $breakdown['checkout_total_usd'];
+        $processingFeeAddon = $breakdown['processing_fee_usd'];
+        $platformFee = $breakdown['platform_fee_usd'];
 
         if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
             return redirect()->back()
@@ -209,6 +211,7 @@ class BelievePointsPurchasePaymentService
             'amount' => $netPointsUsd,
             'checkout_total' => $checkoutTotalUsd,
             'processing_fee_estimate' => $processingFeeAddon,
+            'platform_fee' => $platformFee,
             'points' => $points,
             'status' => 'pending',
             'source' => 'manual',

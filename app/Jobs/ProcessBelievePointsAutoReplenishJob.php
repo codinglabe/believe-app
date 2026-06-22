@@ -5,8 +5,9 @@ namespace App\Jobs;
 use App\Models\AdminSetting;
 use App\Models\BelievePointPurchase;
 use App\Models\User;
+use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
-use App\Services\DonationProcessingFeeEstimator;
+use App\Services\BelievePointsPurchaseCalculationService;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
@@ -61,14 +62,17 @@ class ProcessBelievePointsAutoReplenishJob
                 return;
             }
 
-            $checkoutTotal = round(DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($amount), 2);
-            $feeAddon = round(max(0, $checkoutTotal - $amount), 2);
+            $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($amount, 'card', true);
+            $checkoutTotal = $breakdown['checkout_total_usd'];
+            $feeAddon = $breakdown['processing_fee_usd'];
+            $platformFee = $breakdown['platform_fee_usd'];
 
             $purchase = BelievePointPurchase::create([
                 'user_id' => $user->id,
                 'amount' => $amount,
                 'checkout_total' => $checkoutTotal,
                 'processing_fee_estimate' => $feeAddon,
+                'platform_fee' => $platformFee,
                 'points' => $amount,
                 'status' => 'pending',
                 'source' => 'auto_replenish',
@@ -102,11 +106,8 @@ class ProcessBelievePointsAutoReplenishJob
                 if ($intent->status === 'succeeded') {
                     $purchase->update([
                         'stripe_payment_intent_id' => $intent->id,
-                        'status' => 'completed',
-                        'failure_code' => null,
-                        'failure_message' => null,
                     ]);
-                    $user->addBelievePoints($amount);
+                    BelievePointPurchaseSettlementService::creditPurchaseAfterPayment($purchase->fresh(), $intent->id);
                     $user->update(['believe_points_last_auto_replenish_at' => now()]);
 
                     Log::info('Believe Points auto-replenish succeeded', [
