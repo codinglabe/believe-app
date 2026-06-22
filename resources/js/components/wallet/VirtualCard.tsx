@@ -153,6 +153,9 @@ export function VirtualCard({
                 setPendingCardsEndorsementUrl(data.kyc_link_url)
                 setIssueCardError(data.message || 'Complete cards verification to issue your card.')
                 showErrorToast(data.message || 'Complete cards verification to issue your card.')
+            } else if (data.error_code === 'cards_endorsement_kyc_link_failed') {
+                setIssueCardError(data.message || 'Failed to get cards verification link.')
+                showErrorToast(data.message || 'Failed to get cards verification link.')
             } else if (data.error_code === 'stripe_cardholder_missing') {
                 setIssueCardError(
                     data.message ||

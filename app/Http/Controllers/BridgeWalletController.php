@@ -6675,15 +6675,31 @@ class BridgeWalletController extends Controller
         }
 
         $endorsementInfo = $this->bridgeService->getCardsEndorsementInfo($customerData);
+        $issues = $endorsementInfo['endorsement']['requirements']['issues'] ?? [];
+        $issues = is_array($issues) ? array_values(array_filter($issues, 'is_string')) : [];
+        $status = strtolower((string) ($endorsementInfo['status'] ?? ''));
 
-        if ($endorsementInfo['exists'] && $endorsementInfo['status'] !== null && ! $endorsementInfo['approved']) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The cards endorsement is pending approval. Card account will be created once approved. Please check your Bridge dashboard for endorsement status.',
-                'error_code' => 'cards_endorsement_not_approved',
-                'endorsement_status' => $endorsementInfo['status'],
-                'requires_approval' => true,
-            ], 400);
+        if ($endorsementInfo['exists'] && ! $endorsementInfo['approved']) {
+            if ($status === 'incomplete' || $issues !== []) {
+                $message = $issues !== []
+                    ? 'Complete cards verification to resolve: '.implode(', ', array_map(
+                        fn (string $issue) => str_replace('_', ' ', $issue),
+                        $issues,
+                    ))
+                    : 'Complete cards verification to issue your card.';
+
+                return $this->buildCardsEndorsementKycRequiredResponse($customerId, $integration, $message);
+            }
+
+            if (in_array($status, ['pending', 'under_review'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The cards endorsement is pending approval. Card account will be created once approved. Please check your Bridge dashboard for endorsement status.',
+                    'error_code' => 'cards_endorsement_not_approved',
+                    'endorsement_status' => $endorsementInfo['status'],
+                    'requires_approval' => true,
+                ], 400);
+            }
         }
 
         return $this->buildCardsEndorsementKycRequiredResponse(
@@ -6704,13 +6720,40 @@ class BridgeWalletController extends Controller
             'environment' => $this->bridgeService->isSandbox() ? 'sandbox' : 'production',
         ]);
 
-        $kycLinkResult = $this->bridgeService->getCardsEndorsementKycLink($customerId);
+        $this->bridgeService->remediateCardsEndorsementBlockers(
+            $customerId,
+            $this->resolveIntegratablePhoneForCards($integration),
+        );
+
+        $kycLinkId = $integration->kyc_link_id;
+        $redirectUri = url('/wallet/kyc-callback');
+
+        $kycLinkResult = $this->bridgeService->getCardsEndorsementKycLink(
+            $customerId,
+            $redirectUri,
+            $kycLinkId,
+        );
+
+        if (! ($kycLinkResult['success'] ?? false) && ! empty($integration->kyc_link_url)) {
+            Log::warning('Using stored integration KYC link as cards endorsement fallback', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'error' => $kycLinkResult['error'] ?? null,
+            ]);
+
+            $kycLinkResult = [
+                'success' => true,
+                'url' => $integration->kyc_link_url,
+                'source' => 'integration_stored_kyc_link',
+            ];
+        }
 
         if ($kycLinkResult['success'] && ! empty($kycLinkResult['url'])) {
             Log::info('Cards endorsement KYC link retrieved successfully', [
                 'integration_id' => $integration->id,
                 'customer_id' => $customerId,
                 'kyc_link_url' => $kycLinkResult['url'],
+                'source' => $kycLinkResult['source'] ?? null,
             ]);
 
             return response()->json([
@@ -6719,20 +6762,49 @@ class BridgeWalletController extends Controller
                 'error_code' => 'cards_endorsement_kyc_required',
                 'kyc_link_url' => $kycLinkResult['url'],
                 'requires_kyc_confirmation' => true,
+                'cards_endorsement_issues' => $kycLinkResult['cards_endorsement_issues'] ?? null,
             ], 400);
         }
+
+        $issues = $kycLinkResult['cards_endorsement_issues']
+            ?? $this->bridgeService->getCardsEndorsementIssues($customerId);
 
         Log::warning('Failed to get KYC link for cards endorsement', [
             'integration_id' => $integration->id,
             'customer_id' => $customerId,
             'error' => $kycLinkResult['error'] ?? 'Unknown error',
+            'cards_endorsement_issues' => $issues,
         ]);
+
+        $failureMessage = 'Failed to get cards endorsement verification link. Please try again or contact support.';
+        if ($issues !== []) {
+            $failureMessage = 'Cards verification is blocked: '.implode(', ', array_map(
+                fn (string $issue) => str_replace('_', ' ', $issue),
+                $issues,
+            )).'. Update your profile phone to E.164 format (e.g. +15551234567) and try again.';
+        }
 
         return response()->json([
             'success' => false,
-            'message' => 'Failed to get cards endorsement verification link. Please try again or contact support.',
+            'message' => $failureMessage,
             'error_code' => 'cards_endorsement_kyc_link_failed',
+            'bridge_error' => $kycLinkResult['error'] ?? null,
+            'cards_endorsement_issues' => $issues,
         ], 500);
+    }
+
+    private function resolveIntegratablePhoneForCards(BridgeIntegration $integration): ?string
+    {
+        $integration->loadMissing('integratable');
+
+        $entity = $integration->integratable;
+        if (! $entity) {
+            return null;
+        }
+
+        $phone = $entity->contact_number ?? $entity->phone ?? null;
+
+        return is_string($phone) && $phone !== '' ? $phone : null;
     }
 
     private function resolveIndividualBirthDateForCardAccount(

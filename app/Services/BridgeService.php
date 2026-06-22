@@ -550,9 +550,32 @@ class BridgeService
         }
 
         $this->ensureCustomerHasCardsEndorsement($customerId);
+        $this->remediateCardsEndorsementBlockers($customerId);
+
+        // Fast path: KYC link resource (avoids Bridge sandbox 500 on GET ?endorsement=cards).
+        if ($kycLinkId) {
+            $linkResult = $this->getKYCLink($kycLinkId);
+            $url = $this->extractKycLinkUrl($linkResult);
+
+            if ($url !== null) {
+                Log::info('Cards endorsement KYC link resolved via KYC link resource', [
+                    'customer_id' => $customerId,
+                    'kyc_link_id' => $kycLinkId,
+                ]);
+
+                return [
+                    'success' => true,
+                    'url' => $url,
+                    'data' => $linkResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
+                    'source' => 'kyc_links_resource',
+                    'endorsement' => 'cards',
+                ];
+            }
+        }
 
         $result = ['success' => false, 'error' => 'Failed to get cards endorsement KYC link'];
 
+        // Bridge docs: GET /customers/{id}/kyc_link?endorsement=cards
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             if ($attempt > 1) {
                 sleep(1);
@@ -582,39 +605,18 @@ class BridgeService
             }
         }
 
-        if ($kycLinkId) {
-            $linkResult = $this->getKYCLink($kycLinkId);
-            $url = $this->extractKycLinkUrl($linkResult);
-
-            if ($url !== null) {
-                Log::warning('GET ?endorsement=cards failed — using KYC link resource fallback', [
-                    'customer_id' => $customerId,
-                    'kyc_link_id' => $kycLinkId,
-                    'cards_get_error' => $result['error'] ?? null,
-                ]);
-
-                return [
-                    'success' => true,
-                    'url' => $url,
-                    'data' => $linkResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
-                    'source' => 'kyc_links_resource',
-                    'endorsement' => 'cards',
-                ];
-            }
-        }
-
         $plainResult = $this->getCustomerKycLink($customerId, null, $redirectUri);
         $plainUrl = $this->extractKycLinkUrl($plainResult);
 
         if ($plainUrl !== null) {
             $customerResult = $this->getCustomer($customerId);
-            $hasCards = ($customerResult['success'] ?? false)
-                && ($this->getCardsEndorsementInfo($customerResult['data'] ?? [])['exists'] ?? false);
+            $endorsementInfo = $this->getCardsEndorsementInfo($customerResult['data'] ?? []);
 
-            if ($hasCards) {
+            if ($endorsementInfo['exists'] ?? false) {
                 Log::warning('GET ?endorsement=cards failed — using customer kyc_link without endorsement param', [
                     'customer_id' => $customerId,
                     'cards_get_error' => $result['error'] ?? null,
+                    'cards_get_status' => $result['status'] ?? null,
                 ]);
 
                 return [
@@ -627,13 +629,21 @@ class BridgeService
             }
         }
 
-        $lastError = $result['error'] ?? 'Failed to get cards endorsement KYC link';
+        $createResult = $this->createCardsEndorsementKycLinkFallback($customerId, $redirectUri);
+        if ($createResult['success'] ?? false) {
+            return $createResult;
+        }
+
+        $lastError = $result['error'] ?? $createResult['error'] ?? 'Failed to get cards endorsement KYC link';
+        $issues = $this->getCardsEndorsementIssues($customerId);
 
         Log::error('Cards endorsement KYC link unavailable — all resolution paths failed', [
             'customer_id' => $customerId,
             'kyc_link_id' => $kycLinkId,
             'status' => $result['status'] ?? null,
             'error' => $lastError,
+            'cards_endorsement_issues' => $issues,
+            'create_fallback_error' => $createResult['error'] ?? null,
         ]);
 
         return [
@@ -641,6 +651,7 @@ class BridgeService
             'error' => $lastError,
             'endorsement' => 'cards',
             'source' => 'customer_kyc_link_cards',
+            'cards_endorsement_issues' => $issues,
         ];
     }
 
@@ -652,13 +663,159 @@ class BridgeService
             return [
                 'success' => true,
                 'url' => $resolved['url'] ?? $this->extractKycLinkUrl($resolved),
+                'source' => $resolved['source'] ?? null,
             ];
         }
 
         return [
             'success' => false,
             'error' => $resolved['error'] ?? 'Failed to get cards endorsement verification link',
+            'cards_endorsement_issues' => $resolved['cards_endorsement_issues'] ?? null,
         ];
+    }
+
+    /**
+     * Return open cards endorsement requirement issues from Bridge customer payload.
+     *
+     * @return list<string>
+     */
+    public function getCardsEndorsementIssues(string $customerId): array
+    {
+        $customerResult = $this->getCustomer($customerId);
+        if (! ($customerResult['success'] ?? false)) {
+            return [];
+        }
+
+        $endorsementInfo = $this->getCardsEndorsementInfo($customerResult['data'] ?? []);
+        $issues = $endorsementInfo['endorsement']['requirements']['issues'] ?? [];
+
+        return is_array($issues) ? array_values(array_filter($issues, 'is_string')) : [];
+    }
+
+    /**
+     * POST /kyc_links with cards endorsement when GET ?endorsement=cards is unavailable.
+     */
+    protected function createCardsEndorsementKycLinkFallback(string $customerId, ?string $redirectUri = null): array
+    {
+        $customerResult = $this->getCustomer($customerId);
+        if (! ($customerResult['success'] ?? false)) {
+            return ['success' => false, 'error' => 'Bridge customer not found'];
+        }
+
+        $customer = $customerResult['data'];
+        $firstName = trim((string) ($customer['first_name'] ?? ''));
+        $lastName = trim((string) ($customer['last_name'] ?? ''));
+        $fullName = trim("{$firstName} {$lastName}");
+        $email = trim((string) ($customer['email'] ?? ''));
+        $type = strtolower((string) ($customer['type'] ?? 'individual'));
+
+        if ($fullName === '' || $email === '') {
+            return ['success' => false, 'error' => 'Customer is missing name or email for cards KYC link'];
+        }
+
+        $payload = [
+            'full_name' => $fullName,
+            'email' => $email,
+            'type' => in_array($type, ['business', 'individual'], true) ? $type : 'individual',
+            'endorsements' => ['cards'],
+        ];
+
+        if ($redirectUri) {
+            $payload['redirect_uri'] = $redirectUri;
+        }
+
+        $result = $this->createKYCLink($payload);
+        $url = $this->extractKycLinkUrl($result);
+
+        if ($url === null) {
+            return [
+                'success' => false,
+                'error' => $result['error'] ?? 'Failed to create cards endorsement KYC link',
+            ];
+        }
+
+        Log::info('Cards endorsement KYC link resolved via POST /kyc_links fallback', [
+            'customer_id' => $customerId,
+            'kyc_link_id' => $result['data']['id'] ?? null,
+        ]);
+
+        return [
+            'success' => true,
+            'url' => $url,
+            'data' => $result['data'] ?? ['url' => $url, 'kyc_link' => $url],
+            'source' => 'kyc_links_create_cards',
+            'endorsement' => 'cards',
+        ];
+    }
+
+    /**
+     * Fix known cards endorsement blockers before requesting the KYC link (e.g. invalid phone format).
+     */
+    public function remediateCardsEndorsementBlockers(string $customerId, ?string $preferredPhone = null): void
+    {
+        $issues = $this->getCardsEndorsementIssues($customerId);
+        $needsPhoneFix = in_array('phone_number_invalid_format', $issues, true);
+
+        if (! $needsPhoneFix && $preferredPhone === null) {
+            return;
+        }
+
+        $customerResult = $this->getCustomer($customerId);
+        if (! ($customerResult['success'] ?? false)) {
+            return;
+        }
+
+        $customer = $customerResult['data'];
+        $currentPhone = trim((string) ($customer['phone'] ?? ''));
+        $candidate = $preferredPhone ?: $currentPhone;
+
+        if ($candidate === '') {
+            return;
+        }
+
+        $normalized = $this->normalizePhoneE164($candidate);
+        if ($normalized === null || $normalized === $currentPhone) {
+            return;
+        }
+
+        $updateResult = $this->updateCustomer($customerId, ['phone' => $normalized]);
+
+        Log::info('Updated Bridge customer phone for cards endorsement', [
+            'customer_id' => $customerId,
+            'phone' => $normalized,
+            'success' => $updateResult['success'] ?? false,
+            'error' => $updateResult['error'] ?? null,
+            'issues' => $issues,
+        ]);
+    }
+
+    /**
+     * Normalize a phone number to E.164 for Bridge cards requirements.
+     */
+    public function normalizePhoneE164(?string $raw): ?string
+    {
+        if ($raw === null || trim($raw) === '') {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', trim($raw));
+        if ($digits === '' || $digits === null) {
+            return null;
+        }
+
+        if (str_starts_with(trim($raw), '+')) {
+            return '+'.$digits;
+        }
+
+        if (strlen($digits) === 10) {
+            return '+1'.$digits;
+        }
+
+        if (strlen($digits) === 11 && str_starts_with($digits, '1')) {
+            return '+'.$digits;
+        }
+
+        return '+'.$digits;
     }
 
     protected function ensureCustomerHasCardsEndorsement(string $customerId): void
