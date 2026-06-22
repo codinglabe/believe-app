@@ -6026,16 +6026,20 @@ class BridgeWalletController extends Controller
 
             $customerId = $integration->bridge_customer_id;
 
-            if ($this->bridgeService->isSandbox()) {
-                $cardsEnableResult = $this->bridgeService->ensureCardsProductEnabled();
-                if (! ($cardsEnableResult['success'] ?? false) && empty($cardsEnableResult['skipped']) && empty($cardsEnableResult['already_enabled'])) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => $cardsEnableResult['error'] ?? 'Failed to enable Bridge cards product. Configure Stripe in Cashier settings and link it under Settings → Bridge Wallet.',
-                        'error_code' => 'cards_enable_failed',
-                        'help_url' => 'https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox',
-                    ], 400);
-                }
+            $cardsEnableResult = $this->bridgeService->ensureCardsProductEnabled();
+            if (! ($cardsEnableResult['success'] ?? false)
+                && empty($cardsEnableResult['skipped'])
+                && empty($cardsEnableResult['already_enabled'])) {
+                $helpUrl = ($cardsEnableResult['production'] ?? false)
+                    ? 'https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing'
+                    : 'https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $cardsEnableResult['error'] ?? 'Bridge cards are not ready for issuance.',
+                    'error_code' => 'cards_enable_failed',
+                    'help_url' => $cardsEnableResult['help_url'] ?? $helpUrl,
+                ], 400);
             }
 
             $existingVirtualCard = $this->bridgeService->getVirtualCard($integration, $customerId);
@@ -6047,18 +6051,17 @@ class BridgeWalletController extends Controller
                 ]);
             }
 
-            // Check if card account already exists
-            $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+            // Legacy Bridge card_accounts API — sandbox only; production uses Stripe Issuing directly.
+            $cardAccountsResult = ['success' => false];
+            $useLegacyCardAccounts = $this->bridgeService->isSandbox();
 
-            // Check if cards product is enabled
-            if (!$cardAccountsResult['success']) {
-                $errorMessage = $cardAccountsResult['error'] ?? '';
-                $errorCode = $cardAccountsResult['response']['code'] ?? '';
+            if ($useLegacyCardAccounts) {
+                $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
 
-                // Check if error is about cards not being enabled
-                if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
-                    // Try to enable cards product automatically (only in sandbox)
-                    if ($this->bridgeService->isSandbox()) {
+                if (! $cardAccountsResult['success']) {
+                    if ($this->bridgeService->shouldBypassLegacyCardAccountsGate($cardAccountsResult)) {
+                        $useLegacyCardAccounts = false;
+                    } elseif ($this->bridgeService->isCardsProductNotEnabledError($cardAccountsResult)) {
                         Log::info('Cards product not enabled - attempting to enable automatically', [
                             'user_id' => Auth::id(),
                             'customer_id' => $customerId,
@@ -6067,17 +6070,13 @@ class BridgeWalletController extends Controller
 
                         $enableResult = $this->bridgeService->enableCardsProduct();
 
-                        if ($enableResult['success']) {
-                            Log::info('Cards product enabled successfully - retrying card account operations', [
-                                'user_id' => Auth::id(),
-                                'customer_id' => $customerId,
-                            ]);
-
-                            // Retry getting card accounts after enabling
+                        if ($enableResult['success'] ?? false) {
                             $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
 
-                            // If still fails, return error
-                            if (!$cardAccountsResult['success']) {
+                            if (! $cardAccountsResult['success']
+                                && $this->bridgeService->shouldBypassLegacyCardAccountsGate($cardAccountsResult)) {
+                                $useLegacyCardAccounts = false;
+                            } elseif (! $cardAccountsResult['success']) {
                                 return response()->json([
                                     'success' => false,
                                     'message' => 'Cards product enabled but card account retrieval still failed. Please try again.',
@@ -6093,24 +6092,21 @@ class BridgeWalletController extends Controller
                             ], 500);
                         }
                     } else {
-                        // In production, cards must be enabled manually
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Cards product is not enabled for your account. Please enable it in Bridge dashboard to use card accounts.',
-                            'error_code' => 'cards_not_enabled',
-                            'help_url' => 'https://apidocs.bridge.xyz/docs/cards-sandbox#setup',
-                        ], 400);
+                        Log::info('Skipping legacy card_accounts gate — proceeding with Stripe Issuing', [
+                            'customer_id' => $customerId,
+                            'error' => $cardAccountsResult['error'] ?? null,
+                        ]);
+                        $useLegacyCardAccounts = false;
                     }
                 }
             }
 
-            if ($cardAccountsResult['success'] && !empty($cardAccountsResult['data'])) {
+            if ($useLegacyCardAccounts && ($cardAccountsResult['success'] ?? false) && ! empty($cardAccountsResult['data'])) {
                 $cardAccounts = is_array($cardAccountsResult['data']) && isset($cardAccountsResult['data']['data'])
                     ? $cardAccountsResult['data']['data']
                     : (is_array($cardAccountsResult['data']) ? $cardAccountsResult['data'] : []);
 
-                if (!empty($cardAccounts) && is_array($cardAccounts)) {
-                    // Card account already exists
+                if (! empty($cardAccounts) && is_array($cardAccounts)) {
                     return response()->json([
                         'success' => true,
                         'message' => 'Card account already exists',

@@ -539,6 +539,14 @@ class BridgeService
     ): array {
         if ($this->isSandbox()) {
             $this->ensureCardsProductEnabled();
+        } else {
+            $cardsReady = $this->ensureCardsProductEnabled();
+            if (! ($cardsReady['success'] ?? false) && ! ($cardsReady['already_enabled'] ?? false)) {
+                Log::warning('Live Stripe Issuing not ready before cards endorsement KYC link', [
+                    'customer_id' => $customerId,
+                    'error' => $cardsReady['error'] ?? null,
+                ]);
+            }
         }
 
         $this->ensureCustomerHasCardsEndorsement($customerId);
@@ -1291,22 +1299,50 @@ class BridgeService
     }
 
     /**
-     * Ensure sandbox cards product is linked to Cashier Stripe (idempotent).
+     * Ensure cards are ready for issuance.
+     *
+     * Sandbox: POST /cards/enable links Bridge sandbox to Cashier Stripe sandbox.
+     * Production: no /cards/enable — verify live Stripe Issuing (Bridge Cards app installed).
+     *
+     * @see https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox
+     * @see https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing
      */
     public function ensureCardsProductEnabled(): array
     {
-        if (! $this->isSandbox()) {
-            return ['success' => true, 'skipped' => true];
+        if ($this->isSandbox()) {
+            $bridge = PaymentMethod::getConfig('bridge');
+            $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+
+            if (! empty($config['cards_enabled_at'])) {
+                return ['success' => true, 'already_enabled' => true];
+            }
+
+            return $this->enableCardsProduct();
         }
 
-        $bridge = PaymentMethod::getConfig('bridge');
-        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+        $readiness = $this->getStripeIssuingReadiness();
 
-        if (! empty($config['cards_enabled_at'])) {
-            return ['success' => true, 'already_enabled' => true];
+        if ($readiness['issuing_enabled'] ?? false) {
+            $accountId = (string) ($readiness['account_id'] ?? '');
+            if ($accountId !== '') {
+                $this->persistCardsEnableMetadata($accountId, $this->getCardsProgramType());
+            }
+
+            return [
+                'success' => true,
+                'already_enabled' => true,
+                'production' => true,
+                'account_id' => $readiness['account_id'] ?? null,
+            ];
         }
 
-        return $this->enableCardsProduct();
+        return [
+            'success' => false,
+            'production' => true,
+            'error' => $readiness['message'] ?? 'Live Stripe Issuing is not active. Complete Bridge cards onboarding and install the Bridge Cards Stripe App on your live Stripe account.',
+            'needs_bridge_stripe_app' => $readiness['needs_bridge_stripe_app'] ?? true,
+            'help_url' => 'https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing',
+        ];
     }
 
     /**
@@ -1405,7 +1441,9 @@ class BridgeService
                 'issuing_enabled' => false,
                 'needs_bridge_stripe_app' => $needsApp,
                 'message' => $needsApp
-                    ? 'Install the Bridge Cards Stripe App on your Stripe Sandbox, then click Enable Bridge Cards here. (Sandbox keys still start with sk_test_ — that is normal.)'
+                    ? ($this->isSandbox()
+                        ? 'Install the Bridge Cards Stripe App on your Stripe Sandbox, then click Enable Bridge Cards here. (Sandbox keys still start with sk_test_ — that is normal.)'
+                        : 'Install the Bridge Cards Stripe App on your live Stripe account using the install link from Bridge, add live Stripe keys under Settings → Stripe & PayPal, then click Verify Bridge Cards Setup here.')
                     : $message,
             ];
         }
@@ -1453,13 +1491,45 @@ class BridgeService
         return app(BridgeStripeIssuingService::class)->getVirtualCard($integration, $customerId);
     }
 
+    /**
+     * Legacy GET /card_accounts errors that mean card issuance moved to Stripe Issuing.
+     */
     public function isStripeIssuingMigrationError(array $bridgeApiResult): bool
     {
         $message = strtolower((string) ($bridgeApiResult['error'] ?? ''));
         $code = strtolower((string) ($bridgeApiResult['response']['code'] ?? ''));
 
-        return $code === 'not_allowed'
-            && str_contains($message, 'migrated to stripe issuing');
+        if ($code === 'not_allowed' && str_contains($message, 'migrated to stripe issuing')) {
+            return true;
+        }
+
+        return str_contains($message, 'migrated to stripe issuing')
+            || str_contains($message, 'stripe issuing');
+    }
+
+    /**
+     * Whether legacy card_accounts API failures should block Stripe Issuing issuance.
+     */
+    public function shouldBypassLegacyCardAccountsGate(array $bridgeApiResult): bool
+    {
+        if (! $this->isSandbox()) {
+            return true;
+        }
+
+        return $this->isStripeIssuingMigrationError($bridgeApiResult);
+    }
+
+    /**
+     * Detect Bridge "cards product not enabled" errors (sandbox POST /cards/enable path).
+     */
+    public function isCardsProductNotEnabledError(array $bridgeApiResult): bool
+    {
+        $errorMessage = strtolower((string) ($bridgeApiResult['error'] ?? ''));
+        $errorCode = strtolower((string) ($bridgeApiResult['response']['code'] ?? ''));
+
+        return $errorCode === 'not_allowed'
+            || str_contains($errorMessage, 'cards product has not been enabled')
+            || str_contains($errorMessage, 'cards-sandbox');
     }
 
     /**

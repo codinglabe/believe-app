@@ -2146,24 +2146,24 @@ class BridgeWebhookController extends Controller
             ]);
         }
 
-        // 3. Create Card Account (works in both sandbox and production)
-        // Note: Cards product must be enabled in Bridge dashboard for sandbox
+        // 3. Create Card Account (Stripe Issuing in production; legacy card_accounts in sandbox)
         try {
-            // Check if card account already exists in Bridge
-            $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+            $cardsReadyResult = $this->bridgeService->ensureCardsProductEnabled();
+            $cardsReady = ($cardsReadyResult['success'] ?? false) || ($cardsReadyResult['already_enabled'] ?? false);
+
             $existingCardAccount = null;
             $cardAccountData = null;
-            $cardsEnabled = true;
 
-            // Check if cards product is enabled
-            if (!$cardAccountsResult['success']) {
-                $errorMessage = $cardAccountsResult['error'] ?? '';
-                $errorCode = $cardAccountsResult['response']['code'] ?? '';
+            $cardAccountsResult = ['success' => false];
+            $useLegacyCardAccounts = $this->bridgeService->isSandbox();
 
-                // Check if error is about cards not being enabled
-                if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
-                    // Try to enable cards product automatically (only in sandbox)
-                    if ($this->bridgeService->isSandbox()) {
+            if ($useLegacyCardAccounts) {
+                $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+
+                if (! $cardAccountsResult['success']) {
+                    if ($this->bridgeService->shouldBypassLegacyCardAccountsGate($cardAccountsResult)) {
+                        $useLegacyCardAccounts = false;
+                    } elseif ($this->bridgeService->isCardsProductNotEnabledError($cardAccountsResult)) {
                         Log::info('Cards product not enabled - attempting to enable automatically', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
@@ -2172,17 +2172,16 @@ class BridgeWebhookController extends Controller
 
                         $enableResult = $this->bridgeService->enableCardsProduct();
 
-                        if ($enableResult['success']) {
-                            Log::info('Cards product enabled successfully - retrying card account operations', [
-                                'integration_id' => $integration->id,
-                                'customer_id' => $customerId,
-                            ]);
-
-                            // Retry getting card accounts after enabling
+                        if ($enableResult['success'] ?? false) {
                             $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
-                            $cardsEnabled = $cardAccountsResult['success'];
+                            if (! $cardAccountsResult['success']
+                                && $this->bridgeService->shouldBypassLegacyCardAccountsGate($cardAccountsResult)) {
+                                $useLegacyCardAccounts = false;
+                            } elseif (! $cardAccountsResult['success']) {
+                                $cardsReady = false;
+                            }
                         } else {
-                            $cardsEnabled = false;
+                            $cardsReady = false;
                             Log::warning('Failed to enable cards product automatically', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
@@ -2190,21 +2189,19 @@ class BridgeWebhookController extends Controller
                             ]);
                         }
                     } else {
-                        // In production, cards must be enabled manually
-                        $cardsEnabled = false;
-                        Log::info('Cards product not enabled for production account - must be enabled manually', [
+                        Log::info('Legacy card_accounts unavailable — using Stripe Issuing path', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
-                            'environment' => 'production',
+                            'error' => $cardAccountsResult['error'] ?? null,
                         ]);
+                        $useLegacyCardAccounts = false;
                     }
-                }
-            } elseif ($cardAccountsResult['success'] && isset($cardAccountsResult['data']['data'])) {
-                $cardAccounts = $cardAccountsResult['data']['data'];
-                if (count($cardAccounts) > 0) {
-                    // Use the first card account (or primary if available)
-                    $existingCardAccount = $cardAccounts[0];
-                    $cardAccountData = $existingCardAccount;
+                } elseif (isset($cardAccountsResult['data']['data'])) {
+                    $cardAccounts = $cardAccountsResult['data']['data'];
+                    if (count($cardAccounts) > 0) {
+                        $existingCardAccount = $cardAccounts[0];
+                        $cardAccountData = $existingCardAccount;
+                    }
                 }
             }
 
@@ -2213,13 +2210,14 @@ class BridgeWebhookController extends Controller
                 ->where('is_primary', true)
                 ->first();
 
-            // Only proceed with card account creation if cards product is enabled
-            if (!$cardsEnabled) {
-                Log::info('Skipping card account creation - cards product not enabled', [
+            // Only proceed with card account creation if cards are ready
+            if (! $cardsReady) {
+                Log::info('Skipping card account creation - cards not ready', [
                     'integration_id' => $integration->id,
                     'customer_id' => $customerId,
+                    'error' => $cardsReadyResult['error'] ?? null,
                 ]);
-            } elseif (!$existingCardAccount) {
+            } elseif (! $existingCardAccount) {
                 // Card accounts require date of birth - check appropriately for business vs individual accounts
                 $shouldCreateCardAccount = true;
 

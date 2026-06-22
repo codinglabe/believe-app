@@ -194,7 +194,13 @@ class BridgeSettingsController extends Controller
     }
 
     /**
-     * Link Bridge sandbox cards to the Laravel Cashier Stripe account (POST /cards/enable).
+     * Link Bridge cards to Cashier Stripe.
+     *
+     * Sandbox: POST /cards/enable
+     * Production: verify live Stripe Issuing (Bridge Cards app — no /cards/enable API)
+     *
+     * @see https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox
+     * @see https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing
      */
     public function enableCards(Request $request)
     {
@@ -206,17 +212,30 @@ class BridgeSettingsController extends Controller
             'bridge_cards_program_type' => ['nullable', 'string', 'in:consumer,commercial'],
         ]);
 
-        if (! $this->bridgeService->isSandbox()) {
-            return redirect()->back()->with('error', 'Bridge cards enable is only available in sandbox mode.');
+        $programType = $request->input('bridge_cards_program_type') ?: $this->bridgeService->getCardsProgramType();
+
+        if ($this->bridgeService->isSandbox()) {
+            $result = $this->bridgeService->enableCardsProduct($programType, true);
+
+            if ($result['success'] ?? false) {
+                return redirect()->back()->with('success', 'Bridge cards product linked to your Cashier Stripe account successfully.');
+            }
+
+            return redirect()->back()->with('error', $result['error'] ?? 'Failed to enable Bridge cards product.');
         }
 
-        $programType = $request->input('bridge_cards_program_type') ?: $this->bridgeService->getCardsProgramType();
-        $result = $this->bridgeService->enableCardsProduct($programType, true);
+        $result = $this->bridgeService->ensureCardsProductEnabled();
 
         if ($result['success'] ?? false) {
-            return redirect()->back()->with('success', 'Bridge cards product linked to your Cashier Stripe account successfully.');
+            return redirect()->back()->with(
+                'success',
+                'Live Stripe Issuing is active. Bridge cards are ready — customers need an approved cards endorsement before issuance.'
+            );
         }
 
-        return redirect()->back()->with('error', $result['error'] ?? 'Failed to enable Bridge cards product.');
+        return redirect()->back()->with(
+            'error',
+            $result['error'] ?? 'Live Stripe Issuing is not active. Complete Bridge cards onboarding and install the Bridge Cards Stripe App on your live Stripe account.'
+        );
     }
 }

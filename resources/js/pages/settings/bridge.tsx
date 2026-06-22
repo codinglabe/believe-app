@@ -321,7 +321,17 @@ export default function BridgeSettings({ settings }: Props) {
                 Bridge Cards &amp; Laravel Cashier
               </CardTitle>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                Bridge sandbox cards require a linked Stripe account. We resolve your Stripe account ID from Laravel Cashier (Settings → Stripe &amp; PayPal) and send it to Bridge via <code className="text-xs">POST /cards/enable</code>.
+                {bridgeEnvironment === "sandbox" ? (
+                  <>
+                    Bridge sandbox cards require a linked Stripe Sandbox account. We resolve your Stripe account ID from Laravel Cashier (Settings → Stripe &amp; PayPal) and send it to Bridge via{" "}
+                    <code className="text-xs">POST /cards/enable</code>.
+                  </>
+                ) : (
+                  <>
+                    Bridge live cards use <strong>Stripe Issuing</strong> on your production Stripe account — there is no{" "}
+                    <code className="text-xs">POST /cards/enable</code> in production. Complete Bridge onboarding, install the Bridge Cards Stripe App on your live account, then verify setup below.
+                  </>
+                )}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -356,33 +366,52 @@ export default function BridgeSettings({ settings }: Props) {
                   </p>
                   <p className="text-xs text-amber-800 dark:text-amber-200">
                     {settings.stripe_issuing_readiness.message} Card issuance runs through{" "}
-                    <strong>Stripe Issuing</strong> on a dedicated <strong>Stripe Sandbox</strong> (Dashboard → Sandboxes).
-                    Sandbox API keys still start with <code>sk_test_</code> — that is normal.
+                    <strong>Stripe Issuing</strong>
+                    {bridgeEnvironment === "sandbox" ? (
+                      <> on a dedicated <strong>Stripe Sandbox</strong> (Dashboard → Sandboxes). Sandbox API keys still start with <code>sk_test_</code> — that is normal.</>
+                    ) : (
+                      <> on your <strong>live Stripe account</strong> (<code>sk_live_</code> keys under Settings → Stripe &amp; PayPal).</>
+                    )}
                   </p>
                   <ol className="text-xs text-amber-800 dark:text-amber-200 list-decimal list-inside space-y-1.5">
-                    <li>
-                      Use a <strong>Stripe Sandbox</strong> (not Test Mode). Your Cashier account is{" "}
-                      <code>{settings.stripe_issuing_readiness.account_id ?? resolvedStripeAccountId ?? "acct_…"}</code>.
-                    </li>
-                    <li>
-                      Email{" "}
-                      <a href="mailto:support@bridge.xyz" className="underline font-medium">
-                        support@bridge.xyz
-                      </a>{" "}
-                      or check the Bridge Dashboard for your <strong>Stripe App Install Link</strong>.
-                    </li>
-                    <li>Open the install link while logged into the matching Stripe Sandbox and approve the Bridge Cards app.</li>
-                    <li>Return here, save settings, and click <strong>Enable Bridge Cards (Sandbox)</strong>.</li>
+                    {bridgeEnvironment === "sandbox" ? (
+                      <>
+                        <li>
+                          Use a <strong>Stripe Sandbox</strong> (not Test Mode). Your Cashier account is{" "}
+                          <code>{settings.stripe_issuing_readiness.account_id ?? resolvedStripeAccountId ?? "acct_…"}</code>.
+                        </li>
+                        <li>
+                          Email{" "}
+                          <a href="mailto:support@bridge.xyz" className="underline font-medium">
+                            support@bridge.xyz
+                          </a>{" "}
+                          or check the Bridge Dashboard for your <strong>Stripe App Install Link</strong>.
+                        </li>
+                        <li>Open the install link while logged into the matching Stripe Sandbox and approve the Bridge Cards app.</li>
+                        <li>Return here, save settings, and click <strong>Enable Bridge Cards (Sandbox)</strong>.</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Complete Bridge cards onboarding with your Bridge implementation contact.</li>
+                        <li>Install the Bridge Cards Stripe App on your <strong>live</strong> Stripe account using the install link from Bridge.</li>
+                        <li>Add live Stripe keys under Settings → Stripe &amp; PayPal (account <code>{settings.stripe_issuing_readiness.account_id ?? resolvedStripeAccountId ?? "acct_…"}</code>).</li>
+                        <li>Return here and click <strong>Verify Bridge Cards Setup (Live)</strong>.</li>
+                      </>
+                    )}
                   </ol>
                   <p className="text-xs text-amber-700 dark:text-amber-300">
                     Docs:{" "}
                     <a
-                      href="https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox"
+                      href={
+                        bridgeEnvironment === "sandbox"
+                          ? "https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox"
+                          : "https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing"
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline"
                     >
-                      Bridge cards sandbox setup
+                      {bridgeEnvironment === "sandbox" ? "Bridge cards sandbox setup" : "Bridge consumer issuing (live)"}
                     </a>
                     {" · "}
                     <a
@@ -428,7 +457,13 @@ export default function BridgeSettings({ settings }: Props) {
                     variant="outline"
                     className="text-xs"
                     onClick={() =>
-                      window.open("https://dashboard.stripe.com/test/issuing/overview", "_blank", "noopener,noreferrer")
+                      window.open(
+                        bridgeEnvironment === "sandbox"
+                          ? "https://dashboard.stripe.com/test/issuing/overview"
+                          : "https://dashboard.stripe.com/issuing/overview",
+                        "_blank",
+                        "noopener,noreferrer"
+                      )
                     }
                   >
                     Open Stripe Issuing dashboard
@@ -509,7 +544,7 @@ export default function BridgeSettings({ settings }: Props) {
                 )}
               </div>
 
-              {bridgeEnvironment === "sandbox" && (
+              {(bridgeEnvironment === "sandbox" || bridgeEnvironment === "live") && (
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <Button
                     type="button"
@@ -525,17 +560,27 @@ export default function BridgeSettings({ settings }: Props) {
                     {enablingCards ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Enabling…
+                        {bridgeEnvironment === "sandbox" ? "Enabling…" : "Verifying…"}
                       </>
                     ) : (
                       <>
                         <CreditCard className="mr-2 h-4 w-4" />
-                        Enable Bridge Cards (Sandbox)
+                        {bridgeEnvironment === "sandbox"
+                          ? "Enable Bridge Cards (Sandbox)"
+                          : "Verify Bridge Cards Setup (Live)"}
                       </>
                     )}
                   </Button>
                   <p className="text-xs text-gray-500 dark:text-gray-400 self-center">
-                    Saves program type when you click Save Settings. Enable calls Bridge <code>POST /cards/enable</code> with your Cashier Stripe account.
+                    {bridgeEnvironment === "sandbox" ? (
+                      <>
+                        Saves program type when you click Save Settings. Enable calls Bridge <code>POST /cards/enable</code> with your Cashier Stripe account.
+                      </>
+                    ) : (
+                      <>
+                        Live mode verifies Stripe Issuing on your production account (no Bridge <code>/cards/enable</code> API). Customers still need an approved <code>cards</code> endorsement.
+                      </>
+                    )}
                   </p>
                 </div>
               )}

@@ -64,11 +64,33 @@ class BridgeStripeIssuingService
      */
     public function issueVirtualCard(BridgeIntegration $integration, string $customerId, bool $isBusiness = false): array
     {
+        $enableResult = $this->bridgeService->ensureCardsProductEnabled();
+        if (! ($enableResult['success'] ?? false)
+            && empty($enableResult['skipped'])
+            && empty($enableResult['already_enabled'])) {
+            $isProduction = (bool) ($enableResult['production'] ?? false);
+
+            return $this->error(
+                $enableResult['error'] ?? ($isProduction
+                    ? 'Live Stripe Issuing is not active. Complete Bridge cards onboarding first.'
+                    : 'Failed to enable Bridge cards product.'),
+                'cards_enable_failed',
+                400,
+                [
+                    'help_url' => $enableResult['help_url']
+                        ?? ($isProduction
+                            ? 'https://apidocs.bridge.xyz/platform/cards/overview/stripe-issuing'
+                            : 'https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox'),
+                    'production' => $isProduction,
+                ]
+            );
+        }
+
         if ($this->bridgeService->isSandbox()) {
-            $enableResult = $this->bridgeService->enableCardsProduct(null, true);
-            if (! ($enableResult['success'] ?? false) && empty($enableResult['skipped'])) {
+            $forceEnable = $this->bridgeService->enableCardsProduct(null, true);
+            if (! ($forceEnable['success'] ?? false) && empty($forceEnable['already_enabled'])) {
                 return $this->error(
-                    $enableResult['error'] ?? 'Failed to enable Bridge cards product.',
+                    $forceEnable['error'] ?? 'Failed to enable Bridge cards product.',
                     'cards_enable_failed',
                     400,
                     ['help_url' => 'https://apidocs.bridge.xyz/platform/cards/sandbox/sandbox']
@@ -119,8 +141,12 @@ class BridgeStripeIssuingService
             $stripeCardholderCount = $issuingEnabled ? $this->countStripeCardholders() : 0;
 
             $message = $issuingEnabled
-                ? 'Cards verification is approved but Bridge has not set stripe_cardholder_id on this customer yet. Per Bridge sandbox docs, Enable Bridge Cards must be completed before the customer is created and verified. Click Enable Bridge Cards in Settings, then reset Bridge data and complete verification again so Bridge can create the Stripe cardholder automatically.'
-                : 'Bridge has not created a Stripe cardholder yet. Install the Bridge Cards Stripe App on your Stripe Sandbox, paste those sk_test_ keys into Settings → Stripe & PayPal, then click Enable Bridge Cards before creating a new Bridge customer.';
+                ? ($this->bridgeService->isSandbox()
+                    ? 'Cards verification is approved but Bridge has not set stripe_cardholder_id on this customer yet. Per Bridge sandbox docs, Enable Bridge Cards must be completed before the customer is created and verified. Click Enable Bridge Cards in Settings, then reset Bridge data and complete verification again so Bridge can create the Stripe cardholder automatically.'
+                    : 'Cards verification is approved but Bridge has not created a Stripe cardholder yet. Ensure live Stripe Issuing is active (Settings → Bridge Wallet → Verify Bridge Cards Setup), then complete cards endorsement verification again so Bridge can set stripe_cardholder_id on the customer.')
+                : ($this->bridgeService->isSandbox()
+                    ? 'Bridge has not created a Stripe cardholder yet. Install the Bridge Cards Stripe App on your Stripe Sandbox, paste those sk_test_ keys into Settings → Stripe & PayPal, then click Enable Bridge Cards before creating a new Bridge customer.'
+                    : 'Bridge has not created a Stripe cardholder yet. Install the Bridge Cards Stripe App on your live Stripe account (install link from Bridge), add live Stripe keys under Settings → Stripe & PayPal, then verify setup under Settings → Bridge Wallet.');
 
             Log::warning('Stripe cardholder missing on Bridge customer', [
                 'integration_id' => $integration->id,
@@ -443,8 +469,12 @@ class BridgeStripeIssuingService
     {
         $stripeEnv = $this->bridgeService->isSandbox() ? 'sandbox' : 'live';
 
-        return StripeConfigService::configureStripe($stripeEnv)
-            || StripeConfigService::configureStripe('sandbox');
+        if (StripeConfigService::configureStripe($stripeEnv)) {
+            return true;
+        }
+
+        return $this->bridgeService->isSandbox()
+            && StripeConfigService::configureStripe('sandbox');
     }
 
     /**
