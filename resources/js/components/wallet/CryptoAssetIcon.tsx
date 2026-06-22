@@ -38,9 +38,9 @@ interface CryptoAssetIconProps {
 }
 
 const sizeMap = {
-    sm: { token: 28, badge: 14, ring: 'ring-2' },
-    md: { token: 40, badge: 18, ring: 'ring-2' },
-    lg: { token: 56, badge: 22, ring: 'ring-[3px]' },
+    sm: { token: 28, badge: 12, ring: 'ring-1', container: 'h-7 w-7' },
+    md: { token: 36, badge: 14, ring: 'ring-2', container: 'h-9 w-9' },
+    lg: { token: 48, badge: 18, ring: 'ring-2', container: 'h-12 w-12' },
 }
 
 export function CryptoAssetIcon({
@@ -55,7 +55,7 @@ export function CryptoAssetIcon({
     const chainIcon = chain ? CHAIN_ICON_IDS[chain.toLowerCase()] : null
 
     return (
-        <div className={cn('relative inline-flex shrink-0', className)}>
+        <div className={cn('relative inline-flex shrink-0 items-center justify-center', dims.container, className)}>
             <Icon icon={tokenIcon} width={dims.token} height={dims.token} className="rounded-full" />
             {showChainBadge && chainIcon && (
                 <span

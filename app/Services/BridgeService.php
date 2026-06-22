@@ -208,7 +208,6 @@ class BridgeService
             if (!$response->successful()) {
                 $errorMessage = $body['message'] ?? 'Bridge API request failed';
 
-                // Log detailed error information including request data
                 // Extract missing/invalid parameters from Bridge response if available
                 $missingParams = $body['missing_parameters'] ?? $body['invalid_parameters'] ?? $body['errors'] ?? $body['error'] ?? null;
                 if ($missingParams) {
@@ -216,6 +215,16 @@ class BridgeService
                         $errorMessage .= ': ' . $missingParams;
                     } else {
                         $errorMessage .= ' Missing/Invalid parameters: ' . json_encode($missingParams);
+                    }
+                }
+
+                if (isset($body['source']['key']) && is_array($body['source']['key'])) {
+                    $fieldErrors = [];
+                    foreach ($body['source']['key'] as $field => $reason) {
+                        $fieldErrors[] = $field . ': ' . $reason;
+                    }
+                    if ($fieldErrors !== []) {
+                        $errorMessage .= ' (' . implode('; ', $fieldErrors) . ')';
                     }
                 }
 
@@ -956,6 +965,237 @@ class BridgeService
     public function getVirtualAccount(string $customerId, string $virtualAccountId): array
     {
         return $this->makeRequest('GET', "/customers/{$customerId}/virtual_accounts/{$virtualAccountId}");
+    }
+
+    /**
+     * Normalize Bridge list responses ({ count, data: [...] } or bare array).
+     *
+     * @param  array<string, mixed>|null  $apiResult
+     * @return array<int, array<string, mixed>>
+     */
+    public function normalizeBridgeListData(?array $apiResult): array
+    {
+        if ($apiResult === null) {
+            return [];
+        }
+
+        if (array_key_exists('success', $apiResult)) {
+            if (! ($apiResult['success'] ?? false)) {
+                return [];
+            }
+            $data = $apiResult['data'] ?? [];
+        } else {
+            $data = $apiResult;
+        }
+
+        if (isset($data['data']) && is_array($data['data'])) {
+            return array_values(array_filter($data['data'], 'is_array'));
+        }
+
+        if (is_array($data) && isset($data[0]) && is_array($data[0])) {
+            return $data;
+        }
+
+        return [];
+    }
+
+    /**
+     * Resolve the best virtual account for deposits from Bridge (sync from API).
+     */
+    public function resolveVirtualAccountFromBridge(string $customerId, ?string $preferredBridgeWalletId = null): ?array
+    {
+        $accounts = $this->normalizeBridgeListData($this->getVirtualAccounts($customerId));
+
+        if ($accounts === []) {
+            return null;
+        }
+
+        if ($preferredBridgeWalletId) {
+            foreach ($accounts as $account) {
+                $destination = $account['destination'] ?? [];
+                if (($destination['bridge_wallet_id'] ?? null) === $preferredBridgeWalletId) {
+                    return $this->enrichVirtualAccountDetails($customerId, $account);
+                }
+            }
+        }
+
+        foreach ($accounts as $account) {
+            $instructions = $account['source_deposit_instructions'] ?? [];
+            if (! empty($instructions['bank_routing_number']) || ! empty($instructions['bank_account_number'])) {
+                return $this->enrichVirtualAccountDetails($customerId, $account);
+            }
+        }
+
+        return $this->enrichVirtualAccountDetails($customerId, $accounts[0]);
+    }
+
+    /**
+     * Fetch full virtual account payload when list item lacks deposit instructions.
+     *
+     * @param  array<string, mixed>  $account
+     * @return array<string, mixed>
+     */
+    public function enrichVirtualAccountDetails(string $customerId, array $account): array
+    {
+        $instructions = $account['source_deposit_instructions'] ?? [];
+        if (! empty($instructions['bank_routing_number']) || ! empty($instructions['bank_account_number'])) {
+            return $account;
+        }
+
+        $virtualAccountId = $account['id'] ?? null;
+        if (! $virtualAccountId) {
+            return $account;
+        }
+
+        $detail = $this->getVirtualAccount($customerId, $virtualAccountId);
+        if ($detail['success'] && is_array($detail['data'] ?? null)) {
+            return $detail['data'];
+        }
+
+        return $account;
+    }
+
+    /**
+     * Resolve Bridge wallet ID from local records or Bridge API.
+     */
+    public function resolveBridgeWalletIdForIntegration(
+        \App\Models\BridgeIntegration $integration,
+        ?\App\Models\BridgeWallet $wallet = null,
+    ): ?string {
+        $walletId = $wallet?->bridge_wallet_id ?? $integration->bridge_wallet_id;
+        if ($walletId) {
+            return $walletId;
+        }
+
+        $customerId = $integration->bridge_customer_id;
+        if (! $customerId) {
+            return null;
+        }
+
+        $wallets = $this->normalizeBridgeListData($this->getWallets($customerId));
+        if ($wallets === []) {
+            return null;
+        }
+
+        $first = $wallets[0];
+        $resolved = $first['id'] ?? null;
+
+        if ($resolved && $wallet) {
+            $wallet->bridge_wallet_id = $resolved;
+            $wallet->wallet_address = $wallet->wallet_address ?? ($first['address'] ?? null);
+            $wallet->chain = $wallet->chain ?? ($first['chain'] ?? 'solana');
+            $wallet->save();
+        }
+
+        if ($resolved && ! $integration->bridge_wallet_id) {
+            $integration->bridge_wallet_id = $resolved;
+            $integration->wallet_address = $integration->wallet_address ?? ($first['address'] ?? null);
+            $integration->save();
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Persist virtual account details on a local BridgeWallet row.
+     *
+     * @param  array<string, mixed>  $virtualAccountData
+     */
+    public function attachVirtualAccountToWallet(
+        \App\Models\BridgeWallet $wallet,
+        array $virtualAccountData,
+    ): \App\Models\BridgeWallet {
+        $destination = $virtualAccountData['destination'] ?? [];
+
+        $wallet->virtual_account_id = $virtualAccountData['id'] ?? $wallet->virtual_account_id;
+        $wallet->virtual_account_details = $virtualAccountData;
+
+        if (! $wallet->bridge_wallet_id && ! empty($destination['bridge_wallet_id'])) {
+            $wallet->bridge_wallet_id = $destination['bridge_wallet_id'];
+        }
+
+        if (! $wallet->wallet_address && ! empty($destination['address'])) {
+            $wallet->wallet_address = $destination['address'];
+        }
+
+        if (! empty($destination['payment_rail'])) {
+            $wallet->chain = $destination['payment_rail'];
+        }
+
+        $wallet->save();
+
+        return $wallet;
+    }
+
+    /**
+     * Ensure customer has a Bridge wallet in production (create if missing).
+     *
+     * @return array{success: bool, bridge_wallet_id?: string, wallet?: \App\Models\BridgeWallet, error?: string}
+     */
+    public function ensureProductionBridgeWallet(
+        \App\Models\BridgeIntegration $integration,
+        ?\App\Models\BridgeWallet $wallet = null,
+        string $chain = 'solana',
+    ): array {
+        if ($this->isSandbox()) {
+            return ['success' => true, 'bridge_wallet_id' => null];
+        }
+
+        $bridgeWalletId = $this->resolveBridgeWalletIdForIntegration($integration, $wallet);
+        if ($bridgeWalletId) {
+            return ['success' => true, 'bridge_wallet_id' => $bridgeWalletId, 'wallet' => $wallet];
+        }
+
+        $customerId = $integration->bridge_customer_id;
+        if (! $customerId) {
+            return ['success' => false, 'error' => 'Bridge customer ID is missing.'];
+        }
+
+        $walletResult = $this->createWallet($customerId, $chain);
+        if (! ($walletResult['success'] ?? false)) {
+            return [
+                'success' => false,
+                'error' => $walletResult['error'] ?? 'Failed to create Bridge wallet.',
+            ];
+        }
+
+        $walletData = $walletResult['data'] ?? [];
+        $newId = $walletData['id'] ?? null;
+        if (! $newId) {
+            return ['success' => false, 'error' => 'Bridge wallet created but no wallet ID returned.'];
+        }
+
+        if ($wallet) {
+            $wallet->bridge_wallet_id = $newId;
+            $wallet->wallet_address = $walletData['address'] ?? $wallet->wallet_address;
+            $wallet->chain = $chain;
+            $wallet->save();
+        } else {
+            $wallet = \App\Models\BridgeWallet::updateOrCreate(
+                [
+                    'bridge_integration_id' => $integration->id,
+                    'bridge_wallet_id' => $newId,
+                ],
+                [
+                    'bridge_customer_id' => $customerId,
+                    'wallet_address' => $walletData['address'] ?? null,
+                    'chain' => $chain,
+                    'status' => 'active',
+                    'balance' => 0,
+                    'currency' => 'USD',
+                    'is_primary' => true,
+                    'wallet_metadata' => $walletData,
+                    'last_balance_sync' => now(),
+                ],
+            );
+        }
+
+        $integration->bridge_wallet_id = $newId;
+        $integration->wallet_address = $walletData['address'] ?? $integration->wallet_address;
+        $integration->wallet_chain = $chain;
+        $integration->save();
+
+        return ['success' => true, 'bridge_wallet_id' => $newId, 'wallet' => $wallet];
     }
 
     /**

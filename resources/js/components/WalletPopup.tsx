@@ -1213,6 +1213,48 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 }
             }
 
+            // No local/Bridge instructions — sync or create deposit account automatically
+            const provisionResponse = await fetch('/wallet/bridge/virtual-account', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+                body: JSON.stringify({}),
+            })
+
+            const provisionData = await provisionResponse.json()
+            if (provisionData.success) {
+                const instructions = provisionData.data?.source_deposit_instructions
+                if (instructions) {
+                    applyDepositInstructions(instructions)
+                    return true
+                }
+
+                const retryResponse = await fetch(`/wallet/bridge/deposit-instructions?t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-store',
+                })
+
+                if (retryResponse.ok) {
+                    const retryData = await retryResponse.json()
+                    if (retryData.success && retryData.data?.deposit_instructions) {
+                        applyDepositInstructions(retryData.data.deposit_instructions)
+                        return true
+                    }
+                }
+            }
+
             setDepositInstructions(null)
             return false
         } catch (error) {

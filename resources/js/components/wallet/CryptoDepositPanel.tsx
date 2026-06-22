@@ -304,7 +304,11 @@ export function CryptoDepositPanel({ isSandbox = false, variant = 'deposit' }: C
             <div className="space-y-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Select asset</p>
                 <div
-                    className={`grid gap-2.5 ${cryptoOptions.length === 1 ? 'grid-cols-1' : cryptoOptions.length === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}
+                    className={
+                        cryptoOptions.length === 1
+                            ? 'grid grid-cols-1'
+                            : 'grid grid-cols-3 gap-2'
+                    }
                 >
                     {cryptoOptions.map((option) => {
                         const isSelected =
@@ -319,28 +323,31 @@ export function CryptoDepositPanel({ isSandbox = false, variant = 'deposit' }: C
                                     setCryptoQrCodeUrl(null)
                                     setSelectedCrypto({ chain: option.chain, currency: option.currency })
                                 }}
-                                className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition-all ${
+                                className={`relative flex min-w-0 flex-col items-center gap-2 rounded-xl border px-2 py-3 text-center transition-all ${
                                     isSelected
-                                        ? 'border-purple-500/80 bg-purple-500/10 shadow-sm ring-1 ring-purple-500/30'
+                                        ? 'border-purple-500 bg-purple-500/10 shadow-sm ring-1 ring-purple-500/40'
                                         : 'border-border bg-card hover:border-purple-400/40 hover:bg-muted/40'
                                 }`}
                             >
+                                {isSelected && (
+                                    <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600">
+                                        <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+                                    </span>
+                                )}
                                 <CryptoAssetIcon
                                     currency={option.currency}
                                     chain={option.chain}
                                     size="md"
+                                    showChainBadge={false}
                                 />
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-semibold text-foreground">
+                                <div className="w-full min-w-0 space-y-0.5">
+                                    <p className="truncate text-sm font-semibold leading-tight text-foreground">
                                         {getCryptoTokenLabel(option.currency)}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="truncate text-[11px] leading-tight text-muted-foreground">
                                         {getCryptoChainLabel(option.chain)}
                                     </p>
                                 </div>
-                                {isSelected && (
-                                    <span className="h-2 w-2 shrink-0 rounded-full bg-gradient-to-r from-purple-600 to-blue-600" />
-                                )}
                             </button>
                         )
                     })}
