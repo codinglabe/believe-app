@@ -10,7 +10,8 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
-use App\Services\DonationProcessingFeeEstimator;
+use App\Services\BelievePointsPurchaseCalculationService;
+use App\Services\BelievePointsPurchaseSettingsService;
 use App\Services\Payments\BelievePointsPaymentMethodResolver;
 use App\Services\Payments\BelievePointsPurchasePaymentService;
 use App\Services\StripeEnvironmentSyncService;
@@ -58,24 +59,39 @@ class BelievePointController extends Controller
 
         $feePreview = null;
         if ($request->filled('fee_preview_amount')) {
-            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail']), [
+            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail', 'fee_preview_include_stripe']), [
                 'fee_preview_amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
                 'fee_preview_rail' => ['nullable', 'in:card,bank'],
+                'fee_preview_include_stripe' => ['nullable', 'boolean'],
             ]);
             if (! $validator->fails()) {
                 $base = round((float) $validator->validated()['fee_preview_amount'], 2);
                 $rail = $request->input('fee_preview_rail', 'bank');
                 $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
-                $feePreview = $this->believePointsFeePreviewPayload($base, $rail);
+                $includeStripe = $request->boolean('fee_preview_include_stripe', true);
+                if ($includeStripe) {
+                    $feePreview = $this->believePointsFeePreviewPayload($base, $rail);
+                } else {
+                    $breakdown = $this->purchaseBreakdownForRail($base, $rail, false);
+                    $feePreview = array_merge(
+                        BelievePointsPurchaseCalculationService::feePreviewPayload($base, $rail),
+                        [
+                            'processing_fee_usd' => 0.0,
+                            'checkout_total_usd' => $breakdown['checkout_total_usd'],
+                        ]
+                    );
+                }
             }
         }
 
         return Inertia::render('BelievePoints/Index', [
             'currentBalance' => $currentBalance,
+            'processingBalance' => $user->currentProcessingBelievePoints(),
             'minPurchaseAmount' => $minPurchaseAmount,
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
             'feePreview' => $feePreview,
+            'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload(),
             'availableMethods' => BelievePointsPaymentMethodResolver::availableMethods(),
             'savedPaymentMethods' => UserStripePaymentMethodService::listForUser($user),
             'paymentMethodsUrl' => $user->hasNonprofitDashboardRole()
@@ -86,46 +102,30 @@ class BelievePointController extends Controller
     }
 
     /**
-     * Fee preview: buyer pays Stripe checkout gross-up (same model as donations when donor covers fees).
-     * `amount` / points credited = net; `checkout_total_usd` = what Stripe charges.
+     * Fee preview for Add Believe Points checkout (includes platform fee + BRP).
      *
-     * @return array{
-     *     mode: string,
-     *     rail: string,
-     *     base_gift_usd: float,
-     *     checkout_total_usd: float,
-     *     processing_fee_estimate: float,
-     *     card_processing_fee_usd: float,
-     *     ach_processing_fee_usd: float,
-     *     bank_reward_points: float,
-     *     believe_points_credit_usd: float
-     * }
+     * @return array<string, mixed>
      */
     private function believePointsFeePreviewPayload(float $netPointsUsd, string $rail): array
     {
         $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
-        $netPointsUsd = round(max(0, $netPointsUsd), 2);
 
-        $checkoutTotal = $rail === 'bank'
-            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
-            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
-        $checkoutTotal = round($checkoutTotal, 2);
-        $feeAddon = round(max(0, $checkoutTotal - $netPointsUsd), 2);
+        return BelievePointsPurchaseCalculationService::feePreviewPayload(
+            round(max(0, $netPointsUsd), 2),
+            $rail
+        );
+    }
 
-        $cardCheckout = round(DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd), 2);
-        $achCheckout = round(DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd), 2);
-
-        return [
-            'mode' => 'buyer_covers',
-            'rail' => $rail,
-            'base_gift_usd' => $netPointsUsd,
-            'checkout_total_usd' => $checkoutTotal,
-            'processing_fee_estimate' => $feeAddon,
-            'card_processing_fee_usd' => round(DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($cardCheckout), 2),
-            'ach_processing_fee_usd' => round(DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($achCheckout), 2),
-            'bank_reward_points' => BelievePointPurchaseSettlementService::bankPurchaseRewardPointsFromAmountUsd($netPointsUsd),
-            'believe_points_credit_usd' => $netPointsUsd,
-        ];
+    /**
+     * @return array<string, mixed>
+     */
+    private function purchaseBreakdownForRail(float $netPointsUsd, string $rail, bool $includeStripeProcessing): array
+    {
+        return BelievePointsPurchaseCalculationService::checkoutBreakdown(
+            round(max(0, $netPointsUsd), 2),
+            $rail,
+            $includeStripeProcessing
+        );
     }
 
     /**
@@ -192,12 +192,10 @@ class BelievePointController extends Controller
 
         $feeRail = $validated['payment_rail'] === 'bank' ? 'bank' : 'card';
         $points = $netPointsUsd;
-
-        $checkoutTotalUsd = $feeRail === 'bank'
-            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
-            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
-        $checkoutTotalUsd = round($checkoutTotalUsd, 2);
-        $processingFeeAddon = round(max(0, $checkoutTotalUsd - $netPointsUsd), 2);
+        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, true);
+        $checkoutTotalUsd = $breakdown['checkout_total_usd'];
+        $processingFeeAddon = $breakdown['processing_fee_usd'];
+        $platformFee = $breakdown['platform_fee_usd'];
 
         try {
             if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
@@ -212,6 +210,7 @@ class BelievePointController extends Controller
                 'amount' => $netPointsUsd,
                 'checkout_total' => $checkoutTotalUsd,
                 'processing_fee_estimate' => $processingFeeAddon,
+                'platform_fee' => $platformFee,
                 'points' => $points,
                 'status' => 'pending',
                 'source' => 'manual',
@@ -376,11 +375,10 @@ class BelievePointController extends Controller
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $checkoutTotalUsd = $feeRail === 'bank'
-            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
-            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
-        $checkoutTotalUsd = round($checkoutTotalUsd, 2);
-        $processingFeeAddon = round(max(0, $checkoutTotalUsd - $netPointsUsd), 2);
+        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, true);
+        $checkoutTotalUsd = $breakdown['checkout_total_usd'];
+        $processingFeeAddon = $breakdown['processing_fee_usd'];
+        $platformFee = $breakdown['platform_fee_usd'];
 
         try {
             if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
@@ -397,6 +395,7 @@ class BelievePointController extends Controller
                 'amount' => $netPointsUsd,
                 'checkout_total' => $checkoutTotalUsd,
                 'processing_fee_estimate' => $processingFeeAddon,
+                'platform_fee' => $platformFee,
                 'points' => $points,
                 'status' => 'pending',
                 'source' => 'manual',
@@ -628,7 +627,10 @@ class BelievePointController extends Controller
                     $message = "Successfully purchased {$purchase->points} Believe Points!";
                     if ((float) ($purchase->reward_points_awarded ?? 0) > 0) {
                         $rp = round((float) $purchase->reward_points_awarded, 2);
-                        $message .= ' You earned '.number_format($rp, 2).' reward points for paying with your bank (Merchant Hub balance).';
+                        $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
+                    }
+                    if (! $purchase->points_released) {
+                        $message .= ' Your BP is in Processing and will become available after the security review period.';
                     }
 
                     return redirect()->route('believe-points.index')->with('success', $message);
@@ -658,8 +660,8 @@ class BelievePointController extends Controller
 
                 return redirect()->route('believe-points.index')
                     ->with('info', $isBankCheckout
-                        ? 'Your bank payment is processing. Believe Points and Believe Reward Points (BRP) for this ACH checkout are added automatically as soon as Stripe marks the payment successful—often 1–3 business days for ACH.'
-                        : 'Your payment is still confirming. Believe Points will be added automatically in a moment.');
+                        ? 'Your bank payment is processing. Believe Points go into Processing BP first and become available after ACH settlement. BRP credits when Stripe confirms payment—often 1–3 business days for ACH.'
+                        : 'Your payment is still confirming. Believe Points will be added to Processing BP automatically in a moment.');
             }
 
             if (! $paymentIntentId) {
@@ -942,9 +944,23 @@ class BelievePointController extends Controller
 
             // Check refund status
             if ($refund->status === 'succeeded' || $refund->status === 'pending') {
-                // Deduct points from user's balance
-                $user->refresh(); // Refresh to get latest balance
-                if (! $user->deductBelievePoints($purchase->points)) {
+                // Deduct points from user's balance (available first, then processing)
+                $user->refresh();
+                $pointsToDeduct = (float) $purchase->points;
+                $deducted = false;
+                if ($purchase->points_released) {
+                    $deducted = $user->deductBelievePoints($pointsToDeduct);
+                } elseif ($user->deductProcessingBelievePoints($pointsToDeduct)) {
+                    $deducted = true;
+                } else {
+                    $fromProcessing = round((float) ($user->processing_believe_points ?? 0), 2);
+                    $fromAvailable = round($pointsToDeduct - $fromProcessing, 2);
+                    if ($fromProcessing > 0 && $user->deductProcessingBelievePoints($fromProcessing)) {
+                        $deducted = $fromAvailable <= 0 || $user->deductBelievePoints($fromAvailable);
+                    }
+                }
+
+                if (! $deducted) {
                     DB::rollBack();
                     Log::error('Believe Points refund: Failed to deduct points', [
                         'purchase_id' => $purchase->id,

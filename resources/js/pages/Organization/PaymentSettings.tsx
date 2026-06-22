@@ -20,9 +20,9 @@ import {
   Landmark,
   Loader2,
   Smartphone,
-  Upload,
   Wallet,
 } from "lucide-react"
+import { QrCodeUpload } from "@/components/payments/QrCodeUpload"
 import { useEffect, useMemo, useState } from "react"
 
 interface Props {
@@ -185,10 +185,11 @@ export default function OrganizationPaymentSettings({
   useEffect(() => {
     if (recentlySuccessful || successMessage) {
       setShowSaved(true)
+      setData("cashapp_qr_image", null)
       const t = window.setTimeout(() => setShowSaved(false), 4000)
       return () => clearTimeout(t)
     }
-  }, [recentlySuccessful, successMessage])
+  }, [recentlySuccessful, successMessage, setData])
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -390,29 +391,14 @@ export default function OrganizationPaymentSettings({
                       </div>
                       <div>
                         <Label htmlFor="cashapp_qr">QR code image <span className="text-muted-foreground text-xs">(or cashtag ←)</span></Label>
-                        <div className="mt-1 flex items-center gap-3">
-                          {settings.cashapp_qr_image_url && (
-                            <img
-                              src={settings.cashapp_qr_image_url}
-                              alt="Cash App QR"
-                              className="h-16 w-16 rounded-lg border object-cover"
-                            />
-                          )}
-                          <label
-                            htmlFor="cashapp_qr"
-                            className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm text-gray-600 hover:bg-white dark:text-gray-400 dark:hover:bg-gray-800"
-                          >
-                            <Upload className="h-4 w-4" />
-                            Upload QR
-                            <input
-                              id="cashapp_qr"
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={(e) => setData("cashapp_qr_image", e.target.files?.[0] ?? null)}
-                            />
-                          </label>
-                        </div>
+                        <QrCodeUpload
+                          id="cashapp_qr"
+                          className="mt-1"
+                          existingUrl={settings.cashapp_qr_image_url}
+                          file={data.cashapp_qr_image}
+                          onChange={(file) => setData("cashapp_qr_image", file)}
+                          error={errors.cashapp_qr_image}
+                        />
                       </div>
                     </div>
                   </div>
