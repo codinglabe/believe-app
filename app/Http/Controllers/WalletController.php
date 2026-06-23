@@ -151,52 +151,35 @@ class WalletController extends Controller
                 $entityUser = $user;
             }
 
-            // Optional: read Bridge wallet balance for diagnostics (never overwrite local ledger)
+            // Reconcile deposits, invalidate phantom transfers, sync balance from Bridge wallet.
             $bridgeBalance = null;
             $bridgeService = app(\App\Services\BridgeService::class);
-            
+            $reconciliation = app(BridgeWalletLedgerReconciliationService::class);
+
             try {
-                $integration = \App\Models\BridgeIntegration::with('primaryWallet')
+                $integration = BridgeIntegration::with(['primaryWallet', 'wallets'])
                     ->where('integratable_id', $entity->id)
                     ->where('integratable_type', $entityType)
                     ->first();
 
-                if ($integration && $integration->bridge_customer_id && ! $bridgeService->isSandbox()) {
-                    $bridgeBalance = app(BridgeWalletLedgerReconciliationService::class)
-                        ->fetchCustodialWalletBalance($integration);
-                }
-            } catch (\Exception $bridgeError) {
-                \Illuminate\Support\Facades\Log::warning('Failed to fetch Bridge balance', [
-                    'error' => $bridgeError->getMessage(),
-                    'user_id' => $user->id,
-                ]);
-            }
-
-            // Reconcile ACH/fiat virtual account deposits from Bridge history (webhook fallback).
-            try {
-                $depositIntegration = BridgeIntegration::with(['primaryWallet', 'wallets'])
-                    ->where('integratable_id', $entity->id)
-                    ->where('integratable_type', $entityType)
-                    ->first();
-
-                if ($depositIntegration?->bridge_customer_id) {
-                    app(BridgeVirtualAccountDepositService::class)->syncFromBridge($depositIntegration);
-                    app(BridgeWalletLedgerReconciliationService::class)->reconcile($depositIntegration);
+                if ($integration?->bridge_customer_id) {
+                    app(BridgeVirtualAccountDepositService::class)->syncFromBridge($integration);
+                    $reconciliation->reconcile($integration);
                     $entityUser->refresh();
+
+                    if (! $bridgeService->isSandbox()) {
+                        $bridgeBalance = $reconciliation->fetchCustodialWalletBalance($integration);
+                    }
                 }
             } catch (\Throwable $syncError) {
-                Log::warning('Bridge virtual account deposit sync failed', [
+                Log::warning('Bridge wallet sync/reconcile failed', [
                     'user_id' => $user->id,
                     'error' => $syncError->getMessage(),
                 ]);
             }
 
-            // Local ledger is authoritative for credits; spendable balance respects Bridge wallet funds.
-            $localBalance = (float) ($entityUser->balance ?? 0);
-            $balance = $localBalance;
-            if ($bridgeBalance !== null) {
-                $balance = min($localBalance, $bridgeBalance);
-            }
+            $localBalance = round((float) ($entityUser->balance ?? 0), 2);
+            $balance = $bridgeBalance !== null ? $bridgeBalance : $localBalance;
             
             // Check if user has active subscription
             // For regular users: check for WALLET subscription specifically
@@ -217,7 +200,7 @@ class WalletController extends Controller
                 'spendable_balance' => $balance,
                 'currency' => 'USD',
                 'connected' => true,
-                'source' => $bridgeBalance !== null && $localBalance > $bridgeBalance ? 'bridge_limited' : 'ledger',
+                'source' => $bridgeBalance !== null ? 'bridge_wallet' : 'ledger',
                 'has_subscription' => $hasSubscription,
                 'supporter_tier' => SupporterSubscriptionService::currentTierSlug($entityUser),
             ];
@@ -664,6 +647,7 @@ class WalletController extends Controller
                     // Get transactions (transfers and deposits) for the organization's user
                     // Include both completed and pending transfers so users can see transfers in progress
                     $transactions = Transaction::where('user_id', $orgUser->id)
+                        ->visibleInWalletActivity()
                         ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                         ->whereIn('status', ['completed', 'pending'])
                         ->orderBy('created_at', 'desc')
@@ -674,6 +658,7 @@ class WalletController extends Controller
                 // Get transactions (transfers and deposits) for the regular user
                 // Include both completed and pending transfers so users can see transfers in progress
                 $transactions = Transaction::where('user_id', $user->id)
+                    ->visibleInWalletActivity()
                     ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                     ->whereIn('status', ['completed', 'pending'])
                     ->orderBy('created_at', 'desc')
@@ -848,6 +833,7 @@ class WalletController extends Controller
             // Get transactions (transfers and deposits) for the organization's user
                     // Include both completed and pending transfers so users can see transfers in progress
             $transactions = Transaction::where('user_id', $orgUser->id)
+                ->visibleInWalletActivity()
                 ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                         ->whereIn('status', ['completed', 'pending'])
                 ->orderBy('created_at', 'desc')
@@ -880,6 +866,7 @@ class WalletController extends Controller
                 // Get transactions (transfers and deposits) for the regular user
                 // Include both completed and pending transfers so users can see transfers in progress
                 $transactions = Transaction::where('user_id', $user->id)
+                    ->visibleInWalletActivity()
                     ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                     ->whereIn('status', ['completed', 'pending'])
                     ->orderBy('created_at', 'desc')
