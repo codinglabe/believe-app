@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react'
 import { Activity as ActivityType } from './types'
 import { formatDate, formatCurrency } from './utils'
+import { DepositPaymentMethodBadge } from './DepositPaymentMethodBadge'
 import { getCsrfToken as getWalletCsrfToken } from './utils'
 
 interface ActivityScreenProps {
@@ -168,18 +169,26 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                        <p className="text-sm font-medium break-words sm:truncate">
-                                            {isTransferSent 
-                                                ? `Sent to ${activity.donor_name}`
-                                                : isTransferReceived
-                                                ? `Received from ${activity.donor_name}`
-                                                : isDeposit
-                                                ? `Deposit - ${activity.donor_name}`
-                                                : `Donation from ${activity.donor_name}`
-                                            }
-                                        </p>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <p className="text-sm font-medium break-words sm:truncate">
+                                                {isTransferSent 
+                                                    ? `Sent to ${activity.donor_name}`
+                                                    : isTransferReceived
+                                                    ? `Received from ${activity.donor_name}`
+                                                    : isDeposit
+                                                    ? `Deposit · ${activity.donor_name}`
+                                                    : `Donation from ${activity.donor_name}`
+                                                }
+                                            </p>
+                                            {isDeposit && activity.payment_method_label && (
+                                                <DepositPaymentMethodBadge label={activity.payment_method_label} />
+                                            )}
+                                        </div>
                                         <p className="text-xs text-muted-foreground mt-1">
                                             {formatDate(activity.date)}
+                                            {isDeposit && activity.payment_method_label && (
+                                                <span className="sm:hidden"> · {activity.payment_method_label}</span>
+                                            )}
                                         </p>
                                     </div>
                                 </div>

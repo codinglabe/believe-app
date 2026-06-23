@@ -35,6 +35,10 @@ export interface Activity {
     transaction_id?: string
     is_outgoing?: boolean
     recipient_type?: string
+    /** Bridge on-ramp rail: ach, wire, fednow, sepa, etc. */
+    payment_method?: string | null
+    /** Human label for UI: ACH, Wire, FedNow, … */
+    payment_method_label?: string | null
 }
 
 export interface ExternalAccount {
