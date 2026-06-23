@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\BridgeService;
 use App\Services\BridgeVirtualAccountDepositService;
+use App\Services\BridgeWalletNotifier;
 use App\Services\BridgeWalletReadService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
@@ -27,16 +28,20 @@ class BridgeWebhookController extends Controller
 
     protected BridgeWalletReadService $bridgeWalletReadService;
 
+    protected BridgeWalletNotifier $bridgeWalletNotifier;
+
     public function __construct(
         BridgeService $bridgeService,
         WalletTransactionNotifier $walletTransactionNotifier,
         BridgeVirtualAccountDepositService $virtualAccountDepositService,
         BridgeWalletReadService $bridgeWalletReadService,
+        BridgeWalletNotifier $bridgeWalletNotifier,
     ) {
         $this->bridgeService = $bridgeService;
         $this->walletTransactionNotifier = $walletTransactionNotifier;
         $this->virtualAccountDepositService = $virtualAccountDepositService;
         $this->bridgeWalletReadService = $bridgeWalletReadService;
+        $this->bridgeWalletNotifier = $bridgeWalletNotifier;
     }
 
     /**
@@ -1043,10 +1048,7 @@ class BridgeWebhookController extends Controller
             ?? null;
         $integration = $this->findIntegrationByCustomerId($customerId);
         if ($this->shouldUseBridgeApiOnly($integration)) {
-            $this->acknowledgeBridgeWalletWebhook('transfer', $integration, [
-                'transfer_id' => $transferId,
-                'state' => $state,
-            ]);
+            $this->bridgeWalletNotifier->notifyTransferWebhook($eventObject, $state, $eventType);
 
             return;
         }
@@ -1253,10 +1255,7 @@ class BridgeWebhookController extends Controller
         }
 
         if ($this->shouldUseBridgeApiOnly($integration)) {
-            $this->acknowledgeBridgeWalletWebhook('virtual_account.activity', $integration, [
-                'activity_id' => $activityId,
-                'activity_type' => $activityType,
-            ]);
+            $this->bridgeWalletNotifier->notifyVirtualAccountActivity($integration, $eventObject, $activityType);
 
             return;
         }
@@ -1642,10 +1641,7 @@ class BridgeWebhookController extends Controller
         }
 
         if ($this->shouldUseBridgeApiOnly($integration)) {
-            $this->acknowledgeBridgeWalletWebhook('bridge_wallet.activity', $integration, [
-                'activity_id' => $activityId,
-                'activity_type' => $activityType,
-            ]);
+            $this->bridgeWalletNotifier->notifyWalletActivity($integration, $eventObject);
 
             return;
         }

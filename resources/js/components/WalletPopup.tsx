@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage, Loader2, CreditCard } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -21,6 +21,7 @@ import {
     type WalletBridgeStatusPayload,
 } from '@/lib/bridge-verification'
 import { pickWalletBalance } from '@/lib/wallet-balance-fetch'
+import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
 import {
     SuccessMessage,
     BalanceDisplay,
@@ -150,6 +151,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }>>([])
     const [isLoadingActivities, setIsLoadingActivities] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
+    const [walletRefreshNonce, setWalletRefreshNonce] = useState(0)
     const [hasMoreActivities, setHasMoreActivities] = useState(false)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
     const [bridgeInitialized, setBridgeInitialized] = useState(false)
@@ -830,6 +832,24 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
+    const bridgeBalanceRefreshRef = useRef<() => void>(() => {})
+    bridgeBalanceRefreshRef.current = () => {
+        void checkBridgeAndFetchBalance({ force: true })
+    }
+
+    const handleBridgeRealtimeUpdate = useCallback((payload: { refresh_balance?: boolean }) => {
+        setWalletRefreshNonce((n) => n + 1)
+        if (payload.refresh_balance !== false) {
+            bridgeBalanceRefreshRef.current()
+        }
+    }, [])
+
+    useWalletBridgeRealtime({
+        userId: auth?.user?.id ?? null,
+        enabled: isOpen,
+        onUpdate: handleBridgeRealtimeUpdate,
+    })
+
     useEffect(() => {
         if (!isOpen || !isBridgeKycPending(kycStatus)) {
             return
@@ -965,9 +985,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [])
 
-    // Fetch wallet activity when main view is active
+    // Fetch wallet activity when main or activity view is open (also refreshes on Reverb events)
     useEffect(() => {
-        if (!isOpen || actionView !== 'main') return
+        if (!isOpen || (actionView !== 'main' && actionView !== 'activity')) return
 
         const fetchActivities = async (page: number = 1, append: boolean = false) => {
             if (append) {
@@ -1015,7 +1035,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setCurrentPage(1)
         setHasMoreActivities(false)
         fetchActivities(1, false)
-    }, [isOpen, actionView])
+    }, [isOpen, actionView, walletRefreshNonce])
 
     // Handle "See More" button click
     const handleSeeMore = () => {

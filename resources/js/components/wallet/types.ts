@@ -39,6 +39,8 @@ export interface Activity {
     payment_method?: string | null
     /** Human label for UI: ACH, Wire, FedNow, … */
     payment_method_label?: string | null
+    /** Raw Bridge lifecycle state (transfer state, VA event type, wallet history type) */
+    bridge_state?: string | null
 }
 
 export interface ExternalAccount {

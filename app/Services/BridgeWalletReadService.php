@@ -112,7 +112,10 @@ class BridgeWalletReadService
         $activities = [];
 
         if ($walletId !== null) {
-            $activities = array_merge($activities, $this->mapWalletHistoryActivities($customerId, $walletId, $vaContext));
+            $activities = array_merge(
+                $activities,
+                $this->mapWalletHistoryActivities($customerId, $walletId, $vaContext, max($limit, 100)),
+            );
         }
 
         $activities = array_merge(
@@ -121,9 +124,16 @@ class BridgeWalletReadService
         );
 
         if ($walletId !== null) {
+            $viewerWalletAddress = $this->resolveIntegrationWalletAddress($integration);
             $activities = array_merge(
                 $activities,
-                $this->mapTransferActivities($customerId, $walletId, $this->collectOnRampTransferIds($activities)),
+                $this->mapTransferActivities(
+                    $customerId,
+                    $walletId,
+                    $this->collectOnRampTransferIds($activities),
+                    $viewerWalletAddress,
+                    max($limit, 100),
+                ),
             );
         }
 
@@ -140,6 +150,11 @@ class BridgeWalletReadService
     {
         $ids = [];
         foreach ($activities as $activity) {
+            $source = (string) ($activity['source'] ?? '');
+            if ($source !== 'bridge_virtual_account') {
+                continue;
+            }
+
             $transferId = $activity['bridge_transfer_id'] ?? null;
             if (is_string($transferId) && $transferId !== '') {
                 $ids[] = $transferId;
@@ -263,10 +278,16 @@ class BridgeWalletReadService
      * }  $vaContext
      * @return array<int, array<string, mixed>>
      */
-    private function mapWalletHistoryActivities(string $customerId, string $walletId, array $vaContext): array
-    {
-        $result = $this->bridgeService->getBridgeWalletHistory($customerId, $walletId);
-        $events = $this->bridgeService->normalizeBridgeListData($result);
+    private function mapWalletHistoryActivities(
+        string $customerId,
+        string $walletId,
+        array $vaContext,
+        int $maxEvents = 100,
+    ): array {
+        $events = $this->fetchPaginatedBridgeList(
+            fn (array $query) => $this->bridgeService->getBridgeWalletHistory($customerId, $walletId, $query),
+            $maxEvents,
+        );
         $activities = [];
 
         foreach ($events as $event) {
@@ -286,10 +307,11 @@ class BridgeWalletReadService
             }
 
             $date = $this->parseBridgeTimestamp($event['created_at'] ?? $event['updated_at'] ?? null);
-            $isOutgoing = in_array($type, ['withdrawal', 'withdraw', 'return', 'undeliverable'], true);
-            $isDeposit = in_array($type, ['deposit', 'direct_deposit'], true);
+            $isOutgoing = in_array($type, ['withdrawal', 'withdraw', 'card_spend'], true);
+            $isFailedReturn = in_array($type, ['return', 'undeliverable'], true);
+            $isDeposit = in_array($type, ['deposit', 'direct_deposit', 'card_refund'], true);
 
-            if (! $isOutgoing && ! $isDeposit) {
+            if (! $isOutgoing && ! $isDeposit && ! $isFailedReturn) {
                 continue;
             }
 
@@ -327,21 +349,36 @@ class BridgeWalletReadService
                 $donorName = $counterpartyName
                     ?? ($this->isVirtualAccountOnRamp($paymentRoute) ? 'ACH / wire deposit' : 'Bank deposit');
                 $depositMessage = $this->resolveVirtualAccountDepositMessage($event, $paymentRoute, $vaContext, $donorName);
+            } elseif ($isFailedReturn) {
+                $donorName = $counterpartyName ?? 'Bank';
+                $depositMessage = 'Returned — '.$donorName;
+            } elseif ($type === 'card_spend') {
+                $donorName = $counterpartyName ?? 'Card merchant';
+                $depositMessage = 'Card spend';
             } else {
-                $donorName = $counterpartyName ?? 'Bridge wallet';
-                $depositMessage = ucfirst(str_replace('_', ' ', $type));
+                $donorName = $counterpartyName ?? 'Bank account';
+                $depositMessage = $routeType === 'transfer'
+                    ? 'Sent to '.$donorName
+                    : ucfirst(str_replace('_', ' ', $type));
             }
 
-            $activityType = $isDeposit ? 'deposit' : 'transfer_sent';
-            $activityOutgoing = $isOutgoing;
+            $activityType = $isDeposit ? 'deposit' : ($type === 'card_spend' ? 'card_spend' : 'transfer_sent');
+            $activityOutgoing = $isOutgoing || $isFailedReturn;
             if ($isDeposit && $routeType === 'transfer') {
-                $senderCustomerId = (string) ($paymentRoute['customer_id'] ?? '');
-                if ($senderCustomerId !== '' && $senderCustomerId !== $customerId) {
-                    $activityType = 'transfer_received';
-                    $activityOutgoing = false;
-                }
+                // Bridge wallet history: deposit + payment_route.type=transfer is an incoming transfer.
+                // @see https://apidocs.bridge.xyz/api-reference/bridge-wallets/get-transaction-history-for-a-bridge-wallet
+                $activityType = 'transfer_received';
+                $activityOutgoing = false;
+                $donorName = $counterpartyName ?? 'Sender';
+                $depositMessage = 'Received from '.$donorName;
+            } elseif ($type === 'card_refund') {
+                $activityType = 'deposit';
+                $activityOutgoing = false;
+                $donorName = $counterpartyName ?? 'Card refund';
+                $depositMessage = 'Card refund';
             }
 
+            $historyStatus = $isFailedReturn ? 'failed' : 'completed';
             $paymentMethod = $isDeposit ? $this->resolveDepositPaymentMethod($event) : null;
 
             $activities[] = [
@@ -353,7 +390,8 @@ class BridgeWalletReadService
                 'type' => $activityType,
                 'amount' => $amount,
                 'date' => $date,
-                'status' => 'completed',
+                'status' => $historyStatus,
+                'bridge_state' => $type,
                 'donor_name' => $donorName,
                 'donor_email' => null,
                 'payment_method' => $paymentMethod['method'] ?? null,
@@ -416,6 +454,7 @@ class BridgeWalletReadService
             $vaSenderName = $this->formatVirtualAccountDepositLabel($event);
             $paymentMethod = $this->resolveDepositPaymentMethod($event);
             $donorName = $vaSenderName ?? 'Bank deposit';
+            $stateLabel = $this->formatBridgeStateLabel($activityType);
 
             $activities[] = [
                 'id' => 'bridge_va_'.$depositId,
@@ -427,12 +466,15 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
+                'bridge_state' => $activityType,
                 'donor_name' => $donorName,
                 'donor_email' => null,
                 'payment_method' => $paymentMethod['method'] ?? null,
                 'payment_method_label' => $paymentMethod['label'] ?? null,
                 'frequency' => 'one-time',
-                'message' => $this->buildVirtualAccountDepositMessage($event, $donorName, $status),
+                'message' => $status === 'pending'
+                    ? $stateLabel.' — '.$donorName
+                    : $this->buildVirtualAccountDepositMessage($event, $donorName, $status),
                 'transaction_id' => $id,
                 'is_outgoing' => false,
                 'recipient_type' => null,
@@ -448,10 +490,19 @@ class BridgeWalletReadService
      * @param  array<int, string>  $onRampTransferIds
      * @return array<int, array<string, mixed>>
      */
-    private function mapTransferActivities(string $customerId, string $walletId, array $onRampTransferIds = []): array
-    {
-        $result = $this->bridgeService->getCustomerTransfers($customerId);
-        $transfers = $this->bridgeService->normalizeBridgeListData($result);
+    private function mapTransferActivities(
+        string $customerId,
+        string $walletId,
+        array $onRampTransferIds = [],
+        ?string $viewerWalletAddress = null,
+        int $maxTransfers = 100,
+    ): array {
+        $transfers = $this->fetchTransfersInvolvingWallet(
+            $customerId,
+            $walletId,
+            $viewerWalletAddress,
+            $maxTransfers,
+        );
 
         $walletIds = [];
         foreach ($transfers as $transfer) {
@@ -492,24 +543,24 @@ class BridgeWalletReadService
 
             $sourceWalletId = (string) ($transfer['source']['bridge_wallet_id'] ?? '');
             $destWalletId = (string) ($transfer['destination']['bridge_wallet_id'] ?? '');
-            $isOutgoing = $sourceWalletId === $walletId;
-            $isIncoming = $destWalletId === $walletId;
+            $destToAddress = strtolower((string) ($transfer['destination']['to_address'] ?? ''));
+            $viewerAddress = strtolower((string) ($viewerWalletAddress ?? ''));
+            $isOutgoing = $sourceWalletId !== '' && $sourceWalletId === $walletId;
+            $isIncoming = ($destWalletId !== '' && $destWalletId === $walletId)
+                || ($destToAddress !== '' && $viewerAddress !== '' && $destToAddress === $viewerAddress);
 
             if (! $isOutgoing && ! $isIncoming) {
                 continue;
             }
 
-            if ($isIncoming && ! $isOutgoing && ($sourceWalletId === '' || $this->isOnRampTransfer($transfer))) {
+            // VA/bank on-ramps appear as deposits in wallet history — skip duplicate rows here.
+            if ($isIncoming && ! $isOutgoing && $this->isOnRampTransfer($transfer)) {
                 continue;
             }
 
             $state = strtolower((string) ($transfer['state'] ?? $transfer['status'] ?? 'pending'));
-            $status = match ($state) {
-                'payment_processed', 'completed' => 'completed',
-                'failed', 'returned', 'refunded', 'error' => 'failed',
-                'canceled', 'cancelled' => 'cancelled',
-                default => 'pending',
-            };
+            $status = $this->mapBridgeStateToUiStatus($state);
+            $stateLabel = $this->formatBridgeStateLabel($state);
 
             $date = $this->parseBridgeTimestamp($transfer['updated_at'] ?? $transfer['created_at'] ?? null);
             $counterparty = $this->resolveTransferCounterpartyName($transfer, $customerId, $isOutgoing);
@@ -520,6 +571,8 @@ class BridgeWalletReadService
                 }
             }
 
+            $statusSuffix = $status === 'pending' ? ' ('.$stateLabel.')' : '';
+
             $activities[] = [
                 'id' => 'bridge_transfer_'.$transferId,
                 'dedupe_key' => 'transfer:'.$transferId,
@@ -529,11 +582,11 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
+                'bridge_state' => $state,
                 'donor_name' => $counterparty,
                 'donor_email' => null,
                 'frequency' => 'one-time',
-                'message' => ($isOutgoing ? 'Sent to ' : 'Received from ').$counterparty
-                    .($status === 'pending' ? ' (Processing...)' : ''),
+                'message' => ($isOutgoing ? 'Sent to ' : 'Received from ').$counterparty.$statusSuffix,
                 'transaction_id' => $transferId,
                 'is_outgoing' => $isOutgoing,
                 'recipient_type' => null,
@@ -1069,6 +1122,25 @@ class BridgeWalletReadService
 
         if ($isDeposit) {
             if ($routeType === 'transfer') {
+                $transferId = (string) ($paymentRoute['transfer_id'] ?? '');
+                if ($transferId !== '') {
+                    $transfer = $this->fetchTransferDetails($transferId);
+                    if ($transfer !== null) {
+                        $senderName = $this->resolveTransferCounterpartyName($transfer, $viewerCustomerId, false);
+                        if ($senderName !== 'Sender') {
+                            return $senderName;
+                        }
+
+                        $onBehalfOf = (string) ($transfer['on_behalf_of'] ?? '');
+                        if ($onBehalfOf !== '' && $onBehalfOf !== $viewerCustomerId) {
+                            $name = $this->resolveCustomerDisplayName($onBehalfOf);
+                            if ($name !== null) {
+                                return $name;
+                            }
+                        }
+                    }
+                }
+
                 $senderCustomerId = (string) ($paymentRoute['customer_id'] ?? '');
                 if ($senderCustomerId !== '' && $senderCustomerId !== $viewerCustomerId) {
                     $name = $this->resolveCustomerDisplayName($senderCustomerId);
@@ -1194,6 +1266,173 @@ class BridgeWalletReadService
         $name = trim((string) $value);
 
         return $name !== '' ? $name : null;
+    }
+
+    /**
+     * Merge on_behalf_of transfers with platform-wide transfers involving this wallet.
+     * Incoming pending transfers use on_behalf_of of the sender, so we must scan platform list.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchTransfersInvolvingWallet(
+        string $customerId,
+        string $walletId,
+        ?string $viewerWalletAddress,
+        int $maxTransfers,
+    ): array {
+        $onBehalf = $this->fetchPaginatedBridgeList(
+            fn (array $query) => $this->bridgeService->getCustomerTransfers($customerId, $query),
+            $maxTransfers,
+        );
+
+        $platform = $this->fetchPaginatedBridgeList(
+            fn (array $query) => $this->bridgeService->getTransfers($query),
+            min($maxTransfers * 2, 200),
+        );
+
+        $byId = [];
+        foreach (array_merge($onBehalf, $platform) as $transfer) {
+            if (! is_array($transfer)) {
+                continue;
+            }
+
+            $transferId = (string) ($transfer['id'] ?? '');
+            if ($transferId === '') {
+                continue;
+            }
+
+            if (! $this->transferInvolvesWallet($transfer, $walletId, $viewerWalletAddress)) {
+                continue;
+            }
+
+            $byId[$transferId] = $transfer;
+        }
+
+        return array_values($byId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $transfer
+     */
+    private function transferInvolvesWallet(array $transfer, string $walletId, ?string $viewerWalletAddress): bool
+    {
+        $source = is_array($transfer['source'] ?? null) ? $transfer['source'] : [];
+        $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
+        $sourceWalletId = (string) ($source['bridge_wallet_id'] ?? '');
+        $destWalletId = (string) ($destination['bridge_wallet_id'] ?? '');
+        $destToAddress = strtolower((string) ($destination['to_address'] ?? ''));
+        $sourceFromAddress = strtolower((string) ($source['from_address'] ?? ''));
+        $viewerAddress = strtolower((string) ($viewerWalletAddress ?? ''));
+
+        if ($sourceWalletId === $walletId || $destWalletId === $walletId) {
+            return true;
+        }
+
+        if ($viewerAddress !== '') {
+            return $destToAddress === $viewerAddress || $sourceFromAddress === $viewerAddress;
+        }
+
+        return false;
+    }
+
+    private function mapBridgeStateToUiStatus(string $state): string
+    {
+        return match (strtolower(trim($state))) {
+            'payment_processed', 'completed' => 'completed',
+            'failed', 'returned', 'refunded', 'error', 'undeliverable' => 'failed',
+            'canceled', 'cancelled' => 'cancelled',
+            default => 'pending',
+        };
+    }
+
+    private function formatBridgeStateLabel(string $state): string
+    {
+        return match (strtolower(trim($state))) {
+            'awaiting_funds' => 'Awaiting funds',
+            'funds_received' => 'Funds received',
+            'funds_scheduled' => 'Scheduled',
+            'payment_submitted' => 'Submitted',
+            'in_review' => 'In review',
+            'payment_processed' => 'Completed',
+            'processing' => 'Processing',
+            'returned' => 'Returned',
+            'refunded' => 'Refunded',
+            'failed' => 'Failed',
+            default => ucfirst(str_replace('_', ' ', $state)),
+        };
+    }
+
+    private function resolveIntegrationWalletAddress(BridgeIntegration $integration): ?string
+    {
+        $integration->loadMissing('primaryWallet', 'wallets');
+
+        $candidates = [];
+        if ($integration->primaryWallet?->wallet_address) {
+            $candidates[] = (string) $integration->primaryWallet->wallet_address;
+        }
+
+        foreach ($integration->wallets as $wallet) {
+            if (! empty($wallet->wallet_address)) {
+                $candidates[] = (string) $wallet->wallet_address;
+            }
+        }
+
+        foreach ($candidates as $address) {
+            if ($address !== '') {
+                return $address;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  callable(array<string, mixed>): array<string, mixed>  $fetchPage
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchPaginatedBridgeList(callable $fetchPage, int $maxItems = 100): array
+    {
+        $maxItems = max(1, min($maxItems, 500));
+        $pageLimit = min(100, $maxItems);
+        $collected = [];
+        $startingAfter = null;
+
+        while (count($collected) < $maxItems) {
+            $query = ['limit' => $pageLimit];
+            if ($startingAfter !== null) {
+                $query['starting_after'] = $startingAfter;
+            }
+
+            $result = $fetchPage($query);
+            $page = $this->bridgeService->normalizeBridgeListData(
+                is_array($result) && array_key_exists('success', $result) ? $result : ['success' => true, 'data' => $result]
+            );
+
+            if ($page === []) {
+                break;
+            }
+
+            foreach ($page as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $collected[] = $item;
+                if (count($collected) >= $maxItems) {
+                    break 2;
+                }
+            }
+
+            $last = $page[count($page) - 1];
+            $lastId = (string) ($last['id'] ?? '');
+            if ($lastId === '' || count($page) < $pageLimit) {
+                break;
+            }
+
+            $startingAfter = $lastId;
+        }
+
+        return $collected;
     }
 
     private function parseBridgeTimestamp(mixed $value): string
