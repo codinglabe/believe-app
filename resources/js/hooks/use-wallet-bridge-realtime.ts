@@ -6,6 +6,8 @@ export type WalletBridgeUpdatePayload = {
     event?: string
     transfer_id?: string
     activity_id?: string
+    deposit_id?: string
+    activity_type?: string
     bridge_state?: string
     status?: string
     amount?: number
@@ -15,8 +17,36 @@ export type WalletBridgeUpdatePayload = {
     at?: string
 }
 
+export const WALLET_BRIDGE_UPDATE_EVENT = 'believe:wallet-bridge-update'
+
+let subscribedUserId: number | null = null
+
+function ensureWalletBridgeEchoSubscription(userId: number): void {
+    if (subscribedUserId === userId) {
+        return
+    }
+
+    subscribedUserId = userId
+
+    const instance = echo()
+    const channel = instance.private(`user.${userId}`)
+
+    channel.listen('.wallet.bridge.updated', (payload: WalletBridgeUpdatePayload) => {
+        window.dispatchEvent(
+            new CustomEvent<WalletBridgeUpdatePayload>(WALLET_BRIDGE_UPDATE_EVENT, { detail: payload }),
+        )
+    })
+
+    channel.error((error: unknown) => {
+        if (import.meta.env.DEV) {
+            console.error('[Wallet] Reverb user channel failed:', error)
+        }
+    })
+}
+
 /**
- * Listen for Believe wallet updates via Reverb (transfer state, deposits, balance).
+ * Subscribe to Believe wallet updates via Reverb (transfer/deposit state, balance).
+ * Uses one Echo channel per user; dispatches a window event all wallet UIs can share.
  */
 export function useWalletBridgeRealtime(options: {
     userId?: number | null
@@ -30,22 +60,19 @@ export function useWalletBridgeRealtime(options: {
             return
         }
 
-        const instance = echo()
-        const channel = instance.private(`user.${userId}`)
+        ensureWalletBridgeEchoSubscription(userId)
 
-        const handler = (payload: WalletBridgeUpdatePayload) => {
-            onUpdate(payload)
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<WalletBridgeUpdatePayload>).detail
+            if (detail) {
+                onUpdate(detail)
+            }
         }
 
-        channel.listen('.wallet.bridge.updated', handler)
-        channel.error((error: unknown) => {
-            if (import.meta.env.DEV) {
-                console.error('[Wallet] Reverb user channel failed:', error)
-            }
-        })
+        window.addEventListener(WALLET_BRIDGE_UPDATE_EVENT, handler)
 
         return () => {
-            channel.stopListening('.wallet.bridge.updated', handler)
+            window.removeEventListener(WALLET_BRIDGE_UPDATE_EVENT, handler)
         }
     }, [enabled, userId, onUpdate])
 }
