@@ -2436,6 +2436,8 @@ class BridgeService
             $chain = 'solana';
         }
 
+        $primaryStablecoin = $this->resolvePrimaryStablecoinBalance($data);
+
         return [
             'wallet_id' => $walletId,
             'chain' => $chain,

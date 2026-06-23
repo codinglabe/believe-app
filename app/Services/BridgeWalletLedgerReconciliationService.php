@@ -366,11 +366,12 @@ class BridgeWalletLedgerReconciliationService
         if ($transferId) {
             $inboundQuery->whereJsonContains('meta->bridge_transfer_id', $transferId);
         } else {
+            $createdAt = $outbound->created_at ?? now();
             $inboundQuery
                 ->where($this->missingBridgeTransferIdConstraint())
                 ->whereBetween('created_at', [
-                    $outbound->created_at->copy()->subMinutes(5),
-                    $outbound->created_at->copy()->addMinutes(5),
+                    $createdAt->copy()->subMinutes(5),
+                    $createdAt->copy()->addMinutes(5),
                 ]);
         }
 
