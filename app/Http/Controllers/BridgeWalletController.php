@@ -3065,13 +3065,13 @@ class BridgeWalletController extends Controller
 
             // Determine sender entity (user or organization)
             if ($isOrgUser) {
-            $organization = $user->organization;
-            if (!$organization || !$organization->user) {
+            $organization = Organization::forAuthUser($user);
+            if (!$organization) {
                 return response()->json(['success' => false, 'message' => 'Organization not found.'], 404);
             }
                 $senderEntity = $organization;
                 $senderEntityType = Organization::class;
-                $senderUser = $organization->user;
+                $senderUser = $organization->user ?? $user;
             } else {
                 $senderEntity = $user;
                 $senderEntityType = User::class;
@@ -3079,9 +3079,14 @@ class BridgeWalletController extends Controller
             }
 
             // Get sender Bridge integration
-            $senderIntegration = BridgeIntegration::where('integratable_id', $senderEntity->id)
-                ->where('integratable_type', $senderEntityType)
-                ->first();
+            $senderIntegration = BridgeIntegration::resolveForAuthUser($user);
+
+            if (!$senderIntegration || $senderIntegration->integratable_id !== $senderEntity->id
+                || $senderIntegration->integratable_type !== $senderEntityType) {
+                $senderIntegration = BridgeIntegration::where('integratable_id', $senderEntity->id)
+                    ->where('integratable_type', $senderEntityType)
+                    ->first();
+            }
 
             if (!$senderIntegration) {
                 return response()->json([
@@ -3177,7 +3182,7 @@ class BridgeWalletController extends Controller
             if ($bridgeSpendable !== null && $amount > $bridgeSpendable) {
                 $message = $senderBalance > $bridgeSpendable
                     ? 'Only $' . number_format($bridgeSpendable, 2) . ' is available to send right now. Part of your balance may still be settling in Bridge.'
-                    : 'Insufficient funds in your Bridge wallet. Available: $' . number_format($bridgeSpendable, 2);
+                    : 'Insufficient funds in your wallet. Available: $' . number_format($bridgeSpendable, 2);
 
                 return response()->json([
                     'success' => false,
@@ -3220,7 +3225,7 @@ class BridgeWalletController extends Controller
             if (! $recipientIntegration) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Recipient does not have a Bridge wallet set up.',
+                    'message' => 'Recipient does not have a wallet set up yet.',
                 ], 400);
             }
 
@@ -3253,7 +3258,7 @@ class BridgeWalletController extends Controller
             if (! $canCreateBridgeTransfer) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Both sender and recipient need active Bridge wallets to transfer money.',
+                    'message' => 'Both sender and recipient need active wallets to transfer money.',
                 ], 400);
             }
 

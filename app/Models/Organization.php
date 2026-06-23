@@ -232,6 +232,27 @@ class Organization extends Model
     }
 
     /**
+     * User IDs that should receive wallet push / Reverb updates (owner + board).
+     *
+     * @return array<int, int>
+     */
+    public function walletNotificationUserIds(): array
+    {
+        $ids = collect();
+
+        if ($this->user_id) {
+            $ids->push((int) $this->user_id);
+        }
+
+        $this->boardMembers()
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->each(fn ($uid) => $ids->push((int) $uid));
+
+        return $ids->unique()->filter()->values()->all();
+    }
+
+    /**
      * Platform users who should receive database notifications for Care Alliance invitations (owner + board).
      *
      * @return Collection<int, User>

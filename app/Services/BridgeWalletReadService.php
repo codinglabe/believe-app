@@ -106,15 +106,16 @@ class BridgeWalletReadService
         $this->ensurePlatformWalletOwnerIndex();
 
         $snapshot = $this->getWalletSnapshot($integration);
-        $walletId = $snapshot['wallet_id'] ?? null;
+        $primaryWalletId = $snapshot['wallet_id'] ?? null;
+        $walletIds = $this->resolveIntegrationWalletIds($integration, $primaryWalletId);
         $vaContext = $this->loadVirtualAccountEventContext($integration, $customerId);
 
         $activities = [];
 
-        if ($walletId !== null) {
+        foreach ($walletIds as $historyWalletId) {
             $activities = array_merge(
                 $activities,
-                $this->mapWalletHistoryActivities($customerId, $walletId, $vaContext, max($limit, 100)),
+                $this->mapWalletHistoryActivities($customerId, $historyWalletId, $vaContext, max($limit, 100)),
             );
         }
 
@@ -123,13 +124,13 @@ class BridgeWalletReadService
             $this->mapVirtualAccountActivities($vaContext),
         );
 
-        if ($walletId !== null) {
+        if ($walletIds !== []) {
             $viewerWalletAddress = $this->resolveIntegrationWalletAddress($integration);
             $activities = array_merge(
                 $activities,
                 $this->mapTransferActivities(
                     $customerId,
-                    $walletId,
+                    $walletIds,
                     $this->collectOnRampTransferIds($activities),
                     $viewerWalletAddress,
                     max($limit, 100),
@@ -492,14 +493,14 @@ class BridgeWalletReadService
      */
     private function mapTransferActivities(
         string $customerId,
-        string $walletId,
+        array $walletIds,
         array $onRampTransferIds = [],
         ?string $viewerWalletAddress = null,
         int $maxTransfers = 100,
     ): array {
         $transfers = $this->fetchTransfersInvolvingWallet(
             $customerId,
-            $walletId,
+            $walletIds,
             $viewerWalletAddress,
             $maxTransfers,
         );
@@ -545,8 +546,9 @@ class BridgeWalletReadService
             $destWalletId = (string) ($transfer['destination']['bridge_wallet_id'] ?? '');
             $destToAddress = strtolower((string) ($transfer['destination']['to_address'] ?? ''));
             $viewerAddress = strtolower((string) ($viewerWalletAddress ?? ''));
-            $isOutgoing = $sourceWalletId !== '' && $sourceWalletId === $walletId;
-            $isIncoming = ($destWalletId !== '' && $destWalletId === $walletId)
+            $walletIdSet = array_fill_keys($walletIds, true);
+            $isOutgoing = $sourceWalletId !== '' && isset($walletIdSet[$sourceWalletId]);
+            $isIncoming = ($destWalletId !== '' && isset($walletIdSet[$destWalletId]))
                 || ($destToAddress !== '' && $viewerAddress !== '' && $destToAddress === $viewerAddress);
 
             if (! $isOutgoing && ! $isIncoming) {
@@ -1276,7 +1278,7 @@ class BridgeWalletReadService
      */
     private function fetchTransfersInvolvingWallet(
         string $customerId,
-        string $walletId,
+        array $walletIds,
         ?string $viewerWalletAddress,
         int $maxTransfers,
     ): array {
@@ -1301,7 +1303,7 @@ class BridgeWalletReadService
                 continue;
             }
 
-            if (! $this->transferInvolvesWallet($transfer, $walletId, $viewerWalletAddress)) {
+            if (! $this->transferInvolvesWallet($transfer, $walletIds, $viewerWalletAddress)) {
                 continue;
             }
 
@@ -1313,8 +1315,9 @@ class BridgeWalletReadService
 
     /**
      * @param  array<string, mixed>  $transfer
+     * @param  array<int, string>  $walletIds
      */
-    private function transferInvolvesWallet(array $transfer, string $walletId, ?string $viewerWalletAddress): bool
+    private function transferInvolvesWallet(array $transfer, array $walletIds, ?string $viewerWalletAddress): bool
     {
         $source = is_array($transfer['source'] ?? null) ? $transfer['source'] : [];
         $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
@@ -1323,8 +1326,13 @@ class BridgeWalletReadService
         $destToAddress = strtolower((string) ($destination['to_address'] ?? ''));
         $sourceFromAddress = strtolower((string) ($source['from_address'] ?? ''));
         $viewerAddress = strtolower((string) ($viewerWalletAddress ?? ''));
+        $walletIdSet = array_fill_keys($walletIds, true);
 
-        if ($sourceWalletId === $walletId || $destWalletId === $walletId) {
+        if ($sourceWalletId !== '' && isset($walletIdSet[$sourceWalletId])) {
+            return true;
+        }
+
+        if ($destWalletId !== '' && isset($walletIdSet[$destWalletId])) {
             return true;
         }
 
@@ -1333,6 +1341,46 @@ class BridgeWalletReadService
         }
 
         return false;
+    }
+
+    /**
+     * All Bridge wallet / VA identifiers for this integration (sandbox may use VA id on transfers).
+     *
+     * @return array<int, string>
+     */
+    private function resolveIntegrationWalletIds(BridgeIntegration $integration, ?string $primaryWalletId): array
+    {
+        $integration->loadMissing('primaryWallet', 'wallets');
+        $ids = [];
+
+        if ($primaryWalletId !== null && $primaryWalletId !== '') {
+            $ids[] = $primaryWalletId;
+        }
+
+        if (! empty($integration->bridge_wallet_id)) {
+            $ids[] = (string) $integration->bridge_wallet_id;
+        }
+
+        foreach ($integration->wallets as $wallet) {
+            if (! empty($wallet->bridge_wallet_id)) {
+                $ids[] = (string) $wallet->bridge_wallet_id;
+            }
+            if (! empty($wallet->virtual_account_id)) {
+                $ids[] = (string) $wallet->virtual_account_id;
+            }
+        }
+
+        if ($integration->primaryWallet) {
+            $pw = $integration->primaryWallet;
+            if (! empty($pw->bridge_wallet_id)) {
+                $ids[] = (string) $pw->bridge_wallet_id;
+            }
+            if (! empty($pw->virtual_account_id)) {
+                $ids[] = (string) $pw->virtual_account_id;
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
     }
 
     private function mapBridgeStateToUiStatus(string $state): string

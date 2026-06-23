@@ -628,9 +628,9 @@ class WalletController extends Controller
             // Check if user is an organization user
             $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
             
-            // For main screen, always limit to 10 activities
+            // For main screen, show recent wallet activity (Bridge API may return more internally)
             $page = 1;
-            $perPage = 10;
+            $perPage = 50;
 
             $integration = BridgeIntegration::resolveForAuthUser($user);
             $bridgeRead = app(BridgeWalletReadService::class);
@@ -840,7 +840,7 @@ class WalletController extends Controller
                 // For organization users: show donations received and transactions
             $organization = Organization::forAuthUser($user);
             
-                if ($organization && $organization->user) {
+                if ($organization) {
             $orgUser = $organization->user;
             
             // Get donations received by this organization
@@ -1023,7 +1023,8 @@ class WalletController extends Controller
     }
 
     /**
-     * Search for users and organizations by name or email
+     * Search for wallet-connected users and organizations by name or email.
+     * Only returns recipients that can receive wallet transfers (verified + wallet on file).
      */
     public function searchRecipients(Request $request)
     {
@@ -1042,14 +1043,16 @@ class WalletController extends Controller
             $searchTerm = '%' . trim($search) . '%';
             $results = [];
 
-            // Search users (excluding the current user and only users with 'user' role via Spatie)
-            // Exclude users who have 'admin' or 'organization' roles
+            // Search users with a connected, verified wallet (consumer members only)
             $users = User::where('id', '!=', $user->id)
                 ->whereHas('roles', function ($query) {
                     $query->where('name', 'user');
                 })
                 ->whereDoesntHave('roles', function ($query) {
                     $query->whereIn('name', ['admin', 'organization', 'organization_pending']);
+                })
+                ->whereHas('bridgeIntegration', function ($query) {
+                    $query->eligibleSendRecipient();
                 })
                 ->where(function ($query) use ($searchTerm) {
                     $query->where('name', 'LIKE', $searchTerm)
@@ -1070,13 +1073,23 @@ class WalletController extends Controller
                 ];
             }
 
-            // Search organizations
-            $organizations = Organization::query()
+            // Search organizations with a connected, verified wallet
+            $organizationsQuery = Organization::query()
                 ->excludingCareAllianceHubs()
+                ->whereHas('bridgeIntegration', function ($query) {
+                    $query->eligibleSendRecipient();
+                })
                 ->where(function ($query) use ($searchTerm) {
                     $query->where('name', 'LIKE', $searchTerm)
                         ->orWhere('email', 'LIKE', $searchTerm);
-                })
+                });
+
+            $senderOrganization = Organization::forAuthUser($user);
+            if ($senderOrganization) {
+                $organizationsQuery->where('id', '!=', $senderOrganization->id);
+            }
+
+            $organizations = $organizationsQuery
                 ->select('id', 'name', 'email')
                 ->limit($limit)
                 ->get();

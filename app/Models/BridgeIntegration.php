@@ -175,7 +175,7 @@ class BridgeIntegration extends Model
                     ->where('integratable_type', Organization::class)
                     ->first();
 
-                if ($orgIntegration !== null && ! empty($orgIntegration->bridge_customer_id)) {
+                if ($orgIntegration !== null) {
                     return $orgIntegration;
                 }
             }
@@ -277,6 +277,44 @@ class BridgeIntegration extends Model
         
         // For users, need KYC approval
         return $this->isKYCApproved();
+    }
+
+    /**
+     * Integrations that can receive wallet sends (verified + wallet/VA on file).
+     */
+    public function scopeEligibleSendRecipient($query)
+    {
+        return $query
+            ->whereNotNull('bridge_customer_id')
+            ->where('bridge_customer_id', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($userQ) {
+                    $userQ->where('integratable_type', User::class)
+                        ->where('kyc_status', 'approved');
+                })->orWhere(function ($orgQ) {
+                    $orgQ->where('integratable_type', Organization::class)
+                        ->where('kyb_status', 'approved');
+                });
+            })
+            ->where(function ($q) {
+                $q->where(function ($idQ) {
+                    $idQ->whereNotNull('bridge_wallet_id')
+                        ->where('bridge_wallet_id', '!=', '');
+                })->orWhereHas('wallets', function ($w) {
+                    $w->where(function ($wq) {
+                        $wq->where(function ($bw) {
+                            $bw->whereNotNull('bridge_wallet_id')
+                                ->where('bridge_wallet_id', '!=', '');
+                        })->orWhere(function ($va) {
+                            $va->whereNotNull('virtual_account_id')
+                                ->where('virtual_account_id', '!=', '');
+                        })->orWhere(function ($addr) {
+                            $addr->whereNotNull('wallet_address')
+                                ->where('wallet_address', '!=', '');
+                        });
+                    });
+                });
+            });
     }
 
     /**
