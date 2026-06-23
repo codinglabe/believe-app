@@ -12,8 +12,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Aligns local wallet ledger with Bridge custodial wallet movements.
  *
- * Fixes transfers that debited users.balance without a matching Bridge transfer
- * (legacy send flow) and completes/refunds pending rows when webhooks were missed.
+ * @see https://apidocs.bridge.xyz/platform/wallets/move-money
  */
 class BridgeWalletLedgerReconciliationService
 {
@@ -22,27 +21,49 @@ class BridgeWalletLedgerReconciliationService
     ) {}
 
     /**
-     * @return array{refunded_outbound: int, reversed_inbound: int, completed_inbound: int}
+     * @return array{
+     *     refunded_outbound: int,
+     *     reversed_inbound: int,
+     *     completed_inbound: int,
+     *     balance_synced: int
+     * }
      */
     public function reconcile(BridgeIntegration $integration): array
     {
         $user = $this->resolveWalletUser($integration);
         if ($user === null) {
-            return ['refunded_outbound' => 0, 'reversed_inbound' => 0, 'completed_inbound' => 0];
+            return [
+                'refunded_outbound' => 0,
+                'reversed_inbound' => 0,
+                'completed_inbound' => 0,
+                'balance_synced' => 0,
+            ];
         }
 
-        $stats = ['refunded_outbound' => 0, 'reversed_inbound' => 0, 'completed_inbound' => 0];
+        $stats = [
+            'refunded_outbound' => 0,
+            'reversed_inbound' => 0,
+            'completed_inbound' => 0,
+            'balance_synced' => 0,
+        ];
 
         $stats['refunded_outbound'] += $this->refundLocalOnlyOutboundTransfers($user);
         $stats['refunded_outbound'] += $this->refundFailedBridgeOutboundTransfers($user);
         $stats['reversed_inbound'] += $this->reverseLocalOnlyInboundCredits($user);
         $stats['completed_inbound'] += $this->completeMissedInboundTransfers($user);
 
+        $bridgeBalance = $this->fetchCustodialWalletBalance($integration);
+        if ($bridgeBalance !== null && $this->syncUserBalanceFromBridge($user, $bridgeBalance)) {
+            $stats['balance_synced'] = 1;
+            $user->refresh();
+        }
+
         if (array_sum($stats) > 0) {
             Log::info('Bridge wallet ledger reconciliation applied', [
                 'integration_id' => $integration->id,
                 'user_id' => $user->id,
                 'stats' => $stats,
+                'bridge_balance' => $bridgeBalance,
             ]);
         }
 
@@ -109,18 +130,26 @@ class BridgeWalletLedgerReconciliationService
                 continue;
             }
 
-            $bridgeState = $this->fetchBridgeTransferState($transferId);
-            if ($bridgeState === null) {
+            $bridgeLookup = $this->lookupBridgeTransfer($transferId);
+            if ($bridgeLookup === null) {
                 continue;
             }
 
-            $mapped = $this->mapBridgeTransferState($bridgeState);
+            if ($bridgeLookup['state'] === 'not_found') {
+                if ($this->refundOutboundTransfer($user, $transaction, 'bridge_transfer_not_found', 'not_found')) {
+                    $refunded++;
+                }
+
+                continue;
+            }
+
+            $mapped = $this->mapBridgeTransferState($bridgeLookup['state']);
             if (! in_array($mapped, ['failed', 'cancelled'], true)) {
                 if ($mapped === 'completed' && $transaction->status !== 'completed') {
                     $transaction->status = 'completed';
                     $transaction->processed_at = $transaction->processed_at ?? now();
                     $meta = $transaction->meta ?? [];
-                    $meta['bridge_state'] = $bridgeState;
+                    $meta['bridge_state'] = $bridgeLookup['state'];
                     $meta['ledger_reconciled_at'] = now()->toIso8601String();
                     $transaction->meta = $meta;
                     $transaction->save();
@@ -129,7 +158,7 @@ class BridgeWalletLedgerReconciliationService
                 continue;
             }
 
-            if ($this->refundOutboundTransfer($user, $transaction, 'bridge_transfer_'.$mapped, $bridgeState)) {
+            if ($this->refundOutboundTransfer($user, $transaction, 'bridge_transfer_'.$mapped, $bridgeLookup['state'])) {
                 $refunded++;
             }
         }
@@ -176,8 +205,16 @@ class BridgeWalletLedgerReconciliationService
                 continue;
             }
 
-            $bridgeState = $this->fetchBridgeTransferState($transferId);
-            if ($this->mapBridgeTransferState($bridgeState) !== 'completed') {
+            $bridgeLookup = $this->lookupBridgeTransfer($transferId);
+            if ($bridgeLookup === null || $bridgeLookup['state'] === 'not_found') {
+                if ($bridgeLookup !== null && $bridgeLookup['state'] === 'not_found') {
+                    $this->voidInboundTransfer($transaction, 'bridge_transfer_not_found');
+                }
+
+                continue;
+            }
+
+            if ($this->mapBridgeTransferState($bridgeLookup['state']) !== 'completed') {
                 continue;
             }
 
@@ -185,14 +222,14 @@ class BridgeWalletLedgerReconciliationService
                 continue;
             }
 
-            DB::transaction(function () use ($user, $transaction, $bridgeState, &$completed): void {
+            DB::transaction(function () use ($user, $transaction, $bridgeLookup, &$completed): void {
                 $amount = (float) $transaction->amount;
                 $user->increment('balance', $amount);
 
                 $transaction->status = 'completed';
                 $transaction->processed_at = now();
                 $meta = $transaction->meta ?? [];
-                $meta['bridge_state'] = $bridgeState;
+                $meta['bridge_state'] = $bridgeLookup['state'];
                 $meta['ledger_reconciled_at'] = now()->toIso8601String();
                 $transaction->meta = $meta;
                 $transaction->save();
@@ -202,6 +239,28 @@ class BridgeWalletLedgerReconciliationService
         }
 
         return $completed;
+    }
+
+    private function syncUserBalanceFromBridge(User $user, float $bridgeBalance): bool
+    {
+        $local = round((float) $user->balance, 2);
+        $bridge = round($bridgeBalance, 2);
+
+        if (abs($local - $bridge) < 0.01) {
+            return false;
+        }
+
+        $previous = $local;
+        $user->update(['balance' => $bridge]);
+
+        Log::info('Bridge custodial wallet balance synced to local ledger', [
+            'user_id' => $user->id,
+            'previous_balance' => $previous,
+            'bridge_balance' => $bridge,
+            'adjustment' => round($bridge - $previous, 2),
+        ]);
+
+        return true;
     }
 
     private function refundOutboundTransfer(
@@ -226,6 +285,7 @@ class BridgeWalletLedgerReconciliationService
             $meta = $transaction->meta ?? [];
             $meta['ledger_reconciled_at'] = now()->toIso8601String();
             $meta['ledger_reconcile_reason'] = $reason;
+            $meta['removed_from_active_ledger'] = true;
             if ($bridgeState !== null) {
                 $meta['bridge_state'] = $bridgeState;
             }
@@ -262,6 +322,7 @@ class BridgeWalletLedgerReconciliationService
             $meta = $transaction->meta ?? [];
             $meta['ledger_reconciled_at'] = now()->toIso8601String();
             $meta['ledger_reconcile_reason'] = $reason;
+            $meta['removed_from_active_ledger'] = true;
             $transaction->meta = $meta;
             $transaction->save();
         });
@@ -274,6 +335,21 @@ class BridgeWalletLedgerReconciliationService
         ]);
 
         return true;
+    }
+
+    private function voidInboundTransfer(Transaction $transaction, string $reason): void
+    {
+        $meta = $transaction->meta ?? [];
+        if (! empty($meta['ledger_reconciled_at'])) {
+            return;
+        }
+
+        $transaction->status = 'failed';
+        $meta['ledger_reconciled_at'] = now()->toIso8601String();
+        $meta['ledger_reconcile_reason'] = $reason;
+        $meta['removed_from_active_ledger'] = true;
+        $transaction->meta = $meta;
+        $transaction->save();
     }
 
     private function cancelPairedInboundTransfer(Transaction $outbound, string $reason, ?string $bridgeState): void
@@ -310,6 +386,7 @@ class BridgeWalletLedgerReconciliationService
         $inboundMeta = $inbound->meta ?? [];
         $inboundMeta['ledger_reconciled_at'] = now()->toIso8601String();
         $inboundMeta['ledger_reconcile_reason'] = 'paired_'.$reason;
+        $inboundMeta['removed_from_active_ledger'] = true;
         if ($bridgeState !== null) {
             $inboundMeta['bridge_state'] = $bridgeState;
         }
@@ -328,22 +405,31 @@ class BridgeWalletLedgerReconciliationService
         };
     }
 
-    private function fetchBridgeTransferState(string $transferId): ?string
+    /**
+     * @return array{state: string}|null
+     */
+    private function lookupBridgeTransfer(string $transferId): ?array
     {
         $result = $this->bridgeService->getTransfer($transferId);
-        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
-            return null;
+        if ($result['success'] ?? false) {
+            $data = $result['data'] ?? [];
+
+            return [
+                'state' => (string) ($data['state'] ?? $data['status'] ?? 'pending'),
+            ];
         }
 
-        $data = $result['data'];
+        if (($result['status'] ?? null) === 404) {
+            return ['state' => 'not_found'];
+        }
 
-        return $data['state'] ?? $data['status'] ?? null;
+        return null;
     }
 
     private function mapBridgeTransferState(?string $state): string
     {
-        if ($state === null || trim($state) === '') {
-            return 'pending';
+        if ($state === null || trim($state) === '' || $state === 'not_found') {
+            return $state === 'not_found' ? 'failed' : 'pending';
         }
 
         $state = strtolower(trim($state));

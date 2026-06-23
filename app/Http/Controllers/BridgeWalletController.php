@@ -1318,8 +1318,8 @@ class BridgeWalletController extends Controller
 
             // Extract balance from wallet data
             $walletData = $walletResult['data'];
-            $balance = $walletData['balance'] ?? $walletData['available_balance'] ?? $walletData['total_balance'] ?? 0;
-            $currency = $walletData['currency'] ?? 'USD';
+            $balance = $this->bridgeService->parseBridgeWalletUsdBalance($walletData);
+            $currency = 'USD';
 
             $balanceResult = [
                 'success' => true,
@@ -3169,7 +3169,6 @@ class BridgeWalletController extends Controller
                 ], 404);
             }
 
-            // Check KYC/KYB verification status
             if (!$senderIntegration->canTransact()) {
                 $verificationType = $isOrgUser ? 'kyb' : 'kyc';
                 return response()->json([
@@ -3180,6 +3179,18 @@ class BridgeWalletController extends Controller
                     'requires_verification' => true,
                     'verification_type' => $verificationType,
                 ], 403);
+            }
+
+            try {
+                app(BridgeWalletLedgerReconciliationService::class)->reconcile($senderIntegration);
+                $senderUser->refresh();
+                $senderWallet = $this->bridgeService->resolveCustomerBridgeWallet($senderIntegration);
+                $actualBridgeWalletId = $senderWallet['wallet_id'] ?? $actualBridgeWalletId;
+            } catch (\Throwable $reconcileError) {
+                Log::warning('Bridge send preflight reconcile failed', [
+                    'integration_id' => $senderIntegration->id,
+                    'error' => $reconcileError->getMessage(),
+                ]);
             }
 
             $amount = (float) $validated['amount'];
