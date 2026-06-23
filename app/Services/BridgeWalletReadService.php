@@ -627,6 +627,13 @@ class BridgeWalletReadService
 
             $historyStatus = $isFailedReturn ? 'failed' : 'completed';
             $paymentMethod = $isDeposit ? $this->resolveDepositPaymentMethod($event) : null;
+            $recipientType = null;
+            if ($activityType === 'transfer_sent' && $transferId !== null && $transferId !== '') {
+                $transferDetails = $this->fetchTransferDetails($transferId);
+                if ($transferDetails !== null) {
+                    $recipientType = $this->resolveTransferCounterpartyMeta($transferDetails, $customerId, true)['recipient_type'];
+                }
+            }
 
             $activities[] = [
                 'id' => 'bridge_wallet_'.$id,
@@ -638,16 +645,23 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $historyStatus,
-                'bridge_state' => $type,
+                'bridge_state' => $historyStatus,
+                'bridge_event_type' => $type,
                 'donor_name' => $donorName,
                 'donor_email' => null,
                 'payment_method' => $paymentMethod['method'] ?? null,
                 'payment_method_label' => $paymentMethod['label'] ?? null,
                 'frequency' => 'one-time',
-                'message' => $isDeposit ? $depositMessage : ucfirst(str_replace('_', ' ', $type)),
+                'message' => $isDeposit || $activityType === 'transfer_received' || $activityType === 'transfer_sent'
+                    ? ($activityType === 'transfer_sent'
+                        ? 'Sent to '.$donorName
+                        : ($activityType === 'transfer_received'
+                            ? 'Received from '.$donorName
+                            : $depositMessage))
+                    : ucfirst(str_replace('_', ' ', $type)),
                 'transaction_id' => $id,
                 'is_outgoing' => $activityOutgoing,
-                'recipient_type' => null,
+                'recipient_type' => $recipientType,
                 'source' => 'bridge_wallet_history',
                 'sort_date' => $date,
             ];
@@ -713,7 +727,8 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
-                'bridge_state' => $activityType,
+                'bridge_state' => $status,
+                'bridge_va_state' => $activityType,
                 'donor_name' => $donorName,
                 'donor_email' => null,
                 'payment_method' => $paymentMethod['method'] ?? null,
@@ -828,14 +843,15 @@ class BridgeWalletReadService
             $stateLabel = $this->formatBridgeStateLabel($state);
 
             $date = $this->parseBridgeTimestamp($transfer['updated_at'] ?? $transfer['created_at'] ?? null);
-            $counterparty = $this->resolveTransferCounterpartyName($transfer, $customerId, $isOutgoing);
-            if (($isOutgoing && $counterparty === 'Recipient') || (! $isOutgoing && $counterparty === 'Sender')) {
+            $counterpartyMeta = $this->resolveTransferCounterpartyMeta($transfer, $customerId, $isOutgoing);
+            if (($isOutgoing && $counterpartyMeta['name'] === 'Recipient') || (! $isOutgoing && $counterpartyMeta['name'] === 'Sender')) {
                 $detailedTransfer = $this->fetchTransferDetails($transferId);
                 if ($detailedTransfer !== null) {
-                    $counterparty = $this->resolveTransferCounterpartyName($detailedTransfer, $customerId, $isOutgoing);
+                    $counterpartyMeta = $this->resolveTransferCounterpartyMeta($detailedTransfer, $customerId, $isOutgoing);
                 }
             }
 
+            $counterparty = $counterpartyMeta['name'];
             $statusSuffix = $status === 'pending' ? ' ('.$stateLabel.')' : '';
 
             $activities[] = [
@@ -847,14 +863,15 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
-                'bridge_state' => $state,
+                'bridge_state' => $status,
+                'bridge_transfer_state' => $state,
                 'donor_name' => $counterparty,
                 'donor_email' => null,
                 'frequency' => 'one-time',
                 'message' => ($isOutgoing ? 'Sent to ' : 'Received from ').$counterparty.$statusSuffix,
                 'transaction_id' => $transferId,
                 'is_outgoing' => $isOutgoing,
-                'recipient_type' => null,
+                'recipient_type' => $isOutgoing ? $counterpartyMeta['recipient_type'] : null,
                 'source' => 'bridge_transfer',
                 'sort_date' => $date,
             ];
@@ -1432,6 +1449,51 @@ class BridgeWalletReadService
                 $this->walletOwnerNames[$bridgeWalletId] = $name;
             }
         }
+
+        foreach ($missing as $walletId) {
+            if (($this->walletOwnerNames[$walletId] ?? '') !== '') {
+                continue;
+            }
+
+            $integration = $this->findIntegrationForBridgeWalletId($walletId);
+            $name = $this->integratableDisplayName($integration);
+            if ($name !== '') {
+                $this->walletOwnerNames[$walletId] = $name;
+            }
+        }
+    }
+
+    private function findIntegrationForBridgeWalletId(string $walletId): ?BridgeIntegration
+    {
+        if ($walletId === '') {
+            return null;
+        }
+
+        $fromWalletRow = BridgeWallet::query()
+            ->where('bridge_wallet_id', $walletId)
+            ->with(['bridgeIntegration.integratable'])
+            ->first();
+
+        if ($fromWalletRow?->bridgeIntegration !== null) {
+            return $fromWalletRow->bridgeIntegration;
+        }
+
+        $direct = BridgeIntegration::query()
+            ->where('bridge_wallet_id', $walletId)
+            ->with('integratable')
+            ->first();
+
+        if ($direct !== null) {
+            return $direct;
+        }
+
+        return BridgeIntegration::query()
+            ->where(function ($query) use ($walletId) {
+                $query->whereHas('wallets', fn ($q) => $q->where('bridge_wallet_id', $walletId))
+                    ->orWhereHas('primaryWallet', fn ($q) => $q->where('bridge_wallet_id', $walletId));
+            })
+            ->with('integratable')
+            ->first();
     }
 
     private function resolveWalletOwnerName(?string $walletId): ?string
@@ -1587,19 +1649,80 @@ class BridgeWalletReadService
             return $this->extractPartyNameFromEndpoint($source);
         }
 
-        $recipientWalletId = (string) ($destination['bridge_wallet_id'] ?? '');
-        $name = $this->resolveWalletOwnerName($recipientWalletId !== '' ? $recipientWalletId : null);
+        $eventType = strtolower((string) ($event['type'] ?? ''));
+        $isOutgoingEvent = in_array($eventType, ['withdrawal', 'withdraw', 'card_spend'], true);
+        $transferIdFromRoute = (string) ($paymentRoute['transfer_id'] ?? '');
+        if ($routeType === 'transfer' && $transferIdFromRoute !== '') {
+            $transfer = $this->fetchTransferDetails($transferIdFromRoute);
+            if ($transfer !== null) {
+                $name = $this->resolveTransferCounterpartyName($transfer, $viewerCustomerId, $isOutgoingEvent);
+                $fallback = $isOutgoingEvent ? 'Recipient' : 'Sender';
+                if ($name !== $fallback) {
+                    return $name;
+                }
+            }
+        }
+
+        $counterpartyWalletId = $isOutgoingEvent
+            ? (string) ($destination['bridge_wallet_id'] ?? '')
+            : (string) ($source['bridge_wallet_id'] ?? '');
+        $name = $this->resolvePartyNameFromBridgeWalletId(
+            $counterpartyWalletId !== '' ? $counterpartyWalletId : null,
+            $viewerCustomerId,
+        );
         if ($name !== null) {
             return $name;
         }
 
-        $toAddress = (string) ($destination['to_address'] ?? '');
-        $name = $this->resolveWalletOwnerByAddress($toAddress !== '' ? $toAddress : null);
-        if ($name !== null) {
+        $endpoint = $isOutgoingEvent ? $destination : $source;
+        $addressKey = $isOutgoingEvent ? 'to_address' : 'from_address';
+        $address = (string) ($endpoint[$addressKey] ?? '');
+        $name = $this->resolveWalletOwnerByAddress($address !== '' ? $address : null);
+        if ($name !== null && ! $this->matchesViewerName($name, $viewerCustomerId)) {
             return $name;
         }
 
-        return $this->extractPartyNameFromEndpoint($destination);
+        $endpointName = $this->extractPartyNameFromEndpoint($endpoint);
+        if ($endpointName !== null && ! $this->matchesViewerName($endpointName, $viewerCustomerId)) {
+            return $endpointName;
+        }
+
+        return $isOutgoingEvent ? 'Recipient' : 'Sender';
+    }
+
+    /**
+     * @param  array<string, mixed>  $transfer
+     * @return array{name: string, recipient_type: string|null}
+     */
+    private function resolveTransferCounterpartyMeta(
+        array $transfer,
+        string $viewerCustomerId,
+        bool $isOutgoing,
+    ): array {
+        return [
+            'name' => $this->resolveTransferCounterpartyName($transfer, $viewerCustomerId, $isOutgoing),
+            'recipient_type' => $isOutgoing ? $this->resolveTransferRecipientType($transfer, $viewerCustomerId) : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $transfer
+     */
+    private function resolveTransferRecipientType(array $transfer, string $viewerCustomerId): ?string
+    {
+        $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
+        $destWalletId = (string) ($destination['bridge_wallet_id'] ?? '');
+        $recipientType = $this->resolveIntegratableTypeForWalletId($destWalletId !== '' ? $destWalletId : null);
+        if ($recipientType !== null) {
+            return $recipientType;
+        }
+
+        $destCustomerId = (string) ($destination['customer_id'] ?? '');
+        if ($destCustomerId !== '' && $destCustomerId !== $viewerCustomerId) {
+            return $this->resolveIntegratableTypeForCustomerId($destCustomerId);
+        }
+
+        return null;
     }
 
     /**
@@ -1615,34 +1738,53 @@ class BridgeWalletReadService
 
         if ($isOutgoing) {
             $destWalletId = (string) ($destination['bridge_wallet_id'] ?? '');
-            $name = $this->resolveWalletOwnerName($destWalletId !== '' ? $destWalletId : null);
+            $name = $this->resolvePartyNameFromBridgeWalletId(
+                $destWalletId !== '' ? $destWalletId : null,
+                $viewerCustomerId,
+            );
             if ($name !== null) {
                 return $name;
             }
 
             $toAddress = (string) ($destination['to_address'] ?? '');
             $name = $this->resolveWalletOwnerByAddress($toAddress !== '' ? $toAddress : null);
-            if ($name !== null) {
+            if ($name !== null && ! $this->matchesViewerName($name, $viewerCustomerId)) {
                 return $name;
             }
 
-            return $this->extractPartyNameFromEndpoint($destination) ?? 'Recipient';
+            $destCustomerId = (string) ($destination['customer_id'] ?? '');
+            if ($destCustomerId !== '' && $destCustomerId !== $viewerCustomerId) {
+                $name = $this->resolveCustomerDisplayName($destCustomerId);
+                if ($name !== null && ! $this->matchesViewerName($name, $viewerCustomerId)) {
+                    return $name;
+                }
+            }
+
+            $name = $this->extractPartyNameFromEndpoint($destination);
+            if ($name !== null && ! $this->matchesViewerName($name, $viewerCustomerId)) {
+                return $name;
+            }
+
+            return 'Recipient';
         }
 
         $sourceWalletId = (string) ($source['bridge_wallet_id'] ?? '');
-        $name = $this->resolveWalletOwnerName($sourceWalletId !== '' ? $sourceWalletId : null);
+        $name = $this->resolvePartyNameFromBridgeWalletId(
+            $sourceWalletId !== '' ? $sourceWalletId : null,
+            $viewerCustomerId,
+        );
         if ($name !== null) {
             return $name;
         }
 
         $fromAddress = (string) ($source['from_address'] ?? '');
         $name = $this->resolveWalletOwnerByAddress($fromAddress !== '' ? $fromAddress : null);
-        if ($name !== null) {
+        if ($name !== null && ! $this->matchesViewerName($name, $viewerCustomerId)) {
             return $name;
         }
 
         $senderName = $this->extractPartyNameFromEndpoint($source);
-        if ($senderName !== null) {
+        if ($senderName !== null && ! $this->matchesViewerName($senderName, $viewerCustomerId)) {
             return $senderName;
         }
 
@@ -1654,7 +1796,83 @@ class BridgeWalletReadService
             }
         }
 
+        $sourceCustomerId = (string) ($source['customer_id'] ?? '');
+        if ($sourceCustomerId !== '' && $sourceCustomerId !== $viewerCustomerId) {
+            $customerName = $this->resolveCustomerDisplayName($sourceCustomerId);
+            if ($customerName !== null) {
+                return $customerName;
+            }
+        }
+
         return 'Sender';
+    }
+
+    private function resolvePartyNameFromBridgeWalletId(?string $walletId, string $viewerCustomerId): ?string
+    {
+        if ($walletId === null || $walletId === '') {
+            return null;
+        }
+
+        $name = $this->resolveWalletOwnerName($walletId);
+        if ($name !== null && ! $this->matchesViewerName($name, $viewerCustomerId)) {
+            return $name;
+        }
+
+        $integration = $this->findIntegrationForBridgeWalletId($walletId);
+        $integrationName = $this->integratableDisplayName($integration);
+        if ($integrationName !== '' && ! $this->matchesViewerName($integrationName, $viewerCustomerId)) {
+            return $integrationName;
+        }
+
+        return null;
+    }
+
+    private function resolveIntegratableTypeForWalletId(?string $walletId): ?string
+    {
+        if ($walletId === null || $walletId === '') {
+            return null;
+        }
+
+        return $this->resolveIntegratableTypeForIntegration(
+            $this->findIntegrationForBridgeWalletId($walletId),
+        );
+    }
+
+    private function resolveIntegratableTypeForCustomerId(string $customerId): ?string
+    {
+        if ($customerId === '') {
+            return null;
+        }
+
+        $integration = BridgeIntegration::query()
+            ->where('bridge_customer_id', $customerId)
+            ->with('integratable')
+            ->first();
+
+        return $this->resolveIntegratableTypeForIntegration($integration);
+    }
+
+    private function resolveIntegratableTypeForIntegration(?BridgeIntegration $integration): ?string
+    {
+        if ($integration === null) {
+            return null;
+        }
+
+        return match ($integration->integratable_type) {
+            Organization::class => 'organization',
+            User::class => 'user',
+            default => null,
+        };
+    }
+
+    private function matchesViewerName(string $name, string $viewerCustomerId): bool
+    {
+        $viewerName = $this->resolveCustomerDisplayName($viewerCustomerId);
+        if ($viewerName === null) {
+            return false;
+        }
+
+        return strcasecmp(trim($name), trim($viewerName)) === 0;
     }
 
     /**
