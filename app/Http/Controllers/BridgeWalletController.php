@@ -3412,9 +3412,21 @@ class BridgeWalletController extends Controller
                 DB::rollBack();
                 throw $e;
             }
-        } catch (\Exception $e) {
-            Log::error('Bridge send error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to process transfer'], 500);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('Bridge send error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+            ]);
+
+            $message = 'Failed to process transfer.';
+            if (config('app.debug') || $e instanceof \Illuminate\Database\QueryException) {
+                $message = 'Failed to process transfer: '.$e->getMessage();
+            }
+
+            return response()->json(['success' => false, 'message' => $message], 500);
         }
     }
 
