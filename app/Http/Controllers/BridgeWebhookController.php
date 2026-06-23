@@ -1046,10 +1046,15 @@ class BridgeWebhookController extends Controller
         $customerId = $eventObject['on_behalf_of']
             ?? $eventObject['customer_id']
             ?? null;
-        $integration = $this->findIntegrationByCustomerId($customerId);
-        if ($this->shouldUseBridgeApiOnly($integration)) {
-            $this->bridgeWalletNotifier->notifyTransferWebhook($eventObject, $state, $eventType);
+        $destination = is_array($eventObject['destination'] ?? null) ? $eventObject['destination'] : [];
 
+        // Always notify Bridge wallet users in real time (sender + recipient).
+        $this->bridgeWalletNotifier->notifyTransferWebhook($eventObject, $state, $eventType);
+
+        $integration = $this->findIntegrationByCustomerId($customerId);
+        $recipientIntegration = $this->bridgeWalletNotifier->resolveIntegrationForWalletEndpoint($destination);
+
+        if ($this->shouldUseBridgeApiOnly($integration) || $this->shouldUseBridgeApiOnly($recipientIntegration)) {
             return;
         }
 
@@ -1677,18 +1682,17 @@ class BridgeWebhookController extends Controller
 
     private function resolveIntegrationForBridgeWalletActivity(?string $customerId, ?string $bridgeWalletId): ?BridgeIntegration
     {
-        if ($customerId) {
-            $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-            if ($integration !== null) {
-                return $integration;
+        if ($bridgeWalletId) {
+            $byWallet = $this->bridgeWalletNotifier->resolveIntegrationForWalletEndpoint([
+                'bridge_wallet_id' => $bridgeWalletId,
+            ]);
+            if ($byWallet !== null) {
+                return $byWallet;
             }
         }
 
-        if ($bridgeWalletId) {
-            $wallet = BridgeWallet::where('bridge_wallet_id', $bridgeWalletId)->first();
-            if ($wallet !== null) {
-                return $wallet->bridgeIntegration;
-            }
+        if ($customerId) {
+            return $this->findIntegrationByCustomerId($customerId);
         }
 
         return null;
