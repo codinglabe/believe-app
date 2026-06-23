@@ -43,12 +43,9 @@ class BridgeWalletController extends Controller
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
 
             if ($isOrgUser) {
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
                 if (!$organization) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Organization not found.',
-                    ], 404);
+                    return response()->json(['success' => false, 'message' => 'Organization not found.'], 404);
                 }
                 $entity = $organization;
                 $entityType = Organization::class;
@@ -57,7 +54,6 @@ class BridgeWalletController extends Controller
                 $entityType = User::class;
             }
 
-            // Check if already initialized
             $integration = BridgeIntegration::with('primaryWallet')
                 ->where('integratable_id', $entity->id)
                 ->where('integratable_type', $entityType)
@@ -323,8 +319,15 @@ class BridgeWalletController extends Controller
             $user = Auth::user();
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
 
-            $entity = $isOrgUser ? $user->organization : $user;
+            $entity = $isOrgUser ? Organization::forAuthUser($user) : $user;
             $entityType = $isOrgUser ? Organization::class : User::class;
+
+            if ($isOrgUser && ! $entity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Organization not found.',
+                ], 404);
+            }
 
             $integration = BridgeIntegration::with('primaryWallet')
                 ->where('integratable_id', $entity->id)
@@ -1000,7 +1003,7 @@ class BridgeWalletController extends Controller
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
 
             if ($isOrgUser) {
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
                 if (!$organization) {
                     return response()->json(['success' => false, 'message' => 'Organization not found.'], 404);
                 }
@@ -1215,6 +1218,19 @@ class BridgeWalletController extends Controller
                             ($primaryWallet && !empty($primaryWallet->bridge_wallet_id));
             }
 
+            if (! $hasWallet && ! empty($integration->bridge_customer_id)) {
+                $resolvedWallet = $this->bridgeService->resolveCustomerBridgeWallet($integration);
+                $hasWallet = $resolvedWallet !== null;
+                if ($hasWallet && empty($walletAddress) && ! empty($resolvedWallet['wallet_id'])) {
+                    $walletResult = $this->bridgeService->getWallet(
+                        $integration->bridge_customer_id,
+                        $resolvedWallet['wallet_id'],
+                    );
+                    $walletData = is_array($walletResult['data'] ?? null) ? $walletResult['data'] : [];
+                    $walletAddress = (string) ($walletData['address'] ?? $walletAddress);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'initialized' => true,
@@ -1273,7 +1289,7 @@ class BridgeWalletController extends Controller
             $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
 
             if ($isOrgUser) {
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
                 if (!$organization) {
                     return response()->json(['success' => false, 'message' => 'Organization not found.'], 404);
                 }

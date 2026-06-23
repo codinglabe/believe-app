@@ -117,6 +117,7 @@ class BridgeIntegration extends Model
         };
 
         if (in_array($user->role, ['organization', 'organization_pending'], true)) {
+            $add(Organization::forAuthUser($user)?->id, Organization::class);
             $add($user->organization?->id, Organization::class);
 
             foreach (Organization::where('user_id', $user->id)->pluck('id') as $orgId) {
@@ -155,6 +156,32 @@ class BridgeIntegration extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Resolve Bridge integration for the logged-in user, preferring the canonical
+     * organization entity (owner or board-linked) for business accounts — same
+     * entity BridgeWalletController uses for status, balance, and KYB.
+     */
+    public static function resolveForAuthUser(User $user): ?self
+    {
+        $isOrgUser = in_array($user->role, ['organization', 'organization_pending'], true);
+
+        if ($isOrgUser) {
+            $organization = Organization::forAuthUser($user);
+            if ($organization) {
+                $orgIntegration = static::with(['primaryWallet', 'wallets'])
+                    ->where('integratable_id', $organization->id)
+                    ->where('integratable_type', Organization::class)
+                    ->first();
+
+                if ($orgIntegration !== null && ! empty($orgIntegration->bridge_customer_id)) {
+                    return $orgIntegration;
+                }
+            }
+        }
+
+        return static::resolveForUser($user);
     }
 
     /**
