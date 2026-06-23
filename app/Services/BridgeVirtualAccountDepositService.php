@@ -20,6 +20,7 @@ class BridgeVirtualAccountDepositService
     public function __construct(
         private readonly BridgeService $bridgeService,
         private readonly WalletTransactionNotifier $walletTransactionNotifier,
+        private readonly BridgeWalletReadService $bridgeWalletReadService,
     ) {}
 
     /**
@@ -29,6 +30,10 @@ class BridgeVirtualAccountDepositService
      */
     public function syncFromBridge(BridgeIntegration $integration): int
     {
+        if ($this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration)) {
+            return 0;
+        }
+
         return $this->syncVirtualAccountDeposits($integration)
             + $this->syncBridgeWalletDeposits($integration);
     }
@@ -102,6 +107,10 @@ class BridgeVirtualAccountDepositService
      */
     private function syncBridgeWalletDeposits(BridgeIntegration $integration): int
     {
+        if ($this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration)) {
+            return 0;
+        }
+
         $customerId = $integration->bridge_customer_id;
         $walletId = $this->resolveBridgeWalletId($integration);
 
@@ -228,6 +237,10 @@ class BridgeVirtualAccountDepositService
         string $bridgeEventType,
         ?string $eventObjectStatus = null,
     ): void {
+        if ($this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration)) {
+            return;
+        }
+
         $activityType = $this->resolveActivityType($eventObject, $eventObjectStatus);
         if ($activityType === null) {
             Log::warning('Bridge virtual account activity missing type', [
@@ -441,6 +454,10 @@ class BridgeVirtualAccountDepositService
         array $eventObject,
         string $bridgeEventType,
     ): bool {
+        if ($this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration)) {
+            return false;
+        }
+
         $user = $this->resolveWalletUser($integration);
         if ($user === null) {
             Log::warning('Bridge virtual account deposit: wallet user not found', [

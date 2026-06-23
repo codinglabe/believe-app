@@ -95,6 +95,69 @@ class BridgeIntegration extends Model
     }
 
     /**
+     * Find the Bridge integration for a logged-in user (org + user rows).
+     */
+    public static function resolveForUser(User $user): ?self
+    {
+        $candidates = [];
+        $seen = [];
+
+        $add = function (?int $id, ?string $type) use (&$candidates, &$seen): void {
+            if ($id === null || $type === null) {
+                return;
+            }
+
+            $key = $type.'#'.$id;
+            if (isset($seen[$key])) {
+                return;
+            }
+
+            $seen[$key] = true;
+            $candidates[] = [$id, $type];
+        };
+
+        if (in_array($user->role, ['organization', 'organization_pending'], true)) {
+            $add($user->organization?->id, Organization::class);
+
+            foreach (Organization::where('user_id', $user->id)->pluck('id') as $orgId) {
+                $add((int) $orgId, Organization::class);
+            }
+
+            foreach ($user->boardMemberships()->pluck('organization_id') as $orgId) {
+                $add((int) $orgId, Organization::class);
+            }
+        }
+
+        $add($user->id, User::class);
+
+        foreach ($candidates as [$id, $type]) {
+            $integration = static::with(['primaryWallet', 'wallets'])
+                ->where('integratable_id', $id)
+                ->where('integratable_type', $type)
+                ->whereNotNull('bridge_customer_id')
+                ->where('bridge_customer_id', '!=', '')
+                ->first();
+
+            if ($integration !== null) {
+                return $integration;
+            }
+        }
+
+        foreach ($candidates as [$id, $type]) {
+            $integration = static::with(['primaryWallet', 'wallets'])
+                ->where('integratable_id', $id)
+                ->where('integratable_type', $type)
+                ->first();
+
+            if ($integration !== null) {
+                return $integration;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get the parent integratable model (User or Organization).
      */
     public function integratable(): MorphTo

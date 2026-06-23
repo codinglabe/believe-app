@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Input as FrontendInput } from "@/components/frontend/ui/input"
 import { Label } from "@/components/ui/label"
-import { motion, AnimatePresence } from "framer-motion"
+import { pickWalletBalance } from "@/lib/wallet-balance-fetch"
 
 interface WalletConnectPopupProps {
   isOpen: boolean
@@ -145,7 +145,7 @@ export function WalletConnectPopup({
             setWalletData({
               username: username,
               email: email,
-              balance: balanceData.balance || balanceData.local_balance || 0,
+              balance: pickWalletBalance(balanceData),
             })
           } else {
             // If balance fetch fails but connection succeeded

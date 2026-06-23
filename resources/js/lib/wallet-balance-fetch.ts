@@ -4,9 +4,32 @@ export const WALLET_BALANCE_POLL_MS = 60_000
 export type WalletBalanceResponse = {
     success?: boolean
     balance?: number
-    local_balance?: number
+    bridge_balance?: number | null
+    local_balance?: number | null
     organization_balance?: number
     has_subscription?: boolean
+    source?: string
+}
+
+/**
+ * Parse spendable balance from /wallet/balance — never fall back to local_balance
+ * when Bridge is source of truth (0 is a valid Bridge balance).
+ */
+export function pickWalletBalance(data: WalletBalanceResponse): number {
+    if (data.source === 'bridge_wallet') {
+        const value = data.bridge_balance ?? data.balance
+        return typeof value === 'number' ? value : 0
+    }
+
+    if (typeof data.balance === 'number') {
+        return data.balance
+    }
+
+    if (typeof data.organization_balance === 'number') {
+        return data.organization_balance
+    }
+
+    return 0
 }
 
 let lastFetchAt = 0

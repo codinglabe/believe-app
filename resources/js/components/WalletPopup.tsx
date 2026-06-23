@@ -20,6 +20,7 @@ import {
     formatBridgeVerificationStatusLabel,
     type WalletBridgeStatusPayload,
 } from '@/lib/bridge-verification'
+import { pickWalletBalance } from '@/lib/wallet-balance-fetch'
 import {
     SuccessMessage,
     BalanceDisplay,
@@ -723,7 +724,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setWalletAddress(statusData.wallet_address)
                 }
 
-                // Always fetch balance from user/organization table, not Bridge wallet
+                // Balance from Bridge API via /wallet/balance
                 const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
@@ -738,8 +739,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json()
                     if (balanceData.success) {
-                        // Use balance from user/organization table
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        // Bridge or ledger balance from API (never mix with local_balance fallback)
+                        setWalletBalance(pickWalletBalance(balanceData))
                         setHasSubscription(balanceData.has_subscription ?? null)
 
                         // If no subscription, show subscription modal instead (for regular users only)
@@ -773,7 +774,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (fallbackResponse.ok) {
                     const fallbackData = await fallbackResponse.json()
                     if (fallbackData.success) {
-                        setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
+                        setWalletBalance(pickWalletBalance(fallbackData))
                         setHasSubscription(fallbackData.has_subscription ?? null)
 
                         // If no subscription, show subscription modal instead (for regular users only)
@@ -806,7 +807,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (fallbackResponse.ok) {
                     const fallbackData = await fallbackResponse.json()
                     if (fallbackData.success) {
-                        setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
+                        setWalletBalance(pickWalletBalance(fallbackData))
                         setHasSubscription(fallbackData.has_subscription ?? null)
 
                         // If no subscription, show subscription modal instead (for regular users only)
@@ -1069,21 +1070,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             })
 
             const data = await response.json()
-            
-            // Debug logging
-            console.log('External accounts API response:', data)
-            
+
             if (data.success && data.data) {
                 // Backend already returns mapped accounts in the correct format
                 // Handle nested structure: { success: true, data: { count: X, data: [...] } }
                 let accounts = []
                 if (Array.isArray(data.data)) {
-                    // Direct array - backend already mapped it
                     accounts = data.data
-                    console.log('Using direct array, accounts count:', accounts.length)
                 } else if (data.data && Array.isArray(data.data.data)) {
-                    // Nested structure: data.data.data (fallback for old format)
-                    console.log('Using nested structure')
                     accounts = data.data.data.map((account: any) => ({
                         id: account.id || '',
                         account_number: account.account?.last_4 || account.last_4 || '0000',
@@ -1093,18 +1087,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         status: account.active ? 'verified' : 'pending',
                     }))
                 }
-                
-                console.log('Final accounts to set:', accounts)
-                // Use accounts as-is since backend already mapped them correctly
+
                 setExternalAccounts(accounts)
                 setHasBankAccounts(accounts.length > 0)
             } else {
-                console.warn('No accounts found in response:', data)
                 setExternalAccounts([])
                 setHasBankAccounts(false)
             }
-        } catch (error) {
-            console.error('Failed to fetch external accounts:', error)
+        } catch {
             setExternalAccounts([])
             setHasBankAccounts(false)
         } finally {
@@ -1676,7 +1666,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setControlPersonKycIframeUrl(statusData.control_person_kyc_iframe_url)
                 }
 
-                // Always fetch balance from user/organization table, not Bridge wallet
+                // Balance from Bridge API via /wallet/balance
                 const balanceResponse = await walletFetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                 })
@@ -1684,8 +1674,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json()
                     if (balanceData.success) {
-                        // Use balance from user/organization table
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        // Bridge or ledger balance from API (never mix with local_balance fallback)
+                        setWalletBalance(pickWalletBalance(balanceData))
                         setHasSubscription(balanceData.has_subscription ?? null)
                     }
                 }
@@ -2669,7 +2659,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json()
                 if (balanceData.success) {
-                    setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                    setWalletBalance(pickWalletBalance(balanceData))
                     setHasSubscription(balanceData.has_subscription ?? null)
                     showSuccessToast('Balance refreshed')
                 }
@@ -3009,7 +2999,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json()
                     if (balanceData.success) {
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        setWalletBalance(pickWalletBalance(balanceData))
                     }
                 }
             }
@@ -3153,7 +3143,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         if (balanceResponse.ok) {
                             const balanceData = await balanceResponse.json()
                             if (balanceData.success) {
-                                setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                                setWalletBalance(pickWalletBalance(balanceData))
                             }
                         }
                     }

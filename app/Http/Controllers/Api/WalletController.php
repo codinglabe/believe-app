@@ -3,26 +3,71 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BridgeIntegration;
 use App\Models\Transaction;
+use App\Services\BridgeWalletReadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class WalletController extends Controller
 {
+    private function bridgeWalletBlocksLocalLedger(Request $request): bool
+    {
+        $user = $request->user();
+        if ($user === null) {
+            return false;
+        }
+
+        return app(BridgeWalletReadService::class)->usesBridgeWalletAsSourceOfTruth(
+            BridgeIntegration::resolveForUser($user)
+        );
+    }
+
+    private function bridgeLedgerBlockedResponse(Request $request)
+    {
+        $integration = BridgeIntegration::resolveForUser($request->user());
+        $balance = round((float) (app(BridgeWalletReadService::class)->getBalance($integration) ?? 0), 2);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'This account uses Bridge wallet. Balance and transfers are managed by Bridge API only.',
+            'source' => 'bridge_wallet',
+            'data' => [
+                'balance' => $balance,
+            ],
+        ], 400);
+    }
+
     /**
      * Get wallet balance
      */
     public function getBalance(Request $request)
     {
         $user = $request->user();
+        $integration = BridgeIntegration::resolveForUser($user);
+        $bridgeRead = app(BridgeWalletReadService::class);
+
+        if ($bridgeRead->usesBridgeWalletAsSourceOfTruth($integration)) {
+            $balance = round((float) ($bridgeRead->getBalance($integration) ?? 0), 2);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'balance' => $balance,
+                    'currency' => 'USD',
+                    'source' => 'bridge_wallet',
+                ],
+            ]);
+        }
 
         return response()->json([
             'success' => true,
             'data' => [
                 'balance' => $user->balance ?? 0,
                 'currency' => 'USD',
-            ]
+                'source' => 'ledger',
+            ],
         ]);
     }
 
@@ -31,6 +76,10 @@ class WalletController extends Controller
      */
     public function deposit(Request $request)
     {
+        if ($this->bridgeWalletBlocksLocalLedger($request)) {
+            return $this->bridgeLedgerBlockedResponse($request);
+        }
+
         $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'sometimes|string|max:255',
@@ -40,7 +89,7 @@ class WalletController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -73,13 +122,14 @@ class WalletController extends Controller
                     'transaction_id' => $transaction->transaction_id,
                     'amount' => $amount,
                     'new_balance' => $user->fresh()->balance,
-                ]
+                ],
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Deposit failed: ' . $e->getMessage()
+                'message' => 'Deposit failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -89,6 +139,10 @@ class WalletController extends Controller
      */
     public function withdraw(Request $request)
     {
+        if ($this->bridgeWalletBlocksLocalLedger($request)) {
+            return $this->bridgeLedgerBlockedResponse($request);
+        }
+
         $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'sometimes|string|max:255',
@@ -98,7 +152,7 @@ class WalletController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -108,7 +162,7 @@ class WalletController extends Controller
         if ($user->balance < $amount) {
             return response()->json([
                 'success' => false,
-                'message' => 'Insufficient balance'
+                'message' => 'Insufficient balance',
             ], 400);
         }
 
@@ -138,13 +192,14 @@ class WalletController extends Controller
                     'transaction_id' => $transaction->transaction_id,
                     'amount' => $amount,
                     'new_balance' => $user->fresh()->balance,
-                ]
+                ],
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Withdrawal failed: ' . $e->getMessage()
+                'message' => 'Withdrawal failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -154,6 +209,10 @@ class WalletController extends Controller
      */
     public function send(Request $request)
     {
+        if ($this->bridgeWalletBlocksLocalLedger($request)) {
+            return $this->bridgeLedgerBlockedResponse($request);
+        }
+
         $validator = Validator::make($request->all(), [
             'email' => 'required|email|exists:users,email',
             'amount' => 'required|numeric|min:0.01',
@@ -163,7 +222,7 @@ class WalletController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -174,14 +233,14 @@ class WalletController extends Controller
         if ($user->id === $recipient->id) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot send funds to yourself'
+                'message' => 'Cannot send funds to yourself',
             ], 400);
         }
 
         if ($user->balance < $amount) {
             return response()->json([
                 'success' => false,
-                'message' => 'Insufficient balance'
+                'message' => 'Insufficient balance',
             ], 400);
         }
 
@@ -189,7 +248,7 @@ class WalletController extends Controller
         try {
             // Update sender balance
             $user->decrement('balance', $amount);
-            
+
             // Update recipient balance
             $recipient->increment('balance', $amount);
 
@@ -227,13 +286,14 @@ class WalletController extends Controller
                     'amount' => $amount,
                     'recipient' => $recipient->email,
                     'new_balance' => $user->fresh()->balance,
-                ]
+                ],
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Transfer failed: ' . $e->getMessage()
+                'message' => 'Transfer failed: '.$e->getMessage(),
             ], 500);
         }
     }

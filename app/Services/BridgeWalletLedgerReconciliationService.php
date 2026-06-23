@@ -30,6 +30,15 @@ class BridgeWalletLedgerReconciliationService
      */
     public function reconcile(BridgeIntegration $integration): array
     {
+        if (app(BridgeWalletReadService::class)->usesBridgeWalletAsSourceOfTruth($integration)) {
+            return [
+                'refunded_outbound' => 0,
+                'reversed_inbound' => 0,
+                'completed_inbound' => 0,
+                'balance_synced' => 0,
+            ];
+        }
+
         $user = $this->resolveWalletUser($integration);
         if ($user === null) {
             return [

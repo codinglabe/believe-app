@@ -2671,19 +2671,27 @@ class BridgeService
     }
 
     /**
+     * List transfers
+     */
+    public function getTransfers(array $query = []): array
+    {
+        return $this->makeRequest('GET', '/transfers', $query);
+    }
+
+    /**
+     * List transfers for a customer (on_behalf_of filter).
+     */
+    public function getCustomerTransfers(string $customerId, array $query = []): array
+    {
+        return $this->makeRequest('GET', '/transfers', array_merge(['on_behalf_of' => $customerId], $query));
+    }
+
+    /**
      * Get transfer by ID
      */
     public function getTransfer(string $transferId): array
     {
         return $this->makeRequest('GET', "/transfers/{$transferId}");
-    }
-
-    /**
-     * List transfers
-     */
-    public function getTransfers(): array
-    {
-        return $this->makeRequest('GET', '/transfers');
     }
 
     /**
