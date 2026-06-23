@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import { pickWalletBalance } from "@/lib/wallet-balance-fetch"
 import { Head, router } from "@inertiajs/react"
 import SettingsLayout from "@/layouts/settings/layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -124,7 +124,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
             if (balanceData.success) {
               setWallet(prev => ({
                 ...prev,
-                balance: balanceData.balance || balanceData.local_balance || 0,
+                balance: pickWalletBalance(balanceData),
               }))
             }
           }
@@ -174,7 +174,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
               connected_at: data.connected_at,
               expires_at: data.expires_at,
               wallet_user_id: data.wallet_user_id,
-              balance: balanceData.balance || balanceData.local_balance || 0,
+              balance: pickWalletBalance(balanceData),
             })
             showSuccessToast('Wallet data refreshed successfully')
           } else {

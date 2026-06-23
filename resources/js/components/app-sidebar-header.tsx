@@ -12,7 +12,7 @@ import { showSuccessToast } from '@/lib/toast';
 import { useEffect, useState, useCallback } from 'react';
 import { WalletPopup } from './WalletPopup';
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
-import { fetchWalletBalance } from '@/lib/wallet-balance-fetch';
+import { fetchWalletBalance, pickWalletBalance } from '@/lib/wallet-balance-fetch';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
     const { isImpersonating, auth, hasSubscription: propHasSubscription } = usePage<{
@@ -57,12 +57,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
             try {
                 const balanceData = await fetchWalletBalance({ force });
                 if (balanceData?.success) {
-                    setWalletBalance(
-                        balanceData.balance ||
-                            balanceData.organization_balance ||
-                            balanceData.local_balance ||
-                            0,
-                    );
+                    setWalletBalance(pickWalletBalance(balanceData));
                     setWalletConnected(true);
                     if (propHasSubscription === undefined) {
                         setHasSubscription(balanceData.has_subscription ?? null);

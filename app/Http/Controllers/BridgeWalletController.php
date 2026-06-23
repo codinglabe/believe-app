@@ -15,7 +15,7 @@ use App\Models\Transaction;
 use App\Models\LiquidationAddress;
 use App\Services\BridgeService;
 use App\Services\BridgeVirtualAccountDepositService;
-use App\Services\BridgeWalletLedgerReconciliationService;
+use App\Services\BridgeWalletReadService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1051,16 +1051,6 @@ class BridgeWalletController extends Controller
             $customer = $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
             $integration->refresh();
 
-            try {
-                app(BridgeVirtualAccountDepositService::class)->syncFromBridge($integration);
-                app(BridgeWalletLedgerReconciliationService::class)->reconcile($integration);
-            } catch (\Throwable $syncError) {
-                Log::warning('Bridge wallet sync/reconcile failed during status check', [
-                    'integration_id' => $integration->id,
-                    'error' => $syncError->getMessage(),
-                ]);
-            }
-
             $needsVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser, $customer);
 
             // Check TOS status from Bridge API via customer endorsements
@@ -1294,50 +1284,32 @@ class BridgeWalletController extends Controller
                 $entityType = User::class;
             }
 
-            $integration = BridgeIntegration::with('primaryWallet')
+            $integration = BridgeIntegration::with(['primaryWallet', 'wallets'])
                 ->where('integratable_id', $entity->id)
                 ->where('integratable_type', $entityType)
                 ->first();
 
-            if (!$integration || !$integration->bridge_wallet_id) {
+            if (! $integration || ! $integration->bridge_customer_id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Bridge wallet not initialized. Please initialize first.',
                 ], 404);
             }
 
-            // Get wallet to retrieve balance
-            $walletResult = $this->bridgeService->getWallet($integration->bridge_customer_id, $integration->bridge_wallet_id);
+            $snapshot = app(BridgeWalletReadService::class)->getWalletSnapshot($integration);
 
-            if (!$walletResult['success']) {
+            if ($snapshot === null) {
                 return response()->json([
                     'success' => false,
-                    'message' => $walletResult['error'] ?? 'Failed to fetch wallet',
-                ], 500);
-            }
-
-            // Extract balance from wallet data
-            $walletData = $walletResult['data'];
-            $balance = $this->bridgeService->parseBridgeWalletUsdBalance($walletData);
-            $currency = 'USD';
-
-            $balanceResult = [
-                'success' => true,
-                'balance' => (float) $balance,
-                'currency' => $currency,
-            ];
-
-            if (!$balanceResult['success']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $balanceResult['error'] ?? 'Failed to fetch balance',
+                    'message' => 'Failed to fetch wallet balance from Bridge.',
                 ], 500);
             }
 
             return response()->json([
                 'success' => true,
-                'balance' => $balanceResult['balance'] ?? 0,
-                'currency' => $balanceResult['currency'] ?? 'USD',
+                'balance' => $snapshot['balance'],
+                'currency' => $snapshot['currency'] ?? 'USD',
+                'source' => 'bridge_wallet',
             ]);
         } catch (\Exception $e) {
             Log::error('Bridge balance error', ['error' => $e->getMessage()]);
@@ -3034,61 +3006,20 @@ class BridgeWalletController extends Controller
 
             $amount = (float) $validated['amount'];
 
-            // Calculate fee
-            $fee = 0;
-            $feeRecord = WalletFee::getActiveFee('deposit');
-            if ($feeRecord) {
-                $fee = $feeRecord->calculateFee($amount);
-            }
+            // Deposits are credited by Bridge (virtual account / wallet history) — never the local ledger.
+            $bridgeRead = app(BridgeWalletReadService::class);
+            $bridgeBalance = round((float) ($bridgeRead->getBalance($integration) ?? 0), 2);
 
-            $totalAmount = $amount + $fee;
-
-            DB::beginTransaction();
-
-            try {
-                // Create Bridge transfer for deposit (if Bridge supports internal transfers)
-                // For deposits, we might need to use virtual accounts or external transfers
-                // For now, we'll add to local balance and create a transaction record
-                // In production, you'd create an actual Bridge transfer/deposit
-
-                $orgUser->increment('balance', $amount);
-
-                // Record transaction with pending status initially if using Bridge transfers
-                $transaction = $orgUser->recordTransaction([
-                    'type' => 'deposit',
+            return response()->json([
+                'success' => false,
+                'message' => 'Wallet balance updates when Bridge processes your bank deposit. Use deposit instructions to add funds.',
+                'use_deposit_instructions' => true,
+                'data' => [
+                    'balance' => $bridgeBalance,
                     'amount' => $amount,
-                    'fee' => $fee,
-                    'status' => 'completed', // Set to pending if waiting for Bridge confirmation
-                    'payment_method' => 'bridge',
-                    'meta' => [
-                        'bridge_wallet_id' => $integration->bridge_wallet_id,
-                        'bridge_customer_id' => $integration->bridge_customer_id,
-                        'organization_id' => $isOrgUser ? $organization->id : null,
-                        'deposited_by' => $user->id,
-                        // Store transfer ID if Bridge returns one
-                        // 'bridge_transfer_id' => $transferId,
-                    ],
-                    'processed_at' => now(),
-                ]);
-
-                DB::commit();
-
-                $this->walletTransactionNotifier->notify($orgUser, $transaction);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Deposit successful! $' . number_format($amount, 2) . ' has been added to your wallet.',
-                    'data' => [
-                        'balance' => (float) $orgUser->balance,
-                        'amount' => $amount,
-                        'fee' => $fee,
-                        'transaction_id' => $transaction->id,
-                    ],
-                ]);
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
+                    'source' => 'bridge',
+                ],
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Bridge deposit error', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Failed to process deposit'], 500);
@@ -3182,19 +3113,23 @@ class BridgeWalletController extends Controller
             }
 
             try {
-                app(BridgeWalletLedgerReconciliationService::class)->reconcile($senderIntegration);
-                $senderUser->refresh();
-                $senderWallet = $this->bridgeService->resolveCustomerBridgeWallet($senderIntegration);
-                $actualBridgeWalletId = $senderWallet['wallet_id'] ?? $actualBridgeWalletId;
-            } catch (\Throwable $reconcileError) {
-                Log::warning('Bridge send preflight reconcile failed', [
+                $walletSnapshot = app(BridgeWalletReadService::class)->getWalletSnapshot($senderIntegration);
+                if ($walletSnapshot !== null) {
+                    $senderWallet = $this->bridgeService->resolveCustomerBridgeWallet($senderIntegration);
+                    $actualBridgeWalletId = $senderWallet['wallet_id'] ?? $actualBridgeWalletId;
+                }
+            } catch (\Throwable $refreshError) {
+                Log::warning('Bridge send preflight wallet refresh failed', [
                     'integration_id' => $senderIntegration->id,
-                    'error' => $reconcileError->getMessage(),
+                    'error' => $refreshError->getMessage(),
                 ]);
             }
 
             $amount = (float) $validated['amount'];
-            $senderBalance = (float) ($senderUser->balance ?? 0);
+            $bridgeRead = app(BridgeWalletReadService::class);
+            $walletSnapshot = $bridgeRead->getWalletSnapshot($senderIntegration);
+            $senderBalance = $walletSnapshot['balance']
+                ?? (float) ($senderWallet['balance'] ?? 0);
 
             // Calculate fee
             $fee = 0;
@@ -3354,75 +3289,21 @@ class BridgeWalletController extends Controller
                 'amount' => $amount,
             ]);
 
-            DB::beginTransaction();
+            $updatedSnapshot = $bridgeRead->getWalletSnapshot($senderIntegration);
+            $senderBalanceAfter = $updatedSnapshot['balance'] ?? max(0, $senderBalance - $amount);
 
-            try {
-                // Deduct from sender after Bridge accepts the transfer
-                $senderUser->decrement('balance', $totalAmount);
-
-                // Record sender transaction
-                $senderTransaction = $senderUser->recordTransaction([
-                    'type' => 'transfer_out',
+            return response()->json([
+                'success' => true,
+                'message' => 'Transfer submitted. Funds will arrive when Bridge confirms the transfer.',
+                'data' => [
+                    'sender_balance' => $senderBalanceAfter,
                     'amount' => $amount,
                     'fee' => $fee,
+                    'bridge_transfer_id' => $bridgeTransferId,
                     'status' => 'pending',
-                    'payment_method' => 'bridge',
-                    'related_id' => $recipientDbId,
-                    'related_type' => $recipientType === 'user' ? User::class : Organization::class,
-                    'meta' => [
-                        'bridge_wallet_id' => $actualBridgeWalletId,
-                        'bridge_customer_id' => $senderIntegration->bridge_customer_id,
-                        'bridge_transfer_id' => $bridgeTransferId,
-                        'recipient_name' => $recipientType === 'user' ? $recipient->name : $recipient->name,
-                        'recipient_type' => $recipientType,
-                        'recipient_bridge_wallet_id' => $recipientBridgeWalletId,
-                        'recipient_bridge_customer_id' => $recipientIntegration->bridge_customer_id,
-                    ],
-                    'processed_at' => null,
-                ]);
-
-                // Recipient balance is credited when Bridge webhook confirms completion
-                $recipientTransaction = $recipientUser->recordTransaction([
-                    'type' => 'transfer_in',
-                    'amount' => $amount,
-                    'status' => 'pending',
-                    'payment_method' => 'bridge',
-                    'related_id' => $senderEntity->id,
-                    'related_type' => $senderEntityType,
-                    'meta' => [
-                        'bridge_wallet_id' => $recipientBridgeWalletId,
-                        'bridge_customer_id' => $recipientIntegration->bridge_customer_id,
-                        'bridge_transfer_id' => $bridgeTransferId,
-                        'sender_id' => $senderEntity->id,
-                        'sender_name' => $isOrgUser ? $senderEntity->name : $senderUser->name,
-                        'sender_type' => $isOrgUser ? 'organization' : 'user',
-                        'sender_bridge_wallet_id' => $actualBridgeWalletId,
-                        'sender_bridge_customer_id' => $senderIntegration->bridge_customer_id,
-                        'recipient_type' => $recipientType,
-                    ],
-                    'processed_at' => null,
-                ]);
-
-                DB::commit();
-
-                $senderUser->refresh();
-                $recipientUser->refresh();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Transfer submitted. Funds will arrive when Bridge confirms the transfer.',
-                    'data' => [
-                        'sender_balance' => (float) $senderUser->balance,
-                        'amount' => $amount,
-                        'fee' => $fee,
-                        'bridge_transfer_id' => $bridgeTransferId,
-                        'status' => 'pending',
-                    ],
-                ]);
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
+                    'source' => 'bridge',
+                ],
+            ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
@@ -4082,7 +3963,7 @@ class BridgeWalletController extends Controller
                     'customer_id' => $integration->bridge_customer_id,
                 ]);
 
-                $webhookController = new BridgeWebhookController($this->bridgeService, $this->walletTransactionNotifier);
+                $webhookController = app(BridgeWebhookController::class);
                 $webhookController->createWalletVirtualAccountAndCardAccount(
                     $integration->fresh(),
                     $integration->bridge_customer_id

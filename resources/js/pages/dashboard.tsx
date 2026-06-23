@@ -50,6 +50,7 @@ import TopicsCard from "@/components/admin/topics-card"
 import { router, usePage, Link } from "@inertiajs/react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/frontend/ui/chart"
 import { Area, AreaChart, XAxis } from "recharts"
+import { pickWalletBalance } from "@/lib/wallet-balance-fetch"
 
 const showSuccessToast = (message: string) => {
   console.log("Success:", message)
@@ -825,7 +826,7 @@ export default function Dashboard({
               if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json()
                 if (balanceData.success) {
-                  setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+                  setWalletBalance(pickWalletBalance(balanceData))
                 }
               }
             } catch (balanceError) {
@@ -880,7 +881,7 @@ export default function Dashboard({
       if (balanceResponse.ok) {
         const balanceData = await balanceResponse.json()
         if (balanceData.success) {
-          setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+          setWalletBalance(pickWalletBalance(balanceData))
         }
       }
 

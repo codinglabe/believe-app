@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\BridgeService;
 use App\Services\BridgeVirtualAccountDepositService;
+use App\Services\BridgeWalletReadService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -24,14 +25,18 @@ class BridgeWebhookController extends Controller
 
     protected BridgeVirtualAccountDepositService $virtualAccountDepositService;
 
+    protected BridgeWalletReadService $bridgeWalletReadService;
+
     public function __construct(
         BridgeService $bridgeService,
         WalletTransactionNotifier $walletTransactionNotifier,
         BridgeVirtualAccountDepositService $virtualAccountDepositService,
+        BridgeWalletReadService $bridgeWalletReadService,
     ) {
         $this->bridgeService = $bridgeService;
         $this->walletTransactionNotifier = $walletTransactionNotifier;
         $this->virtualAccountDepositService = $virtualAccountDepositService;
+        $this->bridgeWalletReadService = $bridgeWalletReadService;
     }
 
     /**
@@ -1033,6 +1038,19 @@ class BridgeWebhookController extends Controller
             'event_object_status' => $status,
         ]);
 
+        $customerId = $eventObject['on_behalf_of']
+            ?? $eventObject['customer_id']
+            ?? null;
+        $integration = $this->findIntegrationByCustomerId($customerId);
+        if ($this->shouldUseBridgeApiOnly($integration)) {
+            $this->acknowledgeBridgeWalletWebhook('transfer', $integration, [
+                'transfer_id' => $transferId,
+                'state' => $state,
+            ]);
+
+            return;
+        }
+
         // Find transactions by Bridge transfer ID
         $transactions = Transaction::where(function ($query) use ($transferId) {
             $query->whereJsonContains('meta->bridge_transfer_id', $transferId)
@@ -1080,10 +1098,13 @@ class BridgeWebhookController extends Controller
 
                     $user = $transaction->user;
                     $amount = (float) $transaction->amount;
+                    $skipLedger = $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth(
+                        $this->resolveUserBridgeIntegration($user)
+                    );
 
                     if ($transaction->type === 'transfer_in') {
                         // Only add balance if not already added (check if processed_at was null)
-                        if (!$transaction->getOriginal('processed_at')) {
+                        if (! $skipLedger && ! $transaction->getOriginal('processed_at')) {
                             $user->increment('balance', $amount);
                             Log::info('Bridge transfer completed: Balance added to recipient', [
                                 'user_id' => $user->id,
@@ -1109,9 +1130,14 @@ class BridgeWebhookController extends Controller
                         $user = $transaction->user;
                         $amount = (float) $transaction->amount;
                         $fee = (float) ($transaction->fee ?? 0);
+                        $skipLedger = $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth(
+                            $this->resolveUserBridgeIntegration($user)
+                        );
                         
                         // Refund amount + fee to sender
+                        if (! $skipLedger) {
                         $user->increment('balance', $amount + $fee);
+                        }
                         
                         Log::info('Bridge transfer failed/cancelled: Balance refunded to sender', [
                             'user_id' => $user->id,
@@ -1126,9 +1152,12 @@ class BridgeWebhookController extends Controller
                         // Remove balance from recipient if transfer failed
                         $user = $transaction->user;
                         $amount = (float) $transaction->amount;
+                        $skipLedger = $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth(
+                            $this->resolveUserBridgeIntegration($user)
+                        );
                         
                         // Only deduct if balance was previously added
-                        if ($transaction->getOriginal('processed_at')) {
+                        if (! $skipLedger && $transaction->getOriginal('processed_at')) {
                             $user->decrement('balance', $amount);
                             Log::info('Bridge transfer failed: Balance removed from recipient', [
                                 'user_id' => $user->id,
@@ -1213,11 +1242,20 @@ class BridgeWebhookController extends Controller
             return;
         }
 
-        $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+        $integration = $this->findIntegrationByCustomerId($customerId);
         if (! $integration) {
             Log::warning('Bridge integration not found for virtual account activity', [
                 'customer_id' => $customerId,
                 'virtual_account_id' => $virtualAccountId,
+            ]);
+
+            return;
+        }
+
+        if ($this->shouldUseBridgeApiOnly($integration)) {
+            $this->acknowledgeBridgeWalletWebhook('virtual_account.activity', $integration, [
+                'activity_id' => $activityId,
+                'activity_type' => $activityType,
             ]);
 
             return;
@@ -1472,10 +1510,19 @@ class BridgeWebhookController extends Controller
             'event_type' => $eventType,
         ]);
 
+        $integration = $this->findIntegrationByCustomerId($customerId);
+        if ($this->shouldUseBridgeApiOnly($integration)) {
+            $this->acknowledgeBridgeWalletWebhook('static_memo.activity', $integration, [
+                'activity_id' => $activityId,
+                'type' => $type,
+            ]);
+
+            return;
+        }
+
         // Handle static memo deposits similar to virtual account deposits
         if (in_array($type, ['refund', 'refunded'], true) && $customerId) {
             try {
-                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
                 if ($integration) {
                     $this->reverseStaticMemoDeposit($integration, $eventObject, $eventType);
                 }
@@ -1491,8 +1538,6 @@ class BridgeWebhookController extends Controller
 
         if ($type === 'payment_processed' && $customerId && $amount) {
             try {
-                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-                
                 if ($integration) {
                     $user = $integration->integratable;
                     if ($user && $integration->integratable_type === Organization::class) {
@@ -1517,7 +1562,7 @@ class BridgeWebhookController extends Controller
 
                         $existingTransaction = $existingQuery->first();
 
-                        if (!$existingTransaction) {
+                        if (! $existingTransaction && ! $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration)) {
                             $user->increment('balance', $depositAmount);
 
                             $depositTransaction = $user->recordTransaction([
@@ -1596,6 +1641,15 @@ class BridgeWebhookController extends Controller
             $this->syncBridgeWalletFromActivity($integration, $bridgeWalletId, $availableBalance, $eventObject);
         }
 
+        if ($this->shouldUseBridgeApiOnly($integration)) {
+            $this->acknowledgeBridgeWalletWebhook('bridge_wallet.activity', $integration, [
+                'activity_id' => $activityId,
+                'activity_type' => $activityType,
+            ]);
+
+            return;
+        }
+
         $user = $this->resolveIntegrationWalletUser($integration);
         if ($user === null) {
             return;
@@ -1603,6 +1657,7 @@ class BridgeWebhookController extends Controller
 
         match ($activityType) {
             'deposit', 'direct_deposit' => $this->processBridgeWalletActivityDeposit(
+                $integration,
                 $user,
                 $eventObject,
                 $eventType,
@@ -1687,6 +1742,7 @@ class BridgeWebhookController extends Controller
      * @param  array<string, mixed>  $paymentRoute
      */
     private function processBridgeWalletActivityDeposit(
+        BridgeIntegration $integration,
         User $user,
         array $eventObject,
         string $eventType,
@@ -1694,6 +1750,15 @@ class BridgeWebhookController extends Controller
         array $paymentRoute,
         ?string $bridgeWalletId,
     ): void {
+        if ($this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration)) {
+            Log::info('Bridge wallet activity deposit skipped: Bridge is source of truth', [
+                'integration_id' => $integration->id,
+                'activity_id' => $activityId,
+            ]);
+
+            return;
+        }
+
         $depositAmount = (float) ($eventObject['amount'] ?? 0);
         if ($depositAmount <= 0 || $activityId === null) {
             return;
@@ -1856,7 +1921,10 @@ class BridgeWebhookController extends Controller
 
         DB::transaction(function () use ($user, $transaction, $eventObject, $eventType, $activityId): void {
             $amount = (float) $transaction->amount;
-            if ($amount > 0) {
+            $skipLedger = $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth(
+                $this->resolveUserBridgeIntegration($user)
+            );
+            if ($amount > 0 && ! $skipLedger) {
                 $user->increment('balance', $amount);
             }
 
@@ -2121,11 +2189,49 @@ class BridgeWebhookController extends Controller
         return $integratable instanceof User ? $integratable : null;
     }
 
+    private function resolveUserBridgeIntegration(User $user): ?BridgeIntegration
+    {
+        return BridgeIntegration::resolveForUser($user);
+    }
+
+    private function findIntegrationByCustomerId(?string $customerId): ?BridgeIntegration
+    {
+        if ($customerId === null || $customerId === '') {
+            return null;
+        }
+
+        return BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+    }
+
+    /**
+     * Bridge-connected wallets: webhooks update KYC/wallet metadata only — never users.balance.
+     */
+    private function shouldUseBridgeApiOnly(?BridgeIntegration $integration): bool
+    {
+        return $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth($integration);
+    }
+
+    private function acknowledgeBridgeWalletWebhook(string $handler, ?BridgeIntegration $integration, array $context = []): void
+    {
+        Log::info("{$handler}: acknowledged (Bridge API is wallet source of truth)", array_merge([
+            'integration_id' => $integration?->id,
+            'customer_id' => $integration?->bridge_customer_id,
+        ], $context));
+    }
+
     /**
      * Reverse a completed virtual-account deposit when Bridge sends refunded/refund_failed.
      */
     private function reverseVirtualAccountDeposit(BridgeIntegration $integration, array $eventObject, string $eventType): void
     {
+        if ($this->shouldUseBridgeApiOnly($integration)) {
+            $this->acknowledgeBridgeWalletWebhook('virtual_account.refund', $integration, [
+                'activity_id' => $eventObject['id'] ?? null,
+            ]);
+
+            return;
+        }
+
         $user = $this->resolveIntegrationWalletUser($integration);
         if ($user === null) {
             Log::warning('Cannot reverse virtual account deposit: user not found', [
@@ -2177,6 +2283,14 @@ class BridgeWebhookController extends Controller
      */
     private function reverseStaticMemoDeposit(BridgeIntegration $integration, array $eventObject, string $eventType): void
     {
+        if ($this->shouldUseBridgeApiOnly($integration)) {
+            $this->acknowledgeBridgeWalletWebhook('static_memo.refund', $integration, [
+                'activity_id' => $eventObject['id'] ?? null,
+            ]);
+
+            return;
+        }
+
         $user = $this->resolveIntegrationWalletUser($integration);
         if ($user === null) {
             return;
@@ -2229,7 +2343,13 @@ class BridgeWebhookController extends Controller
                 return;
             }
 
-            $user->decrement('balance', min($amount, (float) $user->balance));
+            $skipLedger = $this->bridgeWalletReadService->usesBridgeWalletAsSourceOfTruth(
+                $this->resolveUserBridgeIntegration($user)
+            );
+
+            if (! $skipLedger) {
+                $user->decrement('balance', min($amount, (float) $user->balance));
+            }
 
             $meta = is_array($transaction->meta) ? $transaction->meta : [];
             $meta['refunded_at'] = now()->toIso8601String();
