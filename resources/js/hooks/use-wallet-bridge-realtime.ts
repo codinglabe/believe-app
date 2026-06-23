@@ -9,9 +9,11 @@ export type WalletBridgeUpdatePayload = {
     deposit_id?: string
     activity_type?: string
     bridge_state?: string
+    bridge_transfer_state?: string
     status?: string
     amount?: number
     direction?: 'incoming' | 'outgoing'
+    counterparty_name?: string
     refresh_balance?: boolean
     refresh_activity?: boolean
     at?: string

@@ -22,7 +22,7 @@ import {
 } from '@/lib/bridge-verification'
 import { pickWalletBalance } from '@/lib/wallet-balance-fetch'
 import { useWalletBridgeRealtime, type WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
-import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
+import { patchActivitiesFromBridgeUpdate, prependPendingTransferActivity } from '@/lib/patch-wallet-activities'
 import {
     SuccessMessage,
     BalanceDisplay,
@@ -843,14 +843,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             setActivities((prev) => patchActivitiesFromBridgeUpdate(prev, payload))
             setWalletRefreshNonce((n) => n + 1)
         }
-        if (isOpen && payload.refresh_balance !== false) {
+        if (payload.refresh_balance !== false) {
             bridgeBalanceRefreshRef.current()
         }
-    }, [isOpen])
+    }, [])
 
     useWalletBridgeRealtime({
         userId: auth?.user?.id ?? null,
-        enabled: Boolean(auth?.user?.id) && isOpen,
+        enabled: Boolean(auth?.user?.id),
         onUpdate: handleBridgeRealtimeUpdate,
     })
 
@@ -3032,6 +3032,22 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             setSuccessType('send')
             setSuccessMessage(data.message || `Successfully sent $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${selectedRecipient.name}`)
             setShowSuccess(true)
+
+            const bridgeTransferId = typeof data.data?.bridge_transfer_id === 'string'
+                ? data.data.bridge_transfer_id
+                : ''
+
+            if (bridgeTransferId !== '') {
+                setActivities((prev) =>
+                    prependPendingTransferActivity(
+                        prev,
+                        bridgeTransferId,
+                        amount,
+                        selectedRecipient.name,
+                        selectedRecipient.type,
+                    ),
+                )
+            }
 
             // Refresh activities to show the new transaction
             if (actionView === 'main') {
