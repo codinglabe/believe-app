@@ -50,14 +50,14 @@ class BridgeWalletReadService
      *     balances: array<int, array<string, mixed>>
      * }|null
      */
-    public function getWalletSnapshot(BridgeIntegration $integration): ?array
+    public function getWalletSnapshot(BridgeIntegration $integration, ?string $customerIdOverride = null): ?array
     {
-        $customerId = $integration->bridge_customer_id;
-        if (! $customerId) {
+        $customerId = trim((string) ($customerIdOverride ?? $integration->bridge_customer_id ?? ''));
+        if ($customerId === '') {
             return null;
         }
 
-        $resolved = $this->bridgeService->resolveCustomerBridgeWallet($integration);
+        $resolved = $this->bridgeService->resolveCustomerBridgeWallet($integration, $customerId);
         if ($resolved === null) {
             return null;
         }
@@ -126,9 +126,14 @@ class BridgeWalletReadService
         $this->resetNameCaches();
         $this->ensurePlatformWalletOwnerIndex();
 
-        $snapshot = $this->getWalletSnapshot($primaryIntegration);
+        $snapshot = $this->getWalletSnapshot($primaryIntegration, $customerId);
         $primaryWalletId = $snapshot['wallet_id'] ?? null;
-        $walletIdsForTransfers = $this->resolveMergedWalletIds($relatedIntegrations, $primaryWalletId);
+        $walletIdsForTransfers = $this->resolveMergedWalletIds(
+            $relatedIntegrations,
+            $primaryWalletId,
+            $primaryIntegration,
+            $customerId,
+        );
         $historyWalletIds = $this->resolveMergedBridgeWalletIdsForHistory($relatedIntegrations, $primaryWalletId, $customerId);
         $vaContext = $this->loadVirtualAccountEventContext($primaryIntegration, $customerId, $relatedIntegrations);
 
@@ -142,10 +147,26 @@ class BridgeWalletReadService
             );
         }
 
+        if ($historyWalletIds !== [] && ! $this->activitiesIncludeSource($activities, 'bridge_wallet_history')) {
+            Log::warning('Bridge wallet history returned no mappable activities', [
+                'customer_id' => $customerId,
+                'wallet_ids' => $historyWalletIds,
+                'integration_id' => $primaryIntegration->id,
+            ]);
+        }
+
         $activities = array_merge(
             $activities,
             $this->mapVirtualAccountActivities($vaContext),
         );
+
+        if (($vaContext['best_by_deposit_id'] ?? []) === [] && ($vaContext['virtual_account_id'] ?? null) !== null) {
+            Log::warning('Bridge virtual account history returned no deposit activities', [
+                'customer_id' => $customerId,
+                'integration_id' => $primaryIntegration->id,
+                'virtual_account_id' => $vaContext['virtual_account_id'],
+            ]);
+        }
 
         if ($walletIdsForTransfers !== []) {
             $viewerWalletAddress = $this->resolveIntegrationWalletAddress($primaryIntegration, $customerId);
@@ -261,9 +282,37 @@ class BridgeWalletReadService
             $integrations = $integrations->merge($orgRows)->unique('id')->values();
         }
 
-        $primary = $integrations->first(
+        $scoreIntegration = function (BridgeIntegration $row): int {
+            $score = 0;
+            if (! empty($row->bridge_customer_id)) {
+                $score += 8;
+            }
+            if (! empty($row->bridge_wallet_id)) {
+                $score += 4;
+            }
+            if ($row->primaryWallet?->bridge_wallet_id) {
+                $score += 2;
+            }
+
+            return $score + min($row->wallets->count(), 3);
+        };
+
+        $orgIntegrations = $integrations->filter(
             fn (BridgeIntegration $row) => $row->integratable_type === Organization::class
-        ) ?? $integrations->first() ?? $integration;
+        );
+
+        $primary = $orgIntegrations->sortByDesc($scoreIntegration)->first()
+            ?? $integrations->sortByDesc($scoreIntegration)->first()
+            ?? $integration;
+
+        if (trim((string) ($primary->bridge_customer_id ?? '')) === '') {
+            $withCustomer = $integrations->first(
+                fn (BridgeIntegration $row) => ! empty($row->bridge_customer_id)
+            );
+            if ($withCustomer !== null) {
+                $primary = $withCustomer;
+            }
+        }
 
         return [
             'customer_id' => $customerId,
@@ -276,16 +325,38 @@ class BridgeWalletReadService
      * @param  \Illuminate\Support\Collection<int, BridgeIntegration>  $integrations
      * @return array<int, string>
      */
-    private function resolveMergedWalletIds($integrations, ?string $primaryWalletId): array
-    {
+    private function resolveMergedWalletIds(
+        $integrations,
+        ?string $primaryWalletId,
+        ?BridgeIntegration $primaryIntegration = null,
+        ?string $customerId = null,
+    ): array {
+        $primary = $primaryIntegration ?? $integrations->first();
         $ids = [];
 
-        if ($primaryWalletId !== null && $primaryWalletId !== '') {
-            $ids = array_merge($ids, $this->resolveIntegrationWalletIds($integrations->first(), $primaryWalletId));
+        if ($primaryWalletId !== null && $primaryWalletId !== '' && $primary instanceof BridgeIntegration) {
+            $ids = array_merge($ids, $this->resolveIntegrationWalletIds($primary, $primaryWalletId));
         }
 
         foreach ($integrations as $integration) {
+            if ($primary instanceof BridgeIntegration && $integration->id === $primary->id) {
+                continue;
+            }
+
             $ids = array_merge($ids, $this->resolveIntegrationWalletIds($integration, null));
+        }
+
+        $customerId = trim((string) ($customerId ?? ''));
+        if ($customerId !== '') {
+            $wallets = $this->bridgeService->normalizeBridgeListData(
+                $this->bridgeService->getWallets($customerId)
+            );
+
+            foreach ($wallets as $wallet) {
+                if (! empty($wallet['id'])) {
+                    $ids[] = (string) $wallet['id'];
+                }
+            }
         }
 
         return array_values(array_unique(array_filter($ids)));
@@ -304,7 +375,7 @@ class BridgeWalletReadService
         }
 
         foreach ($integrations as $integration) {
-            $ids = array_merge($ids, $this->resolveBridgeWalletIdsForHistory($integration, null));
+            $ids = array_merge($ids, $this->resolveBridgeWalletIdsForHistory($integration, null, $customerId));
         }
 
         $wallets = $this->bridgeService->normalizeBridgeListData(
@@ -841,15 +912,18 @@ class BridgeWalletReadService
      * @param  \Illuminate\Support\Collection<int, BridgeIntegration>|null  $relatedIntegrations
      * @return array<int, string>
      */
-    private function resolveAllVirtualAccountIds(BridgeIntegration $integration, $relatedIntegrations = null): array
-    {
+    private function resolveAllVirtualAccountIds(
+        BridgeIntegration $integration,
+        $relatedIntegrations = null,
+        ?string $customerIdOverride = null,
+    ): array {
         $integrations = collect([$integration]);
         if ($relatedIntegrations !== null) {
             $integrations = $integrations->merge($relatedIntegrations)->unique('id');
         }
 
         $ids = [];
-        $customerId = trim((string) ($integration->bridge_customer_id ?? ''));
+        $customerId = trim((string) ($customerIdOverride ?? $integration->bridge_customer_id ?? ''));
 
         foreach ($integrations as $row) {
             $row->loadMissing('primaryWallet', 'wallets');
@@ -889,8 +963,11 @@ class BridgeWalletReadService
      *
      * @return array<int, string>
      */
-    private function resolveBridgeWalletIdsForHistory(BridgeIntegration $integration, ?string $primaryWalletId): array
-    {
+    private function resolveBridgeWalletIdsForHistory(
+        BridgeIntegration $integration,
+        ?string $primaryWalletId,
+        ?string $customerIdOverride = null,
+    ): array {
         $integration->loadMissing('primaryWallet', 'wallets');
         $ids = [];
 
@@ -912,8 +989,8 @@ class BridgeWalletReadService
             $ids[] = (string) $integration->primaryWallet->bridge_wallet_id;
         }
 
-        $customerId = $integration->bridge_customer_id;
-        if ($customerId) {
+        $customerId = trim((string) ($customerIdOverride ?? $integration->bridge_customer_id ?? ''));
+        if ($customerId !== '') {
             $wallets = $this->bridgeService->normalizeBridgeListData(
                 $this->bridgeService->getWallets($customerId)
             );
@@ -1047,7 +1124,7 @@ class BridgeWalletReadService
             return $this->virtualAccountEventContext;
         }
 
-        $virtualAccountIds = $this->resolveAllVirtualAccountIds($integration, $relatedIntegrations);
+        $virtualAccountIds = $this->resolveAllVirtualAccountIds($integration, $relatedIntegrations, $customerId);
         if ($virtualAccountIds === []) {
             return $this->virtualAccountEventContext = [
                 'virtual_account_id' => null,
@@ -1812,7 +1889,7 @@ class BridgeWalletReadService
             return null;
         }
 
-        foreach ($this->resolveAllVirtualAccountIds($integration) as $virtualAccountId) {
+        foreach ($this->resolveAllVirtualAccountIds($integration, null, $customerId) as $virtualAccountId) {
             $result = $this->bridgeService->getVirtualAccount($customerId, $virtualAccountId);
             if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
                 continue;
@@ -1838,6 +1915,8 @@ class BridgeWalletReadService
         $collected = [];
         $startingAfter = null;
 
+        $loggedFetchFailure = false;
+
         while (count($collected) < $maxItems) {
             $query = ['limit' => $pageLimit];
             if ($startingAfter !== null) {
@@ -1850,6 +1929,17 @@ class BridgeWalletReadService
             );
 
             if ($page === []) {
+                if (! $loggedFetchFailure
+                    && is_array($result)
+                    && array_key_exists('success', $result)
+                    && ! ($result['success'] ?? false)) {
+                    Log::warning('Bridge paginated list fetch returned no data', [
+                        'error' => $result['error'] ?? null,
+                        'status' => $result['status'] ?? null,
+                    ]);
+                    $loggedFetchFailure = true;
+                }
+
                 break;
             }
 
@@ -1874,6 +1964,20 @@ class BridgeWalletReadService
         }
 
         return $collected;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $activities
+     */
+    private function activitiesIncludeSource(array $activities, string $source): bool
+    {
+        foreach ($activities as $activity) {
+            if (($activity['source'] ?? '') === $source) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function parseBridgeTimestamp(mixed $value): string

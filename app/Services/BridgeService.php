@@ -1240,7 +1240,14 @@ class BridgeService
      */
     public function getBridgeWalletHistory(string $customerId, string $walletId, array $query = []): array
     {
-        return $this->makeRequest('GET', "/customers/{$customerId}/wallets/{$walletId}/history", $query);
+        $result = $this->makeRequest('GET', "/customers/{$customerId}/wallets/{$walletId}/history", $query);
+
+        if (($result['success'] ?? false) || ($result['status'] ?? 0) !== 404) {
+            return $result;
+        }
+
+        // Some Bridge environments expose wallet history without the customer prefix.
+        return $this->makeRequest('GET', "/wallets/{$walletId}/history", $query);
     }
 
 
@@ -2378,10 +2385,10 @@ class BridgeService
      *
      * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool}|null
      */
-    public function resolveCustomerBridgeWallet(BridgeIntegration $integration): ?array
+    public function resolveCustomerBridgeWallet(BridgeIntegration $integration, ?string $customerIdOverride = null): ?array
     {
-        $customerId = $integration->bridge_customer_id;
-        if (! $customerId) {
+        $customerId = trim((string) ($customerIdOverride ?? $integration->bridge_customer_id ?? ''));
+        if ($customerId === '') {
             return null;
         }
 
