@@ -15,6 +15,7 @@ use App\Models\Transaction;
 use App\Models\LiquidationAddress;
 use App\Services\BridgeService;
 use App\Services\BridgeVirtualAccountDepositService;
+use App\Services\BridgeWalletLedgerReconciliationService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1052,8 +1053,9 @@ class BridgeWalletController extends Controller
 
             try {
                 app(BridgeVirtualAccountDepositService::class)->syncFromBridge($integration);
+                app(BridgeWalletLedgerReconciliationService::class)->reconcile($integration);
             } catch (\Throwable $syncError) {
-                Log::warning('Bridge virtual account deposit sync failed during status check', [
+                Log::warning('Bridge wallet sync/reconcile failed during status check', [
                     'integration_id' => $integration->id,
                     'error' => $syncError->getMessage(),
                 ]);
@@ -3134,35 +3136,38 @@ class BridgeWalletController extends Controller
                 ], 404);
             }
 
-            // Check if wallet exists (bridge_wallet_id for production, virtual_account_id for sandbox)
-            // Check both integration and BridgeWallet table
+            $isSandbox = $this->bridgeService->isSandbox();
             $primaryWallet = BridgeWallet::where('bridge_integration_id', $senderIntegration->id)
                 ->where('is_primary', true)
                 ->first();
 
-            $isSandbox = $this->bridgeService->isSandbox();
+            // Resolve custodial Bridge wallets (production) or sandbox VA fallback
+            $senderWallet = $this->bridgeService->resolveCustomerBridgeWallet($senderIntegration);
+            $senderWalletAddress = null;
+            $actualBridgeWalletId = $senderWallet['wallet_id'] ?? null;
 
-            // Check wallet existence based on environment
-            if ($isSandbox) {
-                // In sandbox: check for virtual account
-                $hasWallet = ($primaryWallet && !empty($primaryWallet->virtual_account_id)) ||
-                    ($senderIntegration->bridge_wallet_id); // Fallback check
-            } else {
-                // In production: check for actual wallet ID
-                $hasWallet = $senderIntegration->bridge_wallet_id ||
-                    ($primaryWallet && !empty($primaryWallet->bridge_wallet_id));
+            if ($isSandbox && $senderWallet === null) {
+                if (empty($actualBridgeWalletId) && $primaryWallet && $primaryWallet->virtual_account_id) {
+                    $actualBridgeWalletId = $primaryWallet->virtual_account_id;
+                }
+                if ($primaryWallet?->wallet_address) {
+                    $senderWalletAddress = $primaryWallet->wallet_address;
+                } elseif ($primaryWallet?->virtual_account_details) {
+                    $vaDetails = is_string($primaryWallet->virtual_account_details)
+                        ? json_decode($primaryWallet->virtual_account_details, true)
+                        : $primaryWallet->virtual_account_details;
+                    $senderWalletAddress = $vaDetails['destination']['address'] ?? null;
+                }
             }
 
-            if (!$hasWallet) {
+            $hasWallet = $senderWallet !== null || ($isSandbox && ! empty($actualBridgeWalletId));
+
+            if (! $hasWallet) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Bridge wallet not initialized. Please create wallet first.',
                 ], 404);
             }
-
-            // Get the actual wallet ID for Bridge transfers (from primary wallet if available)
-            // In sandbox, this may be null, but we'll use addresses instead
-            $actualBridgeWalletId = $senderIntegration->bridge_wallet_id ?? ($primaryWallet ? $primaryWallet->bridge_wallet_id : null);
 
             // Check KYC/KYB verification status
             if (!$senderIntegration->canTransact()) {
@@ -3222,118 +3227,106 @@ class BridgeWalletController extends Controller
                 return response()->json(['success' => false, 'message' => 'Recipient user not found.'], 404);
             }
 
-            // Get recipient Bridge integration if available
-            $recipientIntegration = null;
-            if ($recipientType === 'user') {
-                $recipientIntegration = BridgeIntegration::where('integratable_id', $recipient->id)
-                    ->where('integratable_type', User::class)
-                    ->first();
-            } else {
-                $recipientIntegration = BridgeIntegration::where('integratable_id', $recipient->id)
-                    ->where('integratable_type', Organization::class)
-                    ->first();
+            $recipientIntegration = BridgeIntegration::where('integratable_id', $recipient->id)
+                ->where('integratable_type', $recipientType === 'user' ? User::class : Organization::class)
+                ->first();
+
+            // Recipient must have a Bridge wallet to receive funds on-chain
+            if (! $recipientIntegration) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Recipient does not have a Bridge wallet set up.',
+                ], 400);
             }
 
-            // Get recipient wallet ID (before transaction)
-            $recipientPrimaryWallet = null;
-            $recipientBridgeWalletId = null;
-            if ($recipientIntegration) {
-                $recipientPrimaryWallet = BridgeWallet::where('bridge_integration_id', $recipientIntegration->id)
-                    ->where('is_primary', true)
-                    ->first();
-                $recipientBridgeWalletId = $recipientIntegration->bridge_wallet_id ?? ($recipientPrimaryWallet ? $recipientPrimaryWallet->bridge_wallet_id : null);
-            }
-
-            // Get wallet addresses for sandbox mode (for destination if needed)
-            $senderWalletAddress = null;
+            $recipientWallet = $this->bridgeService->resolveCustomerBridgeWallet($recipientIntegration);
+            $recipientPrimaryWallet = BridgeWallet::where('bridge_integration_id', $recipientIntegration->id)
+                ->where('is_primary', true)
+                ->first();
+            $recipientBridgeWalletId = $recipientWallet['wallet_id'] ?? null;
             $recipientWalletAddress = null;
 
-            // In sandbox, use virtual_account_id as wallet_id if bridge_wallet_id is not available
-            if ($isSandbox) {
-                // For source: use virtual_account_id as wallet_id if bridge_wallet_id is empty
-                if (empty($actualBridgeWalletId) && $primaryWallet && $primaryWallet->virtual_account_id) {
-                    $actualBridgeWalletId = $primaryWallet->virtual_account_id;
+            if ($isSandbox && $recipientWallet === null) {
+                if (empty($recipientBridgeWalletId) && $recipientPrimaryWallet?->virtual_account_id) {
+                    $recipientBridgeWalletId = $recipientPrimaryWallet->virtual_account_id;
                 }
-
-                // For destination: get address from virtual_account_details if wallet_id is not available
-                if (empty($recipientBridgeWalletId) && $recipientPrimaryWallet) {
-                    if ($recipientPrimaryWallet->virtual_account_id) {
-                        // Use virtual_account_id as wallet_id
-                        $recipientBridgeWalletId = $recipientPrimaryWallet->virtual_account_id;
-                    } else {
-                        // Get address from virtual_account_details for ethereum destination
-                        $recipientWalletAddress = $recipientPrimaryWallet->wallet_address;
-                        if (!$recipientWalletAddress && $recipientPrimaryWallet->virtual_account_details) {
-                            $vaDetails = is_string($recipientPrimaryWallet->virtual_account_details)
-                                ? json_decode($recipientPrimaryWallet->virtual_account_details, true)
-                                : $recipientPrimaryWallet->virtual_account_details;
-                            if (isset($vaDetails['destination']['address'])) {
-                                $recipientWalletAddress = $vaDetails['destination']['address'];
-                                // Update wallet record for future use
-                                $recipientPrimaryWallet->wallet_address = $recipientWalletAddress;
-                                $recipientPrimaryWallet->save();
-                            }
-                        }
-                    }
+                $recipientWalletAddress = $recipientPrimaryWallet?->wallet_address;
+                if (! $recipientWalletAddress && $recipientPrimaryWallet?->virtual_account_details) {
+                    $vaDetails = is_string($recipientPrimaryWallet->virtual_account_details)
+                        ? json_decode($recipientPrimaryWallet->virtual_account_details, true)
+                        : $recipientPrimaryWallet->virtual_account_details;
+                    $recipientWalletAddress = $vaDetails['destination']['address'] ?? null;
                 }
             }
+
+            $canCreateBridgeTransfer = $senderWallet !== null && $recipientWallet !== null;
+            if ($isSandbox && ! $canCreateBridgeTransfer) {
+                $canCreateBridgeTransfer = ! empty($actualBridgeWalletId)
+                    && (! empty($recipientBridgeWalletId) || ! empty($recipientWalletAddress));
+            }
+
+            if (! $canCreateBridgeTransfer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Both sender and recipient need active Bridge wallets to transfer money.',
+                ], 400);
+            }
+
+            $transferResult = $this->bridgeService->createWalletToWalletTransfer(
+                $senderIntegration->bridge_customer_id,
+                $actualBridgeWalletId ?? '',
+                $recipientIntegration->bridge_customer_id,
+                $recipientBridgeWalletId ?? '',
+                $amount,
+                'USD',
+                $senderWalletAddress,
+                $recipientWalletAddress
+            );
+
+            if (! ($transferResult['success'] ?? false)) {
+                $errorMessage = $transferResult['error'] ?? 'Bridge transfer could not be created.';
+                Log::warning('Bridge wallet-to-wallet transfer failed', [
+                    'sender_customer_id' => $senderIntegration->bridge_customer_id,
+                    'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
+                    'amount' => $amount,
+                    'response' => $transferResult,
+                ]);
+
+                $statusCode = ! empty($transferResult['initiation_required']) ? 422 : 502;
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'initiation_required' => (bool) ($transferResult['initiation_required'] ?? false),
+                ], $statusCode);
+            }
+
+            $bridgeTransferId = $transferResult['data']['id']
+                ?? $transferResult['data']['transfer_id']
+                ?? null;
+
+            if (! $bridgeTransferId) {
+                Log::error('Bridge transfer created but missing transfer id', [
+                    'response' => $transferResult,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge transfer was created but could not be tracked. Please try again.',
+                ], 502);
+            }
+
+            Log::info('Bridge transfer created for send money', [
+                'transfer_id' => $bridgeTransferId,
+                'sender_customer_id' => $senderIntegration->bridge_customer_id,
+                'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
+                'amount' => $amount,
+            ]);
 
             DB::beginTransaction();
 
             try {
-                // Create Bridge transfer if both sender and recipient have Bridge wallets
-                // Per Bridge.xyz API: Use source/destination with payment_rail format
-                $bridgeTransferId = null;
-
-                // Check if we can create Bridge transfer
-                $canCreateBridgeTransfer = false;
-                if ($isSandbox) {
-                    // In sandbox: need source wallet ID (virtual_account_id) and either destination wallet ID or address
-                    $canCreateBridgeTransfer = $actualBridgeWalletId && $recipientIntegration &&
-                        ($recipientBridgeWalletId || $recipientWalletAddress);
-                } else {
-                    // In production: need wallet IDs
-                    $canCreateBridgeTransfer = $actualBridgeWalletId && $recipientIntegration && $recipientBridgeWalletId;
-                }
-
-                if ($canCreateBridgeTransfer) {
-                    try {
-                        $transferResult = $this->bridgeService->createWalletToWalletTransfer(
-                            $senderIntegration->bridge_customer_id,
-                            $actualBridgeWalletId ?? '', // May be empty in sandbox
-                            $recipientIntegration->bridge_customer_id,
-                            $recipientBridgeWalletId ?? '', // May be empty in sandbox
-                            $amount,
-                            'USD',
-                            $senderWalletAddress, // Pass address for sandbox
-                            $recipientWalletAddress // Pass address for sandbox
-                        );
-
-                        if ($transferResult['success'] && isset($transferResult['data'])) {
-                        $bridgeTransferId = $transferResult['data']['id'] ?? $transferResult['data']['transfer_id'] ?? null;
-                            
-                            Log::info('Bridge transfer created for send money', [
-                                'transfer_id' => $bridgeTransferId,
-                                'sender_customer_id' => $senderIntegration->bridge_customer_id,
-                                'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
-                                'amount' => $amount,
-                            ]);
-                        } else {
-                            Log::warning('Failed to create Bridge transfer', [
-                                'error' => $transferResult['error'] ?? 'Unknown error',
-                                'response' => $transferResult,
-                            ]);
-                        }
-                    } catch (\Exception $e) {
-                        Log::error('Exception creating Bridge transfer', [
-                            'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString(),
-                        ]);
-                        // Continue with local transaction even if Bridge transfer fails
-                    }
-                }
-
-                // Deduct from sender immediately
+                // Deduct from sender after Bridge accepts the transfer
                 $senderUser->decrement('balance', $totalAmount);
 
                 // Record sender transaction
@@ -3341,7 +3334,7 @@ class BridgeWalletController extends Controller
                     'type' => 'transfer_out',
                     'amount' => $amount,
                     'fee' => $fee,
-                    'status' => $bridgeTransferId ? 'pending' : 'completed', // Pending if using Bridge transfer
+                    'status' => 'pending',
                     'payment_method' => 'bridge',
                     'related_id' => $recipientDbId,
                     'related_type' => $recipientType === 'user' ? User::class : Organization::class,
@@ -3351,40 +3344,32 @@ class BridgeWalletController extends Controller
                         'bridge_transfer_id' => $bridgeTransferId,
                         'recipient_name' => $recipientType === 'user' ? $recipient->name : $recipient->name,
                         'recipient_type' => $recipientType,
-                        'recipient_bridge_wallet_id' => $recipientBridgeWalletId ?? null,
-                        'recipient_bridge_customer_id' => $recipientIntegration->bridge_customer_id ?? null,
+                        'recipient_bridge_wallet_id' => $recipientBridgeWalletId,
+                        'recipient_bridge_customer_id' => $recipientIntegration->bridge_customer_id,
                     ],
-                    'processed_at' => $bridgeTransferId ? null : now(), // Set when Bridge confirms
+                    'processed_at' => null,
                 ]);
 
-                // Handle recipient balance and transaction
-                // If using Bridge transfer, recipient balance will be added when webhook confirms
-                // If not using Bridge transfer (recipient has no Bridge wallet), add balance immediately
-                if (!$bridgeTransferId) {
-                    // Recipient doesn't have Bridge wallet - add balance immediately (local transfer)
-                    $recipientUser->increment('balance', $amount);
-                }
-
-                // Record recipient transaction (always create, even if pending)
+                // Recipient balance is credited when Bridge webhook confirms completion
                 $recipientTransaction = $recipientUser->recordTransaction([
                     'type' => 'transfer_in',
                     'amount' => $amount,
-                    'status' => $bridgeTransferId ? 'pending' : 'completed', // Pending if using Bridge transfer
+                    'status' => 'pending',
                     'payment_method' => 'bridge',
                     'related_id' => $senderEntity->id,
                     'related_type' => $senderEntityType,
                     'meta' => [
-                        'bridge_wallet_id' => $recipientIntegration->bridge_wallet_id ?? null,
-                        'bridge_customer_id' => $recipientIntegration->bridge_customer_id ?? null,
+                        'bridge_wallet_id' => $recipientBridgeWalletId,
+                        'bridge_customer_id' => $recipientIntegration->bridge_customer_id,
                         'bridge_transfer_id' => $bridgeTransferId,
                         'sender_id' => $senderEntity->id,
                         'sender_name' => $isOrgUser ? $senderEntity->name : $senderUser->name,
                         'sender_type' => $isOrgUser ? 'organization' : 'user',
-                        'sender_bridge_wallet_id' => $actualBridgeWalletId ?? null,
+                        'sender_bridge_wallet_id' => $actualBridgeWalletId,
                         'sender_bridge_customer_id' => $senderIntegration->bridge_customer_id,
                         'recipient_type' => $recipientType,
                     ],
-                    'processed_at' => $bridgeTransferId ? null : now(), // Set when Bridge confirms via webhook
+                    'processed_at' => null,
                 ]);
 
                 DB::commit();
@@ -3392,18 +3377,15 @@ class BridgeWalletController extends Controller
                 $senderUser->refresh();
                 $recipientUser->refresh();
 
-                if (! $bridgeTransferId) {
-                    $this->walletTransactionNotifier->notify($senderUser, $senderTransaction);
-                    $this->walletTransactionNotifier->notify($recipientUser, $recipientTransaction);
-                }
-
                 return response()->json([
                     'success' => true,
-                    'message' => 'Transfer successful!',
+                    'message' => 'Transfer submitted. Funds will arrive when Bridge confirms the transfer.',
                     'data' => [
                         'sender_balance' => (float) $senderUser->balance,
                         'amount' => $amount,
                         'fee' => $fee,
+                        'bridge_transfer_id' => $bridgeTransferId,
+                        'status' => 'pending',
                     ],
                 ]);
             } catch (\Exception $e) {

@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Recipient } from './types'
-import { formatCurrency, formatAddress } from './utils'
+import { formatCurrency } from './utils'
 
 interface SendMoneyProps {
     sendAmount: string
@@ -21,7 +21,6 @@ interface SendMoneyProps {
     recipientSearch: string
     searchResults: Recipient[]
     selectedRecipient: Recipient | null
-    sendAddress: string
     isLoading: boolean
     isLoadingSearch: boolean
     showDropdown: boolean
@@ -55,7 +54,6 @@ export function SendMoney({
     recipientSearch,
     searchResults,
     selectedRecipient,
-    sendAddress,
     isLoading,
     isLoadingSearch,
     showDropdown,
@@ -73,7 +71,7 @@ export function SendMoney({
     const canSend =
         hasValidAmount &&
         !exceedsBalance &&
-        (selectedRecipient !== null || sendAddress !== '') &&
+        selectedRecipient !== null &&
         !isLoading
 
     const handleMaxClick = () => {
@@ -160,14 +158,9 @@ export function SendMoney({
                     <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 p-3">
                         <RecipientAvatar type={selectedRecipient.type} />
                         <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{selectedRecipient.display_name}</p>
+                            <p className="text-sm font-medium truncate">{selectedRecipient.name}</p>
                             {selectedRecipient.email && (
                                 <p className="text-xs text-muted-foreground truncate">{selectedRecipient.email}</p>
-                            )}
-                            {selectedRecipient.address && (
-                                <p className="text-xs text-muted-foreground/80 truncate font-mono">
-                                    {formatAddress(selectedRecipient.address, 28)}
-                                </p>
                             )}
                         </div>
                         <button
@@ -284,7 +277,7 @@ export function SendMoney({
                     <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                             <p className="text-xs text-muted-foreground">Sending to</p>
-                            <p className="text-sm font-medium truncate">{selectedRecipient.display_name}</p>
+                            <p className="text-sm font-medium truncate">{selectedRecipient.name}</p>
                         </div>
                         <div className="text-right shrink-0">
                             <p className="text-xs text-muted-foreground">Total</p>

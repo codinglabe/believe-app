@@ -9,6 +9,7 @@ use App\Models\BridgeIntegration;
 use App\Support\SupporterSubscriptionService;
 use App\Models\Transaction;
 use App\Services\BridgeVirtualAccountDepositService;
+use App\Services\BridgeWalletLedgerReconciliationService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -170,8 +171,7 @@ class WalletController extends Controller
                         $walletResult = $bridgeService->getWallet($integration->bridge_customer_id, $walletId);
                         
                         if ($walletResult['success'] && isset($walletResult['data'])) {
-                            $walletData = $walletResult['data'];
-                            $bridgeBalance = (float) ($walletData['balance'] ?? $walletData['available_balance'] ?? $walletData['total_balance'] ?? 0);
+                            $bridgeBalance = $bridgeService->parseBridgeWalletUsdBalance($walletResult['data']);
                         }
                     }
                 }
@@ -191,6 +191,7 @@ class WalletController extends Controller
 
                 if ($depositIntegration?->bridge_customer_id) {
                     app(BridgeVirtualAccountDepositService::class)->syncFromBridge($depositIntegration);
+                    app(BridgeWalletLedgerReconciliationService::class)->reconcile($depositIntegration);
                     $entityUser->refresh();
                 }
             } catch (\Throwable $syncError) {
@@ -1044,7 +1045,6 @@ class WalletController extends Controller
                     'name' => $userResult->name,
                     'email' => $userResult->email,
                     'display_name' => $userResult->name . ($userResult->email ? ' (' . $userResult->email . ')' : ''),
-                    'address' => '0x' . str_pad(dechex($userResult->id), 40, '0', STR_PAD_LEFT), // Generate address from user ID
                 ];
             }
 
@@ -1066,7 +1066,6 @@ class WalletController extends Controller
                     'name' => $org->name,
                     'email' => $org->email,
                     'display_name' => $org->name . ($org->email ? ' (' . $org->email . ')' : ''),
-                    'address' => '0x' . str_pad(dechex($org->id), 40, '0', STR_PAD_LEFT), // Generate address from org ID
                 ];
             }
 

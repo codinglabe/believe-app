@@ -52,7 +52,6 @@ export interface Recipient {
     name: string
     email?: string
     display_name: string
-    address: string
 }
 
 export interface KycFormData {

@@ -106,10 +106,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [selectedExternalAccount, setSelectedExternalAccount] = useState<string>('')
     const [sendAmount, setSendAmount] = useState('')
     const [addMoneyAmount, setAddMoneyAmount] = useState('')
-    const [sendAddress, setSendAddress] = useState('')
     const [recipientSearch, setRecipientSearch] = useState('')
-    const [selectedRecipient, setSelectedRecipient] = useState<{ id: string; type: string; name: string; email?: string; display_name: string; address: string } | null>(null)
-    const [searchResults, setSearchResults] = useState<Array<{ id: string; type: string; name: string; email?: string; display_name: string; address: string }>>([])
+    const [selectedRecipient, setSelectedRecipient] = useState<{ id: string; type: string; name: string; email?: string; display_name: string; address?: string } | null>(null)
+    const [searchResults, setSearchResults] = useState<Array<{ id: string; type: string; name: string; email?: string; display_name: string; address?: string }>>([])
     const [isLoadingSearch, setIsLoadingSearch] = useState(false)
     const [showDropdown, setShowDropdown] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
@@ -2749,7 +2748,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         if (actionView !== 'send') {
             setRecipientSearch('')
             setSelectedRecipient(null)
-            setSendAddress('')
             setSearchResults([])
             setShowDropdown(false)
         }
@@ -2935,10 +2933,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address: string }) => {
+    const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address?: string }) => {
         setSelectedRecipient(recipient)
-        setSendAddress(recipient.address)
-        setRecipientSearch(recipient.display_name)
+        setRecipientSearch(recipient.name)
         setShowDropdown(false)
     }
 
@@ -2975,7 +2972,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 body: JSON.stringify({
                     amount: amount,
                     recipient_id: selectedRecipient.id,
-                    recipient_address: selectedRecipient.address,
                 }),
             })
 
@@ -3052,7 +3048,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             // Clear form
             setSendAmount('')
-            setSendAddress('')
             setSelectedRecipient(null)
             setRecipientSearch('')
             setIsLoading(false)
@@ -3369,7 +3364,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 recipientSearch={recipientSearch}
                                                 searchResults={searchResults}
                                                 selectedRecipient={selectedRecipient}
-                                                sendAddress={sendAddress}
                                                 isLoading={isLoading}
                                                 isLoadingSearch={isLoadingSearch}
                                                 showDropdown={showDropdown}
@@ -3381,7 +3375,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     setShowDropdown(true)
                                                     if (!value) {
                                                         setSelectedRecipient(null)
-                                                        setSendAddress('')
                                                     }
                                                 }}
                                                 onSearchFocus={() => {

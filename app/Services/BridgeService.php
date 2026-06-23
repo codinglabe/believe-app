@@ -2374,16 +2374,143 @@ class BridgeService
     }
 
     /**
+     * Resolve a customer's custodial Bridge wallet for transfers.
+     *
+     * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool}|null
+     */
+    public function resolveCustomerBridgeWallet(BridgeIntegration $integration): ?array
+    {
+        $customerId = $integration->bridge_customer_id;
+        if (! $customerId) {
+            return null;
+        }
+
+        $integration->loadMissing('primaryWallet', 'wallets');
+
+        $walletId = $integration->bridge_wallet_id
+            ?? $integration->primaryWallet?->bridge_wallet_id
+            ?? $integration->wallets->first(fn (BridgeWallet $w) => ! empty($w->bridge_wallet_id))?->bridge_wallet_id;
+
+        if ($walletId) {
+            $resolved = $this->parseBridgeWalletForTransfer($customerId, $walletId);
+            if ($resolved !== null) {
+                return $resolved;
+            }
+        }
+
+        $wallets = $this->normalizeBridgeListData($this->getWallets($customerId));
+        if ($wallets === []) {
+            return null;
+        }
+
+        $walletId = (string) ($wallets[0]['id'] ?? '');
+        if ($walletId === '') {
+            return null;
+        }
+
+        $resolved = $this->parseBridgeWalletForTransfer($customerId, $walletId);
+        if ($resolved === null) {
+            return null;
+        }
+
+        if ($integration->bridge_wallet_id !== $walletId) {
+            $integration->update(['bridge_wallet_id' => $walletId]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool}|null
+     */
+    public function parseBridgeWalletForTransfer(string $customerId, string $walletId): ?array
+    {
+        $result = $this->getWallet($customerId, $walletId);
+        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
+            return null;
+        }
+
+        $data = $result['data'];
+        $chain = strtolower((string) ($data['chain'] ?? 'solana'));
+        if (in_array($chain, ['usd', 'fiat'], true)) {
+            $chain = 'solana';
+        }
+
+        return [
+            'wallet_id' => $walletId,
+            'chain' => $chain,
+            'currency' => $this->resolveWalletBalanceCurrency($data),
+            'initiation_required' => (bool) ($data['initiation_required'] ?? false),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $walletData
+     */
+    public function resolveWalletBalanceCurrency(array $walletData): string
+    {
+        $balances = $walletData['balances'] ?? [];
+        if (is_array($balances)) {
+            foreach ($balances as $balance) {
+                $currency = strtolower((string) ($balance['currency'] ?? ''));
+                if (in_array($currency, ['usdc', 'usdb'], true)) {
+                    return $currency;
+                }
+            }
+        }
+
+        return 'usdc';
+    }
+
+    /**
+     * Sum USDC/USDB balances from a Bridge custodial wallet payload.
+     *
+     * @param  array<string, mixed>  $walletData
+     */
+    public function parseBridgeWalletUsdBalance(array $walletData): float
+    {
+        $total = 0.0;
+        $balances = $walletData['balances'] ?? [];
+
+        if (is_array($balances)) {
+            foreach ($balances as $balance) {
+                if (! is_array($balance)) {
+                    continue;
+                }
+
+                $currency = strtolower((string) ($balance['currency'] ?? ''));
+                if (! in_array($currency, ['usdc', 'usdb', 'usd'], true)) {
+                    continue;
+                }
+
+                $total += (float) ($balance['balance'] ?? 0);
+            }
+        }
+
+        if ($total > 0) {
+            return round($total, 2);
+        }
+
+        foreach (['balance', 'available_balance', 'total_balance'] as $key) {
+            if (isset($walletData[$key]) && is_numeric($walletData[$key])) {
+                return round((float) $walletData[$key], 2);
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
      * Create a transfer between two Bridge wallets
-     * 
-     * Per Bridge.xyz API documentation for wallet-to-wallet transfers
+     *
+     * @see https://apidocs.bridge.xyz/platform/wallets/move-money
+     * @see https://apidocs.bridge.xyz/get-started/guides/common-use-cases/payroll
      * 
      * @param string $fromCustomerId Source customer ID
      * @param string $fromWalletId Source wallet ID
      * @param string $toCustomerId Destination customer ID (on_behalf_of)
      * @param string $toWalletId Destination wallet ID
      * @param float $amount Transfer amount
-     * @param string $currency Currency (default: USD, converted to usdc for bridge_wallet)
      * @return array Response with transfer data or error
      */
     public function createWalletToWalletTransfer(
@@ -2396,105 +2523,100 @@ class BridgeService
         ?string $fromAddress = null,
         ?string $toAddress = null
     ): array {
-        // Convert USD to usdc for bridge_wallet payment rail
-        $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdc' : strtolower($currency);
+        $fromWallet = $this->parseBridgeWalletForTransfer($fromCustomerId, $fromWalletId);
+        $toWallet = $this->parseBridgeWalletForTransfer($toCustomerId, $toWalletId);
 
-        // In sandbox mode: Virtual accounts use ethereum payment rail, not bridge_wallet
-        // In production mode: Both use bridge_wallet payment rail
-        if ($this->isSandbox()) {
-            // In sandbox: Virtual accounts are on ethereum chain
-            // For ethereum payment rail, source must use virtual_account_id or address (NOT bridge_wallet_id)
-            // Destination can use virtual_account_id or address
-            if (empty($fromWalletId) && empty($fromAddress)) {
+        if ($fromWallet !== null && $toWallet !== null) {
+            if ($fromWallet['initiation_required']) {
                 return [
                     'success' => false,
-                    'error' => 'Source wallet ID (virtual account ID) or address is required for transfers in sandbox mode.',
-                    'error_code' => 'MISSING_SOURCE_WALLET_ID',
+                    'error' => 'Sender wallet requires payment initiation before transfers can be created.',
+                    'initiation_required' => true,
                 ];
             }
 
-            // For ethereum payment rail (crypto-to-crypto transfers), we MUST use 'from_address' and 'to_address' (NOT bridge_wallet_id or address)
-            // Get source address from virtual account if we have virtual account ID
-            $sourceAddress = $fromAddress;
-            if (empty($sourceAddress) && !empty($fromWalletId)) {
-                $virtualAccountResult = $this->getVirtualAccount($fromCustomerId, $fromWalletId);
-                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
-                    $sourceAddress = $virtualAccountResult['data']['destination']['address'];
-                } else {
-                    return [
-                        'success' => false,
-                        'error' => 'Could not retrieve source address from virtual account. Virtual account ID: ' . $fromWalletId,
-                        'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
-                    ];
-                }
-            }
-
-            if (empty($sourceAddress)) {
-                return [
-                    'success' => false,
-                    'error' => 'Source address is required for ethereum payment rail transfers in sandbox mode.',
-                    'error_code' => 'MISSING_SOURCE_ADDRESS',
-                ];
-            }
-
-            // Get destination address from virtual account if we have virtual account ID
-            $destinationAddress = $toAddress;
-            if (empty($destinationAddress) && !empty($toWalletId)) {
-                $virtualAccountResult = $this->getVirtualAccount($toCustomerId, $toWalletId);
-                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
-                    $destinationAddress = $virtualAccountResult['data']['destination']['address'];
-                } else {
-                    return [
-                        'success' => false,
-                        'error' => 'Could not retrieve destination address from virtual account. Virtual account ID: ' . $toWalletId,
-                        'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
-                    ];
-                }
-            }
-
-            if (empty($destinationAddress)) {
-                return [
-                    'success' => false,
-                    'error' => 'Destination address is required for ethereum payment rail transfers in sandbox mode.',
-                    'error_code' => 'MISSING_DESTINATION_ADDRESS',
-                ];
-            }
-
-            // In sandbox, virtual accounts are on ethereum chain
-            // For ethereum payment rail (crypto-to-crypto): MUST use 'from_address' and 'to_address' (NOT bridge_wallet_id or address)
-        $transferData = [
-            'amount' => number_format($amount, 2, '.', ''),
-                'on_behalf_of' => $toCustomerId,
+            return $this->createTransfer([
+                'amount' => number_format($amount, 2, '.', ''),
+                'on_behalf_of' => $fromCustomerId,
                 'source' => [
-                    'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
-                    'currency' => 'usdc', // Sandbox uses USDC for Ethereum
-                    'from_address' => $sourceAddress, // For ethereum crypto-to-crypto transfers, use from_address
+                    'payment_rail' => 'bridge_wallet',
+                    'currency' => $fromWallet['currency'],
+                    'bridge_wallet_id' => $fromWallet['wallet_id'],
                 ],
                 'destination' => [
-                    'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
-                    'currency' => 'usdc',
-                    'to_address' => $destinationAddress, // For ethereum crypto-to-crypto transfers, use to_address
+                    'payment_rail' => $toWallet['chain'],
+                    'currency' => $toWallet['currency'],
+                    'bridge_wallet_id' => $toWallet['wallet_id'],
                 ],
-            ];
-        } else {
-            // Production mode: Use bridge_wallet payment rail for both
-            $transferData = [
-                'amount' => number_format($amount, 2, '.', ''),
-                'on_behalf_of' => $toCustomerId,
-            'source' => [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => $bridgeCurrency,
-                'bridge_wallet_id' => $fromWalletId,
-            ],
-            'destination' => [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => $bridgeCurrency,
-                'bridge_wallet_id' => $toWalletId,
-            ],
-        ];
+            ]);
         }
 
-        return $this->createTransfer($transferData);
+        if (! $this->isSandbox()) {
+            return [
+                'success' => false,
+                'error' => 'Both sender and recipient must have active Bridge custodial wallets.',
+                'error_code' => 'MISSING_BRIDGE_WALLET',
+            ];
+        }
+
+        if (empty($fromWalletId) && empty($fromAddress)) {
+            return [
+                'success' => false,
+                'error' => 'Source Bridge wallet or virtual account is required for transfers.',
+                'error_code' => 'MISSING_SOURCE_WALLET_ID',
+            ];
+        }
+
+        $sourceAddress = $fromAddress;
+        if (empty($sourceAddress) && ! empty($fromWalletId)) {
+            $virtualAccountResult = $this->getVirtualAccount($fromCustomerId, $fromWalletId);
+            if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
+                $sourceAddress = $virtualAccountResult['data']['destination']['address'];
+            } else {
+                return [
+                    'success' => false,
+                    'error' => 'Could not retrieve source address from virtual account.',
+                    'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
+                ];
+            }
+        }
+
+        $destinationAddress = $toAddress;
+        if (empty($destinationAddress) && ! empty($toWalletId)) {
+            $virtualAccountResult = $this->getVirtualAccount($toCustomerId, $toWalletId);
+            if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
+                $destinationAddress = $virtualAccountResult['data']['destination']['address'];
+            } else {
+                return [
+                    'success' => false,
+                    'error' => 'Could not retrieve destination address from virtual account.',
+                    'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
+                ];
+            }
+        }
+
+        if (empty($sourceAddress) || empty($destinationAddress)) {
+            return [
+                'success' => false,
+                'error' => 'Source and destination addresses are required for sandbox transfers.',
+                'error_code' => 'MISSING_ADDRESSES',
+            ];
+        }
+
+        return $this->createTransfer([
+            'amount' => number_format($amount, 2, '.', ''),
+            'on_behalf_of' => $fromCustomerId,
+            'source' => [
+                'payment_rail' => 'ethereum',
+                'currency' => 'usdc',
+                'from_address' => $sourceAddress,
+            ],
+            'destination' => [
+                'payment_rail' => 'ethereum',
+                'currency' => 'usdc',
+                'to_address' => $destinationAddress,
+            ],
+        ]);
     }
 
     /**
