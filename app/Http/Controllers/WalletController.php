@@ -128,7 +128,7 @@ class WalletController extends Controller
             
             // Determine entity (user or organization)
             if ($isOrgUser) {
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
                 if (!$organization || !$organization->user) {
                     return response()->json([
                         'success' => true,
@@ -155,7 +155,7 @@ class WalletController extends Controller
             $bridgeBalance = null;
             $walletSnapshot = null;
             $bridgeRead = app(BridgeWalletReadService::class);
-            $integration = BridgeIntegration::resolveForUser($user);
+            $integration = BridgeIntegration::resolveForAuthUser($user);
             $useBridgeWallet = $bridgeRead->usesBridgeWalletAsSourceOfTruth($integration);
 
             try {
@@ -632,7 +632,7 @@ class WalletController extends Controller
             $page = 1;
             $perPage = 10;
 
-            $integration = BridgeIntegration::resolveForUser($user);
+            $integration = BridgeIntegration::resolveForAuthUser($user);
             $bridgeRead = app(BridgeWalletReadService::class);
 
             if ($bridgeRead->usesBridgeWalletAsSourceOfTruth($integration)) {
@@ -642,6 +642,9 @@ class WalletController extends Controller
                     'success' => true,
                     'activities' => $bridgeActivities,
                     'source' => 'bridge',
+                    'has_more' => count($bridgeActivities) >= $perPage,
+                    'current_page' => $page,
+                    'total' => count($bridgeActivities),
                     'pagination' => [
                         'current_page' => $page,
                         'per_page' => $perPage,
@@ -656,7 +659,7 @@ class WalletController extends Controller
 
             if ($isOrgUser) {
                 // For organization users: show only wallet transactions (transfers and deposits)
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
             
                 if ($organization && $organization->user) {
                     $orgUser = $organization->user;
@@ -819,7 +822,7 @@ class WalletController extends Controller
             $donations = collect([]);
             $transactions = collect([]);
 
-            $bridgeIntegration = BridgeIntegration::resolveForUser($user);
+            $bridgeIntegration = BridgeIntegration::resolveForAuthUser($user);
             $useBridgeWalletActivity = app(BridgeWalletReadService::class)
                 ->usesBridgeWalletAsSourceOfTruth($bridgeIntegration);
 
@@ -835,7 +838,7 @@ class WalletController extends Controller
 
             if ($isOrgUser) {
                 // For organization users: show donations received and transactions
-            $organization = $user->organization;
+            $organization = Organization::forAuthUser($user);
             
                 if ($organization && $organization->user) {
             $orgUser = $organization->user;
@@ -1139,7 +1142,7 @@ class WalletController extends Controller
             }
 
             // Get sender's organization and user
-            $organization = $user->organization;
+            $organization = Organization::forAuthUser($user);
             if (!$organization || !$organization->user) {
                 return response()->json([
                     'success' => false,
@@ -1149,7 +1152,7 @@ class WalletController extends Controller
 
             $senderUser = $organization->user;
 
-            $bridgeIntegration = BridgeIntegration::resolveForUser($user);
+            $bridgeIntegration = BridgeIntegration::resolveForAuthUser($user);
 
             if (app(BridgeWalletReadService::class)->usesBridgeWalletAsSourceOfTruth($bridgeIntegration)) {
                 return response()->json([
@@ -1345,7 +1348,7 @@ class WalletController extends Controller
             }
 
             // Get organization and user
-            $organization = $user->organization;
+            $organization = Organization::forAuthUser($user);
             if (!$organization || !$organization->user) {
                 return response()->json([
                     'success' => false,
@@ -1355,7 +1358,7 @@ class WalletController extends Controller
 
             $orgUser = $organization->user;
 
-            $bridgeIntegration = BridgeIntegration::resolveForUser($user);
+            $bridgeIntegration = BridgeIntegration::resolveForAuthUser($user);
             $bridgeRead = app(BridgeWalletReadService::class);
 
             if ($bridgeRead->usesBridgeWalletAsSourceOfTruth($bridgeIntegration)) {

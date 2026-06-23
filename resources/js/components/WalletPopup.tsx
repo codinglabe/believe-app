@@ -4158,8 +4158,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         )
                                     ) : null}
 
-                                    {/* Activity - Only show when wallet is created */}
-                                    {actionView === 'main' && (hasWallet || walletAddress) && (
+                                    {/* Activity - show once Bridge account is verified (org wallets may lack local wallet_address) */}
+                                    {actionView === 'main' && (hasWallet || walletAddress || kybStatus === 'approved' || kycStatus === 'approved') && (
                                         <div className="flex-shrink-0 max-h-[350px] min-h-0 flex flex-col">
                                             {isLoadingActivities && activities.length === 0 ? (
                                             <ActivitySkeleton />
