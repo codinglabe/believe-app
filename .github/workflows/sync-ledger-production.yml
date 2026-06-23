@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: sync-ledger-production
+  group: deploy-vps-self-hosted
   cancel-in-progress: false
 
 jobs:
@@ -30,28 +30,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          chmod +x "${HOME}/bin/checkout-self-hosted.sh" 2>/dev/null || true
-          if [ -x "${HOME}/bin/checkout-self-hosted.sh" ]; then
-            bash "${HOME}/bin/checkout-self-hosted.sh"
-          else
-            MIRROR="${HOME}/.cache/believe-app-mirror.git"
-            REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-            mkdir -p "$(dirname "${MIRROR}")" "${GITHUB_WORKSPACE}"
-            if [ ! -d "${MIRROR}/objects" ]; then
-              git init --bare "${MIRROR}"
-              git -C "${MIRROR}" remote add origin "${REPO_URL}"
-            else
-              git -C "${MIRROR}" remote set-url origin "${REPO_URL}"
-            fi
-            git -C "${MIRROR}" fetch --depth=1 --no-tags origin "${GITHUB_SHA}"
-            shopt -s dotglob nullglob
-            for item in "${GITHUB_WORKSPACE}"/* "${GITHUB_WORKSPACE}"/.[!.]* "${GITHUB_WORKSPACE}"/..?*; do
-              [ -e "${item}" ] || continue
-              rm -rf "${item}"
-            done
-            git -C "${MIRROR}" archive "${GITHUB_SHA}" | tar -x -C "${GITHUB_WORKSPACE}"
-            echo "Checkout OK (inline bootstrap)"
-          fi
+          SCRIPT="${HOME}/bin/checkout-self-hosted.sh"
+          mkdir -p "${HOME}/bin"
+          curl -fsSL \
+            -H "Authorization: bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/.github/scripts/checkout-self-hosted.sh?ref=${GITHUB_SHA}" \
+            -o "${SCRIPT}"
+          chmod +x "${SCRIPT}"
+          bash "${SCRIPT}"
 
       - name: Setup SSH
         env:

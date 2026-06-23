@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fast checkout for self-hosted VPS runner: persistent bare mirror + git archive.
-# Avoids actions/checkout re-downloading the repo from GitHub every job (~3–6 min).
+# Self-hosted VPS checkout: persistent mirror + flock (no actions/checkout ~5 min re-clone).
+# First mirror init is slow (~5 min once). Later fetches are incremental (~5–30 s).
 set -euo pipefail
 
 : "${GITHUB_SHA:?GITHUB_SHA required}"
@@ -9,20 +9,35 @@ set -euo pipefail
 : "${GITHUB_TOKEN:?GITHUB_TOKEN required}"
 
 MIRROR="${HOME}/.cache/believe-app-mirror.git"
+LOCK_FILE="${HOME}/.cache/believe-app-mirror.lock"
 REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
 mkdir -p "$(dirname "${MIRROR}")" "${GITHUB_WORKSPACE}"
 
+# Drop stale git lock files left by crashed/concurrent fetches.
+find "${MIRROR}" -maxdepth 1 -name '*.lock' -mmin +10 -delete 2>/dev/null || true
+
+exec 9>"${LOCK_FILE}"
+if ! flock -w 600 9; then
+  echo "::error::Timed out waiting for mirror lock (${LOCK_FILE})"
+  exit 1
+fi
+
 if [ ! -d "${MIRROR}/objects" ]; then
-  echo "Initializing bare mirror at ${MIRROR}"
-  git init --bare "${MIRROR}"
-  git -C "${MIRROR}" remote add origin "${REPO_URL}"
+  echo "First-time mirror clone (one slow download, then fast incremental fetches)..."
+  rm -rf "${MIRROR}"
+  GIT_TERMINAL_PROMPT=0 git clone --mirror "${REPO_URL}" "${MIRROR}"
 else
   git -C "${MIRROR}" remote set-url origin "${REPO_URL}"
 fi
 
-echo "Fetching ${GITHUB_SHA} (depth=1)..."
-git -C "${MIRROR}" fetch --depth=1 --no-tags origin "${GITHUB_SHA}"
+echo "Fetching ${GITHUB_SHA} into mirror..."
+GIT_TERMINAL_PROMPT=0 git -C "${MIRROR}" fetch --prune --no-tags origin "${GITHUB_SHA}"
+
+if ! git -C "${MIRROR}" cat-file -e "${GITHUB_SHA}^{commit}" 2>/dev/null; then
+  echo "::error::Commit ${GITHUB_SHA} not found in mirror after fetch"
+  exit 1
+fi
 
 echo "Exporting to ${GITHUB_WORKSPACE}..."
 shopt -s dotglob nullglob
