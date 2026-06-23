@@ -51,6 +51,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'balance',
         'reward_points',
         'believe_points',
+        'processing_believe_points',
         'gifted_believe_points',
         'believe_points_auto_replenish_enabled',
         'believe_points_auto_replenish_threshold',
@@ -187,6 +188,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_used' => 'integer',
             'ai_media_studio_credits' => 'decimal:2',
             'believe_points' => 'decimal:2',
+            'processing_believe_points' => 'decimal:2',
             'gifted_believe_points' => 'decimal:2',
             'believe_points_auto_replenish_enabled' => 'boolean',
             'believe_points_auto_replenish_threshold' => 'decimal:2',
@@ -1026,6 +1028,51 @@ class User extends Authenticatable implements MustVerifyEmail
     public function addBelievePoints(float $points): void
     {
         $this->increment('believe_points', $points);
+    }
+
+    public function addProcessingBelievePoints(float $points): void
+    {
+        $points = round(max(0, (float) $points), 2);
+        if ($points <= 0) {
+            return;
+        }
+        $this->increment('processing_believe_points', $points);
+    }
+
+    public function deductProcessingBelievePoints(float $points): bool
+    {
+        $points = round(max(0, (float) $points), 2);
+        if ($points <= 0) {
+            return true;
+        }
+        $this->refresh();
+        if ((float) ($this->processing_believe_points ?? 0) < $points - 0.000001) {
+            return false;
+        }
+        $this->decrement('processing_believe_points', $points);
+
+        return true;
+    }
+
+    public function releaseProcessingBelievePoints(float $points): bool
+    {
+        $points = round(max(0, (float) $points), 2);
+        if ($points <= 0) {
+            return true;
+        }
+        $this->refresh();
+        if ((float) ($this->processing_believe_points ?? 0) < $points - 0.000001) {
+            return false;
+        }
+        $this->decrement('processing_believe_points', $points);
+        $this->increment('believe_points', $points);
+
+        return true;
+    }
+
+    public function currentProcessingBelievePoints(): float
+    {
+        return round((float) ($this->processing_believe_points ?? 0), 2);
     }
 
     /**
