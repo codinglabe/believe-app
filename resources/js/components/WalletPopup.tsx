@@ -21,7 +21,8 @@ import {
     type WalletBridgeStatusPayload,
 } from '@/lib/bridge-verification'
 import { pickWalletBalance } from '@/lib/wallet-balance-fetch'
-import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
+import { useWalletBridgeRealtime, type WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
+import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
 import {
     SuccessMessage,
     BalanceDisplay,
@@ -837,16 +838,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         void checkBridgeAndFetchBalance({ force: true })
     }
 
-    const handleBridgeRealtimeUpdate = useCallback((payload: { refresh_balance?: boolean }) => {
-        setWalletRefreshNonce((n) => n + 1)
-        if (payload.refresh_balance !== false) {
+    const handleBridgeRealtimeUpdate = useCallback((payload: WalletBridgeUpdatePayload) => {
+        if (payload.refresh_activity !== false) {
+            setActivities((prev) => patchActivitiesFromBridgeUpdate(prev, payload))
+            setWalletRefreshNonce((n) => n + 1)
+        }
+        if (isOpen && payload.refresh_balance !== false) {
             bridgeBalanceRefreshRef.current()
         }
-    }, [])
+    }, [isOpen])
 
     useWalletBridgeRealtime({
         userId: auth?.user?.id ?? null,
-        enabled: isOpen,
+        enabled: Boolean(auth?.user?.id) && isOpen,
         onUpdate: handleBridgeRealtimeUpdate,
     })
 
@@ -3478,6 +3482,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         />
                                     ) : !showSuccess && actionView === 'activity' ? (
                                         <ActivityScreen
+                                            userId={auth?.user?.id ?? null}
                                             onBack={() => setActionView('main')}
                                             onActivityClick={handleActivityClick}
                                         />

@@ -72,7 +72,7 @@ class BridgeWalletNotifier
                 'amount' => $amount,
                 'direction' => 'incoming',
                 'counterparty_name' => $this->resolveEndpointDisplayName($source),
-                'refresh_balance' => $mappedStatus === 'completed',
+                'refresh_balance' => in_array($mappedStatus, ['completed', 'failed', 'cancelled'], true),
                 'refresh_activity' => true,
             ], $this->buildTransferPushMessage($state, $amount, 'incoming', $source));
         }
@@ -86,12 +86,14 @@ class BridgeWalletNotifier
         $activityType = strtolower($activityType);
         $amount = round((float) ($event['amount'] ?? 0), 2);
         $activityId = (string) ($event['id'] ?? $event['activity_id'] ?? '');
+        $depositId = isset($event['deposit_id']) ? (string) $event['deposit_id'] : '';
         $mappedStatus = in_array($activityType, ['payment_processed'], true) ? 'completed' : 'pending';
 
         $this->notifyIntegrationUsers($integration, [
             'kind' => 'virtual_account',
             'event' => 'virtual_account.activity',
             'activity_id' => $activityId,
+            'deposit_id' => $depositId !== '' ? $depositId : null,
             'activity_type' => $activityType,
             'bridge_state' => $activityType,
             'status' => $mappedStatus,

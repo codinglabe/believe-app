@@ -1,22 +1,28 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react'
 import { Activity as ActivityType } from './types'
 import { formatDate, formatCurrency } from './utils'
 import { DepositPaymentMethodBadge } from './DepositPaymentMethodBadge'
+import { ActivityStatusBadge } from './ActivityStatusBadge'
 import { getCsrfToken as getWalletCsrfToken } from './utils'
+import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
+import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
+import type { WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
 
 interface ActivityScreenProps {
     onBack: () => void
     onActivityClick?: (activity: ActivityType) => void
+    userId?: number | null
 }
 
-export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps) {
+export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScreenProps) {
     const [activities, setActivities] = useState<ActivityType[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
     const [hasMore, setHasMore] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
+    const [refreshNonce, setRefreshNonce] = useState(0)
 
     const fetchActivities = async (page: number = 1, append: boolean = false) => {
         if (append) {
@@ -57,15 +63,29 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
         }
     }
 
+    const handleBridgeRealtimeUpdate = useCallback((payload: WalletBridgeUpdatePayload) => {
+        if (payload.refresh_activity === false) {
+            return
+        }
+
+        setActivities((prev) => patchActivitiesFromBridgeUpdate(prev, payload))
+        setRefreshNonce((n) => n + 1)
+    }, [])
+
+    useWalletBridgeRealtime({
+        userId: userId ?? null,
+        enabled: Boolean(userId),
+        onUpdate: handleBridgeRealtimeUpdate,
+    })
+
     useEffect(() => {
         fetchActivities(1, false)
-    }, [])
+    }, [refreshNonce])
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const target = e.currentTarget
         const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
 
-        // Load more when scrolled near bottom (within 50px) and there are more activities
         if (scrollBottom < 50 && hasMore && !isLoadingMore && !isLoading) {
             const nextPage = currentPage + 1
             fetchActivities(nextPage, true)
@@ -144,10 +164,14 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 onClick={() => onActivityClick?.(activity)}
-                                className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors ${
+                                className={`relative w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors ${
                                     onActivityClick ? 'cursor-pointer' : ''
                                 }`}
                             >
+                                <ActivityStatusBadge
+                                    status={activity.bridge_state ?? activity.status}
+                                    className="absolute top-2 right-2"
+                                />
                                 <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
                                     <div className={`p-2 rounded-lg flex-shrink-0 ${
                                         isTransferSent 
@@ -192,7 +216,7 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right">
+                                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right pr-6 sm:pr-0">
                                     <p className={`text-base sm:text-sm font-semibold ${
                                         isTransferSent 
                                             ? 'text-red-600'
@@ -229,4 +253,3 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
         </motion.div>
     )
 }
-
