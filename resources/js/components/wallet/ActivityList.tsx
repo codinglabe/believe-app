@@ -20,8 +20,9 @@ function getActivityMeta(activity: ActivityType) {
     const isTransferReceived = activity.type === 'transfer_received'
     const isDonation = activity.type === 'donation'
     const isDeposit = activity.type === 'deposit'
+    const isCardSpend = activity.type === 'card_spend'
     const isDonationOutgoing = isDonation && activity.is_outgoing === true
-    const isOutgoing = isTransferSent || isDonationOutgoing
+    const isOutgoing = isTransferSent || isDonationOutgoing || isCardSpend
 
     let label: string
     if (isTransferSent) {
@@ -30,6 +31,8 @@ function getActivityMeta(activity: ActivityType) {
         label = `Received from ${activity.donor_name}`
     } else if (isDeposit) {
         label = `Deposit · ${activity.donor_name}`
+    } else if (isCardSpend) {
+        label = `Card · ${activity.donor_name}`
     } else if (isDonationOutgoing) {
         label = `Donation to ${activity.donor_name}`
     } else {
@@ -143,7 +146,7 @@ export function ActivityList({
                                     }`}
                                 >
                                     <ActivityStatusBadge
-                                        status={activity.status}
+                                        status={activity.bridge_state ?? activity.status}
                                         className="absolute top-2 right-2"
                                     />
                                     <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>

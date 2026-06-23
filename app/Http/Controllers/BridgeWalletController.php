@@ -15,6 +15,7 @@ use App\Models\Transaction;
 use App\Models\LiquidationAddress;
 use App\Services\BridgeService;
 use App\Services\BridgeVirtualAccountDepositService;
+use App\Services\BridgeWalletNotifier;
 use App\Services\BridgeWalletReadService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
@@ -30,10 +31,16 @@ class BridgeWalletController extends Controller
 
     protected WalletTransactionNotifier $walletTransactionNotifier;
 
-    public function __construct(BridgeService $bridgeService, WalletTransactionNotifier $walletTransactionNotifier)
-    {
+    protected BridgeWalletNotifier $bridgeWalletNotifier;
+
+    public function __construct(
+        BridgeService $bridgeService,
+        WalletTransactionNotifier $walletTransactionNotifier,
+        BridgeWalletNotifier $bridgeWalletNotifier,
+    ) {
         $this->bridgeService = $bridgeService;
         $this->walletTransactionNotifier = $walletTransactionNotifier;
+        $this->bridgeWalletNotifier = $bridgeWalletNotifier;
     }
 
     public function initializeBridge(Request $request)
@@ -3304,6 +3311,18 @@ class BridgeWalletController extends Controller
                 'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
                 'amount' => $amount,
             ]);
+
+            $senderDisplayName = $senderEntity instanceof Organization
+                ? (string) $senderEntity->name
+                : (string) $senderUser->name;
+
+            $this->bridgeWalletNotifier->notifyOutgoingTransferCreated(
+                $senderIntegration,
+                $recipientIntegration,
+                is_array($transferResult['data'] ?? null) ? $transferResult['data'] : ['id' => $bridgeTransferId],
+                $amount,
+                $senderDisplayName,
+            );
 
             $updatedSnapshot = $bridgeRead->getWalletSnapshot($senderIntegration);
             $senderBalanceAfter = $updatedSnapshot['balance'] ?? max(0, $senderBalance - $amount);

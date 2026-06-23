@@ -1,0 +1,463 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\PushNotificationModule;
+use App\Events\WalletBridgeUpdated;
+use App\Models\BridgeIntegration;
+use App\Models\BridgeWallet;
+use App\Models\Organization;
+use App\Models\User;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Push + Reverb notifications for Bridge-first wallets (no local ledger).
+ *
+ * @see https://apidocs.bridge.xyz/platform/orchestration/transfers/transfer-states
+ * @see https://apidocs.bridge.xyz/platform/orchestration/virtual_accounts/virtual-account-events
+ */
+class BridgeWalletNotifier
+{
+    public function __construct(
+        private readonly FirebaseService $firebaseService,
+    ) {}
+
+    /**
+     * @param  array<string, mixed>  $transfer
+     */
+    public function notifyTransferWebhook(array $transfer, ?string $state, string $eventType = 'transfer.updated'): void
+    {
+        $transferId = (string) ($transfer['id'] ?? '');
+        if ($transferId === '') {
+            return;
+        }
+
+        $state = strtolower(trim((string) ($state ?? $transfer['state'] ?? $transfer['status'] ?? 'pending')));
+        $amount = round((float) ($transfer['amount'] ?? 0), 2);
+        $source = is_array($transfer['source'] ?? null) ? $transfer['source'] : [];
+        $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
+
+        $senderIntegration = $this->resolveIntegrationForCustomerId(
+            (string) ($transfer['on_behalf_of'] ?? $transfer['customer_id'] ?? '')
+        ) ?? $this->resolveIntegrationForWalletEndpoint($source);
+
+        $recipientIntegration = $this->resolveIntegrationForWalletEndpoint($destination);
+
+        $mappedStatus = $this->mapTransferStateToUiStatus($state);
+
+        if ($senderIntegration !== null) {
+            $this->notifyIntegrationUsers($senderIntegration, [
+                'kind' => 'transfer',
+                'event' => $eventType,
+                'transfer_id' => $transferId,
+                'bridge_state' => $state,
+                'status' => $mappedStatus,
+                'amount' => $amount,
+                'direction' => 'outgoing',
+                'counterparty_name' => $this->resolveEndpointDisplayName($destination),
+                'refresh_balance' => in_array($mappedStatus, ['completed', 'failed', 'cancelled'], true),
+                'refresh_activity' => true,
+            ], $this->buildTransferPushMessage($state, $amount, 'outgoing', $destination));
+        }
+
+        if ($recipientIntegration !== null
+            && ($recipientIntegration->id !== $senderIntegration?->id)) {
+            $this->notifyIntegrationUsers($recipientIntegration, [
+                'kind' => 'transfer',
+                'event' => $eventType,
+                'transfer_id' => $transferId,
+                'bridge_state' => $state,
+                'status' => $mappedStatus,
+                'amount' => $amount,
+                'direction' => 'incoming',
+                'counterparty_name' => $this->resolveEndpointDisplayName($source),
+                'refresh_balance' => $mappedStatus === 'completed',
+                'refresh_activity' => true,
+            ], $this->buildTransferPushMessage($state, $amount, 'incoming', $source));
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    public function notifyVirtualAccountActivity(BridgeIntegration $integration, array $event, string $activityType): void
+    {
+        $activityType = strtolower($activityType);
+        $amount = round((float) ($event['amount'] ?? 0), 2);
+        $activityId = (string) ($event['id'] ?? $event['activity_id'] ?? '');
+        $mappedStatus = in_array($activityType, ['payment_processed'], true) ? 'completed' : 'pending';
+
+        $this->notifyIntegrationUsers($integration, [
+            'kind' => 'virtual_account',
+            'event' => 'virtual_account.activity',
+            'activity_id' => $activityId,
+            'activity_type' => $activityType,
+            'bridge_state' => $activityType,
+            'status' => $mappedStatus,
+            'amount' => $amount,
+            'direction' => 'incoming',
+            'refresh_balance' => $mappedStatus === 'completed',
+            'refresh_activity' => true,
+        ], $this->buildDepositPushMessage($activityType, $amount));
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    public function notifyWalletActivity(BridgeIntegration $integration, array $event): void
+    {
+        $type = strtolower((string) ($event['type'] ?? ''));
+        $amount = round((float) ($event['amount'] ?? 0), 2);
+        $activityId = (string) ($event['id'] ?? '');
+        $isOutgoing = in_array($type, ['withdrawal', 'withdraw', 'card_spend'], true);
+        $mappedStatus = in_array($type, ['return', 'undeliverable'], true) ? 'failed' : 'completed';
+
+        $this->notifyIntegrationUsers($integration, [
+            'kind' => 'wallet_activity',
+            'event' => 'bridge_wallet.activity',
+            'activity_id' => $activityId,
+            'activity_type' => $type,
+            'bridge_state' => $type,
+            'status' => $mappedStatus,
+            'amount' => $amount,
+            'direction' => $isOutgoing ? 'outgoing' : 'incoming',
+            'refresh_balance' => true,
+            'refresh_activity' => true,
+        ], $this->buildWalletActivityPushMessage($type, $amount, $isOutgoing));
+    }
+
+    /**
+     * Notify recipient immediately when a wallet-to-wallet send is submitted.
+     *
+     * @param  array<string, mixed>  $transferPayload
+     */
+    public function notifyOutgoingTransferCreated(
+        BridgeIntegration $senderIntegration,
+        BridgeIntegration $recipientIntegration,
+        array $transferPayload,
+        float $amount,
+        string $senderName,
+    ): void {
+        $transferId = (string) ($transferPayload['id'] ?? $transferPayload['transfer_id'] ?? '');
+
+        $this->notifyIntegrationUsers($senderIntegration, [
+            'kind' => 'transfer',
+            'event' => 'transfer.created',
+            'transfer_id' => $transferId,
+            'bridge_state' => 'awaiting_funds',
+            'status' => 'pending',
+            'amount' => $amount,
+            'direction' => 'outgoing',
+            'counterparty_name' => $this->integratableName($recipientIntegration),
+            'refresh_balance' => false,
+            'refresh_activity' => true,
+        ], null);
+
+        $this->notifyIntegrationUsers($recipientIntegration, [
+            'kind' => 'transfer',
+            'event' => 'transfer.incoming_pending',
+            'transfer_id' => $transferId,
+            'bridge_state' => 'awaiting_funds',
+            'status' => 'pending',
+            'amount' => $amount,
+            'direction' => 'incoming',
+            'counterparty_name' => $senderName !== '' ? $senderName : $this->integratableName($senderIntegration),
+            'refresh_balance' => false,
+            'refresh_activity' => true,
+        ], [
+            'title' => 'Incoming transfer',
+            'body' => ($senderName !== '' ? $senderName : 'Someone')
+                .' sent you $'.number_format($amount, 2).' — processing on Bridge.',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array{title: string, body: string}|null  $push
+     */
+    private function notifyIntegrationUsers(
+        BridgeIntegration $integration,
+        array $payload,
+        ?array $push,
+    ): void {
+        foreach ($this->resolveIntegrationUserIds($integration) as $userId) {
+            $payload['user_id'] = $userId;
+            $payload['integration_id'] = $integration->id;
+            $payload['at'] = now()->toIso8601String();
+
+            try {
+                broadcast(new WalletBridgeUpdated($userId, $payload));
+            } catch (\Throwable $e) {
+                Log::warning('Bridge wallet Reverb broadcast failed', [
+                    'user_id' => $userId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            if ($push !== null && $this->shouldSendPush($userId, $payload)) {
+                $this->sendPush($userId, $push['title'], $push['body'], $payload);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function shouldSendPush(int $userId, array $payload): bool
+    {
+        $status = (string) ($payload['status'] ?? '');
+        $state = (string) ($payload['bridge_state'] ?? '');
+        $direction = (string) ($payload['direction'] ?? '');
+        $transferId = (string) ($payload['transfer_id'] ?? '');
+        $activityId = (string) ($payload['activity_id'] ?? '');
+
+        $notifyStates = [
+            'payment_processed', 'completed',
+            'funds_scheduled', 'funds_received', 'payment_submitted',
+            'awaiting_funds', 'in_review',
+        ];
+
+        if ($status === 'completed' || in_array($state, ['payment_processed'], true)) {
+            $key = 'bridge_wallet_push:'.$userId.':'.($transferId ?: $activityId).':'.$state.':completed';
+
+            return Cache::add($key, 1, now()->addDays(30));
+        }
+
+        if ($direction === 'incoming' && in_array($state, $notifyStates, true)) {
+            $key = 'bridge_wallet_push:'.$userId.':'.($transferId ?: $activityId).':'.$state;
+
+            return Cache::add($key, 1, now()->addDays(7));
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function sendPush(int $userId, string $title, string $body, array $payload): void
+    {
+        try {
+            $walletUrl = route('wallet.activity');
+            $pushData = $this->firebaseService->stringifyFcmData([
+                'type' => 'bridge_wallet_'.($payload['kind'] ?? 'update'),
+                'title' => $title,
+                'body' => $body,
+                'url' => $walletUrl,
+                'click_action' => $walletUrl,
+                'bridge_state' => (string) ($payload['bridge_state'] ?? ''),
+                'transfer_id' => (string) ($payload['transfer_id'] ?? ''),
+                'amount' => (string) ($payload['amount'] ?? ''),
+                'direction' => (string) ($payload['direction'] ?? ''),
+                'source_type' => 'bridge_wallet',
+                'module_name' => PushNotificationModule::WalletRewards->value,
+                'deep_link' => parse_url($walletUrl, PHP_URL_PATH) ?: $walletUrl,
+            ]);
+
+            $this->firebaseService->sendToUser($userId, $title, $body, $pushData);
+        } catch (\Throwable $e) {
+            Log::warning('Bridge wallet push notification failed', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function resolveIntegrationUserIds(BridgeIntegration $integration): array
+    {
+        $integration->loadMissing('integratable');
+        $entity = $integration->integratable;
+        $ids = [];
+
+        if ($entity instanceof User) {
+            $ids[] = (int) $entity->id;
+        } elseif ($entity instanceof Organization) {
+            if ($entity->user_id) {
+                $ids[] = (int) $entity->user_id;
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    private function resolveIntegrationForCustomerId(string $customerId): ?BridgeIntegration
+    {
+        if ($customerId === '') {
+            return null;
+        }
+
+        return BridgeIntegration::query()
+            ->where('bridge_customer_id', $customerId)
+            ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $endpoint
+     */
+    private function resolveIntegrationForWalletEndpoint(array $endpoint): ?BridgeIntegration
+    {
+        $walletId = (string) ($endpoint['bridge_wallet_id'] ?? '');
+        if ($walletId !== '') {
+            $wallet = BridgeWallet::query()
+                ->where('bridge_wallet_id', $walletId)
+                ->with('bridgeIntegration')
+                ->first();
+
+            return $wallet?->bridgeIntegration;
+        }
+
+        $address = strtolower(trim((string) ($endpoint['to_address'] ?? $endpoint['from_address'] ?? '')));
+        if ($address === '') {
+            return null;
+        }
+
+        $wallet = BridgeWallet::query()
+            ->whereRaw('LOWER(wallet_address) = ?', [$address])
+            ->with('bridgeIntegration')
+            ->first();
+
+        return $wallet?->bridgeIntegration;
+    }
+
+    /**
+     * @param  array<string, mixed>  $endpoint
+     */
+    private function resolveEndpointDisplayName(array $endpoint): string
+    {
+        foreach (['sender_name', 'bank_beneficiary_name', 'account_holder_name'] as $key) {
+            $name = trim((string) ($endpoint[$key] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        $walletId = (string) ($endpoint['bridge_wallet_id'] ?? '');
+        if ($walletId !== '') {
+            $wallet = BridgeWallet::query()
+                ->where('bridge_wallet_id', $walletId)
+                ->with('bridgeIntegration.integratable')
+                ->first();
+            if ($wallet?->bridgeIntegration) {
+                return $this->integratableName($wallet->bridgeIntegration);
+            }
+        }
+
+        return '';
+    }
+
+    private function integratableName(BridgeIntegration $integration): string
+    {
+        $integration->loadMissing('integratable');
+        $entity = $integration->integratable;
+        if ($entity instanceof User || $entity instanceof Organization) {
+            return trim((string) $entity->name);
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $counterpartyEndpoint
+     * @return array{title: string, body: string}|null
+     */
+    private function buildTransferPushMessage(
+        string $state,
+        float $amount,
+        string $direction,
+        array $counterpartyEndpoint,
+    ): ?array {
+        $amountLabel = '$'.number_format($amount, 2);
+        $name = $this->resolveEndpointDisplayName($counterpartyEndpoint);
+
+        if ($state === 'payment_processed' || $state === 'completed') {
+            if ($direction === 'incoming') {
+                return [
+                    'title' => 'Money received',
+                    'body' => $name !== ''
+                        ? "You received {$amountLabel} from {$name}."
+                        : "You received {$amountLabel} in your wallet.",
+                ];
+            }
+
+            return [
+                'title' => 'Transfer completed',
+                'body' => $name !== ''
+                    ? "Your transfer of {$amountLabel} to {$name} completed."
+                    : "Your transfer of {$amountLabel} completed.",
+            ];
+        }
+
+        if ($direction === 'incoming' && in_array($state, ['awaiting_funds', 'funds_received', 'in_review', 'payment_submitted'], true)) {
+            return [
+                'title' => 'Incoming transfer processing',
+                'body' => $name !== ''
+                    ? "{$name} sent {$amountLabel} — waiting for Bridge to complete."
+                    : "You have {$amountLabel} incoming — processing.",
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{title: string, body: string}|null
+     */
+    private function buildDepositPushMessage(string $activityType, float $amount): ?array
+    {
+        $amountLabel = '$'.number_format($amount, 2);
+
+        if ($activityType === 'payment_processed') {
+            return [
+                'title' => 'Deposit received',
+                'body' => "Your wallet received {$amountLabel} from a bank deposit.",
+            ];
+        }
+
+        if (in_array($activityType, ['funds_scheduled', 'funds_received', 'payment_submitted'], true)) {
+            return [
+                'title' => 'Deposit processing',
+                'body' => "A {$amountLabel} bank deposit is on the way to your wallet.",
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{title: string, body: string}|null
+     */
+    private function buildWalletActivityPushMessage(string $type, float $amount, bool $isOutgoing): ?array
+    {
+        $amountLabel = '$'.number_format($amount, 2);
+
+        if ($isOutgoing) {
+            return [
+                'title' => 'Wallet withdrawal',
+                'body' => "{$amountLabel} left your Bridge wallet.",
+            ];
+        }
+
+        if (in_array($type, ['deposit', 'direct_deposit'], true)) {
+            return [
+                'title' => 'Wallet deposit',
+                'body' => "{$amountLabel} was added to your Bridge wallet.",
+            ];
+        }
+
+        return null;
+    }
+
+    private function mapTransferStateToUiStatus(string $state): string
+    {
+        return match ($state) {
+            'payment_processed', 'completed' => 'completed',
+            'failed', 'returned', 'refunded', 'error', 'undeliverable' => 'failed',
+            'canceled', 'cancelled' => 'cancelled',
+            default => 'pending',
+        };
+    }
+}
