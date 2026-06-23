@@ -3432,9 +3432,10 @@ class BridgeWalletController extends Controller
                 'user_id' => Auth::id(),
             ]);
 
-            $message = 'Failed to process transfer.';
-            if (config('app.debug') || $e instanceof \Illuminate\Database\QueryException) {
-                $message = 'Failed to process transfer: '.$e->getMessage();
+            $message = 'Failed to process transfer. Please try again.';
+            $safeError = trim($e->getMessage());
+            if ($safeError !== '') {
+                $message = 'Failed to process transfer: '.$safeError;
             }
 
             return response()->json(['success' => false, 'message' => $message], 500);
