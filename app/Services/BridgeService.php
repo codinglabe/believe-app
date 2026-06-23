@@ -2483,9 +2483,11 @@ class BridgeService
             ];
         }
 
+        $parsedBalance = $this->parseBridgeWalletUsdBalance($walletData);
+
         return [
-            'currency' => $this->resolveWalletBalanceCurrency($walletData),
-            'balance' => $this->parseBridgeWalletUsdBalance($walletData),
+            'currency' => $bestCurrency,
+            'balance' => round($parsedBalance, 2),
         ];
     }
 
