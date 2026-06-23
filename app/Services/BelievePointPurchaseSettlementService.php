@@ -11,12 +11,19 @@ use Illuminate\Support\Facades\Log;
 
 class BelievePointPurchaseSettlementService
 {
+    public static function brpEarnedForPurchase(BelievePointPurchase $purchase): float
+    {
+        $rail = ($purchase->payment_rail ?? 'card') === 'bank' ? 'bank' : 'card';
+
+        return BelievePointsPurchaseCalculationService::brpEarned((float) $purchase->amount, $rail);
+    }
+
     /**
-     * Bank (ACH) Believe Points purchases: $1 USD → 0.10 added to the user's `reward_points` column (Merchant Hub balance).
+     * @deprecated Use {@see BelievePointsPurchaseCalculationService::brpEarned()}
      */
     public static function bankPurchaseRewardPointsFromAmountUsd(float $amountUsd): float
     {
-        return round(max(0, $amountUsd) * 0.1, 2);
+        return BelievePointsPurchaseCalculationService::brpEarned($amountUsd, 'bank');
     }
 
     public static function settleCheckoutPurchase(int $purchaseId, string $paymentIntentId): bool
@@ -28,48 +35,140 @@ class BelievePointPurchaseSettlementService
                 return false;
             }
 
-            $user = $purchase->user;
-            $user->addBelievePoints((float) $purchase->points);
+            return self::creditPurchaseAfterPayment($purchase, $paymentIntentId);
+        });
+    }
 
-            $rewardAwarded = null;
-            if (($purchase->payment_rail ?? 'card') === 'bank') {
-                $rp = self::bankPurchaseRewardPointsFromAmountUsd((float) $purchase->amount);
-                if ($rp > 0.0) {
-                    $user->addRewardPoints(
-                        $rp,
-                        'believe_points_bank_purchase',
-                        $purchase->id,
-                        'Reward points for Believe Points purchase paid by bank (ACH)',
-                        ['amount_usd' => (float) $purchase->amount]
-                    );
-                    $rewardAwarded = $rp;
+    public static function creditPurchaseAfterPayment(BelievePointPurchase $purchase, ?string $paymentIntentId = null): bool
+    {
+        $user = $purchase->user;
+        if (! $user) {
+            return false;
+        }
+
+        $rail = ($purchase->payment_rail ?? 'card') === 'bank' ? 'bank' : 'card';
+        $points = (float) $purchase->points;
+        $isBank = $rail === 'bank';
+
+        $user->addProcessingBelievePoints($points);
+
+        $rewardAwarded = null;
+        $rp = self::brpEarnedForPurchase($purchase);
+        if ($rp > 0.0) {
+            $user->addRewardPoints(
+                $rp,
+                $isBank ? 'believe_points_ach_purchase' : 'believe_points_card_purchase',
+                $purchase->id,
+                $isBank
+                    ? 'Believe Reward Points for Believe Points purchase paid by bank (ACH)'
+                    : 'Believe Reward Points for Believe Points purchase paid by card',
+                ['amount_usd' => (float) $purchase->amount, 'brp_value' => BelievePointsPurchaseSettingsService::brpValue()]
+            );
+            $rewardAwarded = $rp;
+        }
+
+        $availableAt = $isBank
+            ? now()
+            : now()->addHours(BelievePointsPurchaseSettingsService::cardHoldHours());
+
+        $updates = [
+            'status' => 'completed',
+            'reward_points_awarded' => $rewardAwarded,
+            'points_available_at' => $availableAt,
+            'points_released' => false,
+        ];
+        if ($paymentIntentId) {
+            $updates['stripe_payment_intent_id'] = $paymentIntentId;
+        }
+        $purchase->update($updates);
+
+        if ($isBank || BelievePointsPurchaseSettingsService::cardHoldHours() === 0) {
+            self::releasePurchasePoints($purchase->fresh());
+        }
+
+        Log::info('Believe Points checkout purchase settled', [
+            'purchase_id' => $purchase->id,
+            'user_id' => $purchase->user_id,
+            'payment_rail' => $purchase->payment_rail,
+            'reward_points_awarded' => $rewardAwarded,
+            'points_available_at' => $availableAt->toIso8601String(),
+        ]);
+
+        PaymentTransaction::create([
+            'user_id' => $purchase->user_id,
+            'transaction_type' => PaymentTransactionType::BelievePointsPurchase->value,
+            'payable_type' => BelievePointPurchase::class,
+            'payable_id' => $purchase->id,
+            'payment_method' => $isBank ? 'stripe_ach' : 'stripe_card',
+            'amount' => $purchase->amount,
+            'status' => PaymentTransaction::STATUS_COMPLETED,
+            'external_reference' => $paymentIntentId ?? ('believe_points_purchase_'.$purchase->id),
+            'completed_at' => now(),
+            'metadata' => ['believe_point_purchase_id' => $purchase->id],
+        ]);
+
+        return true;
+    }
+
+    public static function releaseDueProcessingPoints(): int
+    {
+        $count = 0;
+        BelievePointPurchase::query()
+            ->where('status', 'completed')
+            ->where('points_released', false)
+            ->whereNotNull('points_available_at')
+            ->where('points_available_at', '<=', now())
+            ->orderBy('id')
+            ->each(function (BelievePointPurchase $purchase) use (&$count) {
+                if (self::releasePurchasePoints($purchase)) {
+                    $count++;
                 }
+            });
+
+        return $count;
+    }
+
+    public static function releasePurchasePoints(BelievePointPurchase $purchase): bool
+    {
+        return (bool) DB::transaction(function () use ($purchase) {
+            /** @var BelievePointPurchase|null $locked */
+            $locked = BelievePointPurchase::lockForUpdate()->find($purchase->id);
+            if (! $locked || $locked->status !== 'completed' || $locked->points_released) {
+                return false;
             }
 
-            $purchase->update([
-                'stripe_payment_intent_id' => $paymentIntentId,
-                'status' => 'completed',
-                'reward_points_awarded' => $rewardAwarded,
-            ]);
+            if ($locked->points_available_at && $locked->points_available_at->isFuture()) {
+                return false;
+            }
 
-            Log::info('Believe Points checkout purchase settled', [
-                'purchase_id' => $purchase->id,
-                'user_id' => $purchase->user_id,
-                'payment_rail' => $purchase->payment_rail,
-                'reward_points_awarded' => $rewardAwarded,
-            ]);
+            $user = $locked->user;
+            if (! $user) {
+                return false;
+            }
 
-            $paymentTx = PaymentTransaction::create([
-                'user_id' => $purchase->user_id,
-                'transaction_type' => PaymentTransactionType::BelievePointsPurchase->value,
-                'payable_type' => BelievePointPurchase::class,
-                'payable_id' => $purchase->id,
-                'payment_method' => ($purchase->payment_rail ?? 'card') === 'bank' ? 'stripe_ach' : 'stripe_card',
-                'amount' => $purchase->amount,
-                'status' => PaymentTransaction::STATUS_COMPLETED,
-                'external_reference' => $paymentIntentId,
-                'completed_at' => now(),
-                'metadata' => ['believe_point_purchase_id' => $purchase->id],
+            $points = (float) $locked->points;
+            if ($points <= 0) {
+                $locked->update(['points_released' => true]);
+
+                return true;
+            }
+
+            if (! $user->releaseProcessingBelievePoints($points)) {
+                Log::warning('Believe Points release: insufficient processing balance', [
+                    'purchase_id' => $locked->id,
+                    'user_id' => $user->id,
+                    'points' => $points,
+                ]);
+
+                return false;
+            }
+
+            $locked->update(['points_released' => true]);
+
+            Log::info('Believe Points released from processing to available', [
+                'purchase_id' => $locked->id,
+                'user_id' => $user->id,
+                'points' => $points,
             ]);
 
             return true;
@@ -108,6 +207,8 @@ class BelievePointPurchaseSettlementService
             $purchase->update([
                 'status' => 'completed',
                 'payment_method' => $paymentMethod,
+                'points_released' => true,
+                'points_available_at' => now(),
             ]);
 
             $paymentTx = PaymentTransaction::query()
@@ -132,7 +233,7 @@ class BelievePointPurchaseSettlementService
                 }
                 $paymentTx->update($txUpdates);
             } else {
-                $paymentTx = PaymentTransaction::create([
+                PaymentTransaction::create([
                     'user_id' => $purchase->user_id,
                     'transaction_type' => PaymentTransactionType::BelievePointsPurchase->value,
                     'payable_type' => BelievePointPurchase::class,
@@ -210,6 +311,7 @@ class BelievePointPurchaseSettlementService
 
         $gross = $purchase->checkout_total !== null ? (float) $purchase->checkout_total : (float) $purchase->amount;
         $feeEst = $purchase->processing_fee_estimate !== null ? (float) $purchase->processing_fee_estimate : 0.0;
+        $platformFee = $purchase->platform_fee !== null ? (float) $purchase->platform_fee : 0.0;
         $rail = $purchase->payment_rail ?? 'card';
         $paymentMethod = $purchase->payment_method
             ?? ($rail === 'bank' ? 'stripe_ach' : 'stripe_card');
@@ -237,6 +339,7 @@ class BelievePointPurchaseSettlementService
             'base_points_usd' => (float) $purchase->amount,
             'checkout_total_usd' => $purchase->checkout_total !== null ? (float) $purchase->checkout_total : null,
             'processing_fee_estimate' => $feeEst > 0 ? round($feeEst, 2) : null,
+            'platform_fee' => $platformFee > 0 ? round($platformFee, 2) : null,
             'payment_rail' => $rail,
             'gross_amount' => round(max(0, $gross), 2),
             'is_auto_replenish' => ($purchase->source ?? '') === 'auto_replenish',
@@ -266,7 +369,7 @@ class BelievePointPurchaseSettlementService
             'type' => 'purchase',
             'status' => $status,
             'amount' => round(max(0, $gross), 2),
-            'fee' => round(max(0, $feeEst), 2),
+            'fee' => round(max(0, $feeEst + $platformFee), 2),
             'currency' => 'USD',
             'payment_method' => $paymentMethod,
             'transaction_id' => $referenceId,
@@ -322,7 +425,18 @@ class BelievePointPurchaseSettlementService
             }
 
             $points = (float) $p->points;
-            if ($points > 0 && ! $user->deductBelievePoints($points)) {
+            $deducted = false;
+            if ($points > 0) {
+                if ($p->points_released) {
+                    $deducted = $user->deductBelievePoints($points);
+                } else {
+                    $deducted = $user->deductProcessingBelievePoints($points);
+                }
+            } else {
+                $deducted = true;
+            }
+
+            if (! $deducted) {
                 Log::warning('Believe Points reversal: could not deduct believe points', [
                     'purchase_id' => $p->id,
                     'user_id' => $user->id,

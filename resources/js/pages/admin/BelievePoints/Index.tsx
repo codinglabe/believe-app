@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/admin/ui/switch"
-import { Coins, Save, AlertCircle, CheckCircle2, DollarSign, TrendingUp, Users, History, CreditCard, Landmark, Smartphone, Wallet, Upload } from "lucide-react"
+import { Coins, Save, AlertCircle, CheckCircle2, DollarSign, TrendingUp, Users, History, CreditCard, Landmark, Smartphone, Wallet } from "lucide-react"
+import { QrCodeUpload } from "@/components/payments/QrCodeUpload"
 import type { BreadcrumbItem } from "@/types"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -68,6 +69,11 @@ interface PageProps {
     enabled: boolean
     min_purchase_amount: number
     max_purchase_amount: number
+    brp_value: number
+    platform_fee_percent: number
+    card_brp_rate: number
+    ach_brp_rate: number
+    card_hold_hours: number
   }
   statistics: {
     total_purchases: number
@@ -92,6 +98,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     enabled: settings.enabled,
     min_purchase_amount: settings.min_purchase_amount.toString(),
     max_purchase_amount: settings.max_purchase_amount.toString(),
+    brp_value: settings.brp_value.toString(),
+    platform_fee_percent: settings.platform_fee_percent.toString(),
+    card_brp_rate: settings.card_brp_rate.toString(),
+    ach_brp_rate: settings.ach_brp_rate.toString(),
+    card_hold_hours: settings.card_hold_hours.toString(),
     stripe_card_enabled: paymentSettings.stripe_card_enabled,
     stripe_ach_enabled: paymentSettings.stripe_ach_enabled,
     stripe_venmo_enabled: paymentSettings.stripe_venmo_enabled,
@@ -154,6 +165,27 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
       newErrors.max_purchase_amount = "Maximum purchase amount must be greater than minimum"
     }
 
+    const brpValue = parseFloat(formData.brp_value)
+    if (!formData.brp_value || Number.isNaN(brpValue) || brpValue < 0) {
+      newErrors.brp_value = "BRP value must be zero or greater"
+    }
+    const platformFee = parseFloat(formData.platform_fee_percent)
+    if (!formData.platform_fee_percent || Number.isNaN(platformFee) || platformFee < 0 || platformFee > 100) {
+      newErrors.platform_fee_percent = "Platform fee must be between 0 and 100"
+    }
+    const cardBrp = parseFloat(formData.card_brp_rate)
+    if (!formData.card_brp_rate || Number.isNaN(cardBrp) || cardBrp < 0) {
+      newErrors.card_brp_rate = "Card BRP rate must be zero or greater"
+    }
+    const achBrp = parseFloat(formData.ach_brp_rate)
+    if (!formData.ach_brp_rate || Number.isNaN(achBrp) || achBrp < 0) {
+      newErrors.ach_brp_rate = "ACH BRP rate must be zero or greater"
+    }
+    const holdHours = parseInt(formData.card_hold_hours, 10)
+    if (!formData.card_hold_hours || Number.isNaN(holdHours) || holdHours < 0 || holdHours > 720) {
+      newErrors.card_hold_hours = "Card hold hours must be between 0 and 720"
+    }
+
     if (formData.venmo_manual_enabled && !formData.venmo_username.trim()) {
       newErrors.venmo_username = "Venmo username is required when Venmo (Manual) is enabled"
     }
@@ -194,6 +226,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         enabled: formData.enabled,
         min_purchase_amount: parseFloat(formData.min_purchase_amount),
         max_purchase_amount: parseFloat(formData.max_purchase_amount),
+        brp_value: parseFloat(formData.brp_value),
+        platform_fee_percent: parseFloat(formData.platform_fee_percent),
+        card_brp_rate: parseFloat(formData.card_brp_rate),
+        ach_brp_rate: parseFloat(formData.ach_brp_rate),
+        card_hold_hours: parseInt(formData.card_hold_hours, 10),
         stripe_card_enabled: formData.stripe_card_enabled,
         stripe_ach_enabled: formData.stripe_ach_enabled,
         stripe_venmo_enabled: formData.stripe_venmo_enabled,
@@ -213,6 +250,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         forceFormData: true,
         onSuccess: () => {
           showSuccessToast("Believe Points settings updated successfully")
+          setFormData((prev) => ({ ...prev, cashapp_qr_image: null }))
           setIsSubmitting(false)
         },
         onError: (errors) => {
@@ -410,6 +448,89 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
 
               <Separator />
 
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold">Purchase Rates &amp; Fees</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Configure BRP value, platform fee, BRP earn rates, and card hold period for the Add Believe Points purchase flow.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="brp_value">BRP Value (USD)</Label>
+                    <Input
+                      id="brp_value"
+                      type="text"
+                      value={formData.brp_value}
+                      onChange={(e) => handleChange("brp_value", e.target.value)}
+                      className={cn(errors.brp_value && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.brp_value && <p className="text-sm text-red-600">{errors.brp_value}</p>}
+                    <p className="text-xs text-muted-foreground">Default: $0.005 per BRP</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="platform_fee_percent">Platform Fee (%)</Label>
+                    <Input
+                      id="platform_fee_percent"
+                      type="text"
+                      value={formData.platform_fee_percent}
+                      onChange={(e) => handleChange("platform_fee_percent", e.target.value)}
+                      className={cn(errors.platform_fee_percent && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.platform_fee_percent && <p className="text-sm text-red-600">{errors.platform_fee_percent}</p>}
+                    <p className="text-xs text-muted-foreground">Applied to BP purchase amount. Default: 1%</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="card_brp_rate">Card BRP Rate (per $1)</Label>
+                    <Input
+                      id="card_brp_rate"
+                      type="text"
+                      value={formData.card_brp_rate}
+                      onChange={(e) => handleChange("card_brp_rate", e.target.value)}
+                      className={cn(errors.card_brp_rate && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.card_brp_rate && <p className="text-sm text-red-600">{errors.card_brp_rate}</p>}
+                    <p className="text-xs text-muted-foreground">Default: 2 BRP per $1</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="ach_brp_rate">ACH BRP Rate (per $1)</Label>
+                    <Input
+                      id="ach_brp_rate"
+                      type="text"
+                      value={formData.ach_brp_rate}
+                      onChange={(e) => handleChange("ach_brp_rate", e.target.value)}
+                      className={cn(errors.ach_brp_rate && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.ach_brp_rate && <p className="text-sm text-red-600">{errors.ach_brp_rate}</p>}
+                    <p className="text-xs text-muted-foreground">Default: 1 BRP per $1</p>
+                  </div>
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="card_hold_hours">Card Hold Hours</Label>
+                    <Input
+                      id="card_hold_hours"
+                      type="text"
+                      value={formData.card_hold_hours}
+                      onChange={(e) => handleChange("card_hold_hours", e.target.value.replace(/[^0-9]/g, ""))}
+                      className={cn("max-w-xs", errors.card_hold_hours && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.card_hold_hours && <p className="text-sm text-red-600">{errors.card_hold_hours}</p>}
+                    <p className="text-xs text-muted-foreground">Hours before card-purchased BP moves from Processing to Available. Default: 24</p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
               {/* Payment Methods */}
               <div className="space-y-4">
                 <div>
@@ -483,22 +604,15 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                         </div>
                         <div>
                           <Label htmlFor="cashapp_qr">QR code image <span className="text-muted-foreground text-xs">(or cashtag ←)</span></Label>
-                          <div className="mt-1 flex items-center gap-3">
-                            {paymentSettings.cashapp_qr_image_url && (
-                              <img src={paymentSettings.cashapp_qr_image_url} alt="Cash App QR" className="h-14 w-14 rounded border object-cover" />
-                            )}
-                            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
-                              <Upload className="h-4 w-4" />
-                              Upload QR
-                              <input
-                                id="cashapp_qr"
-                                type="file"
-                                accept="image/*"
-                                className="sr-only"
-                                onChange={(e) => setFormData((prev) => ({ ...prev, cashapp_qr_image: e.target.files?.[0] ?? null }))}
-                              />
-                            </label>
-                          </div>
+                          <QrCodeUpload
+                            id="cashapp_qr"
+                            className="mt-1"
+                            existingUrl={paymentSettings.cashapp_qr_image_url}
+                            file={formData.cashapp_qr_image}
+                            onChange={(file) => setFormData((prev) => ({ ...prev, cashapp_qr_image: file }))}
+                            disabled={isSubmitting}
+                            error={errors.cashapp_qr_image}
+                          />
                         </div>
                       </div>
                     )}

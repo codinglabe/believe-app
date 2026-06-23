@@ -12,6 +12,7 @@ class BelievePointPurchase extends Model
         'amount',
         'checkout_total',
         'processing_fee_estimate',
+        'platform_fee',
         'points',
         'stripe_session_id',
         'stripe_payment_intent_id',
@@ -21,6 +22,8 @@ class BelievePointPurchase extends Model
         'payment_method',
         'receipt_image',
         'reward_points_awarded',
+        'points_available_at',
+        'points_released',
         'failure_code',
         'failure_message',
         'stripe_refund_id',
@@ -32,9 +35,12 @@ class BelievePointPurchase extends Model
         'amount' => 'decimal:2',
         'checkout_total' => 'decimal:2',
         'processing_fee_estimate' => 'decimal:2',
+        'platform_fee' => 'decimal:2',
         'points' => 'decimal:2',
         'refunded_at' => 'datetime',
         'reward_points_awarded' => 'decimal:2',
+        'points_available_at' => 'datetime',
+        'points_released' => 'boolean',
     ];
 
     /**
@@ -76,7 +82,13 @@ class BelievePointPurchase extends Model
             return false;
         }
 
-        return (float) $user->believe_points >= (float) $this->points;
+        $available = (float) $user->believe_points;
+        $processing = (float) ($user->processing_believe_points ?? 0);
+        if ($this->points_released) {
+            return $available >= (float) $this->points;
+        }
+
+        return ($available + $processing) >= (float) $this->points;
     }
 
     public function user(): BelongsTo
