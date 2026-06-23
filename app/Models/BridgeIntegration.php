@@ -181,7 +181,7 @@ class BridgeIntegration extends Model
                         ->where('integratable_type', Organization::class)
                         ->first();
 
-                if ($orgIntegration !== null && ! empty($orgIntegration->bridge_customer_id)) {
+                if ($orgIntegration !== null) {
                     return $orgIntegration;
                 }
             }
