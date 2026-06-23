@@ -173,7 +173,13 @@ class BridgeIntegration extends Model
                 $orgIntegration = static::with(['primaryWallet', 'wallets'])
                     ->where('integratable_id', $organization->id)
                     ->where('integratable_type', Organization::class)
-                    ->first();
+                    ->whereNotNull('bridge_customer_id')
+                    ->where('bridge_customer_id', '!=', '')
+                    ->first()
+                    ?? static::with(['primaryWallet', 'wallets'])
+                        ->where('integratable_id', $organization->id)
+                        ->where('integratable_type', Organization::class)
+                        ->first();
 
                 if ($orgIntegration !== null && ! empty($orgIntegration->bridge_customer_id)) {
                     return $orgIntegration;
