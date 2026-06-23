@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-vps-self-hosted
+  group: sync-ledger-production
   cancel-in-progress: false
 
 jobs:
@@ -25,20 +25,12 @@ jobs:
       SSH_USE_DEPLOY_HOST: true
 
     steps:
-      - name: Checkout (fast self-hosted mirror)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          SCRIPT="${HOME}/bin/checkout-self-hosted.sh"
-          mkdir -p "${HOME}/bin"
-          curl -fsSL \
-            -H "Authorization: bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github.raw" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/.github/scripts/checkout-self-hosted.sh?ref=${GITHUB_SHA}" \
-            -o "${SCRIPT}"
-          chmod +x "${SCRIPT}"
-          bash "${SCRIPT}"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          clean: true
 
       - name: Setup SSH
         env:

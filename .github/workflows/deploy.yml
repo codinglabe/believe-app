@@ -11,8 +11,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-vps-self-hosted
-  cancel-in-progress: false
+  group: deploy-development-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -83,20 +83,13 @@ jobs:
         --exclude=auth.json
 
     steps:
-      - name: Checkout (fast self-hosted mirror)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          SCRIPT="${HOME}/bin/checkout-self-hosted.sh"
-          mkdir -p "${HOME}/bin"
-          curl -fsSL \
-            -H "Authorization: bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github.raw" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/.github/scripts/checkout-self-hosted.sh?ref=${GITHUB_SHA}" \
-            -o "${SCRIPT}"
-          chmod +x "${SCRIPT}"
-          bash "${SCRIPT}"
+      # Keep .git between runs on the self-hosted runner — incremental fetch is ~seconds (no full re-clone).
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          clean: true
 
       - name: Deploy target
         run: |
