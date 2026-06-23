@@ -83,22 +83,35 @@ jobs:
         --exclude=auth.json
 
     steps:
-      - name: Reset self-hosted workspace
+      # Self-hosted: skip actions/checkout (re-downloads repo from GitHub ~3–6 min).
+      # Uses a persistent bare mirror on the VPS instead (~5–20 s).
+      - name: Checkout (fast self-hosted mirror)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cd "${GITHUB_WORKSPACE}"
-          shopt -s dotglob nullglob
-          for item in * .[!.]* ..?*; do
-            [ -e "${item}" ] || continue
-            rm -rf "${item}"
-          done
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-          fetch-tags: false
-          clean: true
+          chmod +x "${HOME}/bin/checkout-self-hosted.sh" 2>/dev/null || true
+          if [ -x "${HOME}/bin/checkout-self-hosted.sh" ]; then
+            bash "${HOME}/bin/checkout-self-hosted.sh"
+          else
+            MIRROR="${HOME}/.cache/believe-app-mirror.git"
+            REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            mkdir -p "$(dirname "${MIRROR}")" "${GITHUB_WORKSPACE}"
+            if [ ! -d "${MIRROR}/objects" ]; then
+              git init --bare "${MIRROR}"
+              git -C "${MIRROR}" remote add origin "${REPO_URL}"
+            else
+              git -C "${MIRROR}" remote set-url origin "${REPO_URL}"
+            fi
+            git -C "${MIRROR}" fetch --depth=1 --no-tags origin "${GITHUB_SHA}"
+            shopt -s dotglob nullglob
+            for item in "${GITHUB_WORKSPACE}"/* "${GITHUB_WORKSPACE}"/.[!.]* "${GITHUB_WORKSPACE}"/..?*; do
+              [ -e "${item}" ] || continue
+              rm -rf "${item}"
+            done
+            git -C "${MIRROR}" archive "${GITHUB_SHA}" | tar -x -C "${GITHUB_WORKSPACE}"
+            echo "Checkout OK (inline bootstrap)"
+          fi
 
       - name: Deploy target
         run: |
