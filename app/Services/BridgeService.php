@@ -1617,9 +1617,9 @@ class BridgeService
      * @param string $virtualAccountId Virtual account ID
      * @return array Response with transaction history
      */
-    public function getVirtualAccountHistory(string $customerId, string $virtualAccountId): array
+    public function getVirtualAccountHistory(string $customerId, string $virtualAccountId, array $query = []): array
     {
-        return $this->makeRequest('GET', "/customers/{$customerId}/virtual_accounts/{$virtualAccountId}/history");
+        return $this->makeRequest('GET', "/customers/{$customerId}/virtual_accounts/{$virtualAccountId}/history", $query);
     }
 
     // ==================== CARD ACCOUNTS ====================
