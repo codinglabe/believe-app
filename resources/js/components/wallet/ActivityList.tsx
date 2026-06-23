@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight } from 'lucide-react'
 import { Activity as ActivityType } from './types'
 import { formatDate, formatCurrency } from './utils'
+import { ActivityStatusBadge } from './ActivityStatusBadge'
 
 interface ActivityListProps {
     activities: ActivityType[]
@@ -137,10 +138,14 @@ export function ActivityList({
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.2, delay: Math.min(index * 0.04, 0.2) }}
                                     onClick={() => onActivityClick?.(activity)}
-                                    className={`w-full flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left hover:border-border hover:bg-muted/40 transition-colors ${
+                                    className={`relative w-full flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 pr-8 text-left hover:border-border hover:bg-muted/40 transition-colors ${
                                         onActivityClick ? 'cursor-pointer' : ''
                                     }`}
                                 >
+                                    <ActivityStatusBadge
+                                        status={activity.status}
+                                        className="absolute top-2 right-2"
+                                    />
                                     <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
                                         {icon}
                                     </div>
