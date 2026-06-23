@@ -16,7 +16,7 @@ export type WalletBridgeUpdatePayload = {
 }
 
 /**
- * Listen for Bridge wallet updates via Reverb (transfer state, deposits, balance).
+ * Listen for Believe wallet updates via Reverb (transfer state, deposits, balance).
  */
 export function useWalletBridgeRealtime(options: {
     userId?: number | null
@@ -38,10 +38,14 @@ export function useWalletBridgeRealtime(options: {
         }
 
         channel.listen('.wallet.bridge.updated', handler)
+        channel.error((error: unknown) => {
+            if (import.meta.env.DEV) {
+                console.error('[Wallet] Reverb user channel failed:', error)
+            }
+        })
 
         return () => {
             channel.stopListening('.wallet.bridge.updated', handler)
-            instance.leave(`user.${userId}`)
         }
     }, [enabled, userId, onUpdate])
 }

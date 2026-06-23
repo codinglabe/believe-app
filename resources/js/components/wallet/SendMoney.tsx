@@ -182,7 +182,7 @@ export function SendMoney({
                             value={recipientSearch}
                             onChange={(e) => onSearchChange(e.target.value)}
                             onFocus={onSearchFocus}
-                            placeholder="Search by name or email…"
+                            placeholder="Search wallet-connected members or organizations…"
                             disabled={isLoading}
                             className="w-full rounded-xl border border-border bg-muted/50 py-2.5 pl-10 pr-10 text-sm focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all disabled:opacity-50"
                         />
@@ -254,9 +254,9 @@ export function SendMoney({
                                         </div>
                                     ) : recipientSearch.trim().length > 0 ? (
                                         <div className="px-4 py-6 text-center">
-                                            <p className="text-sm text-muted-foreground">No members found</p>
+                                            <p className="text-sm text-muted-foreground">No wallet-connected recipients found</p>
                                             <p className="text-xs text-muted-foreground/70 mt-0.5">
-                                                Try a different name or email
+                                                Only verified members and organizations with a connected wallet appear here
                                             </p>
                                         </div>
                                     ) : null}

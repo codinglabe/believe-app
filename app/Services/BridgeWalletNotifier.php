@@ -168,7 +168,7 @@ class BridgeWalletNotifier
         ], [
             'title' => 'Incoming transfer',
             'body' => ($senderName !== '' ? $senderName : 'Someone')
-                .' sent you $'.number_format($amount, 2).' — processing on Bridge.',
+                .' sent you $'.number_format($amount, 2).' — processing.',
         ]);
     }
 
@@ -276,9 +276,7 @@ class BridgeWalletNotifier
         if ($entity instanceof User) {
             $ids[] = (int) $entity->id;
         } elseif ($entity instanceof Organization) {
-            if ($entity->user_id) {
-                $ids[] = (int) $entity->user_id;
-            }
+            $ids = $entity->walletNotificationUserIds();
         }
 
         return array_values(array_unique(array_filter($ids)));
@@ -302,12 +300,21 @@ class BridgeWalletNotifier
     {
         $walletId = (string) ($endpoint['bridge_wallet_id'] ?? '');
         if ($walletId !== '') {
+            $byIntegration = BridgeIntegration::query()
+                ->where('bridge_wallet_id', $walletId)
+                ->first();
+            if ($byIntegration !== null) {
+                return $byIntegration;
+            }
+
             $wallet = BridgeWallet::query()
                 ->where('bridge_wallet_id', $walletId)
                 ->with('bridgeIntegration')
                 ->first();
 
-            return $wallet?->bridgeIntegration;
+            if ($wallet?->bridgeIntegration !== null) {
+                return $wallet->bridgeIntegration;
+            }
         }
 
         $address = strtolower(trim((string) ($endpoint['to_address'] ?? $endpoint['from_address'] ?? '')));
@@ -395,7 +402,7 @@ class BridgeWalletNotifier
             return [
                 'title' => 'Incoming transfer processing',
                 'body' => $name !== ''
-                    ? "{$name} sent {$amountLabel} — waiting for Bridge to complete."
+                    ? "{$name} sent {$amountLabel} — funds are on the way."
                     : "You have {$amountLabel} incoming — processing.",
             ];
         }
@@ -437,14 +444,14 @@ class BridgeWalletNotifier
         if ($isOutgoing) {
             return [
                 'title' => 'Wallet withdrawal',
-                'body' => "{$amountLabel} left your Bridge wallet.",
+                'body' => "{$amountLabel} was sent to your bank account.",
             ];
         }
 
         if (in_array($type, ['deposit', 'direct_deposit'], true)) {
             return [
                 'title' => 'Wallet deposit',
-                'body' => "{$amountLabel} was added to your Bridge wallet.",
+                'body' => "{$amountLabel} was added to your Believe wallet.",
             ];
         }
 

@@ -850,6 +850,20 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         onUpdate: handleBridgeRealtimeUpdate,
     })
 
+    // Fallback refresh when Reverb is unavailable (poll every 20s while popup is open).
+    useEffect(() => {
+        if (!isOpen || !bridgeInitialized) {
+            return
+        }
+
+        const interval = window.setInterval(() => {
+            setWalletRefreshNonce((n) => n + 1)
+            bridgeBalanceRefreshRef.current()
+        }, 20000)
+
+        return () => window.clearInterval(interval)
+    }, [isOpen, bridgeInitialized])
+
     useEffect(() => {
         if (!isOpen || !isBridgeKycPending(kycStatus)) {
             return
