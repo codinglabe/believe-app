@@ -14,6 +14,7 @@ use App\Models\WalletFee;
 use App\Models\Transaction;
 use App\Models\LiquidationAddress;
 use App\Services\BridgeService;
+use App\Services\BridgeVirtualAccountDepositService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1048,6 +1049,15 @@ class BridgeWalletController extends Controller
 
             $customer = $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
             $integration->refresh();
+
+            try {
+                app(BridgeVirtualAccountDepositService::class)->syncFromBridge($integration);
+            } catch (\Throwable $syncError) {
+                Log::warning('Bridge virtual account deposit sync failed during status check', [
+                    'integration_id' => $integration->id,
+                    'error' => $syncError->getMessage(),
+                ]);
+            }
 
             $needsVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser, $customer);
 

@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\BridgeService;
+use App\Services\BridgeVirtualAccountDepositService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -21,10 +22,16 @@ class BridgeWebhookController extends Controller
 
     protected WalletTransactionNotifier $walletTransactionNotifier;
 
-    public function __construct(BridgeService $bridgeService, WalletTransactionNotifier $walletTransactionNotifier)
-    {
+    protected BridgeVirtualAccountDepositService $virtualAccountDepositService;
+
+    public function __construct(
+        BridgeService $bridgeService,
+        WalletTransactionNotifier $walletTransactionNotifier,
+        BridgeVirtualAccountDepositService $virtualAccountDepositService,
+    ) {
         $this->bridgeService = $bridgeService;
         $this->walletTransactionNotifier = $walletTransactionNotifier;
+        $this->virtualAccountDepositService = $virtualAccountDepositService;
     }
 
     /**
@@ -114,7 +121,7 @@ class BridgeWebhookController extends Controller
                     break;
 
                 case 'virtual_account.activity':
-                    $this->handleVirtualAccountActivity($eventType, $eventObject);
+                    $this->handleVirtualAccountActivity($eventType, $eventObject, $eventObjectStatus);
                     break;
 
                 case 'card_account':
@@ -1180,135 +1187,62 @@ class BridgeWebhookController extends Controller
      * Per Bridge.xyz docs: Virtual account activity includes deposits and other events
      * Event types: payment_submitted, payment_processed, etc.
      */
-    private function handleVirtualAccountActivity(string $eventType, array $eventObject)
+    private function handleVirtualAccountActivity(string $eventType, array $eventObject, ?string $eventObjectStatus = null): void
     {
         $activityId = $eventObject['id'] ?? null;
         $virtualAccountId = $eventObject['virtual_account_id'] ?? null;
         $customerId = $eventObject['customer_id'] ?? null;
-        $type = $eventObject['type'] ?? null; // e.g., 'payment_submitted', 'payment_processed'
-        $amount = $eventObject['amount'] ?? null;
-        $state = $eventObject['state'] ?? null;
+        $activityType = $this->virtualAccountDepositService->resolveActivityType($eventObject, $eventObjectStatus);
 
         Log::info('Bridge virtual account activity', [
             'activity_id' => $activityId,
             'virtual_account_id' => $virtualAccountId,
             'customer_id' => $customerId,
-            'type' => $type,
-            'state' => $state,
-            'amount' => $amount,
+            'activity_type' => $activityType,
+            'amount' => $eventObject['amount'] ?? null,
             'event_type' => $eventType,
+            'event_object_status' => $eventObjectStatus,
         ]);
 
-        // Find integration by customer ID
-        if (!$customerId) {
+        if (! $customerId) {
             Log::warning('Bridge virtual account activity missing customer_id', [
                 'activity_id' => $activityId,
                 'virtual_account_id' => $virtualAccountId,
             ]);
+
             return;
         }
 
         $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-        if (!$integration) {
+        if (! $integration) {
             Log::warning('Bridge integration not found for virtual account activity', [
                 'customer_id' => $customerId,
                 'virtual_account_id' => $virtualAccountId,
             ]);
+
             return;
         }
 
-        if (in_array($type, ['refunded', 'refund_failed'], true)) {
+        if (in_array($activityType, ['refunded', 'refund_failed'], true)) {
             $this->reverseVirtualAccountDeposit($integration, $eventObject, $eventType);
 
             return;
         }
 
-        // Handle payment_processed - deposit completed
-        if ($type === 'payment_processed' || $state === 'payment_processed') {
-            try {
-                $user = $integration->integratable;
-                if (!$user) {
-                    Log::warning('User/Organization not found for virtual account deposit', [
-                        'integration_id' => $integration->id,
-                        'customer_id' => $customerId,
-                    ]);
-                    return;
-                }
-
-                // Get the user model (for organizations, get the associated user)
-                if ($integration->integratable_type === Organization::class) {
-                    $user = $user->user ?? null;
-                }
-
-                if (!$user) {
-                    Log::warning('User not found for virtual account deposit', [
-                        'integration_id' => $integration->id,
-                    ]);
-                    return;
-                }
-
-                $depositAmount = (float) ($amount ?? 0);
-                $depositId = $eventObject['deposit_id'] ?? null;
-                if ($depositAmount > 0) {
-                    $existingQuery = Transaction::where('user_id', $user->id)
-                        ->where('type', 'deposit')
-                        ->where('status', 'completed');
-
-                    if ($depositId) {
-                        $existingQuery->whereJsonContains('meta->deposit_id', $depositId);
-                    } else {
-                        $existingQuery
-                            ->whereJsonContains('meta->virtual_account_id', $virtualAccountId)
-                            ->whereJsonContains('meta->activity_id', $activityId);
-                    }
-
-                    $existingTransaction = $existingQuery->first();
-
-                    if (!$existingTransaction) {
-                        // Add balance to user
-                        $user->increment('balance', $depositAmount);
-
-                        // Record deposit transaction
-                        $depositTransaction = $user->recordTransaction([
-                            'type' => 'deposit',
-                            'amount' => $depositAmount,
-                            'status' => 'completed',
-                            'payment_method' => 'bridge',
-                            'meta' => [
-                                'virtual_account_id' => $virtualAccountId,
-                                'activity_id' => $activityId,
-                                'deposit_id' => $depositId,
-                                'customer_id' => $customerId,
-                                'bridge_event_type' => $eventType,
-                                'bridge_state' => $state,
-                            ],
-                            'processed_at' => now(),
-                        ]);
-
-                        $this->walletTransactionNotifier->notify($user, $depositTransaction);
-
-                        Log::info('Bridge virtual account deposit processed', [
-                            'user_id' => $user->id,
-                            'integration_id' => $integration->id,
-                            'amount' => $depositAmount,
-                            'virtual_account_id' => $virtualAccountId,
-                            'activity_id' => $activityId,
-                        ]);
-                    } else {
-                        Log::info('Bridge virtual account deposit already processed', [
-                            'transaction_id' => $existingTransaction->id,
-                            'activity_id' => $activityId,
-                        ]);
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('Exception processing virtual account deposit', [
-                    'integration_id' => $integration->id,
-                    'customer_id' => $customerId,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-            }
+        try {
+            $this->virtualAccountDepositService->processVirtualAccountActivity(
+                $integration,
+                $eventObject,
+                $eventType,
+                $eventObjectStatus,
+            );
+        } catch (\Exception $e) {
+            Log::error('Exception processing virtual account activity', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'activity_type' => $activityType,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

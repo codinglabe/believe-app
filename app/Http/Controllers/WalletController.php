@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\BoardMember;
+use App\Models\BridgeIntegration;
 use App\Support\SupporterSubscriptionService;
 use App\Models\Transaction;
+use App\Services\BridgeVirtualAccountDepositService;
 use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -177,6 +179,24 @@ class WalletController extends Controller
                 \Illuminate\Support\Facades\Log::warning('Failed to fetch Bridge balance', [
                     'error' => $bridgeError->getMessage(),
                     'user_id' => $user->id,
+                ]);
+            }
+
+            // Reconcile ACH/fiat virtual account deposits from Bridge history (webhook fallback).
+            try {
+                $depositIntegration = BridgeIntegration::with(['primaryWallet', 'wallets'])
+                    ->where('integratable_id', $entity->id)
+                    ->where('integratable_type', $entityType)
+                    ->first();
+
+                if ($depositIntegration?->bridge_customer_id) {
+                    app(BridgeVirtualAccountDepositService::class)->syncFromBridge($depositIntegration);
+                    $entityUser->refresh();
+                }
+            } catch (\Throwable $syncError) {
+                Log::warning('Bridge virtual account deposit sync failed', [
+                    'user_id' => $user->id,
+                    'error' => $syncError->getMessage(),
                 ]);
             }
 

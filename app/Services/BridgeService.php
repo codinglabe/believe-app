@@ -1233,6 +1233,16 @@ class BridgeService
         return $this->makeRequest('GET', "/customers/{$customerId}/wallets/{$walletId}");
     }
 
+    /**
+     * Wallet transaction history (deposits, withdrawals, etc.)
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/bridge-wallets/get-transaction-history-for-a-bridge-wallet
+     */
+    public function getBridgeWalletHistory(string $customerId, string $walletId, array $query = []): array
+    {
+        return $this->makeRequest('GET', "/customers/{$customerId}/wallets/{$walletId}/history", $query);
+    }
+
 
     // ==================== VIRTUAL ACCOUNTS ====================
 
