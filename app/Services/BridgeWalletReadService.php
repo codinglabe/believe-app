@@ -89,7 +89,23 @@ class BridgeWalletReadService
      */
     public function usesBridgeWalletAsSourceOfTruth(?BridgeIntegration $integration): bool
     {
-        return $integration !== null && ! empty($integration->bridge_customer_id);
+        return $this->shouldUseBridgeActivity($integration);
+    }
+
+    /**
+     * True when Bridge API can supply wallet activity for this integration (incl. org stubs resolved via context).
+     */
+    public function shouldUseBridgeActivity(?BridgeIntegration $integration): bool
+    {
+        if ($integration === null) {
+            return false;
+        }
+
+        if (! empty($integration->bridge_customer_id)) {
+            return true;
+        }
+
+        return $this->resolveActivityContext($integration) !== null;
     }
 
     /**
@@ -138,6 +154,18 @@ class BridgeWalletReadService
                 $this->mapTransferActivities(
                     $customerId,
                     $walletIdsForTransfers,
+                    $this->collectOnRampTransferIds($activities),
+                    $viewerWalletAddress,
+                    $fetchLimit,
+                ),
+            );
+        } else {
+            $viewerWalletAddress = $this->resolveIntegrationWalletAddress($primaryIntegration, $customerId);
+            $activities = array_merge(
+                $activities,
+                $this->mapTransferActivities(
+                    $customerId,
+                    [],
                     $this->collectOnRampTransferIds($activities),
                     $viewerWalletAddress,
                     $fetchLimit,
@@ -205,10 +233,29 @@ class BridgeWalletReadService
             ->with(['primaryWallet', 'wallets', 'integratable'])
             ->get();
 
+        $organizationIds = collect();
+
         if ($integration->integratable_type === Organization::class) {
+            $organizationIds->push((int) $integration->integratable_id);
+        }
+
+        foreach ($integrations as $row) {
+            if ($row->integratable_type === Organization::class) {
+                $organizationIds->push((int) $row->integratable_id);
+            }
+            if ($row->integratable_type === User::class && $row->integratable instanceof User) {
+                $organizationIds = $organizationIds->merge(
+                    Organization::query()
+                        ->where('user_id', $row->integratable_id)
+                        ->pluck('id')
+                );
+            }
+        }
+
+        if ($organizationIds->isNotEmpty()) {
             $orgRows = BridgeIntegration::query()
                 ->where('integratable_type', Organization::class)
-                ->where('integratable_id', $integration->integratable_id)
+                ->whereIn('integratable_id', $organizationIds->unique()->filter()->values())
                 ->with(['primaryWallet', 'wallets', 'integratable'])
                 ->get();
             $integrations = $integrations->merge($orgRows)->unique('id')->values();
@@ -321,10 +368,12 @@ class BridgeWalletReadService
 
         foreach ($bestByKey as $activity) {
             $depositId = $activity['deposit_id'] ?? null;
-            if (is_string($depositId) && $depositId !== '') {
+            $type = (string) ($activity['type'] ?? '');
+
+            // Only collapse bank on-ramp lifecycle rows by deposit_id — not wallet transfers.
+            if (is_string($depositId) && $depositId !== '' && $type === 'deposit') {
                 if (! isset($byDepositId[$depositId])
-                    || $this->activityRank($activity) + $this->depositGroupTypeBonus($activity)
-                    > $this->activityRank($byDepositId[$depositId]) + $this->depositGroupTypeBonus($byDepositId[$depositId])) {
+                    || $this->activityRank($activity) > $this->activityRank($byDepositId[$depositId])) {
                     $byDepositId[$depositId] = $activity;
                 }
 
@@ -335,13 +384,8 @@ class BridgeWalletReadService
         }
 
         $deduped = [];
-        $emittedDepositIds = [];
 
         foreach (array_values($byDepositId) as $activity) {
-            $depositId = (string) ($activity['deposit_id'] ?? '');
-            if ($depositId !== '') {
-                $emittedDepositIds[$depositId] = true;
-            }
             unset(
                 $activity['sort_date'],
                 $activity['dedupe_key'],
@@ -350,11 +394,6 @@ class BridgeWalletReadService
         }
 
         foreach (array_values($standalone) as $activity) {
-            $depositId = (string) ($activity['deposit_id'] ?? '');
-            if ($depositId !== '' && isset($emittedDepositIds[$depositId])) {
-                continue;
-            }
-
             unset(
                 $activity['sort_date'],
                 $activity['dedupe_key'],
@@ -679,17 +718,24 @@ class BridgeWalletReadService
                 continue;
             }
 
-            $sourceWalletId = (string) ($transfer['source']['bridge_wallet_id'] ?? '');
-            $destWalletId = (string) ($transfer['destination']['bridge_wallet_id'] ?? '');
-            $destToAddress = strtolower((string) ($transfer['destination']['to_address'] ?? ''));
+            $source = is_array($transfer['source'] ?? null) ? $transfer['source'] : [];
+            $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
+            $sourceWalletId = (string) ($source['bridge_wallet_id'] ?? '');
+            $destWalletId = (string) ($destination['bridge_wallet_id'] ?? '');
+            $destToAddress = strtolower((string) ($destination['to_address'] ?? ''));
             $viewerAddress = strtolower((string) ($viewerWalletAddress ?? ''));
-            $isOutgoing = $sourceWalletId !== '' && isset($viewerWalletIdSet[$sourceWalletId]);
-            $isIncoming = ($destWalletId !== '' && isset($viewerWalletIdSet[$destWalletId]))
-                || ($destToAddress !== '' && $viewerAddress !== '' && $destToAddress === $viewerAddress);
+            $onBehalf = (string) ($transfer['on_behalf_of'] ?? $transfer['customer_id'] ?? '');
+            $destCustomer = (string) ($destination['customer_id'] ?? '');
+            $sourceCustomer = (string) ($source['customer_id'] ?? '');
 
-            // When both ends match known wallets, on_behalf_of is the sender's customer id.
+            $isOutgoing = ($sourceWalletId !== '' && isset($viewerWalletIdSet[$sourceWalletId]))
+                || $onBehalf === $customerId
+                || $sourceCustomer === $customerId;
+            $isIncoming = ($destWalletId !== '' && isset($viewerWalletIdSet[$destWalletId]))
+                || ($destToAddress !== '' && $viewerAddress !== '' && $destToAddress === $viewerAddress)
+                || $destCustomer === $customerId;
+
             if ($isOutgoing && $isIncoming) {
-                $onBehalf = (string) ($transfer['on_behalf_of'] ?? $transfer['customer_id'] ?? '');
                 if ($onBehalf === $customerId) {
                     $isIncoming = false;
                 } else {
@@ -1651,11 +1697,14 @@ class BridgeWalletReadService
                 return true;
             }
 
-            foreach ([$source, $destination] as $endpoint) {
-                $endpointCustomer = (string) ($endpoint['customer_id'] ?? '');
-                if ($endpointCustomer === $customerId) {
-                    return true;
-                }
+            $destCustomer = (string) ($destination['customer_id'] ?? '');
+            if ($destCustomer === $customerId) {
+                return true;
+            }
+
+            $sourceCustomer = (string) ($source['customer_id'] ?? '');
+            if ($sourceCustomer === $customerId) {
+                return true;
             }
         }
 
