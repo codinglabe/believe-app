@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight } from 'lucide-react'
 import { Activity as ActivityType } from './types'
 import { formatDate, formatCurrency } from './utils'
-import { ActivityStatusBadge } from './ActivityStatusBadge'
+import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatusBadge'
 
 interface ActivityListProps {
     activities: ActivityType[]
@@ -146,7 +146,7 @@ export function ActivityList({
                                     }`}
                                 >
                                     <ActivityStatusBadge
-                                        status={activity.bridge_state ?? activity.status}
+                                        status={resolveActivityBadgeStatus(activity)}
                                         className="absolute top-2 right-2"
                                     />
                                     <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
@@ -154,7 +154,12 @@ export function ActivityList({
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <p className="text-sm font-medium truncate">{label}</p>
-                                        <p className="text-[11px] text-muted-foreground">{formatDate(activity.date)}</p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {formatDate(activity.date)}
+                                            {activity.type === 'transfer_sent' && activity.recipient_type ? (
+                                                <span className="capitalize"> · {activity.recipient_type}</span>
+                                            ) : null}
+                                        </p>
                                     </div>
                                     <div className="shrink-0 text-right">
                                         <p className={`text-sm font-semibold tabular-nums ${amountClass}`}>

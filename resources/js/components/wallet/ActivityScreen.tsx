@@ -4,7 +4,7 @@ import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-r
 import { Activity as ActivityType } from './types'
 import { formatDate, formatCurrency } from './utils'
 import { DepositPaymentMethodBadge } from './DepositPaymentMethodBadge'
-import { ActivityStatusBadge } from './ActivityStatusBadge'
+import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatusBadge'
 import { getCsrfToken as getWalletCsrfToken } from './utils'
 import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
 import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
@@ -169,7 +169,7 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
                                 }`}
                             >
                                 <ActivityStatusBadge
-                                    status={activity.bridge_state ?? activity.status}
+                                    status={resolveActivityBadgeStatus(activity)}
                                     className="absolute top-2 right-2"
                                 />
                                 <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">

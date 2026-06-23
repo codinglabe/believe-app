@@ -47,7 +47,7 @@ export function normalizeActivityStatus(status?: string | null): ActivityStatusK
         return 'pending'
     }
 
-    if (['failed', 'error', 'undeliverable', 'returned'].includes(value)) {
+    if (['failed', 'error', 'undeliverable', 'returned', 'return'].includes(value)) {
         return 'failed'
     }
 
@@ -63,7 +63,19 @@ export function normalizeActivityStatus(status?: string | null): ActivityStatusK
         return 'refunded'
     }
 
+    if (['deposit', 'direct_deposit', 'withdrawal', 'withdraw', 'card_spend', 'card_refund'].includes(value)) {
+        return 'completed'
+    }
+
     return value === '' ? 'completed' : 'unknown'
+}
+
+/** Prefer normalized UI status; fall back to Bridge lifecycle state. */
+export function resolveActivityBadgeStatus(activity: {
+    status?: string | null
+    bridge_state?: string | null
+}): string | null | undefined {
+    return activity.status ?? activity.bridge_state
 }
 
 const STATUS_META: Record<
