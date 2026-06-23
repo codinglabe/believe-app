@@ -115,11 +115,9 @@ class BridgeWalletReadService
             $activities = array_merge($activities, $this->mapWalletHistoryActivities($customerId, $walletId, $vaContext));
         }
 
-        $settledDepositSignals = $this->collectSettledDepositSignals($activities);
-
         $activities = array_merge(
             $activities,
-            $this->mapVirtualAccountActivities($settledDepositSignals, $vaContext),
+            $this->mapVirtualAccountActivities($vaContext),
         );
 
         if ($walletId !== null) {
@@ -132,41 +130,6 @@ class BridgeWalletReadService
         usort($activities, fn (array $a, array $b) => strcmp($b['sort_date'] ?? '', $a['sort_date'] ?? ''));
 
         return array_slice($this->dedupeActivities($activities), 0, max(1, $limit));
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $activities
-     * @return array{deposit_ids: array<int, string>, va_event_ids: array<int, string>}
-     */
-    private function collectSettledDepositSignals(array $activities): array
-    {
-        $depositIds = [];
-        $vaEventIds = [];
-
-        foreach ($activities as $activity) {
-            if (($activity['source'] ?? '') !== 'bridge_wallet_history') {
-                continue;
-            }
-
-            if (! in_array($activity['type'] ?? '', ['deposit', 'transfer_received'], true)) {
-                continue;
-            }
-
-            $depositId = $activity['deposit_id'] ?? null;
-            if (is_string($depositId) && $depositId !== '') {
-                $depositIds[] = $depositId;
-            }
-
-            $vaEventId = $activity['virtual_account_event_id'] ?? null;
-            if (is_string($vaEventId) && $vaEventId !== '') {
-                $vaEventIds[] = $vaEventId;
-            }
-        }
-
-        return [
-            'deposit_ids' => array_values(array_unique($depositIds)),
-            'va_event_ids' => array_values(array_unique($vaEventIds)),
-        ];
     }
 
     /**
@@ -226,7 +189,29 @@ class BridgeWalletReadService
         }
 
         $deduped = [];
-        foreach (array_merge(array_values($byDepositId), array_values($standalone)) as $activity) {
+        $emittedDepositIds = [];
+
+        foreach (array_values($byDepositId) as $activity) {
+            $depositId = (string) ($activity['deposit_id'] ?? '');
+            if ($depositId !== '') {
+                $emittedDepositIds[$depositId] = true;
+            }
+            unset(
+                $activity['sort_date'],
+                $activity['dedupe_key'],
+                $activity['deposit_id'],
+                $activity['bridge_transfer_id'],
+                $activity['virtual_account_event_id'],
+            );
+            $deduped[] = $activity;
+        }
+
+        foreach (array_values($standalone) as $activity) {
+            $depositId = (string) ($activity['deposit_id'] ?? '');
+            if ($depositId !== '' && isset($emittedDepositIds[$depositId])) {
+                continue;
+            }
+
             unset(
                 $activity['sort_date'],
                 $activity['dedupe_key'],
@@ -309,6 +294,12 @@ class BridgeWalletReadService
             }
 
             $paymentRoute = is_array($event['payment_route'] ?? null) ? $event['payment_route'] : [];
+
+            // ACH/VA on-ramp lifecycle is owned by mapVirtualAccountActivities (one row per deposit_id).
+            if ($isDeposit && $this->isVirtualAccountOnRamp($paymentRoute)) {
+                continue;
+            }
+
             $routeType = strtolower((string) ($paymentRoute['type'] ?? ''));
             $depositId = isset($paymentRoute['deposit_id']) ? (string) $paymentRoute['deposit_id'] : null;
             $transferId = isset($paymentRoute['transfer_id']) ? (string) $paymentRoute['transfer_id'] : null;
@@ -377,13 +368,8 @@ class BridgeWalletReadService
     }
 
     /**
-     * Virtual account on-ramp: one UI row per Bridge deposit_id.
+     * One UI row per VA deposit_id — latest lifecycle event only (funds_scheduled → payment_processed).
      *
-     * Bridge emits multiple lifecycle events (funds_scheduled → payment_processed) for the
-     * same deposit. Group by deposit_id and prefer payment_processed as completed; skip VA
-     * rows when wallet history already settled the same deposit_id.
-     *
-     * @param  array{deposit_ids: array<int, string>, va_event_ids: array<int, string>}  $settledDepositSignals
      * @param  array{
      *     virtual_account_id: string|null,
      *     by_event_id: array<string, array<string, mixed>>,
@@ -391,16 +377,12 @@ class BridgeWalletReadService
      * }  $vaContext
      * @return array<int, array<string, mixed>>
      */
-    private function mapVirtualAccountActivities(
-        array $settledDepositSignals,
-        array $vaContext,
-    ): array {
-        $events = array_values($vaContext['by_event_id']);
-        $settledDepositIds = $settledDepositSignals['deposit_ids'];
-        $bestByDeposit = [];
+    private function mapVirtualAccountActivities(array $vaContext): array
+    {
+        $activities = [];
 
-        foreach ($events as $event) {
-            if (! is_array($event)) {
+        foreach ($vaContext['best_by_deposit_id'] as $depositId => $event) {
+            if (! is_array($event) || $depositId === '') {
                 continue;
             }
 
@@ -425,53 +407,19 @@ class BridgeWalletReadService
                 continue;
             }
 
-            $depositId = isset($event['deposit_id']) ? (string) $event['deposit_id'] : '';
-            if ($depositId !== '' && in_array($depositId, $settledDepositIds, true)) {
-                continue;
-            }
-
-            $groupKey = $this->buildDepositDedupeKey(
-                $depositId !== '' ? $depositId : null,
-                $depositId === '' ? $id : null,
-                null,
-                $id,
-            );
-
-            $candidate = [
-                'event' => $event,
-                'activity_type' => $activityType,
-                'amount' => $amount,
-                'id' => $id,
-                'deposit_id' => $depositId !== '' ? $depositId : null,
-                'group_key' => $groupKey,
-                'priority' => $this->virtualAccountActivityPriority($activityType),
-            ];
-
-            if (! isset($bestByDeposit[$groupKey])
-                || $candidate['priority'] > $bestByDeposit[$groupKey]['priority']) {
-                $bestByDeposit[$groupKey] = $candidate;
-            }
-        }
-
-        $activities = [];
-        foreach ($bestByDeposit as $candidate) {
-            $event = $candidate['event'];
-            $activityType = $candidate['activity_type'];
             $status = $activityType === 'payment_processed' ? 'completed' : 'pending';
             $date = $this->parseBridgeTimestamp($event['created_at'] ?? $event['updated_at'] ?? null);
-            $depositId = $candidate['deposit_id'];
-            $id = $candidate['id'];
             $vaSenderName = $this->formatVirtualAccountDepositLabel($event);
             $donorName = $vaSenderName ?? 'ACH / wire deposit';
 
             $activities[] = [
-                'id' => 'bridge_va_'.$id,
-                'dedupe_key' => $candidate['group_key'],
+                'id' => 'bridge_va_'.$depositId,
+                'dedupe_key' => 'deposit:'.$depositId,
                 'deposit_id' => $depositId,
                 'virtual_account_event_id' => $id,
                 'bridge_transfer_id' => null,
                 'type' => 'deposit',
-                'amount' => $candidate['amount'],
+                'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
                 'donor_name' => $donorName,
@@ -597,8 +545,9 @@ class BridgeWalletReadService
     {
         $routeType = strtolower((string) ($paymentRoute['type'] ?? ''));
 
-        return in_array($routeType, ['virtual_account', 'ach', 'wire', 'ach_push', 'ach_pull'], true)
-            || ! empty($paymentRoute['deposit_id']);
+        return $routeType === 'virtual_account'
+            || ! empty($paymentRoute['virtual_account_event_id'])
+            || ! empty($paymentRoute['virtual_account_id']);
     }
 
     private function virtualAccountActivityPriority(string $activityType): int
