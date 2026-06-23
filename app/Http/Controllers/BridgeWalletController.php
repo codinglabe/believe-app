@@ -3201,6 +3201,22 @@ class BridgeWalletController extends Controller
                 ], 400);
             }
 
+            $bridgeSpendable = $senderWallet !== null
+                ? (float) ($senderWallet['balance'] ?? 0)
+                : null;
+
+            if ($bridgeSpendable !== null && $amount > $bridgeSpendable) {
+                $message = $senderBalance > $bridgeSpendable
+                    ? 'Only $' . number_format($bridgeSpendable, 2) . ' is available to send right now. Part of your balance may still be settling in Bridge.'
+                    : 'Insufficient funds in your Bridge wallet. Available: $' . number_format($bridgeSpendable, 2);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'bridge_wallet_balance' => $bridgeSpendable,
+                ], 400);
+            }
+
             // Parse recipient
             $recipientId = $validated['recipient_id'];
             $recipientType = null;
@@ -3284,7 +3300,11 @@ class BridgeWalletController extends Controller
             );
 
             if (! ($transferResult['success'] ?? false)) {
-                $errorMessage = $transferResult['error'] ?? 'Bridge transfer could not be created.';
+                $errorMessage = $this->humanizeBridgeTransferError(
+                    $transferResult,
+                    $bridgeSpendable,
+                    $amount,
+                );
                 Log::warning('Bridge wallet-to-wallet transfer failed', [
                     'sender_customer_id' => $senderIntegration->bridge_customer_id,
                     'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
@@ -4055,6 +4075,33 @@ class BridgeWalletController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $transferResult
+     */
+    private function humanizeBridgeTransferError(array $transferResult, ?float $bridgeSpendable, float $amount): string
+    {
+        $raw = trim((string) ($transferResult['error'] ?? ''));
+        $lower = strtolower($raw);
+
+        if (
+            str_contains($lower, 'higher than the balance')
+            || str_contains($lower, 'insufficient')
+            || ($transferResult['error_code'] ?? null) === 'INSUFFICIENT_BRIDGE_WALLET_BALANCE'
+        ) {
+            if ($bridgeSpendable !== null) {
+                return 'Only $' . number_format($bridgeSpendable, 2) . ' is available in your Bridge wallet right now. You tried to send $' . number_format($amount, 2) . '.';
+            }
+
+            return 'Insufficient funds in your Bridge wallet. Some deposits may still be settling.';
+        }
+
+        if ($raw !== '') {
+            return $raw;
+        }
+
+        return 'Bridge transfer could not be created. Please try again.';
     }
 
     /**

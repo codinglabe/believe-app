@@ -2421,7 +2421,7 @@ class BridgeService
     }
 
     /**
-     * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool}|null
+     * @return array{wallet_id: string, chain: string, currency: string, balance: float, initiation_required: bool}|null
      */
     public function parseBridgeWalletForTransfer(string $customerId, string $walletId): ?array
     {
@@ -2439,8 +2439,53 @@ class BridgeService
         return [
             'wallet_id' => $walletId,
             'chain' => $chain,
-            'currency' => $this->resolveWalletBalanceCurrency($data),
+            'currency' => $primaryStablecoin['currency'],
+            'balance' => $primaryStablecoin['balance'],
             'initiation_required' => (bool) ($data['initiation_required'] ?? false),
+        ];
+    }
+
+    /**
+     * Pick the stablecoin with the highest spendable balance in a Bridge wallet.
+     *
+     * @param  array<string, mixed>  $walletData
+     * @return array{currency: string, balance: float}
+     */
+    public function resolvePrimaryStablecoinBalance(array $walletData): array
+    {
+        $bestCurrency = 'usdc';
+        $bestBalance = 0.0;
+        $balances = $walletData['balances'] ?? [];
+
+        if (is_array($balances)) {
+            foreach ($balances as $balance) {
+                if (! is_array($balance)) {
+                    continue;
+                }
+
+                $currency = strtolower((string) ($balance['currency'] ?? ''));
+                if (! in_array($currency, ['usdc', 'usdb', 'usd'], true)) {
+                    continue;
+                }
+
+                $amount = (float) ($balance['balance'] ?? 0);
+                if ($amount > $bestBalance) {
+                    $bestBalance = $amount;
+                    $bestCurrency = $currency === 'usd' ? 'usdc' : $currency;
+                }
+            }
+        }
+
+        if ($bestBalance > 0) {
+            return [
+                'currency' => $bestCurrency,
+                'balance' => round($bestBalance, 2),
+            ];
+        }
+
+        return [
+            'currency' => $this->resolveWalletBalanceCurrency($walletData),
+            'balance' => $this->parseBridgeWalletUsdBalance($walletData),
         ];
     }
 
@@ -2449,17 +2494,7 @@ class BridgeService
      */
     public function resolveWalletBalanceCurrency(array $walletData): string
     {
-        $balances = $walletData['balances'] ?? [];
-        if (is_array($balances)) {
-            foreach ($balances as $balance) {
-                $currency = strtolower((string) ($balance['currency'] ?? ''));
-                if (in_array($currency, ['usdc', 'usdb'], true)) {
-                    return $currency;
-                }
-            }
-        }
-
-        return 'usdc';
+        return $this->resolvePrimaryStablecoinBalance($walletData)['currency'];
     }
 
     /**
@@ -2535,17 +2570,29 @@ class BridgeService
                 ];
             }
 
+            $transferCurrency = $fromWallet['currency'];
+            $availableBalance = (float) ($fromWallet['balance'] ?? 0);
+
+            if ($availableBalance < $amount) {
+                return [
+                    'success' => false,
+                    'error' => 'Insufficient funds in your Bridge wallet. Available: $'.number_format($availableBalance, 2),
+                    'error_code' => 'INSUFFICIENT_BRIDGE_WALLET_BALANCE',
+                    'bridge_wallet_balance' => $availableBalance,
+                ];
+            }
+
             return $this->createTransfer([
                 'amount' => number_format($amount, 2, '.', ''),
                 'on_behalf_of' => $fromCustomerId,
                 'source' => [
                     'payment_rail' => 'bridge_wallet',
-                    'currency' => $fromWallet['currency'],
+                    'currency' => $transferCurrency,
                     'bridge_wallet_id' => $fromWallet['wallet_id'],
                 ],
                 'destination' => [
                     'payment_rail' => $toWallet['chain'],
-                    'currency' => $toWallet['currency'],
+                    'currency' => $transferCurrency,
                     'bridge_wallet_id' => $toWallet['wallet_id'],
                 ],
             ]);

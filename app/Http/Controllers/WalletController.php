@@ -161,19 +161,9 @@ class WalletController extends Controller
                     ->where('integratable_type', $entityType)
                     ->first();
 
-                if ($integration && $integration->bridge_customer_id) {
-                    $isSandbox = $bridgeService->isSandbox();
-                    
-                    $walletId = $integration->bridge_wallet_id ?? 
-                               ($integration->primaryWallet ? $integration->primaryWallet->bridge_wallet_id : null);
-                    
-                    if ($walletId && !$isSandbox) {
-                        $walletResult = $bridgeService->getWallet($integration->bridge_customer_id, $walletId);
-                        
-                        if ($walletResult['success'] && isset($walletResult['data'])) {
-                            $bridgeBalance = $bridgeService->parseBridgeWalletUsdBalance($walletResult['data']);
-                        }
-                    }
+                if ($integration && $integration->bridge_customer_id && ! $bridgeService->isSandbox()) {
+                    $bridgeBalance = app(BridgeWalletLedgerReconciliationService::class)
+                        ->fetchCustodialWalletBalance($integration);
                 }
             } catch (\Exception $bridgeError) {
                 \Illuminate\Support\Facades\Log::warning('Failed to fetch Bridge balance', [
@@ -201,8 +191,12 @@ class WalletController extends Controller
                 ]);
             }
 
-            // Local ledger (users.balance) is the source of truth for the wallet UI
-            $balance = (float) ($entityUser->balance ?? 0);
+            // Local ledger is authoritative for credits; spendable balance respects Bridge wallet funds.
+            $localBalance = (float) ($entityUser->balance ?? 0);
+            $balance = $localBalance;
+            if ($bridgeBalance !== null) {
+                $balance = min($localBalance, $bridgeBalance);
+            }
             
             // Check if user has active subscription
             // For regular users: check for WALLET subscription specifically
@@ -218,11 +212,12 @@ class WalletController extends Controller
             $response = [
                 'success' => true,
                 'balance' => $balance,
-                'local_balance' => (float) ($entityUser->balance ?? 0),
+                'local_balance' => $localBalance,
                 'bridge_balance' => $bridgeBalance,
+                'spendable_balance' => $balance,
                 'currency' => 'USD',
                 'connected' => true,
-                'source' => 'ledger',
+                'source' => $bridgeBalance !== null && $localBalance > $bridgeBalance ? 'bridge_limited' : 'ledger',
                 'has_subscription' => $hasSubscription,
                 'supporter_tier' => SupporterSubscriptionService::currentTierSlug($entityUser),
             ];
