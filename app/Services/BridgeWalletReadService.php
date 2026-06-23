@@ -342,6 +342,8 @@ class BridgeWalletReadService
                 }
             }
 
+            $paymentMethod = $isDeposit ? $this->resolveDepositPaymentMethod($event) : null;
+
             $activities[] = [
                 'id' => 'bridge_wallet_'.$id,
                 'dedupe_key' => $dedupeKey,
@@ -354,6 +356,8 @@ class BridgeWalletReadService
                 'status' => 'completed',
                 'donor_name' => $donorName,
                 'donor_email' => null,
+                'payment_method' => $paymentMethod['method'] ?? null,
+                'payment_method_label' => $paymentMethod['label'] ?? null,
                 'frequency' => 'one-time',
                 'message' => $isDeposit ? $depositMessage : ucfirst(str_replace('_', ' ', $type)),
                 'transaction_id' => $id,
@@ -410,7 +414,8 @@ class BridgeWalletReadService
             $status = $activityType === 'payment_processed' ? 'completed' : 'pending';
             $date = $this->parseBridgeTimestamp($event['created_at'] ?? $event['updated_at'] ?? null);
             $vaSenderName = $this->formatVirtualAccountDepositLabel($event);
-            $donorName = $vaSenderName ?? 'ACH / wire deposit';
+            $paymentMethod = $this->resolveDepositPaymentMethod($event);
+            $donorName = $vaSenderName ?? 'Bank deposit';
 
             $activities[] = [
                 'id' => 'bridge_va_'.$depositId,
@@ -424,6 +429,8 @@ class BridgeWalletReadService
                 'status' => $status,
                 'donor_name' => $donorName,
                 'donor_email' => null,
+                'payment_method' => $paymentMethod['method'] ?? null,
+                'payment_method_label' => $paymentMethod['label'] ?? null,
                 'frequency' => 'one-time',
                 'message' => $this->buildVirtualAccountDepositMessage($event, $donorName, $status),
                 'transaction_id' => $id,
@@ -802,6 +809,56 @@ class BridgeWalletReadService
         }
 
         return $primary ?? $bankName;
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     * @return array{method: string, label: string}|null
+     */
+    private function resolveDepositPaymentMethod(array $event): ?array
+    {
+        $source = is_array($event['source'] ?? null) ? $event['source'] : [];
+        $rail = strtolower(trim((string) ($source['payment_rail'] ?? $event['payment_rail'] ?? '')));
+
+        if ($rail !== '') {
+            return [
+                'method' => $this->normalizeDepositPaymentMethod($rail),
+                'label' => $this->formatDepositPaymentMethodLabel($rail),
+            ];
+        }
+
+        $details = $this->extractVirtualAccountSourceDetails($source);
+        if ($details['originator_name'] !== null || $details['bank_name'] !== null) {
+            return ['method' => 'wire', 'label' => 'Wire'];
+        }
+
+        if ($details['sender_name'] !== null) {
+            return ['method' => 'ach', 'label' => 'ACH'];
+        }
+
+        return null;
+    }
+
+    private function normalizeDepositPaymentMethod(string $rail): string
+    {
+        return match ($rail) {
+            'ach_push', 'ach_pull', 'ach_same_day' => 'ach',
+            'swift' => 'wire',
+            default => $rail,
+        };
+    }
+
+    private function formatDepositPaymentMethodLabel(string $rail): string
+    {
+        return match (strtolower($rail)) {
+            'ach', 'ach_push', 'ach_pull', 'ach_same_day' => 'ACH',
+            'wire', 'swift' => 'Wire',
+            'fednow' => 'FedNow',
+            'sepa' => 'SEPA',
+            'pix' => 'PIX',
+            'spei' => 'SPEI',
+            default => strtoupper(str_replace('_', ' ', $rail)),
+        };
     }
 
     /**
