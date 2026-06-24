@@ -1076,6 +1076,23 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Earliest datetime when held Processing BP becomes spendable (card security review).
+     */
+    public function nextProcessingBelievePointsReleaseAt(): ?\Illuminate\Support\Carbon
+    {
+        /** @var BelievePointPurchase|null $purchase */
+        $purchase = BelievePointPurchase::query()
+            ->where('user_id', $this->id)
+            ->where('status', 'completed')
+            ->where('points_released', false)
+            ->whereNotNull('points_available_at')
+            ->orderBy('points_available_at')
+            ->first(['points_available_at']);
+
+        return $purchase?->points_available_at;
+    }
+
+    /**
      * Deduct believe points from the user's balance.
      *
      * @return bool Returns true if deduction was successful, false if insufficient points

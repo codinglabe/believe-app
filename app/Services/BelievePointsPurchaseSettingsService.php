@@ -27,7 +27,7 @@ final class BelievePointsPurchaseSettingsService
 
     public const DEFAULT_ACH_BRP_RATE = 1.0;
 
-    public const DEFAULT_CARD_HOLD_HOURS = 24;
+    public const DEFAULT_CARD_HOLD_HOURS = 0;
 
     public static function brpValue(): float
     {

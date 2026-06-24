@@ -20,13 +20,11 @@ import {
   FileText,
   CreditCard,
   Landmark,
-  Gift,
   Loader2,
   Receipt,
   CircleHelp,
   Smartphone,
   Wallet,
-  ChevronRight,
 } from "lucide-react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -47,6 +45,9 @@ import {
   filterMethodsForRail,
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
+import { BpBalanceHero } from "@/pages/BelievePoints/components/BpBalanceHero"
+import { BpMoveToWalletPopup } from "@/pages/BelievePoints/components/BpMoveToWalletPopup"
+import { BpSectionHeader } from "@/pages/BelievePoints/components/BpSectionHeader"
 
 interface Purchase {
   id: number
@@ -55,6 +56,9 @@ interface Purchase {
   status: string
   created_at: string
   source?: string
+  payment_rail?: string | null
+  points_released?: boolean
+  points_available_at?: string | null
   failure_code?: string | null
   failure_message?: string | null
 }
@@ -97,9 +101,26 @@ interface PurchaseSettings {
   card_hold_hours: number
 }
 
+interface WalletTransferSettings {
+  enabled: boolean
+  min_amount: number
+  max_amount: number
+  sandbox_unavailable: boolean
+}
+
+interface WalletTransferRecord {
+  id: number
+  amount: number
+  status: string
+  bridge_transfer_state?: string | null
+  created_at: string
+  completed_at?: string | null
+}
+
 interface PageProps {
   currentBalance: number
   processingBalance?: number
+  processingReleaseAt?: string | null
   minPurchaseAmount: number
   maxPurchaseAmount: number
   purchaseSettings?: PurchaseSettings
@@ -114,6 +135,8 @@ interface PageProps {
   autoReplenish?: AutoReplenishProps
   savedPaymentMethods?: SavedPaymentMethod[]
   paymentMethodsUrl?: string
+  walletTransfer?: WalletTransferSettings
+  walletTransfers?: WalletTransferRecord[]
   flash?: {
     success?: string
     error?: string
@@ -179,6 +202,7 @@ const defaultAutoReplenish: AutoReplenishProps = {
 export default function BelievePointsIndex({
   currentBalance,
   processingBalance = 0,
+  processingReleaseAt = null,
   minPurchaseAmount,
   maxPurchaseAmount,
   purchases,
@@ -194,13 +218,15 @@ export default function BelievePointsIndex({
     availableMethods: availableMethodsProp = {},
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
+    walletTransfer,
+    walletTransfers = [],
   } = page.props
   const purchaseSettings = purchaseSettingsProp ?? {
     brp_value: 0.005,
     platform_fee_percent: 1,
     card_brp_rate: 2,
     ach_brp_rate: 1,
-    card_hold_hours: 24,
+    card_hold_hours: 0,
   }
   const availableMethods = availableMethodsProp
   const isSupporter = auth?.user?.role === 'user' || !auth?.user?.role
@@ -211,9 +237,12 @@ export default function BelievePointsIndex({
   const isCardPayment = paymentMethod === "stripe_card"
   const feePreview = feePreviewProp ?? null
   const cardHoldLabel =
-    purchaseSettings.card_hold_hours === 1
-      ? "After 1-Hour Security Review"
-      : `After ${purchaseSettings.card_hold_hours}-Hour Security Review`
+    purchaseSettings.card_hold_hours === 0
+      ? "Available immediately"
+      : purchaseSettings.card_hold_hours === 1
+        ? "After 1-hour hold"
+        : `After ${purchaseSettings.card_hold_hours}-hour hold`
+  const cardBpSettlesInstantly = purchaseSettings.card_hold_hours === 0
   const [formData, setFormData] = useState({
     amount: "",
     policyAccepted: false,
@@ -236,6 +265,10 @@ export default function BelievePointsIndex({
     policyAccepted: false,
   })
   const [arSubmitting, setArSubmitting] = useState(false)
+  const [walletTransferAmount, setWalletTransferAmount] = useState("")
+  const [walletTransferOpen, setWalletTransferOpen] = useState(false)
+  const [walletTransferSubmitting, setWalletTransferSubmitting] = useState(false)
+  const [localBalance, setLocalBalance] = useState(currentBalance)
   const [arSavedCardId, setArSavedCardId] = useState<string | null>(
     autoReplenish.saved_payment_method_id,
   )
@@ -243,6 +276,64 @@ export default function BelievePointsIndex({
     () => filterMethodsForRail(savedPaymentMethods, "card"),
     [savedPaymentMethods],
   )
+
+  useEffect(() => {
+    setLocalBalance(currentBalance)
+  }, [currentBalance])
+
+  const handleTransferToWallet = async () => {
+    const amount = parseFloat(walletTransferAmount)
+    const min = walletTransfer?.min_amount ?? 1
+    const max = walletTransfer?.max_amount ?? 10000
+
+    if (!amount || amount < min || amount > max) {
+      showErrorToast(`Enter an amount between $${min.toFixed(2)} and $${max.toFixed(2)}`)
+      return
+    }
+
+    if (amount > localBalance + 0.0001) {
+      showErrorToast("Insufficient purchased Believe Points. Gifted points cannot be moved to your wallet.")
+      return
+    }
+
+    setWalletTransferSubmitting(true)
+    try {
+      const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
+      const response = await fetch(route("believe-points.transfer-to-wallet"), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          amount,
+          idempotency_key: crypto.randomUUID(),
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        showSuccessToast(data.message || "Wallet funding started")
+        if (typeof data.data?.believe_points_balance === "number") {
+          setLocalBalance(data.data.believe_points_balance)
+        } else {
+          setLocalBalance((prev) => Math.max(0, prev - amount))
+        }
+        setWalletTransferAmount("")
+        setWalletTransferOpen(false)
+        router.reload({ only: ["walletTransfers", "currentBalance", "processingBalance", "processingReleaseAt"] })
+      } else {
+        showErrorToast(data.message || "Failed to move Believe Points to wallet")
+      }
+    } catch {
+      showErrorToast("Failed to move Believe Points to wallet")
+    } finally {
+      setWalletTransferSubmitting(false)
+    }
+  }
 
   const believePointsFeePreviewSkipRef = useRef(true)
 
@@ -474,23 +565,60 @@ export default function BelievePointsIndex({
     }).format(num)
   }
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive"> = {
-      completed: 'default',
-      pending: 'secondary',
-      failed: 'destructive',
-      cancelled: 'destructive',
+  const getPurchaseStatusBadge = (purchase: Purchase) => {
+    if (purchase.status === "completed" && purchase.points_released === false) {
+      const releaseAt = purchase.points_available_at ? new Date(purchase.points_available_at) : null
+      const onHold = releaseAt && releaseAt.getTime() > Date.now()
+      return (
+        <Badge
+          variant="secondary"
+          className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {onHold ? "Paid · On hold" : "Releasing…"}
+        </Badge>
+      )
     }
+
+    const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string; label?: string }> = {
+      completed: { variant: "default", className: "bg-emerald-600 hover:bg-emerald-600/90 border-0", label: "Available" },
+      pending: { variant: "secondary", label: "Pending" },
+      failed: { variant: "destructive", label: "Failed" },
+      cancelled: { variant: "destructive", label: "Cancelled" },
+    }
+    const item = config[purchase.status] ?? { variant: "outline" as const, label: purchase.status }
     return (
-      <Badge variant={variants[status] || 'secondary'}>
-        {status}
+      <Badge variant={item.variant} className={cn("capitalize", item.className)}>
+        {item.label ?? purchase.status}
       </Badge>
     )
   }
 
+  const formatProcessingReleaseHint = (iso: string | null | undefined): string | null => {
+    if (!iso) return null
+    const releaseAt = new Date(iso)
+    if (Number.isNaN(releaseAt.getTime())) return null
+    const ms = releaseAt.getTime() - Date.now()
+    if (ms <= 0) return "Releasing to available balance…"
+    const hours = Math.ceil(ms / (1000 * 60 * 60))
+    if (hours <= 1) {
+      const minutes = Math.max(1, Math.ceil(ms / (1000 * 60)))
+      return `Available in ~${minutes} min`
+    }
+    if (hours < 24) return `Available in ~${hours}h`
+    return `Available ${releaseAt.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+  }
+
+  const scrollToAddPoints = () => {
+    document.getElementById(ADD_BELIEVE_POINTS_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  const openMoveToWalletPopup = () => {
+    setWalletTransferOpen(true)
+  }
+
   const content = (
     <>
-      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-8">
         <div className="space-y-3">
           {flash?.success && (
             <Alert className="border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/25">
@@ -512,98 +640,67 @@ export default function BelievePointsIndex({
           )}
         </div>
 
-        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
-          <div className="min-w-0 space-y-6 sm:space-y-8 lg:col-span-8">
-            <Card className="border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-5">
-                  <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white shadow-sm sm:h-14 sm:w-14">
-                      <Coins className="h-6 w-6 sm:h-7 sm:w-7" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Balance
-                      </p>
-                      <p className="mt-0.5 text-3xl font-bold tracking-tight text-gray-900 tabular-nums dark:text-white sm:text-4xl">
-                        {formatPoints(currentBalance)}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">
-                        Available BP · ≈ {formatCurrency(currentBalance)} (1 BP = $1 USD)
-                      </p>
-                      {processingBalance > 0 && (
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                          Processing BP: {formatPoints(processingBalance)} (pending security review or settlement)
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full shrink-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/80 sm:w-auto"
-                    onClick={() => router.visit(route("believe-points.refunds"))}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Refunds
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-12">
+          <div className="min-w-0 space-y-8 lg:col-span-8">
+            <BpBalanceHero
+              balance={localBalance}
+              processingBalance={processingBalance}
+              processingReleaseHint={formatProcessingReleaseHint(processingReleaseAt)}
+              formatPoints={formatPoints}
+              formatCurrency={formatCurrency}
+              onRefunds={() => router.visit(route("believe-points.refunds"))}
+              onAddPoints={scrollToAddPoints}
+              showWalletAction={Boolean(walletTransfer?.enabled || walletTransfer?.sandbox_unavailable)}
+              onMoveToWallet={openMoveToWalletPopup}
+            />
+
+            <BpMoveToWalletPopup
+              isOpen={walletTransferOpen}
+              onClose={() => {
+                if (walletTransferSubmitting) return
+                setWalletTransferOpen(false)
+              }}
+              balance={localBalance}
+              amount={walletTransferAmount}
+              onAmountChange={setWalletTransferAmount}
+              walletTransfer={walletTransfer}
+              walletTransfers={walletTransfers}
+              isSubmitting={walletTransferSubmitting}
+              onSubmit={handleTransferToWallet}
+              formatCurrency={formatCurrency}
+              formatPoints={formatPoints}
+            />
 
             <Card
               id={ADD_BELIEVE_POINTS_SECTION_ID}
-              className="scroll-mt-24 gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white px-0 py-0 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              className="scroll-mt-24 gap-0 overflow-hidden border-border/60 shadow-sm"
             >
-              <CardHeader className="border-b border-gray-200 bg-gray-50/80 px-4 pb-5 pt-5 dark:border-gray-700 dark:bg-gray-900/40 sm:px-6 sm:pb-6 sm:pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white shadow-sm ring-4 ring-purple-500/10 dark:ring-purple-400/15">
-                    <DollarSign className="h-5 w-5" aria-hidden />
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4 sm:gap-y-2">
-                      <CardTitle className="text-xl font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
-                        Add Believe Points
-                      </CardTitle>
-                      <Badge
-                        variant="outline"
-                        className="w-fit shrink-0 border-gray-300 bg-white/80 font-normal text-gray-600 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-300"
-                      >
-                        Secure checkout · Stripe
-                      </Badge>
-                    </div>
-                    <CardDescription className="max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                      Choose a payment method below. You receive 1 Believe Point (BP) per $1 USD purchased.
-                      Card and ACH checkouts earn BRP at configured rates; purchased BP first goes into Processing BP.
-                    </CardDescription>
-                  </div>
+              <CardHeader className="border-b bg-muted/30 px-4 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <BpSectionHeader
+                    icon={DollarSign}
+                    title="Add Believe Points"
+                    description="Choose a payment method below. You receive 1 BP per $1 USD. Card and ACH earn BRP."
+                  />
+                  <Badge variant="secondary" className="w-fit shrink-0 font-normal">
+                    Secure checkout · Stripe
+                  </Badge>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <form onSubmit={handleSubmit} className="divide-y divide-gray-200 dark:divide-gray-700">
+                <form onSubmit={handleSubmit} className="divide-y divide-border">
                   <div className="space-y-4 p-4 sm:p-6">
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Step 1
-                      </p>
-                      <Label
-                        htmlFor="amount"
-                        className="text-base font-semibold text-gray-900 dark:text-white"
-                      >
-                        Amount
-                      </Label>
-                    </div>
+                    <BpSectionHeader step="Step 1" title="Purchase amount" />
                     <div className="relative">
-                      <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+                      <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="amount"
                         type="text"
                         value={formData.amount}
                         onChange={(e) => handleChange(e.target.value)}
                         className={cn(
-                          "h-14 border-2 border-gray-300 bg-white pl-10 text-xl font-medium tabular-nums text-gray-900 shadow-sm placeholder:text-gray-400 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/25 dark:border-gray-500 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-400/30",
-                          errors.amount &&
-                            "border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30 dark:border-red-500",
+                          "h-14 border-2 bg-background pl-10 text-xl font-semibold tabular-nums shadow-sm placeholder:text-muted-foreground focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/20",
+                          errors.amount && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/20",
                         )}
                         placeholder="0.00"
                         disabled={isSubmitting}
@@ -615,29 +712,29 @@ export default function BelievePointsIndex({
                         {errors.amount}
                       </p>
                     )}
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       Allowed range {formatCurrency(minPurchaseAmount)} – {formatCurrency(maxPurchaseAmount)}
                     </p>
                   </div>
 
                   <div className="space-y-4 p-4 sm:p-6">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Step 2
-                      </p>
-                      <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Payment method</p>
-                      <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                        {isAchPayment
+                    <BpSectionHeader
+                      step="Step 2"
+                      title="Payment method"
+                      description={
+                        isAchPayment
                           ? `Earn ${purchaseSettings.ach_brp_rate} BRP per $1. BP goes into Processing BP and becomes available after ACH settlement.`
                           : isCardPayment
-                            ? `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP goes into Processing BP and becomes available ${cardHoldLabel.toLowerCase()}.`
+                            ? cardBpSettlesInstantly
+                              ? `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP is available immediately after payment.`
+                              : `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP becomes available ${cardHoldLabel.toLowerCase()}.`
                             : isManualMethod(paymentMethod)
                               ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
-                              : "Complete checkout with your selected payment provider."}
-                      </p>
-                    </div>
+                              : "Complete checkout with your selected payment provider."
+                      }
+                    />
 
-                    <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
                       {BP_METHOD_CONFIG.map(({ id, label, description, icon: Icon, availabilityKey }) => {
                         if (!availableMethods[availabilityKey]) return null
                         const selected = paymentMethod === id
@@ -650,20 +747,24 @@ export default function BelievePointsIndex({
                               if (!isStripeRail(id)) setSavedPaymentMethodId(null)
                             }}
                             className={cn(
-                              "flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left transition-all sm:p-4",
+                              "flex h-full w-full items-center gap-3 rounded-xl border-2 p-3.5 text-left transition-all sm:p-4",
                               selected
-                                ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm dark:border-purple-500 dark:bg-purple-950/40 dark:text-white"
-                                : "border-gray-200 bg-white hover:border-purple-300 text-gray-800 dark:border-gray-600 dark:bg-gray-900/40 dark:text-white",
+                                ? "border-purple-600 bg-purple-50/80 shadow-sm ring-1 ring-purple-600/20 dark:border-purple-500 dark:bg-purple-950/30"
+                                : "border-border bg-card hover:border-purple-300 hover:bg-muted/40",
                             )}
                           >
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+                            <div
+                              className={cn(
+                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                selected ? "bg-purple-600 text-white" : "bg-muted text-muted-foreground",
+                              )}
+                            >
                               <Icon className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="font-semibold text-sm sm:text-base">{label}</div>
-                              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">{description}</div>
+                              <div className="font-semibold text-sm">{label}</div>
+                              <div className="text-xs text-muted-foreground line-clamp-2">{description}</div>
                             </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 opacity-50" />
                           </button>
                         )
                       })}
@@ -677,7 +778,7 @@ export default function BelievePointsIndex({
                     {isStripeRail(paymentMethod) && (
                     <>
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Use a saved method</p>
+                      <p className="text-sm font-medium text-foreground">Use a saved method</p>
                       <SavedPaymentMethodSelector
                         methods={savedPaymentMethods}
                         rail={paymentMethod === "stripe_ach" ? "bank" : "card"}
@@ -686,7 +787,7 @@ export default function BelievePointsIndex({
                         manageHref={paymentMethodsUrl}
                       />
                     </div>
-                    <p className="flex items-start gap-1.5 text-xs leading-snug text-gray-500 dark:text-gray-400">
+                    <p className="flex items-start gap-1.5 text-xs leading-snug text-muted-foreground">
                       <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
                       <span>
                         {savedPaymentMethodId
@@ -703,82 +804,81 @@ export default function BelievePointsIndex({
                       </div>
                     )}
                     {!isStripeRail(paymentMethod) && !isManualMethod(paymentMethod) && (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-200">
+                      <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
                         You&apos;ll be redirected to complete payment with {paymentMethod === "paypal" ? "PayPal" : "Stripe"}.
                       </div>
                     )}
                   </div>
 
-                  <div className="space-y-5 bg-gray-50 p-4 sm:p-6 dark:bg-gray-900/35">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Summary
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">Fees &amp; what you get</p>
-                    </div>
-
+                  <div className="space-y-5 bg-muted/25 p-4 sm:p-6">
+                    <BpSectionHeader title="Order summary" description="Fees and what you receive" />
                   {feePreview && validPurchaseAmount && (
                     <div
                       className={cn(
-                        "relative overflow-hidden rounded-lg border border-gray-200 bg-white p-5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800",
+                        "relative overflow-hidden rounded-xl border bg-card p-5 text-sm shadow-sm",
                         feePreviewLoading && "opacity-60",
                       )}
                     >
                       {feePreviewLoading && (
-                        <div className="absolute right-3 top-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="absolute right-3 top-3 flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           Updating
                         </div>
                       )}
-                      <div className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-                        <Receipt className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                      <div className="mb-3 flex items-center gap-2 font-semibold text-foreground">
+                        <Receipt className="h-4 w-4 text-muted-foreground" />
                         Purchase summary
                       </div>
-                      <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                      <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
                           <span>BP Amount</span>
-                          <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                          <span className="font-semibold tabular-nums text-foreground">
                             {formatCurrency(feePreview.bp_amount_usd)}
                           </span>
                         </li>
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
                           <span>Processing Fee</span>
-                          <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                          <span className="font-semibold tabular-nums text-foreground">
                             {formatCurrency(feePreview.processing_fee_usd)}
                           </span>
                         </li>
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
                           <span>Platform Fee ({feePreview.platform_fee_percent}%)</span>
-                          <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                          <span className="font-semibold tabular-nums text-foreground">
                             {formatCurrency(feePreview.platform_fee_usd)}
                           </span>
                         </li>
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
-                          <span className="font-medium text-gray-900 dark:text-white">Total Charged</span>
-                          <span className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
+                          <span className="font-medium text-foreground">Total Charged</span>
+                          <span className="text-lg font-bold tabular-nums text-foreground">
                             {formatCurrency(feePreview.checkout_total_usd)}
                           </span>
                         </li>
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
                           <span>BRP Earned</span>
-                          <span className="font-semibold tabular-nums text-blue-800 dark:text-blue-200">
+                          <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-300">
                             {Math.round(feePreview.brp_earned).toLocaleString("en-US")} BRP
                           </span>
                         </li>
                         <li className="flex flex-wrap justify-between gap-2 pt-0.5">
                           <span>BP Availability</span>
-                          <span className="font-medium text-gray-900 dark:text-white">
+                          <span className="font-medium text-foreground">
                             {feePreview.bp_availability}
                           </span>
                         </li>
                       </ul>
-                      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                        1 BRP = {formatCurrency(feePreview.brp_value)}. Purchased BP is credited to Processing BP first.
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        1 BRP = {formatCurrency(feePreview.brp_value)}.
+                        {isAchPayment
+                          ? " ACH BP is available after settlement."
+                          : cardBpSettlesInstantly
+                            ? " Card BP is available immediately after payment."
+                            : ` Card BP: ${cardHoldLabel.toLowerCase()}.`}
                       </p>
                       {isStripeRail(paymentMethod) && (
-                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        <p className="mt-2 text-xs text-muted-foreground">
                           Modeled Stripe fee on {isAchPayment ? "ACH" : "card"} charge (informational):{" "}
-                          <span className="font-medium tabular-nums text-gray-700 dark:text-gray-300">
+                          <span className="font-medium tabular-nums text-foreground">
                             {formatCurrency(
                               isAchPayment
                                 ? feePreview.ach_processing_fee_usd
@@ -791,45 +891,48 @@ export default function BelievePointsIndex({
                   )}
 
                   {validPurchaseAmount && (
-                    <div className="flex flex-col gap-4 rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 dark:border-purple-800 dark:from-purple-950/25 dark:to-pink-950/25">
+                    <div className="flex flex-col gap-4 rounded-xl border border-purple-200/80 bg-gradient-to-r from-purple-50 to-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 dark:border-purple-800/50 dark:from-purple-950/30 dark:to-blue-950/20">
                       <div className="min-w-0">
-                        <p className="text-xs font-medium uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
                           You receive
                         </p>
-                        <p className="mt-1 break-words text-2xl font-bold tracking-tight text-purple-800 tabular-nums dark:text-purple-200 sm:text-3xl">
-                          {formatPoints(amountNum)}{" "}
-                          <span className="text-base font-semibold text-purple-600/90 dark:text-purple-300/90 sm:text-lg">
-                            Believe Points
-                          </span>
+                        <p className="mt-1 text-3xl font-bold tracking-tight text-purple-900 tabular-nums dark:text-purple-100">
+                          {formatPoints(amountNum)} BP
                         </p>
-                        <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">
-                          {formatPoints(amountNum)} BP · credited to Processing BP first
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {isAchPayment
+                            ? "Available after ACH settlement · "
+                            : cardBpSettlesInstantly
+                              ? "Available immediately · "
+                              : `${cardHoldLabel} · `}
+                          {formatCurrency(amountNum)} face value
                         </p>
                       </div>
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-purple-500 text-white shadow-sm sm:h-14 sm:w-14 sm:self-center">
-                        <Coins className="h-6 w-6 sm:h-7 sm:w-7" />
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-md">
+                        <Coins className="h-7 w-7" />
                       </div>
                     </div>
                   )}
 
-                  <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-600 dark:bg-gray-800/80">
-                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                      <CircleHelp className="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                  <div className="rounded-xl border bg-card p-4">
+                    <h4 className="flex items-center gap-2 text-sm font-semibold">
+                      <CircleHelp className="h-4 w-4 shrink-0 text-muted-foreground" />
                       Quick facts
                     </h4>
-                    <ul className="mt-3 grid gap-2 text-xs text-gray-600 sm:text-sm dark:text-gray-300">
-                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
-                        <span>1 Believe Point (BP) = $1 USD for donations and eligible purchases on Believe.</span>
+                    <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
+                      <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
+                        <span>1 BP = $1 USD for donations and eligible purchases on Believe.</span>
                       </li>
-                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
-                        <span>Card: earn {purchaseSettings.card_brp_rate} BRP per $1. ACH: earn {purchaseSettings.ach_brp_rate} BRP per $1. BRP value = {formatCurrency(purchaseSettings.brp_value)} each.</span>
+                      <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
+                        <span>Card: {purchaseSettings.card_brp_rate} BRP/$1 · ACH: {purchaseSettings.ach_brp_rate} BRP/$1 · BRP = {formatCurrency(purchaseSettings.brp_value)} each.</span>
                       </li>
-                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
+                      <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
                         <span>
-                          Purchased BP goes into Processing BP. Card BP becomes available {cardHoldLabel.toLowerCase()}. ACH BP becomes available after ACH settlement.
+                          Card BP: {cardBpSettlesInstantly ? "available immediately" : cardHoldLabel.toLowerCase()}. ACH
+                          BP: after settlement.
                         </span>
                       </li>
                     </ul>
@@ -837,14 +940,9 @@ export default function BelievePointsIndex({
                 </div>
 
                 <div className="space-y-5 p-4 sm:p-6">
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Step 3
-                    </p>
-                    <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Agree &amp; pay</p>
-                  </div>
+                  <BpSectionHeader step="Step 3" title="Agree & pay" />
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-900/40">
+                    <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4">
                       <Checkbox
                         id="policy-accept"
                         checked={formData.policyAccepted}
@@ -859,11 +957,11 @@ export default function BelievePointsIndex({
                       <div className="flex-1 space-y-2">
                         <Label
                           htmlFor="policy-accept"
-                          className="cursor-pointer text-sm font-medium text-gray-900 dark:text-white"
+                          className="cursor-pointer text-sm font-medium text-foreground"
                         >
                           I have read and agree to the Believe Points Policy
                         </Label>
-                        <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                        <div className="space-y-1 text-xs text-muted-foreground">
                           <p className="font-semibold">Summary:</p>
                           <p>Believe Points (BP) are platform credits used only inside Believe. BP are not money, cannot be cashed out by supporters, and do not interact directly with personal wallets or bank accounts. Limited refunds may be available within 7 days for unused BP only.</p>
                           <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
@@ -916,8 +1014,10 @@ export default function BelievePointsIndex({
                                   <ul className="text-muted-foreground space-y-1 list-disc list-inside">
                                     <li>Be purchased using wallet balances</li>
                                     <li>Be funded via Believe wallet balances, virtual accounts, or Bridge (purchases on this page use Stripe card or US bank)</li>
-                                    <li>Be transferred from or to the Believe wallet system</li>
                                   </ul>
+                                  <p className="text-muted-foreground mt-2">
+                                    Purchased Believe Points may be moved into your verified Believe Bridge wallet when that feature is enabled (1 BP = $1). Gifted points cannot be moved to your wallet.
+                                  </p>
                                 </div>
 
                                 <div>
@@ -949,7 +1049,7 @@ export default function BelievePointsIndex({
                                 <div>
                                   <h3 className="font-semibold text-base mb-2">6. Separation From Wallet & Payments</h3>
                                   <p className="text-muted-foreground">
-                                    Believe operates a separate financial wallet system for real money transactions. Points never interact with wallets, virtual accounts, debit cards, or cash‑out features. Wallet funds cannot be used to acquire Points. Points cannot be converted into wallet balances. Points and wallet funds are independent systems.
+                                    Believe operates a separate financial wallet system for real money transactions. Purchased Points may be moved into your verified Believe Bridge wallet when enabled (1 BP = $1). Gifted points cannot be moved. Wallet funds cannot be used to acquire Points.
                                   </p>
                                 </div>
 
@@ -1055,7 +1155,7 @@ export default function BelievePointsIndex({
                   <Button
                     type="submit"
                     disabled={isSubmitting || !formData.amount || !!errors.amount || !formData.policyAccepted}
-                    className="h-auto min-h-12 w-full rounded-lg bg-purple-600 px-4 py-3 text-base font-semibold leading-snug text-white shadow-sm hover:bg-purple-700 disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-500 sm:py-3.5"
+                    className="h-12 w-full rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-base font-semibold text-white shadow-md hover:from-purple-700 hover:to-blue-700 disabled:opacity-50"
                     size="lg"
                   >
                     {isSubmitting ? (
@@ -1075,22 +1175,16 @@ export default function BelievePointsIndex({
               </CardContent>
             </Card>
 
-            <Card className="border border-dashed border-gray-300 bg-gray-50/80 dark:border-gray-600 dark:bg-gray-800/50">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    <TrendingUp className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base text-gray-900 dark:text-white">Auto top-up</CardTitle>
-                    <CardDescription className="text-xs leading-snug text-gray-600 dark:text-gray-300">
-                      Optional — we charge your saved card when you drop below a threshold (1:1 points). Max once per hour.
-                    </CardDescription>
-                  </div>
-                </div>
+            <Card className="overflow-hidden border-border/60 shadow-sm">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <BpSectionHeader
+                  icon={TrendingUp}
+                  title="Auto top-up"
+                  description="Optional — charge your saved card when balance drops below a threshold. Max once per hour."
+                />
               </CardHeader>
-              <CardContent className="space-y-4 pt-0">
-                <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+              <CardContent className="space-y-5 pt-6">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   Choose a card from your saved payment methods. If charges fail, pick another card or add a new one in{" "}
                   <a href={paymentMethodsUrl} className="font-medium text-purple-600 underline-offset-2 hover:underline dark:text-purple-400">
                     Payment Methods
@@ -1120,12 +1214,15 @@ export default function BelievePointsIndex({
                   </Button>
                 )}
                 {autoReplenish.last_replenish_at && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Last top-up: {new Date(autoReplenish.last_replenish_at).toLocaleString()}
+                  <p className="text-xs text-muted-foreground">
+                    Last top-up: {new Date(autoReplenish.last_replenish_at).toLocaleString(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
                   </p>
                 )}
-                <form onSubmit={saveAutoReplenish} className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-                  <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800/60">
+                <form onSubmit={saveAutoReplenish} className="space-y-4 border-t border-border pt-5">
+                  <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4">
                     <Checkbox
                       id="ar-enabled"
                       checked={arState.enabled}
@@ -1142,10 +1239,10 @@ export default function BelievePointsIndex({
                         <div className="space-y-2">
                           <Label htmlFor="ar-threshold">When balance ≤</Label>
                           <div className="relative">
-                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                               id="ar-threshold"
-                              className="h-11 border-2 border-gray-300 bg-white pl-9 font-medium tabular-nums text-gray-900 shadow-sm placeholder:text-gray-400 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/25 dark:border-gray-500 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-400/30"
+                              className="h-11 border-2 bg-background pl-9 font-medium tabular-nums shadow-sm focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/20"
                               value={arState.threshold}
                               onChange={(e) =>
                                 setArState((s) => ({ ...s, threshold: e.target.value.replace(/[^0-9.]/g, "") }))
@@ -1158,10 +1255,10 @@ export default function BelievePointsIndex({
                         <div className="space-y-2">
                           <Label htmlFor="ar-amount">Top-up amount</Label>
                           <div className="relative">
-                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                               id="ar-amount"
-                              className="h-11 border-2 border-gray-300 bg-white pl-9 font-medium tabular-nums text-gray-900 shadow-sm placeholder:text-gray-400 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/25 dark:border-gray-500 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-400/30"
+                              className="h-11 border-2 bg-background pl-9 font-medium tabular-nums shadow-sm focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/20"
                               value={arState.amount}
                               onChange={(e) =>
                                 setArState((s) => ({ ...s, amount: e.target.value.replace(/[^0-9.]/g, "") }))
@@ -1172,10 +1269,10 @@ export default function BelievePointsIndex({
                           </div>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         Between {formatCurrency(minPurchaseAmount)} and {formatCurrency(maxPurchaseAmount)}.
                       </p>
-                      <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800/60">
+                      <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4">
                         <Checkbox
                           id="ar-policy"
                           checked={arState.policyAccepted}
@@ -1194,8 +1291,8 @@ export default function BelievePointsIndex({
                   <Button
                     type="submit"
                     disabled={arSubmitting}
-                    variant="secondary"
-                    className="h-auto min-h-10 w-full rounded-lg px-4 py-2.5 sm:w-auto"
+                    variant="outline"
+                    className="h-11 w-full rounded-xl border-purple-200 font-medium hover:bg-purple-50 dark:border-purple-800 dark:hover:bg-purple-950/30 sm:w-auto"
                   >
                     {arSubmitting ? "Saving…" : "Save auto top-up settings"}
                   </Button>
@@ -1205,39 +1302,42 @@ export default function BelievePointsIndex({
           </div>
 
           <aside className="min-w-0 lg:col-span-4 lg:sticky lg:top-6 lg:self-start">
-            <Card className="gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white px-0 py-0 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-              <CardHeader className="border-b border-gray-200 px-4 pb-4 pt-5 dark:border-gray-700 sm:px-6 sm:pt-6">
-                <CardTitle className="flex items-center gap-2 text-lg text-gray-900 dark:text-white">
-                  <History className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+            <Card className="gap-0 overflow-hidden border-border/60 shadow-sm">
+              <CardHeader className="border-b bg-muted/30 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <History className="h-5 w-5 text-purple-600" />
                   Recent purchases
                 </CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Your latest Believe Point purchases
-                </CardDescription>
+                <CardDescription>Your latest Believe Point activity</CardDescription>
               </CardHeader>
               <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
                 {purchases.data.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-10 text-center">
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-950/50">
-                      <Coins className="h-7 w-7 text-purple-600 dark:text-purple-400" />
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/15 to-blue-500/15">
+                      <Coins className="h-8 w-8 text-purple-600" />
                     </div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">No purchases yet</p>
-                    <p className="mt-1 max-w-[220px] text-xs text-gray-500 dark:text-gray-400">
-                      Complete a purchase to see it listed here.
+                    <p className="text-sm font-semibold">No purchases yet</p>
+                    <p className="mt-1 max-w-[240px] text-sm text-muted-foreground">
+                      Add Believe Points to see your purchase history here.
                     </p>
+                    <Button type="button" variant="outline" size="sm" className="mt-4" onClick={scrollToAddPoints}>
+                      Add Believe Points
+                    </Button>
                   </div>
                 ) : (
                   <ul className="space-y-2">
                     {purchases.data.map((purchase) => (
                       <li
                         key={purchase.id}
-                        className="rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-800/80"
+                        className="rounded-xl border bg-card p-3.5 transition-colors hover:bg-muted/40"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <Coins className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                            <span className="font-semibold text-gray-900 dark:text-white">
-                              {formatPoints(purchase.points)} Points
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/15 to-blue-500/15">
+                              <Coins className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                            </div>
+                            <span className="font-semibold tabular-nums text-foreground">
+                              {formatPoints(purchase.points)} BP
                             </span>
                             {purchase.source === "auto_replenish" && (
                               <Badge variant="outline" className="text-xs">
@@ -1245,12 +1345,16 @@ export default function BelievePointsIndex({
                               </Badge>
                             )}
                           </div>
-                          {getStatusBadge(purchase.status)}
+                          {getPurchaseStatusBadge(purchase)}
                         </div>
-                        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
-                          <span>{formatCurrency(purchase.amount)}</span>
+                        <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
+                          <span className="font-medium tabular-nums text-foreground">{formatCurrency(purchase.amount)}</span>
                           <span>
-                            {new Date(purchase.created_at).toLocaleDateString()}
+                            {new Date(purchase.created_at).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
                           </span>
                         </div>
                         {purchase.status === "failed" && purchase.failure_message && (
@@ -1274,8 +1378,8 @@ export default function BelievePointsIndex({
   if (isSupporter) {
     return (
       <>
-        <Head title="Add Believe Points" />
-        <ProfileLayout title="Add Believe Points" description="Add funds and manage your Believe Points. 1 Believe Point = $1 USD">
+        <Head title="Believe Points" />
+        <ProfileLayout title="Believe Points" description="Purchase platform credits, move funds to your wallet, and manage auto top-up.">
           {content}
         </ProfileLayout>
       </>
@@ -1286,13 +1390,18 @@ export default function BelievePointsIndex({
   return (
     <AppSidebarLayout>
       <Head title="Add Believe Points" />
-      <div className="m-3 min-w-0 space-y-6 md:m-6">
-        <div className="mx-auto max-w-6xl border-b border-gray-200 pb-5 dark:border-gray-700 sm:pb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">Add Believe Points</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-            Buy platform credits (1 Point = $1 USD) for donations and eligible purchases. Card or bank checkout via
-            Stripe.
-          </p>
+      <div className="m-3 min-w-0 space-y-8 md:m-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm sm:p-8">
+            <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-purple-500/5 to-transparent" />
+            <div className="relative max-w-2xl">
+              <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Believe Points</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Add & manage platform credits</h1>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Buy BP for donations and eligible purchases. 1 Point = $1 USD face value. Secure checkout via Stripe.
+              </p>
+            </div>
+          </div>
         </div>
         {content}
       </div>

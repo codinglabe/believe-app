@@ -5025,26 +5025,14 @@ class BridgeWalletController extends Controller
             }
 
             $transferId = $result['data']['id'] ?? $result['data']['transfer_id'] ?? null;
-            $amount = (float) $validated['amount'];
 
-            DB::beginTransaction();
-
-            try {
-                if (! $user->withdrawFund($amount, 'bridge', [
-                    'bridge_transfer_id' => $transferId,
-                    'external_account_id' => $validated['external_account_id'],
-                    'payment_rail' => $validated['payment_rail'] ?? 'ach',
-                    'bridge_customer_id' => $integration->bridge_customer_id,
-                    'bridge_wallet_id' => $bridgeWalletId,
-                ], null, null, 'pending')) {
-                    throw new \Exception('Insufficient balance for withdrawal');
-                }
-
-                DB::commit();
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
+            Log::info('Bridge wallet withdrawal transfer created', [
+                'user_id' => $user->id,
+                'bridge_transfer_id' => $transferId,
+                'external_account_id' => $validated['external_account_id'],
+                'amount' => (float) $validated['amount'],
+                'payment_rail' => $validated['payment_rail'] ?? 'ach',
+            ]);
 
             return response()->json([
                 'success' => true,
