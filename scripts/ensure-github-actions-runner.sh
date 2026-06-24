@@ -14,13 +14,7 @@ if [ "$(id -un)" != "${RUNNER_USER}" ]; then
   exit 1
 fi
 
-mkdir -p "${LOG_DIR}" "${HOME}/bin"
-CHECKOUT_SCRIPT_SRC="${HOME}/public_html/.github/scripts/checkout-self-hosted.sh"
-if [ -f "${CHECKOUT_SCRIPT_SRC}" ]; then
-  install -m 755 "${CHECKOUT_SCRIPT_SRC}" "${HOME}/bin/checkout-self-hosted.sh"
-  echo "Installed ${HOME}/bin/checkout-self-hosted.sh"
-fi
-
+mkdir -p "${LOG_DIR}"
 if [ ! -x "${RUNNER_DIR}/run.sh" ]; then
   echo "Runner not found at ${RUNNER_DIR}/run.sh — install the runner first."
   exit 1

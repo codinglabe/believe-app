@@ -54,6 +54,7 @@ export interface ExternalAccount {
     routing_number: string
     account_type: string
     account_holder_name: string
+    bank_name?: string
     status: string
 }
 

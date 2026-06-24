@@ -8,6 +8,11 @@ import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatu
 import { getCsrfToken as getWalletCsrfToken } from './utils'
 import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
 import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
+import {
+    getAllWalletActivityCache,
+    patchAllWalletActivityCache,
+    setAllWalletActivityCache,
+} from '@/lib/wallet-activity-cache'
 import type { WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
 
 interface ActivityScreenProps {
@@ -17,17 +22,17 @@ interface ActivityScreenProps {
 }
 
 export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScreenProps) {
-    const [activities, setActivities] = useState<ActivityType[]>([])
-    const [isLoading, setIsLoading] = useState(false)
+    const cached = getAllWalletActivityCache()
+    const [activities, setActivities] = useState<ActivityType[]>(cached.loaded ? cached.activities : [])
+    const [isLoading, setIsLoading] = useState(!cached.loaded)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
-    const [hasMore, setHasMore] = useState(false)
-    const [currentPage, setCurrentPage] = useState(1)
-    const [refreshNonce, setRefreshNonce] = useState(0)
+    const [hasMore, setHasMore] = useState(cached.loaded ? cached.hasMore : false)
+    const [currentPage, setCurrentPage] = useState(cached.loaded ? cached.currentPage : 1)
 
     const fetchActivities = async (page: number = 1, append: boolean = false) => {
         if (append) {
             setIsLoadingMore(true)
-        } else {
+        } else if (!getAllWalletActivityCache().loaded) {
             setIsLoading(true)
         }
 
@@ -46,10 +51,21 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
             if (response.ok) {
                 const data = await response.json()
                 if (data.success) {
+                    const nextActivities = data.activities || []
                     if (append) {
-                        setActivities(prev => [...prev, ...(data.activities || [])])
+                        setActivities((prev) => {
+                            const merged = [...prev, ...nextActivities]
+                            const cache = getAllWalletActivityCache()
+                            cache.activities = merged
+                            cache.hasMore = data.has_more || false
+                            cache.currentPage = page
+                            cache.loaded = true
+
+                            return merged
+                        })
                     } else {
-                        setActivities(data.activities || [])
+                        setActivities(nextActivities)
+                        setAllWalletActivityCache(nextActivities, data.has_more || false, page)
                     }
                     setHasMore(data.has_more || false)
                     setCurrentPage(page)
@@ -68,8 +84,12 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
             return
         }
 
-        setActivities((prev) => patchActivitiesFromBridgeUpdate(prev, payload))
-        setRefreshNonce((n) => n + 1)
+        setActivities((prev) => {
+            const next = patchActivitiesFromBridgeUpdate(prev, payload)
+            patchAllWalletActivityCache(() => next)
+
+            return next
+        })
     }, [])
 
     useWalletBridgeRealtime({
@@ -79,8 +99,12 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
     })
 
     useEffect(() => {
-        fetchActivities(1, false)
-    }, [refreshNonce])
+        if (getAllWalletActivityCache().loaded) {
+            return
+        }
+
+        void fetchActivities(1, false)
+    }, [])
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const target = e.currentTarget
@@ -88,7 +112,7 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
 
         if (scrollBottom < 50 && hasMore && !isLoadingMore && !isLoading) {
             const nextPage = currentPage + 1
-            fetchActivities(nextPage, true)
+            void fetchActivities(nextPage, true)
         }
     }
 

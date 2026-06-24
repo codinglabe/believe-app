@@ -1121,6 +1121,7 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::post('/bridge/virtual-account', [BridgeWalletController::class, 'createVirtualAccountForWallet'])->name('bridge.virtual-account.create');
     Route::get('/bridge/virtual-accounts', [BridgeWalletController::class, 'getVirtualAccounts'])->name('bridge.virtual-accounts');
     Route::post('/bridge/external-account', [BridgeWalletController::class, 'createExternalAccount'])->name('bridge.external-account.create');
+    Route::delete('/bridge/external-account/{externalAccountId}', [BridgeWalletController::class, 'deleteExternalAccount'])->name('bridge.external-account.delete');
     Route::get('/bridge/external-accounts', [BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
     Route::post('/bridge/transfer-from-external', [BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
     Route::post('/bridge/transfer-to-external', [BridgeWalletController::class, 'createTransferToExternalAccount'])->name('bridge.transfer-to-external');
