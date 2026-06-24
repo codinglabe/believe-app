@@ -30,6 +30,37 @@ interface WalletTransferRecord {
   amount: number
   status: string
   created_at: string
+  retry_until?: string | null
+}
+
+function walletTransferStatusLabel(status: string): string {
+  switch (status) {
+    case "pending":
+      return "Pending"
+    case "submitted":
+      return "Processing"
+    case "completed":
+      return "Complete"
+    case "refunded":
+      return "Canceled"
+    case "failed":
+      return "Failed"
+    default:
+      return status.replace(/_/g, " ")
+  }
+}
+
+function walletTransferStatusClass(status: string): string {
+  switch (status) {
+    case "pending":
+      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200"
+    case "submitted":
+      return "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-200"
+    case "completed":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+    default:
+      return ""
+  }
 }
 
 type BpMoveToWalletPopupProps = {
@@ -266,8 +297,8 @@ export function BpMoveToWalletPopup({
                                     })}
                                   </p>
                                 </div>
-                                <Badge variant="outline" className="capitalize">
-                                  {transfer.status.replace(/_/g, " ")}
+                                <Badge variant="outline" className={cn("capitalize", walletTransferStatusClass(transfer.status))}>
+                                  {walletTransferStatusLabel(transfer.status)}
                                 </Badge>
                               </li>
                             ))}

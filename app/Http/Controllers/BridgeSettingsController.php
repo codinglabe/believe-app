@@ -87,9 +87,17 @@ class BridgeSettingsController extends Controller
                 ->listForEnvironment($validated['prefunded_environment']);
         }
 
+        $livePrefundedBalance = null;
+        $livePrefundedAccountId = trim((string) ($additionalConfig['live_prefunded_account_id'] ?? ''));
+        if ($livePrefundedAccountId !== '' && ! empty($bridge->live_api_key)) {
+            $livePrefundedBalance = (new BridgeService($bridge->live_api_key, 'live'))
+                ->getPrefundedAccountSummary($livePrefundedAccountId);
+        }
+
         return Inertia::render('settings/bridge', [
             'settings' => $settings,
             'prefunded_liquidity_options' => $prefundedLiquidityOptions,
+            'live_prefunded_balance' => $livePrefundedBalance,
         ]);
     }
 
@@ -151,6 +159,16 @@ class BridgeSettingsController extends Controller
         $additionalConfig['live_prefunded_customer_id'] = $request->live_prefunded_customer_id ?: null;
         $additionalConfig['live_prefunded_wallet_id'] = $request->live_prefunded_wallet_id ?: null;
         $additionalConfig['live_prefunded_account_id'] = $request->live_prefunded_account_id ?: null;
+
+        if (! empty($request->bridge_sandbox_api_key)) {
+            $sandboxService = new BridgeService($request->bridge_sandbox_api_key, 'sandbox');
+            $additionalConfig = $sandboxService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'sandbox');
+        }
+
+        if (! empty($request->bridge_live_api_key)) {
+            $liveService = new BridgeService($request->bridge_live_api_key, 'live');
+            $additionalConfig = $liveService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'live');
+        }
 
         // Prepare Bridge config
         $bridgeConfig = [

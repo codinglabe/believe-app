@@ -119,6 +119,7 @@ class BelievePointController extends Controller
                     'bridge_transfer_state' => $transfer->bridge_transfer_state,
                     'created_at' => $transfer->created_at?->toIso8601String(),
                     'completed_at' => $transfer->completed_at?->toIso8601String(),
+                    'retry_until' => $transfer->retry_until?->toIso8601String(),
                 ]),
         ]);
     }

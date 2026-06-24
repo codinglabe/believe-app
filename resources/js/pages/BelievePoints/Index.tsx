@@ -120,6 +120,7 @@ interface WalletTransferRecord {
   bridge_transfer_state?: string | null
   created_at: string
   completed_at?: string | null
+  retry_until?: string | null
 }
 
 interface PageProps {

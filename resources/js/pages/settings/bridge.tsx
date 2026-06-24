@@ -75,6 +75,24 @@ interface SettingsProps {
 interface Props {
   settings: SettingsProps
   prefunded_liquidity_options?: PrefundedLiquidityOptions | null
+  live_prefunded_balance?: {
+    name: string
+    available_balance: string
+    currency: string
+  } | null
+}
+
+function formatPrefundedBalance(amount: string, currency: string): string {
+  const value = Number.parseFloat(amount)
+  if (Number.isNaN(value)) {
+    return amount
+  }
+
+  if (currency.toLowerCase() === "usd") {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+  }
+
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ${currency.toUpperCase()}`
 }
 
 function WebhookConfiguredBanner({
@@ -100,7 +118,7 @@ function WebhookConfiguredBanner({
   )
 }
 
-export default function BridgeSettings({ settings }: Props) {
+export default function BridgeSettings({ settings, live_prefunded_balance }: Props) {
   const defaultWebhookUrl = settings.app_url
     ? `${settings.app_url}/webhooks/bridge`
     : typeof window !== "undefined"
@@ -562,6 +580,22 @@ export default function BridgeSettings({ settings }: Props) {
               onAccountIdChange={(value) => setData("live_prefunded_account_id", value)}
             />
           </div>
+
+          {live_prefunded_balance && (
+            <Alert className="border-purple-200/70 bg-purple-50/40 dark:border-purple-900/40 dark:bg-purple-950/20">
+              <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <AlertDescription className="text-sm text-foreground">
+                <span className="font-medium">{live_prefunded_balance.name}</span> reserve available balance:{" "}
+                <span className="font-semibold tabular-nums">
+                  {formatPrefundedBalance(
+                    live_prefunded_balance.available_balance,
+                    live_prefunded_balance.currency,
+                  )}
+                </span>
+                . Checked via <code className="rounded bg-muted px-1 py-0.5 text-[11px]">GET /prefunded_accounts/&#123;id&#125;</code>.
+              </AlertDescription>
+            </Alert>
+          )}
         </BridgeSection>
 
         <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-xl border border-border/60 bg-card/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">

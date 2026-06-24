@@ -16,7 +16,7 @@ class BelievePointsWalletTransferSettingsService
         $config = $this->bridgeAdditionalConfig();
 
         return (bool) ($config['believe_points_wallet_transfer_enabled'] ?? false)
-            && $this->prefundedWalletId() !== '';
+            && ($this->prefundedWalletId() !== '' || $this->prefundedAccountId() !== '');
     }
 
     public function minAmount(): float
@@ -51,6 +51,37 @@ class BelievePointsWalletTransferSettingsService
         return trim((string) ($isSandbox
             ? ($config['sandbox_prefunded_wallet_id'] ?? '')
             : ($config['live_prefunded_wallet_id'] ?? '')));
+    }
+
+    public function prefundedAccountId(): string
+    {
+        $config = $this->bridgeAdditionalConfig();
+        $isSandbox = app(BridgeService::class)->isSandbox();
+
+        return trim((string) ($isSandbox
+            ? ($config['sandbox_prefunded_account_id'] ?? '')
+            : ($config['live_prefunded_account_id'] ?? '')));
+    }
+
+    /**
+     * @return array{customer_id: string, wallet_id: string}|null
+     */
+    public function resolvedPrefundedWallet(): ?array
+    {
+        $resolved = app(BridgeService::class)->resolvePlatformPrefundedWallet(
+            $this->prefundedCustomerId(),
+            $this->prefundedWalletId(),
+            $this->prefundedAccountId() !== '' ? $this->prefundedAccountId() : null,
+        );
+
+        if ($resolved === null) {
+            return null;
+        }
+
+        return [
+            'customer_id' => $resolved['customer_id'],
+            'wallet_id' => $resolved['wallet_id'],
+        ];
     }
 
     /**
