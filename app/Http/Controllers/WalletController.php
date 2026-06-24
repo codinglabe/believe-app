@@ -827,13 +827,31 @@ class WalletController extends Controller
                 ->usesBridgeWalletAsSourceOfTruth($bridgeIntegration);
 
             if ($useBridgeWalletActivity) {
-                $transactions = collect(
-                    app(BridgeWalletReadService::class)->getActivity($bridgeIntegration, 200)
+                $allBridgeActivities = collect(
+                    app(BridgeWalletReadService::class)->getActivity($bridgeIntegration, 500)
                 )->map(function (array $activity) {
                     $activity['sort_date'] = $activity['date'] ?? now()->toIso8601String();
 
                     return $activity;
-                });
+                })
+                    ->sortByDesc('sort_date')
+                    ->values();
+
+                $total = $allBridgeActivities->count();
+                $paginated = $allBridgeActivities->slice(($page - 1) * $perPage, $perPage)->values();
+
+                return response()->json([
+                    'success' => true,
+                    'activities' => $paginated->map(function (array $activity) {
+                        unset($activity['sort_date']);
+
+                        return $activity;
+                    })->values(),
+                    'has_more' => ($page * $perPage) < $total,
+                    'current_page' => $page,
+                    'total' => $total,
+                    'source' => 'bridge',
+                ]);
             }
 
             if ($isOrgUser) {

@@ -2243,62 +2243,144 @@ class BridgeService
     }
 
     /**
-     * Bridge external account address limits.
+     * Normalize external account address per Bridge bank validation rules.
      *
-     * @see https://apidocs.bridge.xyz/api-reference/external-accounts/create-a-new-external-account
+     * @see https://apidocs.bridge.xyz/platform/orchestration/external-accounts/validations
      *
      * @param  array<string, mixed>  $address
      * @return array<string, string>
      */
     public function sanitizeExternalAccountAddress(array $address): array
     {
-        $street1 = trim((string) ($address['street_line_1'] ?? ''));
-        $street2 = trim((string) ($address['street_line_2'] ?? ''));
+        $street1 = $this->cleanBridgeStreetLine((string) ($address['street_line_1'] ?? ''));
+        $street2 = $this->cleanBridgeStreetLine((string) ($address['street_line_2'] ?? ''));
+        $city = trim((string) ($address['city'] ?? ''));
+        $state = trim((string) ($address['state'] ?? ''));
+        $postal = trim((string) ($address['postal_code'] ?? ''));
+        $country = $this->normalizeBridgeCountry((string) ($address['country'] ?? 'USA'));
 
-        if ($street1 !== '') {
-            $street1 = mb_substr($street1, 0, 35);
-            if (mb_strlen($street1) < 4) {
-                $street1 = mb_substr(str_pad($street1, 4, '.'), 0, 35);
+        if ($street1 === '' && $street2 !== '') {
+            $street1 = $street2;
+            $street2 = '';
+        }
+
+        if ($this->isUsBridgeCountry($country) && $street1 !== '' && ! preg_match('/^\d/', $street1)) {
+            if (preg_match('/\b(\d+\s+\S.*)$/', $street1.' '.$street2, $matches)) {
+                $street1 = trim($matches[1]);
+            } elseif (preg_match('/(\d+)/', $street1.' '.$street2, $matches)) {
+                $street1 = trim($matches[0]);
             }
         }
 
-        if ($street2 !== '') {
-            $street2 = mb_substr($street2, 0, 35);
+        $street1 = $this->truncateBridgeAddressField($street1, 35);
+        $street2 = $this->truncateBridgeAddressField($street2, 35);
+
+        if ($street1 !== '' && strlen($street1) < 3) {
+            $street1 = $this->truncateBridgeAddressField(str_pad($street1, 3, '.'), 35);
         }
 
-        $state = trim((string) ($address['state'] ?? ''));
-        if ($state !== '') {
-            $state = mb_substr($state, 0, 3);
+        $line3 = $this->buildBridgeFormattedLine3($city, $state, $postal, $country);
+        while (strlen($line3) > 35 && $city !== '') {
+            $cityWords = preg_split('/\s+/', $city) ?: [];
+            if (count($cityWords) <= 1) {
+                $moved = $city;
+                $city = '';
+            } else {
+                $moved = (string) array_pop($cityWords);
+                $city = trim(implode(' ', $cityWords));
+            }
+
+            if ($street2 === '') {
+                $street2 = $this->truncateBridgeAddressField($moved, 35);
+            } else {
+                $combined = trim($street2.', '.$moved);
+                if (strlen($combined) <= 35) {
+                    $street2 = $combined;
+                } else {
+                    $street2 = $this->truncateBridgeAddressField($combined, 35);
+                    break;
+                }
+            }
+
+            $line3 = $this->buildBridgeFormattedLine3($city, $state, $postal, $country);
         }
 
-        $country = strtoupper(trim((string) ($address['country'] ?? 'USA')));
-        if ($country === 'US') {
-            $country = 'USA';
-        }
-        if ($country !== '') {
-            $country = mb_substr($country, 0, 3);
+        if (strlen($line3) > 35) {
+            $city = $this->truncateBridgeAddressField($city, max(1, 35 - strlen(trim($state.' '.$postal))));
         }
 
         $sanitized = [
             'street_line_1' => $street1,
-            'country' => $country !== '' ? $country : 'USA',
-            'city' => trim((string) ($address['city'] ?? '')),
+            'street_line_2' => $street2,
+            'city' => $city,
+            'state' => $state,
+            'postal_code' => $postal,
+            'country' => $country,
         ];
 
-        if ($street2 !== '') {
-            $sanitized['street_line_2'] = $street2;
-        }
+        return array_filter($sanitized, fn ($value) => $value !== '');
+    }
 
-        if ($state !== '') {
-            $sanitized['state'] = $state;
-        }
-
+    /**
+     * @param  array<string, mixed>  $address
+     * @return list<string>
+     */
+    public function bridgeExternalAccountAddressViolations(array $address): array
+    {
+        $violations = [];
+        $street1 = trim((string) ($address['street_line_1'] ?? ''));
+        $street2 = trim((string) ($address['street_line_2'] ?? ''));
+        $city = trim((string) ($address['city'] ?? ''));
+        $state = trim((string) ($address['state'] ?? ''));
         $postal = trim((string) ($address['postal_code'] ?? ''));
-        if ($postal !== '') {
-            $sanitized['postal_code'] = $postal;
+        $country = $this->normalizeBridgeCountry((string) ($address['country'] ?? 'USA'));
+
+        if ($street1 === '') {
+            $violations[] = 'street_line_1 is required';
+        } elseif (strlen($street1) < 3) {
+            $violations[] = 'street_line_1 is too short';
+        } elseif (strlen($street1) > 35) {
+            $violations[] = 'street_line_1 is too long';
         }
 
-        return $sanitized;
+        if ($street2 !== '' && strlen($street2) > 35) {
+            $violations[] = 'street_line_2 is too long';
+        }
+
+        if ($city === '') {
+            $violations[] = 'city is required';
+        }
+
+        if ($postal === '') {
+            $violations[] = 'postal_code is required';
+        }
+
+        if ($country === '') {
+            $violations[] = 'country is required';
+        }
+
+        if ($this->bridgeCountryRequiresState($country) && $state === '') {
+            $violations[] = 'state is required';
+        }
+
+        if ($street1 !== '' && $this->bridgeStreetLineHasPoBoxOrPmb($street1)) {
+            $violations[] = 'street_line_1 cannot contain PO Box or PMB';
+        }
+
+        if ($street2 !== '' && $this->bridgeStreetLineHasPoBoxOrPmb($street2)) {
+            $violations[] = 'street_line_2 cannot contain PO Box or PMB';
+        }
+
+        if ($this->isUsBridgeCountry($country) && $street1 !== '' && ! preg_match('/^\d/', $street1)) {
+            $violations[] = 'street_line_1 must include a street number for US addresses';
+        }
+
+        $line3 = $this->buildBridgeFormattedLine3($city, $state, $postal, $country);
+        if (strlen($line3) > 35) {
+            $violations[] = 'formatted address line 3 is too long';
+        }
+
+        return $violations;
     }
 
     /**
@@ -2319,6 +2401,8 @@ class BridgeService
 
     /**
      * Fix external account address fields that exceed Bridge limits before off-ramp transfers.
+     *
+     * @return array{success: bool, status?: int, data?: array<string, mixed>, message?: string, violations?: list<string>}
      */
     public function ensureExternalAccountAddressValid(string $customerId, string $externalAccountId): array
     {
@@ -2333,10 +2417,25 @@ class BridgeService
         }
 
         $sanitized = $this->sanitizeExternalAccountAddress($address);
-        $needsUpdate = $sanitized !== $address;
+        $currentViolations = $this->bridgeExternalAccountAddressViolations($address);
+        $sanitizedViolations = $this->bridgeExternalAccountAddressViolations($sanitized);
 
+        if ($currentViolations === [] && $sanitizedViolations === []) {
+            return $result;
+        }
+
+        if ($sanitizedViolations !== []) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Bank account address could not be normalized for withdrawal: '.implode('; ', $sanitizedViolations),
+                'violations' => $sanitizedViolations,
+            ];
+        }
+
+        $needsUpdate = $currentViolations !== [];
         if (! $needsUpdate) {
-            foreach (['street_line_1', 'street_line_2', 'state', 'country'] as $field) {
+            foreach (['street_line_1', 'street_line_2', 'city', 'state', 'postal_code', 'country'] as $field) {
                 $original = trim((string) ($address[$field] ?? ''));
                 $fixed = trim((string) ($sanitized[$field] ?? ''));
                 if ($original !== $fixed) {
@@ -2350,9 +2449,94 @@ class BridgeService
             return $result;
         }
 
-        return $this->updateExternalAccount($customerId, $externalAccountId, [
+        $update = $this->updateExternalAccount($customerId, $externalAccountId, [
             'address' => $sanitized,
         ]);
+
+        if (! ($update['success'] ?? false)) {
+            return $update;
+        }
+
+        $refreshed = $this->getExternalAccount($customerId, $externalAccountId);
+        if (! ($refreshed['success'] ?? false)) {
+            return $refreshed;
+        }
+
+        $refreshedAddress = is_array($refreshed['data']['address'] ?? null) ? $refreshed['data']['address'] : [];
+        $remainingViolations = $this->bridgeExternalAccountAddressViolations($refreshedAddress);
+        if ($remainingViolations !== []) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Bank account address is still invalid after update: '.implode('; ', $remainingViolations),
+                'violations' => $remainingViolations,
+            ];
+        }
+
+        return $refreshed;
+    }
+
+    private function cleanBridgeStreetLine(string $value): string
+    {
+        $value = trim(preg_replace('/\s+/', ' ', $value) ?? '');
+
+        return $this->bridgeStreetLineHasPoBoxOrPmb($value) ? '' : $value;
+    }
+
+    private function bridgeStreetLineHasPoBoxOrPmb(string $value): bool
+    {
+        return (bool) preg_match('/\b(p\.?\s*o\.?\s*box|post\s*office\s*box|po\s*box|pmb)\b/i', $value);
+    }
+
+    private function truncateBridgeAddressField(string $value, int $maxLength): string
+    {
+        $value = trim($value);
+        if ($value === '' || strlen($value) <= $maxLength) {
+            return $value;
+        }
+
+        return rtrim(substr($value, 0, $maxLength));
+    }
+
+    private function normalizeBridgeCountry(string $country): string
+    {
+        $country = strtoupper(trim($country));
+
+        return match ($country) {
+            'US', 'USA', 'UNITED STATES', 'UNITED STATES OF AMERICA' => 'USA',
+            default => $country !== '' ? $country : 'USA',
+        };
+    }
+
+    private function isUsBridgeCountry(string $country): bool
+    {
+        return in_array($this->normalizeBridgeCountry($country), ['US', 'USA'], true);
+    }
+
+    private function bridgeCountryRequiresState(string $country): bool
+    {
+        return $this->isUsBridgeCountry($country);
+    }
+
+    private function buildBridgeFormattedLine3(string $city, string $state, string $postal, string $country): string
+    {
+        $parts = array_values(array_filter([$city, $state, $postal], fn ($part) => $part !== ''));
+
+        if (! $this->isUsBridgeCountry($country) && $country !== '') {
+            $parts[] = $this->abbreviateBridgeCountryForLine3($country);
+        }
+
+        return trim(implode(' ', $parts));
+    }
+
+    private function abbreviateBridgeCountryForLine3(string $country): string
+    {
+        $country = $this->normalizeBridgeCountry($country);
+        if (strlen($country) <= 3) {
+            return $country;
+        }
+
+        return substr($country, 0, 3);
     }
 
     /**
@@ -2369,6 +2553,14 @@ class BridgeService
     public function getExternalAccount(string $customerId, string $externalAccountId): array
     {
         return $this->makeRequest('GET', "/customers/{$customerId}/external_accounts/{$externalAccountId}");
+    }
+
+    public function deleteExternalAccount(string $customerId, string $externalAccountId): array
+    {
+        return $this->makeRequest(
+            'DELETE',
+            "/customers/{$customerId}/external_accounts/{$externalAccountId}",
+        );
     }
 
     // ==================== TRANSFERS ====================

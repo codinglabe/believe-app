@@ -312,6 +312,7 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'appEnv' => config('app.env'),
             'seoSiteName' => $seoSiteName,
             'seoCanonical' => $seoCanonical,
             'seoDefaultImage' => $seoDefaultImage,

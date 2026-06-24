@@ -4998,12 +4998,15 @@ class BridgeWalletController extends Controller
                 $validated['external_account_id'],
             );
 
-            if (! ($addressFix['success'] ?? false) && ($addressFix['status'] ?? 0) !== 404) {
-                Log::warning('Could not normalize external account address before withdrawal', [
-                    'customer_id' => $integration->bridge_customer_id,
-                    'external_account_id' => $validated['external_account_id'],
-                    'response' => $addressFix,
-                ]);
+            if (! ($addressFix['success'] ?? false)) {
+                $status = (int) ($addressFix['status'] ?? 422);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $addressFix['message'] ?? 'Bank account address is invalid. Please update the address on your linked bank account (street line 1 must be 3–35 characters).',
+                    'error_code' => 'EXTERNAL_ACCOUNT_ADDRESS_INVALID',
+                    'violations' => $addressFix['violations'] ?? [],
+                ], $status >= 400 && $status < 600 ? $status : 422);
             }
 
             $result = $this->bridgeService->createTransferToExternalAccount(
@@ -5157,6 +5160,7 @@ class BridgeWalletController extends Controller
                     'account_number' => $accountNumber,
                     'routing_number' => (string)($account['account']['routing_number'] ?? ''),
                     'account_type' => $account['account']['checking_or_savings'] ?? 'checking',
+                    'bank_name' => (string)($account['bank_name'] ?? ''),
                     // Bridge returns account_name or account_owner_name, prioritize account_name
                     'account_holder_name' => $account['account_name'] ?? $account['account_owner_name'] ?? $account['account_holder_name'] ?? '',
                     'status' => ($account['active'] ?? false) ? 'verified' : 'pending',
@@ -5223,7 +5227,7 @@ class BridgeWalletController extends Controller
                 'account_data.bank_name' => 'required|string',
                 'account_data.first_name' => 'required|string',
                 'account_data.last_name' => 'required|string',
-                'account_data.street_line_1' => 'required|string|max:35',
+                'account_data.street_line_1' => 'required|string|min:3|max:35',
                 'account_data.street_line_2' => 'nullable|string|max:35',
                 'account_data.city' => 'required|string',
                 'account_data.state' => 'required|string',
@@ -5290,6 +5294,63 @@ class BridgeWalletController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create external account: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove (unlink) an external bank account.
+     */
+    public function deleteExternalAccount(Request $request, string $externalAccountId)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            $integration = BridgeIntegration::with('primaryWallet')
+                ->where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (! $integration || ! $integration->bridge_customer_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge integration not found.',
+                ], 404);
+            }
+
+            if ($externalAccountId === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bank account ID is required.',
+                ], 422);
+            }
+
+            $result = $this->bridgeService->deleteExternalAccount(
+                $integration->bridge_customer_id,
+                $externalAccountId,
+            );
+
+            if (! ($result['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['error'] ?? $result['message'] ?? 'Failed to remove bank account.',
+                ], (int) ($result['status'] ?? 422));
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bank account removed successfully.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Delete external account error', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to remove bank account: '.$e->getMessage(),
             ], 500);
         }
     }

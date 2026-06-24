@@ -24,6 +24,12 @@ import { pickWalletBalance } from '@/lib/wallet-balance-fetch'
 import { useWalletBridgeRealtime, type WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
 import { patchActivitiesFromBridgeUpdate, prependPendingTransferActivity } from '@/lib/patch-wallet-activities'
 import {
+    clearRecentWalletActivityCache,
+    clearAllWalletActivityCache,
+    patchRecentWalletActivityCache,
+    setRecentWalletActivityCache,
+} from '@/lib/wallet-activity-cache'
+import {
     SuccessMessage,
     BalanceDisplay,
     SwapView,
@@ -99,9 +105,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         routing_number: string;
         account_type: string;
         account_holder_name: string;
+        bank_name?: string;
         status: string;
     }>>([])
     const [isLoadingExternalAccounts, setIsLoadingExternalAccounts] = useState(false)
+    const [isRemovingBankAccount, setIsRemovingBankAccount] = useState(false)
     const [transferAmount, setTransferAmount] = useState('')
     const [withdrawAmount, setWithdrawAmount] = useState('')
     const [withdrawPaymentRail, setWithdrawPaymentRail] = useState<'ach' | 'wire'>('ach')
@@ -152,7 +160,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }>>([])
     const [isLoadingActivities, setIsLoadingActivities] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
-    const [walletRefreshNonce, setWalletRefreshNonce] = useState(0)
+    const activitiesLoadedWhileOpenRef = useRef(false)
     const [hasMoreActivities, setHasMoreActivities] = useState(false)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
     const [bridgeInitialized, setBridgeInitialized] = useState(false)
@@ -840,8 +848,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
     const handleBridgeRealtimeUpdate = useCallback((payload: WalletBridgeUpdatePayload) => {
         if (payload.refresh_activity !== false) {
-            setActivities((prev) => patchActivitiesFromBridgeUpdate(prev, payload))
-            setWalletRefreshNonce((n) => n + 1)
+            setActivities((prev) => {
+                const next = patchActivitiesFromBridgeUpdate(prev, payload)
+                patchRecentWalletActivityCache(() => next)
+
+                return next
+            })
         }
         if (payload.refresh_balance !== false) {
             bridgeBalanceRefreshRef.current()
@@ -989,19 +1001,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [])
 
-    // Fetch wallet activity when main or activity view is open (also refreshes on Reverb events)
+    // Fetch wallet activity once per popup open (Reverb patches update in place)
     useEffect(() => {
-        if (!isOpen || (actionView !== 'main' && actionView !== 'activity')) return
+        if (!isOpen) {
+            activitiesLoadedWhileOpenRef.current = false
+            clearRecentWalletActivityCache()
+            clearAllWalletActivityCache()
+            return
+        }
 
-        const fetchActivities = async (page: number = 1, append: boolean = false) => {
-            if (append) {
-                setIsLoadingMore(true)
-            } else {
-                setIsLoadingActivities(true)
-            }
+        if (activitiesLoadedWhileOpenRef.current) {
+            return
+        }
+
+        const fetchActivities = async () => {
+            setIsLoadingActivities(true)
 
             try {
-                // Fetch activities for main screen (always limit to 10, no pagination)
                 const response = await fetch(`/wallet/activity?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
@@ -1016,15 +1032,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (response.ok) {
                     const data = await response.json()
                     if (data.success) {
-                        if (append) {
-                            // Append new activities
-                            setActivities(prev => [...prev, ...(data.activities || [])])
-                        } else {
-                            // First load: show all activities from backend
-                            setActivities(data.activities || [])
-                        }
+                        const nextActivities = data.activities || []
+                        setActivities(nextActivities)
+                        setRecentWalletActivityCache(nextActivities, data.has_more || false)
                         setHasMoreActivities(data.has_more || false)
-                        setCurrentPage(page)
+                        setCurrentPage(1)
+                        activitiesLoadedWhileOpenRef.current = true
                     }
                 }
             } catch (error) {
@@ -1035,11 +1048,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
         }
 
-        // Reset and fetch first page when main view is shown
         setCurrentPage(1)
         setHasMoreActivities(false)
-        fetchActivities(1, false)
-    }, [isOpen, actionView, walletRefreshNonce])
+        void fetchActivities()
+    }, [isOpen])
 
     // Handle "See More" button click
     const handleSeeMore = () => {
@@ -1313,6 +1325,38 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             showErrorToast('Failed to link bank account. Please try again.')
         } finally {
             setIsLoading(false)
+        }
+    }
+
+    const handleRemoveExternalAccount = async (accountId: string) => {
+        setIsRemovingBankAccount(true)
+        try {
+            const response = await fetch(`/wallet/bridge/external-account/${encodeURIComponent(accountId)}`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+
+            const data = await response.json()
+            if (data.success) {
+                showSuccessToast('Bank account removed')
+                if (selectedExternalAccount === accountId) {
+                    setSelectedExternalAccount('')
+                }
+                await fetchExternalAccounts()
+            } else {
+                showErrorToast(data.message || 'Failed to remove bank account')
+            }
+        } catch (error) {
+            console.error('Failed to remove external account:', error)
+            showErrorToast('Failed to remove bank account. Please try again.')
+        } finally {
+            setIsRemovingBankAccount(false)
         }
     }
 
@@ -3433,9 +3477,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 key="external-accounts"
                                                 externalAccounts={externalAccounts}
                                                 isLoading={isLoadingExternalAccounts}
+                                                isLinking={isLoading}
+                                                isRemoving={isRemovingBankAccount}
                                                 initialShowAddForm={showAddBankFormOnEntry}
                                                 onRefresh={fetchExternalAccounts}
                                                 onLinkAccount={handleLinkExternalAccount}
+                                                onRemoveAccount={handleRemoveExternalAccount}
                                                 onWithdraw={() => {
                                                     setActionView('withdraw_to_external')
                                                     setSelectedExternalAccount('')
