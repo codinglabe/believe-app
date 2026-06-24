@@ -59,8 +59,8 @@ class BridgePrefundedLiquidityService
                     ? $detail['data']
                     : $row;
 
-                $walletId = $this->extractBridgeWalletId($payload);
-                $customerId = $this->extractCustomerId($payload);
+                $walletId = $service->extractBridgeWalletIdFromPayload($payload);
+                $customerId = $service->extractCustomerIdFromPayload($payload);
                 $walletSummary = $walletId !== ''
                     ? $this->fetchWalletSummary($service, $customerId, $walletId)
                     : null;
@@ -107,7 +107,7 @@ class BridgePrefundedLiquidityService
                     continue;
                 }
 
-                $customerId = $this->extractCustomerId($wallet);
+                $customerId = $service->extractCustomerIdFromPayload($wallet);
                 $walletSummary = $this->fetchWalletSummary($service, $customerId, $walletId);
 
                 if ($customerId === '' && is_array($walletSummary)) {
@@ -159,39 +159,6 @@ class BridgePrefundedLiquidityService
     }
 
     /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function extractBridgeWalletId(array $payload): string
-    {
-        foreach (['bridge_wallet_id', 'wallet_id'] as $key) {
-            if (! empty($payload[$key]) && is_string($payload[$key])) {
-                return trim($payload[$key]);
-            }
-        }
-
-        $bridgeWallet = $payload['bridge_wallet'] ?? null;
-        if (is_array($bridgeWallet) && ! empty($bridgeWallet['id'])) {
-            return trim((string) $bridgeWallet['id']);
-        }
-
-        return '';
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function extractCustomerId(array $payload): string
-    {
-        foreach (['customer_id', 'developer_customer_id', 'owner_customer_id', 'on_behalf_of'] as $key) {
-            if (! empty($payload[$key]) && is_string($payload[$key])) {
-                return trim($payload[$key]);
-            }
-        }
-
-        return '';
-    }
-
-    /**
      * @param  array<string, mixed>  $wallet
      */
     private function walletDisplayName(array $wallet, string $walletId): string
@@ -227,7 +194,7 @@ class BridgePrefundedLiquidityService
             'currency' => (string) ($parsed['currency'] ?? 'usdc'),
             'chain' => (string) ($walletData['chain'] ?? $parsed['chain'] ?? ''),
             'address' => (string) ($walletData['address'] ?? ''),
-            'customer_id' => $this->extractCustomerId($walletData),
+            'customer_id' => $service->extractCustomerIdFromPayload($walletData),
         ];
     }
 }

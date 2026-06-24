@@ -113,6 +113,10 @@ Schedule::command('believe-points:release-processing')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+Schedule::command('believe-points:process-wallet-transfers')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 Schedule::command('unity-calls:expire-ringing')
     ->everyThirtySeconds()
     ->withoutOverlapping();

@@ -28,12 +28,14 @@ class BelievePointWalletTransfer extends Model
         'failure_message',
         'metadata',
         'completed_at',
+        'retry_until',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'metadata' => 'array',
         'completed_at' => 'datetime',
+        'retry_until' => 'datetime',
     ];
 
     public function user(): BelongsTo

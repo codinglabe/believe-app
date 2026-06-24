@@ -1311,6 +1311,202 @@ class BridgeService
     }
 
     /**
+     * @return array{name: string, available_balance: string, currency: string}|null
+     */
+    public function getPrefundedAccountSummary(?string $prefundedAccountId): ?array
+    {
+        $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
+        if ($prefundedAccountId === '') {
+            return null;
+        }
+
+        $result = $this->getPrefundedAccount($prefundedAccountId);
+        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
+            return null;
+        }
+
+        $data = $result['data'];
+
+        return [
+            'name' => (string) ($data['name'] ?? 'Prefunded account'),
+            'available_balance' => (string) ($data['available_balance'] ?? '0'),
+            'currency' => strtolower((string) ($data['currency'] ?? 'usd')),
+        ];
+    }
+
+    /**
+     * Extract a Bridge wallet ID from a prefunded account or wallet payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function extractBridgeWalletIdFromPayload(array $payload): string
+    {
+        foreach (['bridge_wallet_id', 'wallet_id', 'source_id'] as $key) {
+            if (! empty($payload[$key]) && is_string($payload[$key])) {
+                return trim($payload[$key]);
+            }
+        }
+
+        $bridgeWallet = $payload['bridge_wallet'] ?? null;
+        if (is_array($bridgeWallet) && ! empty($bridgeWallet['id'])) {
+            return trim((string) $bridgeWallet['id']);
+        }
+
+        $source = $payload['source'] ?? null;
+        if (is_array($source)) {
+            foreach (['bridge_wallet_id', 'wallet_id', 'id'] as $key) {
+                if (! empty($source[$key]) && is_string($source[$key])) {
+                    return trim($source[$key]);
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function extractCustomerIdFromPayload(array $payload): string
+    {
+        foreach (['customer_id', 'developer_customer_id', 'owner_customer_id', 'on_behalf_of'] as $key) {
+            if (! empty($payload[$key]) && is_string($payload[$key])) {
+                return trim($payload[$key]);
+            }
+        }
+
+        $bridgeWallet = $payload['bridge_wallet'] ?? null;
+        if (is_array($bridgeWallet)) {
+            $fromWallet = $this->extractCustomerIdFromPayload($bridgeWallet);
+            if ($fromWallet !== '') {
+                return $fromWallet;
+            }
+        }
+
+        return '';
+    }
+
+    public function resolveBridgeWalletIdFromPrefundedAccount(string $prefundedAccountId): ?string
+    {
+        $prefundedAccountId = trim($prefundedAccountId);
+        if ($prefundedAccountId === '') {
+            return null;
+        }
+
+        $result = $this->getPrefundedAccount($prefundedAccountId);
+        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
+            return null;
+        }
+
+        $walletId = $this->extractBridgeWalletIdFromPayload($result['data']);
+
+        return $walletId !== '' ? $walletId : null;
+    }
+
+    /**
+     * Resolve platform liquidity IDs to a valid Bridge wallet for transfers.
+     *
+     * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}|null
+     */
+    public function resolvePlatformPrefundedWallet(
+        string $customerId,
+        string $walletId,
+        ?string $prefundedAccountId = null,
+    ): ?array {
+        $customerId = trim($customerId);
+        $walletId = trim($walletId);
+        $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
+
+        $accountCandidates = array_values(array_unique(array_filter([
+            $prefundedAccountId,
+            $walletId,
+        ])));
+
+        $resolvedWalletId = $walletId;
+        $resolvedAccountId = $prefundedAccountId;
+
+        foreach ($accountCandidates as $accountId) {
+            $fromAccount = $this->resolveBridgeWalletIdFromPrefundedAccount($accountId);
+            if ($fromAccount === null) {
+                continue;
+            }
+
+            $resolvedWalletId = $fromAccount;
+            if ($resolvedAccountId === '') {
+                $resolvedAccountId = $accountId;
+            }
+
+            break;
+        }
+
+        if ($resolvedWalletId === '') {
+            return null;
+        }
+
+        if ($customerId === '' && $resolvedAccountId !== '') {
+            $detail = $this->getPrefundedAccount($resolvedAccountId);
+            if (($detail['success'] ?? false) && is_array($detail['data'] ?? null)) {
+                $customerId = $this->extractCustomerIdFromPayload($detail['data']);
+            }
+        }
+
+        $parsed = $this->parseBridgeWalletForTransfer($customerId, $resolvedWalletId);
+        if ($parsed === null) {
+            return null;
+        }
+
+        if ($customerId === '') {
+            $walletResult = $this->getBridgeWalletById($parsed['wallet_id']);
+            if (($walletResult['success'] ?? false) && is_array($walletResult['data'] ?? null)) {
+                $customerId = $this->extractCustomerIdFromPayload($walletResult['data']);
+            }
+        }
+
+        return [
+            'customer_id' => $customerId,
+            'wallet_id' => $parsed['wallet_id'],
+            'parsed' => $parsed,
+        ];
+    }
+
+    /**
+     * Normalize stored prefunded liquidity config to real Bridge wallet IDs.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    public function normalizeStoredPrefundedWalletConfig(array $config, string $environment): array
+    {
+        $prefix = $environment === 'sandbox' ? 'sandbox' : 'live';
+        $customerKey = "{$prefix}_prefunded_customer_id";
+        $walletKey = "{$prefix}_prefunded_wallet_id";
+        $accountKey = "{$prefix}_prefunded_account_id";
+
+        $customerId = trim((string) ($config[$customerKey] ?? ''));
+        $walletId = trim((string) ($config[$walletKey] ?? ''));
+        $accountId = trim((string) ($config[$accountKey] ?? ''));
+
+        if ($walletId === '' && $accountId === '') {
+            return $config;
+        }
+
+        $resolved = $this->resolvePlatformPrefundedWallet(
+            $customerId,
+            $walletId,
+            $accountId !== '' ? $accountId : null,
+        );
+
+        if ($resolved === null) {
+            return $config;
+        }
+
+        $config[$walletKey] = $resolved['wallet_id'];
+        $config[$customerKey] = $resolved['customer_id'];
+
+        return $config;
+    }
+
+    /**
      * Wallet transaction history (deposits, withdrawals, etc.)
      *
      * @see https://apidocs.bridge.xyz/api-reference/bridge-wallets/get-transaction-history-for-a-bridge-wallet
@@ -2871,6 +3067,12 @@ class BridgeService
         if ($data === null) {
             return null;
         }
+
+        $resolvedWalletId = trim((string) ($data['id'] ?? $walletId));
+        if ($resolvedWalletId === '') {
+            return null;
+        }
+
         $chain = strtolower((string) ($data['chain'] ?? 'solana'));
         if (in_array($chain, ['usd', 'fiat'], true)) {
             $chain = 'solana';
@@ -2879,7 +3081,7 @@ class BridgeService
         $primaryStablecoin = $this->resolvePrimaryStablecoinBalance($data);
 
         return [
-            'wallet_id' => $walletId,
+            'wallet_id' => $resolvedWalletId,
             'chain' => $chain,
             'currency' => $primaryStablecoin['currency'],
             'balance' => $primaryStablecoin['balance'],
@@ -3248,19 +3450,27 @@ class BridgeService
         string $recipientWalletId,
         float $amount,
         ?string $idempotencyKey = null,
+        ?string $prefundedAccountId = null,
     ): array {
-        $prefundedCustomerId = trim($prefundedCustomerId);
-        $prefundedWalletId = trim($prefundedWalletId);
-        $recipientCustomerId = trim($recipientCustomerId);
-        $recipientWalletId = trim($recipientWalletId);
+        $resolved = $this->resolvePlatformPrefundedWallet(
+            $prefundedCustomerId,
+            $prefundedWalletId,
+            $prefundedAccountId,
+        );
 
-        if ($prefundedCustomerId === '' || $prefundedWalletId === '') {
+        if ($resolved === null) {
             return [
                 'success' => false,
-                'error' => 'Platform prefunded wallet is not configured.',
+                'error' => 'Platform prefunded wallet is not configured correctly. In Bridge settings, load your live prefunded account and save the linked Bridge wallet ID.',
                 'error_code' => 'PREFUNDED_WALLET_NOT_CONFIGURED',
             ];
         }
+
+        $prefundedCustomerId = $resolved['customer_id'];
+        $prefundedWalletId = $resolved['wallet_id'];
+        $prefundedWallet = $resolved['parsed'];
+        $recipientCustomerId = trim($recipientCustomerId);
+        $recipientWalletId = trim($recipientWalletId);
 
         if ($recipientCustomerId === '' || $recipientWalletId === '') {
             return [
@@ -3270,16 +3480,7 @@ class BridgeService
             ];
         }
 
-        $prefundedWallet = $this->parseBridgeWalletForTransfer($prefundedCustomerId, $prefundedWalletId);
         $recipientWallet = $this->parseBridgeWalletForTransfer($recipientCustomerId, $recipientWalletId);
-
-        if ($prefundedWallet === null) {
-            return [
-                'success' => false,
-                'error' => 'Platform prefunded wallet could not be loaded from Bridge.',
-                'error_code' => 'PREFUNDED_WALLET_NOT_FOUND',
-            ];
-        }
 
         if ($recipientWallet === null) {
             return [

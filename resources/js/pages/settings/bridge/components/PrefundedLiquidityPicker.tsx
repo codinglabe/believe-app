@@ -108,7 +108,7 @@ export function PrefundedLiquidityPicker({
 
   const handleSelect = (value: string) => {
     const account = options?.accounts.find((item) => accountOptionValue(item) === value)
-    if (!account) {
+    if (!account || !account.bridge_wallet_id) {
       return
     }
 
@@ -170,13 +170,18 @@ export function PrefundedLiquidityPicker({
             </SelectTrigger>
             <SelectContent>
               {options.accounts.map((account) => (
-                <SelectItem key={accountOptionValue(account)} value={accountOptionValue(account)}>
+                <SelectItem
+                  key={accountOptionValue(account)}
+                  value={accountOptionValue(account)}
+                  disabled={!account.bridge_wallet_id}
+                >
                   <span className="flex flex-col gap-0.5 text-left">
                     <span className="font-medium">{account.name}</span>
                     <span className="text-xs text-muted-foreground">
                       {formatBalance(account.available_balance, account.currency)}
                       {account.source === "prefunded_account" ? " · Prefunded account" : " · Bridge wallet"}
                       {account.chain ? ` · ${account.chain}` : ""}
+                      {!account.bridge_wallet_id ? " · No linked Bridge wallet" : ""}
                     </span>
                   </span>
                 </SelectItem>
