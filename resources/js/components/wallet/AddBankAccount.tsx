@@ -340,14 +340,14 @@ export function AddBankAccount({ isLoading, onLinkAccount, onCancel }: AddBankAc
                             <div className="space-y-2">
                                 <Label>Account type <span className="text-red-500">*</span></Label>
                                 <Select
-                                    value={formData.account_type}
+                                    value={formData.account_type || undefined}
                                     onValueChange={(value) => handleInputChange('account_type', value)}
                                     disabled={isLoading}
                                 >
                                     <SelectTrigger className={inputClass(Boolean(errors.account_type))}>
                                         <SelectValue placeholder="Checking or savings" />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent className="z-[100]">
                                         <SelectItem value="checking">Checking</SelectItem>
                                         <SelectItem value="savings">Savings</SelectItem>
                                     </SelectContent>
