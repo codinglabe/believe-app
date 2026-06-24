@@ -8,6 +8,7 @@ import { Badge } from "@/components/frontend/ui/badge"
 import {
   AlertCircle,
   CheckCircle2,
+  Coins,
   CreditCard,
   Landmark,
   Lock,
@@ -20,6 +21,12 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { SavedPaymentMethod } from "@/components/account/saved-payment-method-selector"
 import { cn } from "@/lib/utils"
 import { ConfirmationModal } from "@/components/confirmation-modal"
+import {
+  QuickAddBelievePointsModal,
+  readQuickAddBelievePointsPrompt,
+  resolveQuickAddPaymentMethod,
+  type BelievePointsFeePreview,
+} from "@/components/believe-points/QuickAddBelievePointsModal"
 
 type PageProps = {
   layout: "profile" | "settings"
@@ -29,6 +36,17 @@ type PageProps = {
     success?: string
     error?: string
   }
+  feePreview?: BelievePointsFeePreview | null
+  quickAddBelievePoints?: {
+    minPurchaseAmount: number
+    maxPurchaseAmount: number
+    purchaseSettings: {
+      card_brp_rate: number
+      ach_brp_rate: number
+      card_hold_hours: number
+    }
+    currentBalance: number
+  } | null
 }
 
 function formatBrand(brand: string | null): string {
@@ -51,10 +69,14 @@ function PaymentMethodRow({
   method,
   onSetDefault,
   onRemove,
+  onQuickBuy,
+  showQuickBuy,
 }: {
   method: SavedPaymentMethod
   onSetDefault: () => void
   onRemove: () => void
+  onQuickBuy?: () => void
+  showQuickBuy?: boolean
 }) {
   const isBank = method.type === "us_bank_account"
 
@@ -85,6 +107,18 @@ function PaymentMethodRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        {showQuickBuy && onQuickBuy && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 border-purple-200 px-2 text-xs text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:text-purple-300 dark:hover:bg-purple-950/40"
+            onClick={onQuickBuy}
+          >
+            <Coins className="h-3 w-3" />
+            Buy BP
+          </Button>
+        )}
         {!method.is_default && (
           <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onSetDefault}>
             Default
@@ -109,10 +143,14 @@ function PaymentMethodsContent({
   paymentMethods,
   returnUrl,
   flash,
+  feePreview,
+  quickAddBelievePoints,
 }: {
   paymentMethods: SavedPaymentMethod[]
   returnUrl?: string | null
   flash?: PageProps["flash"]
+  feePreview?: BelievePointsFeePreview | null
+  quickAddBelievePoints?: PageProps["quickAddBelievePoints"]
 }) {
   useEffect(() => {
     if (flash?.success) showSuccessToast(flash.success)
@@ -122,6 +160,30 @@ function PaymentMethodsContent({
   const [removeTarget, setRemoveTarget] = useState<SavedPaymentMethod | null>(null)
   const [isRemoving, setIsRemoving] = useState(false)
   const removingRef = useRef(false)
+
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [quickAddPmId, setQuickAddPmId] = useState<string | null>(null)
+  const [quickAddRail, setQuickAddRail] = useState<"card" | "bank">("card")
+
+  useEffect(() => {
+    if (!quickAddBelievePoints) return
+    const prompt = readQuickAddBelievePointsPrompt()
+    if (!prompt) return
+    setQuickAddPmId(prompt.savedPaymentMethodId)
+    setQuickAddRail(prompt.paymentRail)
+    setQuickAddOpen(true)
+  }, [quickAddBelievePoints])
+
+  const openQuickAdd = (preferredId?: string) => {
+    const resolved = resolveQuickAddPaymentMethod(paymentMethods, preferredId)
+    if (!resolved) {
+      showErrorToast("Add a saved card or bank account first.")
+      return
+    }
+    setQuickAddPmId(resolved.id)
+    setQuickAddRail(resolved.rail)
+    setQuickAddOpen(true)
+  }
 
   const defaultMethod = useMemo(
     () => paymentMethods.find((m) => m.is_default) ?? null,
@@ -187,6 +249,30 @@ function PaymentMethodsContent({
         </span>
       </div>
 
+      {quickAddBelievePoints && paymentMethods.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-violet-50 p-4 dark:border-purple-800 dark:from-purple-950/30 dark:to-violet-950/20 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-purple-900 dark:text-purple-100">
+              <Coins className="h-4 w-4 shrink-0" />
+              Quick add Believe Points
+            </p>
+            <p className="mt-1 text-xs text-purple-800/80 dark:text-purple-200/80">
+              Use a saved {defaultMethod ? (defaultMethod.type === "us_bank_account" ? "bank" : "card") : "payment method"} —{" "}
+              {quickAddBelievePoints.currentBalance.toLocaleString("en-US")} BP balance now.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 shrink-0 bg-purple-600 hover:bg-purple-700"
+            onClick={() => openQuickAdd()}
+          >
+            <Coins className="mr-1.5 h-3.5 w-3.5" />
+            Quick buy BP
+          </Button>
+        </div>
+      )}
+
       {defaultMethod && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Default: {methodLabel(defaultMethod)}
@@ -207,6 +293,8 @@ function PaymentMethodsContent({
               method={method}
               onSetDefault={() => setDefault(method.id)}
               onRemove={() => setRemoveTarget(method)}
+              showQuickBuy={Boolean(quickAddBelievePoints)}
+              onQuickBuy={() => openQuickAdd(method.id)}
             />
           ))}
         </div>
@@ -229,15 +317,43 @@ function PaymentMethodsContent({
         onCancel={() => setRemoveTarget(null)}
         isLoading={isRemoving}
       />
+
+      {quickAddBelievePoints && quickAddPmId && (
+        <QuickAddBelievePointsModal
+          open={quickAddOpen}
+          onOpenChange={setQuickAddOpen}
+          savedPaymentMethodId={quickAddPmId}
+          paymentRail={quickAddRail}
+          paymentMethods={paymentMethods}
+          minPurchaseAmount={quickAddBelievePoints.minPurchaseAmount}
+          maxPurchaseAmount={quickAddBelievePoints.maxPurchaseAmount}
+          purchaseSettings={quickAddBelievePoints.purchaseSettings}
+          currentBalance={quickAddBelievePoints.currentBalance}
+          feePreview={feePreview}
+          feePreviewUrl={typeof window !== "undefined" ? window.location.pathname : "/profile/payment-methods"}
+          paymentSavedMessage={
+            flash?.success
+              ? `${flash.success} Add Believe Points now with your saved ${quickAddRail === "bank" ? "bank account" : "card"}.`
+              : "Buy Believe Points instantly with your saved payment method."
+          }
+        />
+      )}
     </div>
   )
 }
 
 export default function PaymentMethodsPage() {
-  const { layout, paymentMethods, returnUrl, flash } = usePage<PageProps>().props
+  const { layout, paymentMethods, returnUrl, flash, feePreview, quickAddBelievePoints } =
+    usePage<PageProps>().props
 
   const content = (
-    <PaymentMethodsContent paymentMethods={paymentMethods} returnUrl={returnUrl} flash={flash} />
+    <PaymentMethodsContent
+      paymentMethods={paymentMethods}
+      returnUrl={returnUrl}
+      flash={flash}
+      feePreview={feePreview}
+      quickAddBelievePoints={quickAddBelievePoints}
+    />
   )
 
   if (layout === "settings") {

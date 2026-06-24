@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdminSetting;
+use App\Services\BelievePointsPurchaseCalculationService;
+use App\Services\BelievePointsPurchaseSettingsService;
 use App\Services\UserStripePaymentMethodService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response;
 use Stripe\Exception\ApiErrorException;
@@ -19,11 +23,35 @@ class UserPaymentMethodController extends Controller
         abort_unless($user, 403);
 
         $layout = $request->routeIs('settings.saved-payment-methods.*') ? 'settings' : 'profile';
+        $believePointsEnabled = (bool) AdminSetting::get('believe_points_enabled', true);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
+
+        $feePreview = null;
+        if ($believePointsEnabled && $request->filled('fee_preview_amount')) {
+            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail']), [
+                'fee_preview_amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
+                'fee_preview_rail' => ['nullable', 'in:card,bank'],
+            ]);
+            if (! $validator->fails()) {
+                $base = round((float) $validator->validated()['fee_preview_amount'], 2);
+                $rail = $request->input('fee_preview_rail', 'bank');
+                $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
+                $feePreview = BelievePointsPurchaseCalculationService::feePreviewPayload($base, $rail);
+            }
+        }
 
         return Inertia::render('account/payment-methods', [
             'layout' => $layout,
             'paymentMethods' => UserStripePaymentMethodService::listForUser($user),
             'returnUrl' => $request->query('return'),
+            'feePreview' => $feePreview,
+            'quickAddBelievePoints' => $believePointsEnabled ? [
+                'minPurchaseAmount' => $minPurchaseAmount,
+                'maxPurchaseAmount' => $maxPurchaseAmount,
+                'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload(),
+                'currentBalance' => $user->currentBelievePoints(),
+            ] : null,
         ]);
     }
 
@@ -85,9 +113,9 @@ class UserPaymentMethodController extends Controller
         }
 
         try {
-            UserStripePaymentMethodService::completeSetupFromCheckoutSession($user, (string) $sessionId);
+            $paymentMethodId = UserStripePaymentMethodService::completeSetupFromCheckoutSession($user, (string) $sessionId);
 
-            return redirect()->to($this->redirectAfterSetup($request))
+            return redirect()->to($this->redirectAfterSetupWithQuickAdd($request, $paymentMethodId))
                 ->with('success', 'Payment method saved successfully.');
         } catch (\Throwable $e) {
             Log::error('Payment method setup success error', [
@@ -158,6 +186,28 @@ class UserPaymentMethodController extends Controller
         $user = Auth::user();
 
         return route($this->indexRouteForUser($user));
+    }
+
+    private function redirectAfterSetupWithQuickAdd(Request $request, string $paymentMethodId): string
+    {
+        $baseUrl = $this->redirectAfterSetup($request);
+
+        if (! (bool) AdminSetting::get('believe_points_enabled', true)) {
+            return $baseUrl;
+        }
+
+        $rail = UserStripePaymentMethodService::railForPaymentMethod($paymentMethodId);
+        if (! in_array($rail, ['card', 'bank'], true)) {
+            return $baseUrl;
+        }
+
+        $separator = str_contains($baseUrl, '?') ? '&' : '?';
+
+        return $baseUrl.$separator.http_build_query([
+            'open_quick_add_bp' => '1',
+            'quick_add_pm' => $paymentMethodId,
+            'quick_add_rail' => $rail,
+        ]);
     }
 
     private function indexRouteForUser($user): string

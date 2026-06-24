@@ -185,27 +185,11 @@ class ChatController extends Controller
                 : [],
         ];
 
-        // Default (no query string): for supporters with profile causes, same view as the old
-        // `?my_causes=1` without exposing that in the URL. Use `?all_groups=1` to list every group.
-        $myCauseCategoryIds = $currentUser['myCauseCategoryIds'] ?? [];
-        $wantsAllGroups = in_array((string) $request->query('all_groups'), ['1', 'true', 'yes'], true);
-        $wantsMyCauses = in_array((string) $request->query('my_causes'), ['1', 'true', 'yes'], true);
-
-        $chatCauseFilter = null;
-        if (! $wantsAllGroups) {
-            if (count($myCauseCategoryIds) > 0) {
-                $chatCauseFilter = ['mode' => 'my'];
-            } elseif ($wantsMyCauses) {
-                $chatCauseFilter = ['mode' => 'my'];
-            }
-        }
-
         return Inertia::render('chat/index', [
             'chatRooms' => $chatRooms,
             'allUsers' => $allUsers,
             'allTopics' => $allTopics,
             'currentUser' => $currentUser,
-            'chatCauseFilter' => $chatCauseFilter,
         ]);
     }
 
