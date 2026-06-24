@@ -714,6 +714,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
     Route::get('/auto-replenish/setup', [BelievePointController::class, 'autoReplenishSetupPayment'])->name('auto-replenish.setup');
     Route::get('/auto-replenish/setup-success', [BelievePointController::class, 'autoReplenishSetupSuccess'])->name('auto-replenish.setup-success');
     Route::post('/auto-replenish/remove-payment', [BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
+    Route::post('/transfer-to-wallet', [BelievePointController::class, 'transferToWallet'])->name('transfer-to-wallet');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->group(function () {

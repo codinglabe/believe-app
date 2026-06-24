@@ -1051,6 +1051,11 @@ class BridgeWebhookController extends Controller
         // Always notify Bridge wallet users in real time (sender + recipient).
         $this->bridgeWalletNotifier->notifyTransferWebhook($eventObject, $state, $eventType);
 
+        if (is_string($transferId) && is_string($state)) {
+            app(\App\Services\BelievePointsToBridgeWalletService::class)
+                ->syncFromBridgeTransfer($transferId, $state);
+        }
+
         $integration = $this->findIntegrationByCustomerId($customerId);
         $recipientIntegration = $this->bridgeWalletNotifier->resolveIntegrationForWalletEndpoint($destination);
 

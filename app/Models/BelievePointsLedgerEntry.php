@@ -15,6 +15,10 @@ class BelievePointsLedgerEntry extends Model
 
     public const TYPE_ADMIN_ADJUSTMENT = 'admin_adjustment';
 
+    public const TYPE_WALLET_TRANSFER = 'wallet_transfer';
+
+    public const TYPE_WALLET_TRANSFER_REFUND = 'wallet_transfer_refund';
+
     protected $fillable = [
         'user_id',
         'payment_transaction_id',

@@ -524,7 +524,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.card_hold_hours && <p className="text-sm text-red-600">{errors.card_hold_hours}</p>}
-                    <p className="text-xs text-muted-foreground">Hours before card-purchased BP moves from Processing to Available. Default: 24</p>
+                    <p className="text-xs text-muted-foreground">Hours before card-purchased BP is held before becoming spendable. Use 0 for instant availability (default).</p>
                   </div>
                 </div>
               </div>

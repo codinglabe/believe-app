@@ -26,6 +26,9 @@ class BridgeWalletReadService
     /** @var array<string, string> */
     private array $customerNames = [];
 
+    /** @var array<string, string> */
+    private array $externalAccountLabels = [];
+
     private bool $platformWalletIndexBuilt = false;
 
     /**
@@ -626,15 +629,43 @@ class BridgeWalletReadService
             }
 
             $historyStatus = $isFailedReturn ? 'failed' : 'completed';
+            $bridgeTransferState = null;
+            $bridgeStateLabel = null;
             $paymentMethod = $isDeposit ? $this->resolveDepositPaymentMethod($event) : null;
-            $displayLabel = $this->buildActivityDisplayLabel(
-                $activityType,
-                $donorName,
-                $paymentMethod['label'] ?? null,
-            );
-            $recipientType = null;
-            if ($activityType === 'transfer_sent' && $transferId !== null && $transferId !== '') {
+            $paymentMethodLabel = $paymentMethod['label'] ?? null;
+
+            if ($isOutgoing && $transferId !== null && $transferId !== '') {
                 $transferDetails = $this->fetchTransferDetails($transferId);
+                if ($transferDetails !== null) {
+                    $statusMeta = $this->resolveTransferActivityStatus($transferDetails);
+                    $historyStatus = $statusMeta['status'];
+                    $bridgeTransferState = $statusMeta['bridge_transfer_state'];
+                    $bridgeStateLabel = $statusMeta['bridge_state_label'];
+
+                    if ($this->isExternalAccountOfframp($transferDetails)) {
+                        $activityType = 'withdrawal';
+                        $externalAccountId = (string) ($transferDetails['destination']['external_account_id'] ?? '');
+                        $bankLabel = $this->resolveExternalAccountDisplayLabel($customerId, $externalAccountId) ?? 'Bank account';
+                        $donorName = $bankLabel;
+                        $rail = strtoupper((string) ($transferDetails['destination']['payment_rail'] ?? 'ach'));
+                        $paymentMethodLabel = $this->formatWithdrawalRailLabel($rail);
+                        $displayLabel = $this->buildWithdrawalDisplayLabel($rail, $bankLabel);
+                        $depositMessage = $displayLabel;
+                    }
+                }
+            }
+
+            if (! isset($displayLabel)) {
+                $displayLabel = $this->buildActivityDisplayLabel(
+                    $activityType,
+                    $donorName,
+                    $paymentMethodLabel,
+                );
+            }
+
+            $recipientType = null;
+            if (($activityType === 'transfer_sent' || $activityType === 'withdrawal') && $transferId !== null && $transferId !== '') {
+                $transferDetails ??= $this->fetchTransferDetails($transferId);
                 if ($transferDetails !== null) {
                     $recipientType = $this->resolveTransferCounterpartyMeta($transferDetails, $customerId, true)['recipient_type'];
                 }
@@ -650,13 +681,17 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $historyStatus,
-                'bridge_state' => $historyStatus,
+                'bridge_state' => $bridgeTransferState ?? $historyStatus,
+                'bridge_transfer_state' => $bridgeTransferState,
+                'bridge_state_label' => $bridgeStateLabel,
                 'bridge_event_type' => $type,
                 'donor_name' => $donorName,
                 'donor_email' => null,
                 'display_label' => $displayLabel,
-                'payment_method' => $paymentMethod['method'] ?? null,
-                'payment_method_label' => $paymentMethod['label'] ?? null,
+                'payment_method' => is_array($paymentMethod)
+                    ? ($paymentMethod['method'] ?? null)
+                    : ($activityType === 'withdrawal' ? strtolower((string) ($paymentMethodLabel ?? '')) : null),
+                'payment_method_label' => $paymentMethodLabel,
                 'frequency' => 'one-time',
                 'message' => $displayLabel,
                 'transaction_id' => $id,
@@ -850,18 +885,28 @@ class BridgeWalletReadService
             $stateLabel = $this->formatBridgeStateLabel($state);
 
             $date = $this->parseBridgeTimestamp($transfer['updated_at'] ?? $transfer['created_at'] ?? null);
-            $counterpartyMeta = $this->resolveTransferCounterpartyMeta($transfer, $customerId, $isOutgoing);
+            $detailedTransfer = $this->fetchTransferDetails($transferId) ?? $transfer;
+            $counterpartyMeta = $this->resolveTransferCounterpartyMeta($detailedTransfer, $customerId, $isOutgoing);
             if (($isOutgoing && $counterpartyMeta['name'] === 'Recipient') || (! $isOutgoing && $counterpartyMeta['name'] === 'Sender')) {
-                $detailedTransfer = $this->fetchTransferDetails($transferId);
-                if ($detailedTransfer !== null) {
-                    $counterpartyMeta = $this->resolveTransferCounterpartyMeta($detailedTransfer, $customerId, $isOutgoing);
-                }
+                $counterpartyMeta = $this->resolveTransferCounterpartyMeta($detailedTransfer, $customerId, $isOutgoing);
             }
 
             $counterparty = $counterpartyMeta['name'];
             $statusSuffix = $status === 'pending' ? ' ('.$stateLabel.')' : '';
             $transferType = $isOutgoing ? 'transfer_sent' : 'transfer_received';
-            $displayLabel = $this->buildActivityDisplayLabel($transferType, $counterparty);
+            $paymentMethodLabel = null;
+
+            if ($isOutgoing && $this->isExternalAccountOfframp($detailedTransfer)) {
+                $transferType = 'withdrawal';
+                $externalAccountId = (string) ($detailedTransfer['destination']['external_account_id'] ?? '');
+                $bankLabel = $this->resolveExternalAccountDisplayLabel($customerId, $externalAccountId) ?? $counterparty;
+                $counterparty = $bankLabel;
+                $rail = strtoupper((string) ($detailedTransfer['destination']['payment_rail'] ?? 'ach'));
+                $paymentMethodLabel = $this->formatWithdrawalRailLabel($rail);
+                $displayLabel = $this->buildWithdrawalDisplayLabel($rail, $bankLabel);
+            } else {
+                $displayLabel = $this->buildActivityDisplayLabel($transferType, $counterparty);
+            }
 
             $activities[] = [
                 'id' => 'bridge_transfer_'.$transferId,
@@ -872,11 +917,13 @@ class BridgeWalletReadService
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
-                'bridge_state' => $status,
+                'bridge_state' => $state,
                 'bridge_transfer_state' => $state,
+                'bridge_state_label' => $stateLabel,
                 'donor_name' => $counterparty,
                 'donor_email' => null,
                 'display_label' => $displayLabel,
+                'payment_method_label' => $paymentMethodLabel,
                 'frequency' => 'one-time',
                 'message' => $displayLabel.$statusSuffix,
                 'transaction_id' => $transferId,
@@ -1442,10 +1489,92 @@ class BridgeWalletReadService
         return match ($activityType) {
             'transfer_sent' => 'Sent to '.$subject,
             'transfer_received' => 'Received from '.$subject,
+            'withdrawal' => 'Withdrawal to '.$subject,
             'card_spend' => 'Card · '.$subject,
             'deposit' => $this->buildDepositDisplayLabel($subject, $paymentMethodLabel),
             default => $subject,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $transfer
+     * @return array{status: string, bridge_state: string, bridge_transfer_state: string, bridge_state_label: string}
+     */
+    private function resolveTransferActivityStatus(array $transfer): array
+    {
+        $state = strtolower((string) ($transfer['state'] ?? $transfer['status'] ?? 'pending'));
+
+        return [
+            'status' => $this->mapBridgeStateToUiStatus($state),
+            'bridge_state' => $state,
+            'bridge_transfer_state' => $state,
+            'bridge_state_label' => $this->formatBridgeStateLabel($state),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $transfer
+     */
+    private function isExternalAccountOfframp(array $transfer): bool
+    {
+        $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
+        $rail = strtolower((string) ($destination['payment_rail'] ?? ''));
+
+        return ! empty($destination['external_account_id'])
+            && in_array($rail, ['ach', 'wire', 'ach_same_day'], true);
+    }
+
+    private function resolveExternalAccountDisplayLabel(string $customerId, ?string $externalAccountId): ?string
+    {
+        $externalAccountId = trim((string) $externalAccountId);
+        if ($externalAccountId === '') {
+            return null;
+        }
+
+        $cacheKey = $customerId.':'.$externalAccountId;
+        if (isset($this->externalAccountLabels[$cacheKey])) {
+            return $this->externalAccountLabels[$cacheKey];
+        }
+
+        $result = $this->bridgeService->getExternalAccount($customerId, $externalAccountId);
+        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
+            return null;
+        }
+
+        $account = $result['data'];
+        $bankName = trim((string) ($account['bank_name'] ?? ''));
+        $last4 = (string) ($account['account']['last_4'] ?? $account['last_4'] ?? '');
+        $holderName = trim((string) ($account['account_name'] ?? $account['account_owner_name'] ?? ''));
+
+        if ($bankName !== '' && $last4 !== '') {
+            $label = $bankName.' ····'.$last4;
+        } elseif ($bankName !== '') {
+            $label = $bankName;
+        } elseif ($holderName !== '' && $last4 !== '') {
+            $label = $holderName.' ····'.$last4;
+        } elseif ($last4 !== '') {
+            $label = 'Bank account ····'.$last4;
+        } else {
+            $label = 'Bank account';
+        }
+
+        $this->externalAccountLabels[$cacheKey] = $label;
+
+        return $label;
+    }
+
+    private function formatWithdrawalRailLabel(string $rail): string
+    {
+        return match (strtolower(trim($rail))) {
+            'wire' => 'Wire',
+            'ach_same_day' => 'Same-day ACH',
+            default => 'ACH',
+        };
+    }
+
+    private function buildWithdrawalDisplayLabel(string $rail, string $bankLabel): string
+    {
+        return $this->formatWithdrawalRailLabel($rail).' to '.$bankLabel;
     }
 
     private function buildDepositDisplayLabel(string $subject, ?string $paymentMethodLabel = null): string
@@ -1874,6 +2003,14 @@ class BridgeWalletReadService
         $destination = is_array($transfer['destination'] ?? null) ? $transfer['destination'] : [];
 
         if ($isOutgoing) {
+            $externalAccountId = (string) ($destination['external_account_id'] ?? '');
+            if ($externalAccountId !== '') {
+                $bankLabel = $this->resolveExternalAccountDisplayLabel($viewerCustomerId, $externalAccountId);
+                if ($bankLabel !== null) {
+                    return $bankLabel;
+                }
+            }
+
             $destWalletId = (string) ($destination['bridge_wallet_id'] ?? '');
             $name = $this->resolvePartyNameFromBridgeWalletId(
                 $destWalletId !== '' ? $destWalletId : null,

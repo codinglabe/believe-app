@@ -131,7 +131,37 @@ createInertiaApp({
               <IncomingCallOverlay authUserId={initialUserId ?? null} />
               <CallPermissionsPrompt authUserId={initialUserId ?? null} />
               <UnityCallGlobalListener authUserId={initialUserId ?? null} />
-              <Toaster position="top-right" gutter={8} />
+              <Toaster
+                position="top-right"
+                gutter={8}
+                toastOptions={{
+                  duration: 4000,
+                  style: {
+                    background: 'hsl(var(--background))',
+                    color: 'hsl(var(--foreground))',
+                    border: '1px solid hsl(var(--border))',
+                  },
+                  success: {
+                    duration: 4000,
+                    style: {
+                      background: '#10b981',
+                      color: '#ffffff',
+                      border: '1px solid #059669',
+                    },
+                    iconTheme: {
+                      primary: '#ffffff',
+                      secondary: '#10b981',
+                    },
+                  },
+                  error: {
+                    duration: 5000,
+                    iconTheme: {
+                      primary: '#ef4444',
+                      secondary: '#fff',
+                    },
+                  },
+                }}
+              />
               <PwaInstallPrompt />
               <PWAUpdatePrompt />
             </UnityCallSessionProvider>

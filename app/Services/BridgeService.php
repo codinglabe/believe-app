@@ -1234,6 +1234,83 @@ class BridgeService
     }
 
     /**
+     * Get a Bridge wallet by wallet ID (developer-level endpoint).
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/bridge-wallets/get-a-bridge-wallet
+     */
+    public function getBridgeWalletById(string $walletId): array
+    {
+        return $this->makeRequest('GET', '/wallets/'.trim($walletId));
+    }
+
+    /**
+     * List Bridge wallets for the authenticated developer.
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/bridge-wallets/get-all-bridge-wallets
+     */
+    public function getBridgeWallets(array $query = []): array
+    {
+        return $this->makeRequest('GET', '/wallets', $query);
+    }
+
+    /**
+     * Paginate through all developer Bridge wallets.
+     *
+     * @return array{success: bool, data?: array<int, array<string, mixed>>, error?: string}
+     */
+    public function listAllBridgeWallets(int $pageSize = 100): array
+    {
+        $pageSize = max(1, min(100, $pageSize));
+        $all = [];
+        $startingAfter = null;
+
+        do {
+            $query = ['limit' => $pageSize];
+            if ($startingAfter !== null) {
+                $query['starting_after'] = $startingAfter;
+            }
+
+            $result = $this->getBridgeWallets($query);
+            if (! ($result['success'] ?? false)) {
+                return $result;
+            }
+
+            $items = $this->normalizeBridgeListData($result);
+            foreach ($items as $item) {
+                $all[] = $item;
+            }
+
+            $count = count($items);
+            $startingAfter = $count > 0 ? (string) ($items[$count - 1]['id'] ?? '') : null;
+        } while ($count >= $pageSize && $startingAfter !== '');
+
+        return [
+            'success' => true,
+            'data' => $all,
+        ];
+    }
+
+    /**
+     * List prefunded accounts for the authenticated developer.
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/prefunded-accounts/get-a-list-of-all-prefunded-account
+     */
+    public function getPrefundedAccounts(): array
+    {
+        return $this->makeRequest('GET', '/prefunded_accounts');
+    }
+
+    /**
+     * Get a prefunded account by ID.
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/prefunded-accounts/get-details-for-a-specific-prefunded-account
+     */
+    public function getPrefundedAccount(string $prefundedAccountId): array
+    {
+        return $this->makeRequest('GET', '/prefunded_accounts/'.trim($prefundedAccountId));
+    }
+
+    /**
      * Wallet transaction history (deposits, withdrawals, etc.)
      *
      * @see https://apidocs.bridge.xyz/api-reference/bridge-wallets/get-transaction-history-for-a-bridge-wallet
@@ -1748,55 +1825,25 @@ class BridgeService
      * Resolve Stripe Connect/platform account ID for Bridge cards enable.
      * Uses Cashier (PaymentMethod stripe row) with optional Bridge settings override.
      */
-    public function resolveStripeAccountIdForCards(): ?string
-    {
-        $bridge = PaymentMethod::getConfig('bridge');
-        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
-
-        $overrideKey = $this->isSandbox() ? 'sandbox_stripe_account_id' : 'live_stripe_account_id';
-        $override = trim((string) ($config[$overrideKey] ?? ''));
-
-        if ($override !== '' && str_starts_with($override, 'acct_')) {
-            return $override;
-        }
-
-        $stripeEnv = $this->isSandbox() ? 'sandbox' : 'live';
-
-        if (! StripeConfigService::configureStripe($stripeEnv)) {
-            StripeConfigService::configureStripe('sandbox');
-        }
-
-        try {
-            $account = Cashier::stripe()->accounts->retrieve();
-
-            return $account->id ?? null;
-        } catch (\Throwable $e) {
-            Log::warning('Failed to resolve Stripe account ID for Bridge cards via Cashier', [
-                'environment' => $this->environment,
-                'stripe_env' => $stripeEnv,
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
-    public function getCardsProgramType(): string
-    {
-        $bridge = PaymentMethod::getConfig('bridge');
-        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
-        $type = strtolower((string) ($config['cards_program_type'] ?? 'consumer'));
-
-        return in_array($type, ['consumer', 'commercial'], true) ? $type : 'consumer';
-    }
-
     public function isStripeConfiguredForCards(): bool
     {
-        $stripeEnv = $this->isSandbox() ? 'sandbox' : 'live';
+        return $this->isStripeConfiguredForEnvironment($this->isSandbox() ? 'sandbox' : 'live');
+    }
 
-        return StripeConfigService::getCredentials($stripeEnv) !== null
-            || ! empty(config('cashier.secret'))
-            || ! empty(config('services.stripe.secret'));
+    public function isStripeConfiguredForEnvironment(string $environment): bool
+    {
+        $stripeEnv = $environment === 'live' ? 'live' : 'sandbox';
+
+        if (StripeConfigService::getCredentials($stripeEnv) !== null) {
+            return true;
+        }
+
+        if ($environment === 'live') {
+            return ! empty(config('cashier.secret'))
+                || ! empty(config('services.stripe.secret'));
+        }
+
+        return false;
     }
 
     /**
@@ -1804,7 +1851,18 @@ class BridgeService
      */
     public function getStripeIssuingReadiness(): array
     {
-        $accountId = $this->resolveStripeAccountIdForCards();
+        return $this->getStripeIssuingReadinessForEnvironment($this->isSandbox() ? 'sandbox' : 'live');
+    }
+
+    /**
+     * Issuing readiness for a specific Bridge environment (sandbox or live).
+     *
+     * @return array{configured: bool, account_id: string|null, issuing_enabled: bool, needs_bridge_stripe_app: bool, message: string}
+     */
+    public function getStripeIssuingReadinessForEnvironment(string $environment): array
+    {
+        $isSandbox = $environment === 'sandbox';
+        $accountId = $this->resolveStripeAccountIdForCardsEnvironment($environment);
 
         if (! $accountId) {
             return [
@@ -1816,7 +1874,7 @@ class BridgeService
             ];
         }
 
-        $stripeEnv = $this->isSandbox() ? 'sandbox' : 'live';
+        $stripeEnv = $isSandbox ? 'sandbox' : 'live';
         StripeConfigService::configureStripe($stripeEnv);
 
         try {
@@ -1840,12 +1898,60 @@ class BridgeService
                 'issuing_enabled' => false,
                 'needs_bridge_stripe_app' => $needsApp,
                 'message' => $needsApp
-                    ? ($this->isSandbox()
+                    ? ($isSandbox
                         ? 'Install the Bridge Cards Stripe App on your Stripe Sandbox, then click Enable Bridge Cards here. (Sandbox keys still start with sk_test_ — that is normal.)'
                         : 'Install the Bridge Cards Stripe App on your live Stripe account using the install link from Bridge, add live Stripe keys under Settings → Stripe & PayPal, then click Verify Bridge Cards Setup here.')
                     : $message,
             ];
         }
+    }
+
+    public function resolveStripeAccountIdForCards(): ?string
+    {
+        return $this->resolveStripeAccountIdForCardsEnvironment($this->isSandbox() ? 'sandbox' : 'live');
+    }
+
+    public function resolveStripeAccountIdForCardsEnvironment(string $environment): ?string
+    {
+        $isSandbox = $environment === 'sandbox';
+        $bridge = PaymentMethod::getConfig('bridge');
+        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+
+        $overrideKey = $isSandbox ? 'sandbox_stripe_account_id' : 'live_stripe_account_id';
+        $override = trim((string) ($config[$overrideKey] ?? ''));
+
+        if ($override !== '' && str_starts_with($override, 'acct_')) {
+            return $override;
+        }
+
+        $stripeEnv = $isSandbox ? 'sandbox' : 'live';
+
+        if (! StripeConfigService::configureStripe($stripeEnv)) {
+            StripeConfigService::configureStripe('sandbox');
+        }
+
+        try {
+            $account = Cashier::stripe()->accounts->retrieve();
+
+            return $account->id ?? null;
+        } catch (\Throwable $e) {
+            Log::warning('Failed to resolve Stripe account ID for Bridge cards via Cashier', [
+                'environment' => $environment,
+                'stripe_env' => $stripeEnv,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function getCardsProgramType(): string
+    {
+        $bridge = PaymentMethod::getConfig('bridge');
+        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+        $type = strtolower((string) ($config['cards_program_type'] ?? 'consumer'));
+
+        return in_array($type, ['consumer', 'commercial'], true) ? $type : 'consumer';
     }
 
     private function persistCardsEnableMetadata(string $stripeAccountId, string $programType): void
@@ -2739,12 +2845,32 @@ class BridgeService
      */
     public function parseBridgeWalletForTransfer(string $customerId, string $walletId): ?array
     {
-        $result = $this->getWallet($customerId, $walletId);
-        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
+        $customerId = trim($customerId);
+        $walletId = trim($walletId);
+
+        if ($walletId === '') {
             return null;
         }
 
-        $data = $result['data'];
+        $data = null;
+
+        if ($customerId !== '') {
+            $result = $this->getWallet($customerId, $walletId);
+            if (($result['success'] ?? false) && is_array($result['data'] ?? null)) {
+                $data = $result['data'];
+            }
+        }
+
+        if ($data === null) {
+            $result = $this->getBridgeWalletById($walletId);
+            if (($result['success'] ?? false) && is_array($result['data'] ?? null)) {
+                $data = $result['data'];
+            }
+        }
+
+        if ($data === null) {
+            return null;
+        }
         $chain = strtolower((string) ($data['chain'] ?? 'solana'));
         if (in_array($chain, ['usd', 'fiat'], true)) {
             $chain = 'solana';
@@ -3106,6 +3232,86 @@ class BridgeService
         ];
 
         return $this->createTransfer($transferData);
+    }
+
+    /**
+     * Fund a customer's Bridge wallet from the platform prefunded liquidity wallet.
+     *
+     * @see https://apidocs.bridge.xyz/platform/wallets/prefunded_wallets
+     *
+     * @return array{success: bool, data?: array<string, mixed>, error?: string, message?: string, error_code?: string, status?: int}
+     */
+    public function createPrefundedWalletTransfer(
+        string $prefundedCustomerId,
+        string $prefundedWalletId,
+        string $recipientCustomerId,
+        string $recipientWalletId,
+        float $amount,
+        ?string $idempotencyKey = null,
+    ): array {
+        $prefundedCustomerId = trim($prefundedCustomerId);
+        $prefundedWalletId = trim($prefundedWalletId);
+        $recipientCustomerId = trim($recipientCustomerId);
+        $recipientWalletId = trim($recipientWalletId);
+
+        if ($prefundedCustomerId === '' || $prefundedWalletId === '') {
+            return [
+                'success' => false,
+                'error' => 'Platform prefunded wallet is not configured.',
+                'error_code' => 'PREFUNDED_WALLET_NOT_CONFIGURED',
+            ];
+        }
+
+        if ($recipientCustomerId === '' || $recipientWalletId === '') {
+            return [
+                'success' => false,
+                'error' => 'Recipient Bridge wallet is not configured.',
+                'error_code' => 'RECIPIENT_WALLET_REQUIRED',
+            ];
+        }
+
+        $prefundedWallet = $this->parseBridgeWalletForTransfer($prefundedCustomerId, $prefundedWalletId);
+        $recipientWallet = $this->parseBridgeWalletForTransfer($recipientCustomerId, $recipientWalletId);
+
+        if ($prefundedWallet === null) {
+            return [
+                'success' => false,
+                'error' => 'Platform prefunded wallet could not be loaded from Bridge.',
+                'error_code' => 'PREFUNDED_WALLET_NOT_FOUND',
+            ];
+        }
+
+        if ($recipientWallet === null) {
+            return [
+                'success' => false,
+                'error' => 'Your Bridge wallet could not be loaded.',
+                'error_code' => 'RECIPIENT_WALLET_NOT_FOUND',
+            ];
+        }
+
+        $availableBalance = (float) ($prefundedWallet['balance'] ?? 0);
+        if ($availableBalance + 0.000001 < $amount) {
+            return [
+                'success' => false,
+                'error' => 'Platform liquidity is temporarily unavailable. Please try again later.',
+                'error_code' => 'INSUFFICIENT_PREFUNDED_BALANCE',
+            ];
+        }
+
+        return $this->createTransfer([
+            'amount' => number_format($amount, 2, '.', ''),
+            'on_behalf_of' => $recipientCustomerId,
+            'source' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $prefundedWallet['currency'],
+                'bridge_wallet_id' => $prefundedWallet['wallet_id'],
+            ],
+            'destination' => [
+                'payment_rail' => $recipientWallet['chain'],
+                'currency' => $recipientWallet['currency'],
+                'bridge_wallet_id' => $recipientWallet['wallet_id'],
+            ],
+        ], $idempotencyKey);
     }
 
     /**

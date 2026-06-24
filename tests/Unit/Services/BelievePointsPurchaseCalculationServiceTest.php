@@ -28,7 +28,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PLATFORM_FEE_PERCENT, 1, 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_BRP_RATE, 2, 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_BRP_RATE, 1, 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, 24, 'integer');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, 0, 'integer');
     }
 
     public function test_platform_fee_is_percent_of_bp_amount(): void
@@ -55,7 +55,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
             $breakdown['checkout_total_usd']
         );
         $this->assertSame(200.0, $breakdown['brp_earned']);
-        $this->assertSame('After 24-Hour Security Review', $breakdown['bp_availability']);
+        $this->assertSame('Available immediately', $breakdown['bp_availability']);
     }
 
     public function test_ach_checkout_breakdown_uses_ach_settlement_availability_label(): void
@@ -74,7 +74,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertSame(1.0, $preview['platform_fee_percent']);
         $this->assertSame(2.0, $preview['card_brp_rate']);
         $this->assertSame(1.0, $preview['ach_brp_rate']);
-        $this->assertSame(24, $preview['card_hold_hours']);
+        $this->assertSame(0, $preview['card_hold_hours']);
         $this->assertSame(200.0, $preview['brp_earned']);
     }
 }

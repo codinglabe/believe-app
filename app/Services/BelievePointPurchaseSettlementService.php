@@ -49,8 +49,14 @@ class BelievePointPurchaseSettlementService
         $rail = ($purchase->payment_rail ?? 'card') === 'bank' ? 'bank' : 'card';
         $points = (float) $purchase->points;
         $isBank = $rail === 'bank';
+        $cardHoldHours = BelievePointsPurchaseSettingsService::cardHoldHours();
+        $instantCard = ! $isBank && $cardHoldHours === 0;
 
-        $user->addProcessingBelievePoints($points);
+        if ($instantCard) {
+            $user->addBelievePoints($points);
+        } else {
+            $user->addProcessingBelievePoints($points);
+        }
 
         $rewardAwarded = null;
         $rp = self::brpEarnedForPurchase($purchase);
@@ -69,20 +75,20 @@ class BelievePointPurchaseSettlementService
 
         $availableAt = $isBank
             ? now()
-            : now()->addHours(BelievePointsPurchaseSettingsService::cardHoldHours());
+            : ($instantCard ? now() : now()->addHours($cardHoldHours));
 
         $updates = [
             'status' => 'completed',
             'reward_points_awarded' => $rewardAwarded,
             'points_available_at' => $availableAt,
-            'points_released' => false,
+            'points_released' => $instantCard,
         ];
         if ($paymentIntentId) {
             $updates['stripe_payment_intent_id'] = $paymentIntentId;
         }
         $purchase->update($updates);
 
-        if ($isBank || BelievePointsPurchaseSettingsService::cardHoldHours() === 0) {
+        if ($isBank) {
             self::releasePurchasePoints($purchase->fresh());
         }
 

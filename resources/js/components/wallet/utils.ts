@@ -322,6 +322,10 @@ export function getActivityDisplayLabel(activity: Activity): string {
     switch (activity.type) {
         case 'transfer_sent':
             return `Sent to ${name}`
+        case 'withdrawal':
+            return activity.payment_method_label
+                ? `${activity.payment_method_label} to ${name}`
+                : `Withdrawal to ${name}`
         case 'transfer_received':
             return `Received from ${name}`
         case 'deposit':
@@ -335,6 +339,94 @@ export function getActivityDisplayLabel(activity: Activity): string {
             return activity.is_outgoing ? `Donation to ${name}` : `Donation from ${name}`
         default:
             return name
+    }
+}
+
+export type ActivityIconKind = 'outgoing' | 'incoming' | 'deposit' | 'incoming-default'
+
+/** Shared icon + amount colors for recent activity and full activity list. */
+export function getActivityVisualMeta(activity: Activity): {
+    isOutgoing: boolean
+    isTransferSent: boolean
+    isTransferReceived: boolean
+    isWithdrawal: boolean
+    isDeposit: boolean
+    isDonation: boolean
+    isCardSpend: boolean
+    iconKind: ActivityIconKind
+    iconContainerClass: string
+    iconClass: string
+    amountClass: string
+} {
+    const isTransferSent = activity.type === 'transfer_sent'
+    const isTransferReceived = activity.type === 'transfer_received'
+    const isWithdrawal = activity.type === 'withdrawal'
+    const isDonation = activity.type === 'donation'
+    const isDeposit = activity.type === 'deposit'
+    const isCardSpend = activity.type === 'card_spend'
+    const isDonationOutgoing = isDonation && activity.is_outgoing === true
+    const isOutgoing = isTransferSent || isWithdrawal || isDonationOutgoing || isCardSpend
+
+    if (isOutgoing) {
+        return {
+            isOutgoing: true,
+            isTransferSent,
+            isTransferReceived,
+            isWithdrawal,
+            isDeposit,
+            isDonation,
+            isCardSpend,
+            iconKind: 'outgoing',
+            iconContainerClass: 'bg-red-500/10',
+            iconClass: 'text-red-500',
+            amountClass: 'text-red-600 dark:text-red-400',
+        }
+    }
+
+    if (isTransferReceived) {
+        return {
+            isOutgoing: false,
+            isTransferSent,
+            isTransferReceived,
+            isWithdrawal,
+            isDeposit,
+            isDonation,
+            isCardSpend,
+            iconKind: 'incoming',
+            iconContainerClass: 'bg-blue-500/10',
+            iconClass: 'text-blue-500',
+            amountClass: 'text-green-600 dark:text-green-400',
+        }
+    }
+
+    if (isDeposit) {
+        return {
+            isOutgoing: false,
+            isTransferSent,
+            isTransferReceived,
+            isWithdrawal,
+            isDeposit,
+            isDonation,
+            isCardSpend,
+            iconKind: 'deposit',
+            iconContainerClass: 'bg-emerald-500/10',
+            iconClass: 'text-emerald-500',
+            amountClass: 'text-green-600 dark:text-green-400',
+        }
+    }
+
+    return {
+        isOutgoing: false,
+        isTransferSent,
+        isTransferReceived,
+        isWithdrawal,
+        isDeposit,
+        isDonation,
+        isCardSpend,
+        iconKind: 'incoming-default',
+        iconContainerClass: 'bg-green-500/10',
+        iconClass: 'text-green-500',
+        amountClass: 'text-green-600 dark:text-green-400',
     }
 }
 

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react'
+import { RefreshCw, Activity } from 'lucide-react'
 import { Activity as ActivityType } from './types'
-import { formatDate, formatCurrency, getActivityDisplayLabel } from './utils'
+import { formatDate, formatCurrency, getActivityDisplayLabel, getActivityVisualMeta } from './utils'
 import { DepositPaymentMethodBadge } from './DepositPaymentMethodBadge'
 import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatusBadge'
+import { ActivityTypeIcon } from './ActivityTypeIcon'
 import { getCsrfToken as getWalletCsrfToken } from './utils'
 import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
 import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
@@ -177,11 +178,9 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
             >
                 <div className="space-y-2">
                     {activities.map((activity) => {
-                        const isTransferSent = activity.type === 'transfer_sent'
-                        const isTransferReceived = activity.type === 'transfer_received'
-                        const isDonation = activity.type === 'donation'
-                        const isDeposit = activity.type === 'deposit'
-                        
+                        const visual = getActivityVisualMeta(activity)
+                        const badgeStatus = resolveActivityBadgeStatus(activity)
+
                         return (
                             <motion.div
                                 key={activity.id}
@@ -192,69 +191,43 @@ export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScre
                                     onActivityClick ? 'cursor-pointer' : ''
                                 }`}
                             >
-                                <ActivityStatusBadge
-                                    status={resolveActivityBadgeStatus(activity)}
-                                    className="absolute top-2 right-2"
-                                />
                                 <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
-                                    <div className={`p-2 rounded-lg flex-shrink-0 ${
-                                        isTransferSent 
-                                            ? 'bg-red-500/10' 
-                                            : isTransferReceived 
-                                            ? 'bg-blue-500/10'
-                                            : isDeposit
-                                            ? 'bg-emerald-500/10'
-                                            : 'bg-green-500/10'
-                                    }`}>
-                                        {isTransferSent ? (
-                                            <ArrowUpRight className="h-4 w-4 text-red-500" />
-                                        ) : isTransferReceived ? (
-                                            <ArrowDownLeft className="h-4 w-4 text-blue-500" />
-                                        ) : isDeposit ? (
-                                            <Plus className="h-4 w-4 text-emerald-500" />
-                                        ) : (
-                                            <ArrowDownLeft className="h-4 w-4 text-green-500" />
-                                        )}
-                                    </div>
+                                    <ActivityTypeIcon activity={activity} size="md" />
                                     <div className="flex-1 min-w-0 w-full sm:w-auto">
                                         <div className="flex flex-wrap items-center gap-1.5">
                                             <p className="text-sm font-medium break-words sm:truncate">
                                                 {getActivityDisplayLabel(activity)}
                                             </p>
-                                            {isDeposit && activity.payment_method_label && (
+                                            {visual.isDeposit && activity.payment_method_label && (
                                                 <DepositPaymentMethodBadge label={activity.payment_method_label} />
                                             )}
                                         </div>
                                         <p className="text-xs text-muted-foreground mt-1">
                                             {formatDate(activity.date)}
-                                            {isDeposit && activity.payment_method_label && (
+                                            {visual.isDeposit && activity.payment_method_label && (
                                                 <span className="sm:hidden"> · {activity.payment_method_label}</span>
                                             )}
+                                            {(activity.type === 'transfer_sent' || activity.type === 'withdrawal') &&
+                                            activity.recipient_type ? (
+                                                <span className="capitalize"> · {activity.recipient_type}</span>
+                                            ) : null}
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right pr-6 sm:pr-0">
-                                    <p className={`text-base sm:text-sm font-semibold ${
-                                        isTransferSent 
-                                            ? 'text-red-600'
-                                            : isTransferReceived || isDeposit
-                                            ? 'text-green-600'
-                                            : 'text-green-600'
-                                    }`}>
-                                        {isTransferSent ? '-' : '+'}${formatCurrency(activity.amount)}
+                                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right">
+                                    <p className={`text-base sm:text-sm font-semibold tabular-nums ${visual.amountClass}`}>
+                                        {visual.isOutgoing ? '−' : '+'}${formatCurrency(activity.amount)}
                                     </p>
-                                    <div className="flex flex-col items-end sm:items-end gap-1">
-                                        {isDonation && activity.frequency !== 'one-time' && (
-                                            <p className="text-xs text-muted-foreground capitalize">
-                                                {activity.frequency}
-                                            </p>
-                                        )}
-                                        {isTransferSent && activity.recipient_type && (
-                                            <p className="text-xs text-muted-foreground capitalize">
-                                                {activity.recipient_type}
-                                            </p>
-                                        )}
-                                    </div>
+                                    <ActivityStatusBadge
+                                        status={badgeStatus}
+                                        stateLabel={activity.bridge_state_label}
+                                        variant="pill"
+                                    />
+                                    {visual.isDonation && activity.frequency !== 'one-time' && (
+                                        <p className="text-xs text-muted-foreground capitalize">
+                                            {activity.frequency}
+                                        </p>
+                                    )}
                                 </div>
                             </motion.div>
                         )
