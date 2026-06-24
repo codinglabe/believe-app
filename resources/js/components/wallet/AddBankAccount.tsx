@@ -88,6 +88,8 @@ export function AddBankAccount({
 
         if (!formData.street_line_1.trim()) {
             newErrors.street_line_1 = 'Street address is required'
+        } else if (formData.street_line_1.trim().length > 35) {
+            newErrors.street_line_1 = 'Street address must be 35 characters or less (Bridge limit)'
         }
 
         if (!formData.city.trim()) {
@@ -363,6 +365,7 @@ export function AddBankAccount({
                             id="street_line_1"
                             type="text"
                             placeholder="123 Main Street"
+                            maxLength={35}
                             value={formData.street_line_1}
                             onChange={(e) => handleInputChange('street_line_1', e.target.value)}
                             disabled={isLoading}

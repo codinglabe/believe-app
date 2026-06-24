@@ -124,7 +124,7 @@ class BridgeWalletController extends Controller
 
                     if ($this->bridgeService->isCardsEnabledOnDeveloperAccount()) {
                         $this->refreshCardsEndorsementKycLink($integration, $isOrgUser);
-                        $integration->refresh();
+                    $integration->refresh();
                     }
                 }
 
@@ -1085,7 +1085,7 @@ class BridgeWalletController extends Controller
 
             try {
                 if ($customer === null && ! empty($integration->bridge_customer_id)) {
-                    $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+                $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
                     $customer = ($customerResult['success'] ?? false) ? ($customerResult['data'] ?? null) : null;
                 }
 
@@ -1152,7 +1152,7 @@ class BridgeWalletController extends Controller
             $directBridgeSubmission = true;
             $controlPersonKycLink = null;
             $controlPersonKycIframeUrl = null;
-            $hasBusinessDocuments = false;
+                    $hasBusinessDocuments = false;
             $submission = null;
             $requestedFields = null;
             $refillMessage = null;
@@ -1495,14 +1495,14 @@ class BridgeWalletController extends Controller
                 $metadata['control_person_kyc_link'] = $linkUrl;
                 $integration->bridge_metadata = $metadata;
                 if ($integration->kyb_status !== 'approved') {
-                    $integration->kyb_status = 'not_started';
+                $integration->kyb_status = 'not_started';
                 }
             } else {
                 $integration->kyc_link_id = $linkId;
                 $integration->kyc_link_url = $linkUrl;
                 if ($requestedEndorsement !== 'cards' && $integration->kyc_status !== 'approved') {
-                    // Bridge KYC statuses: not_started, incomplete, under_review, awaiting_questionnaire, approved, rejected, paused, offboarded
-                    $integration->kyc_status = 'not_started';
+                // Bridge KYC statuses: not_started, incomplete, under_review, awaiting_questionnaire, approved, rejected, paused, offboarded
+                $integration->kyc_status = 'not_started';
                 }
             }
             $integration->save();
@@ -2834,11 +2834,11 @@ class BridgeWalletController extends Controller
      */
     public function createCustomerWithKyc(Request $request)
     {
-        return response()->json([
-            'success' => false,
+                    return response()->json([
+                        'success' => false,
             'message' => 'Verification is completed only through the Bridge window in your wallet. Custom forms are not supported.',
             'error_code' => 'persona_modal_only',
-        ], 422);
+                ], 422);
     }
 
     public function getControlPersonKycLink(Request $request)
@@ -2907,8 +2907,8 @@ class BridgeWalletController extends Controller
             }
 
             if ($linkResult['phone_required'] ?? false) {
-                return response()->json([
-                    'success' => false,
+                    return response()->json([
+                        'success' => false,
                     'message' => 'A valid US phone number is required for cards verification.',
                     'error_code' => 'cards_endorsement_phone_required',
                 ], 400);
@@ -2937,8 +2937,8 @@ class BridgeWalletController extends Controller
 
             Log::info('Control person cards endorsement KYC link resolved via GET ?endorsement=cards', [
                 'customer_id' => $integration->bridge_customer_id,
-                'email' => $controlPersonEmail,
-            ]);
+                        'email' => $controlPersonEmail,
+                    ]);
 
             // Convert to iframe URL
             $iframeUrl = null;
@@ -3033,13 +3033,13 @@ class BridgeWalletController extends Controller
             $bridgeRead = app(BridgeWalletReadService::class);
             $bridgeBalance = round((float) ($bridgeRead->getBalance($integration) ?? 0), 2);
 
-            return response()->json([
+                return response()->json([
                 'success' => false,
                 'message' => 'Wallet balance updates when Bridge processes your bank deposit. Use deposit instructions to add funds.',
                 'use_deposit_instructions' => true,
-                'data' => [
+                    'data' => [
                     'balance' => $bridgeBalance,
-                    'amount' => $amount,
+                        'amount' => $amount,
                     'source' => 'bridge',
                 ],
             ], 422);
@@ -3083,9 +3083,9 @@ class BridgeWalletController extends Controller
 
             if (!$senderIntegration || $senderIntegration->integratable_id !== $senderEntity->id
                 || $senderIntegration->integratable_type !== $senderEntityType) {
-                $senderIntegration = BridgeIntegration::where('integratable_id', $senderEntity->id)
-                    ->where('integratable_type', $senderEntityType)
-                    ->first();
+            $senderIntegration = BridgeIntegration::where('integratable_id', $senderEntity->id)
+                ->where('integratable_type', $senderEntityType)
+                ->first();
             }
 
             if (!$senderIntegration) {
@@ -3217,9 +3217,9 @@ class BridgeWalletController extends Controller
                 return response()->json(['success' => false, 'message' => 'Recipient user not found.'], 404);
             }
 
-            $recipientIntegration = BridgeIntegration::where('integratable_id', $recipient->id)
+                $recipientIntegration = BridgeIntegration::where('integratable_id', $recipient->id)
                 ->where('integratable_type', $recipientType === 'user' ? User::class : Organization::class)
-                ->first();
+                    ->first();
 
             // Recipient must have a Bridge wallet to receive funds on-chain
             if (! $recipientIntegration) {
@@ -3230,21 +3230,21 @@ class BridgeWalletController extends Controller
             }
 
             $recipientWallet = $this->bridgeService->resolveCustomerBridgeWallet($recipientIntegration);
-            $recipientPrimaryWallet = BridgeWallet::where('bridge_integration_id', $recipientIntegration->id)
-                ->where('is_primary', true)
-                ->first();
+                $recipientPrimaryWallet = BridgeWallet::where('bridge_integration_id', $recipientIntegration->id)
+                    ->where('is_primary', true)
+                    ->first();
             $recipientBridgeWalletId = $recipientWallet['wallet_id'] ?? null;
             $recipientWalletAddress = null;
 
             if ($isSandbox && $recipientWallet === null) {
                 if (empty($recipientBridgeWalletId) && $recipientPrimaryWallet?->virtual_account_id) {
-                    $recipientBridgeWalletId = $recipientPrimaryWallet->virtual_account_id;
+                        $recipientBridgeWalletId = $recipientPrimaryWallet->virtual_account_id;
                 }
                 $recipientWalletAddress = $recipientPrimaryWallet?->wallet_address;
                 if (! $recipientWalletAddress && $recipientPrimaryWallet?->virtual_account_details) {
-                    $vaDetails = is_string($recipientPrimaryWallet->virtual_account_details)
-                        ? json_decode($recipientPrimaryWallet->virtual_account_details, true)
-                        : $recipientPrimaryWallet->virtual_account_details;
+                            $vaDetails = is_string($recipientPrimaryWallet->virtual_account_details)
+                                ? json_decode($recipientPrimaryWallet->virtual_account_details, true)
+                                : $recipientPrimaryWallet->virtual_account_details;
                     $recipientWalletAddress = $vaDetails['destination']['address'] ?? null;
                 }
             }
@@ -3262,13 +3262,13 @@ class BridgeWalletController extends Controller
                 ], 400);
             }
 
-            $transferResult = $this->bridgeService->createWalletToWalletTransfer(
-                $senderIntegration->bridge_customer_id,
+                        $transferResult = $this->bridgeService->createWalletToWalletTransfer(
+                            $senderIntegration->bridge_customer_id,
                 $actualBridgeWalletId ?? '',
-                $recipientIntegration->bridge_customer_id,
+                            $recipientIntegration->bridge_customer_id,
                 $recipientBridgeWalletId ?? '',
-                $amount,
-                'USD',
+                            $amount,
+                            'USD',
                 $senderWalletAddress,
                 $recipientWalletAddress
             );
@@ -3280,11 +3280,11 @@ class BridgeWalletController extends Controller
                     $amount,
                 );
                 Log::warning('Bridge wallet-to-wallet transfer failed', [
-                    'sender_customer_id' => $senderIntegration->bridge_customer_id,
-                    'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
-                    'amount' => $amount,
-                    'response' => $transferResult,
-                ]);
+                                'sender_customer_id' => $senderIntegration->bridge_customer_id,
+                                'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
+                                'amount' => $amount,
+                                'response' => $transferResult,
+                            ]);
 
                 $statusCode = ! empty($transferResult['initiation_required']) ? 422 : 502;
 
@@ -3314,7 +3314,7 @@ class BridgeWalletController extends Controller
                 'transfer_id' => $bridgeTransferId,
                 'sender_customer_id' => $senderIntegration->bridge_customer_id,
                 'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
-                'amount' => $amount,
+                    'amount' => $amount,
             ]);
 
             $senderDisplayName = $senderEntity instanceof Organization
@@ -3332,20 +3332,20 @@ class BridgeWalletController extends Controller
             $updatedSnapshot = $bridgeRead->getWalletSnapshot($senderIntegration);
             $senderBalanceAfter = $updatedSnapshot['balance'] ?? max(0, $senderBalance - $amount);
 
-            return response()->json([
-                'success' => true,
+                return response()->json([
+                    'success' => true,
                 'message' => 'Transfer submitted. Funds will arrive when Bridge confirms the transfer.',
-                'data' => [
+                    'data' => [
                     'sender_balance' => $senderBalanceAfter,
-                    'amount' => $amount,
-                    'fee' => $fee,
+                        'amount' => $amount,
+                        'fee' => $fee,
                     'bridge_transfer_id' => $bridgeTransferId,
                     'status' => 'pending',
                     'source' => 'bridge',
-                ],
-            ]);
+                    ],
+                ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            throw $e;
+                throw $e;
         } catch (\Throwable $e) {
             Log::error('Bridge send error', [
                 'error' => $e->getMessage(),
@@ -3728,13 +3728,13 @@ class BridgeWalletController extends Controller
                     $integration->kyc_status = 'approved';
                 } elseif ($baseStatus !== '') {
                     $integration->kyc_status = $baseStatus;
-                }
-            } else {
-                $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
-                if ($bridgeKycStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
-                    $integration->kyc_status = 'approved';
-                } elseif ($bridgeKycStatus !== '') {
-                    $integration->kyc_status = $bridgeKycStatus;
+            }
+        } else {
+            $bridgeKycStatus = strtolower((string) ($customer['kyc_status'] ?? ''));
+            if ($bridgeKycStatus === 'approved' || ($customerStatus === 'active' && $hasApprovedEndorsements)) {
+                $integration->kyc_status = 'approved';
+            } elseif ($bridgeKycStatus !== '') {
+                $integration->kyc_status = $bridgeKycStatus;
                 } elseif (
                     in_array($customerStatus, ['not_started', 'incomplete'], true)
                     && $integration->kyc_status === 'approved'
@@ -4701,8 +4701,8 @@ class BridgeWalletController extends Controller
             $isSandbox = $this->bridgeService->isSandbox();
 
             $wallet = BridgeWallet::where('bridge_integration_id', $integration->id)
-                ->where('is_primary', true)
-                ->first();
+                    ->where('is_primary', true)
+                    ->first();
 
             if (! $wallet && $integration->bridge_wallet_id) {
                 $wallet = BridgeWallet::create([
@@ -4736,8 +4736,8 @@ class BridgeWalletController extends Controller
             if ($existingVirtualAccount) {
                 $this->bridgeService->attachVirtualAccountToWallet($wallet, $existingVirtualAccount);
 
-                return response()->json([
-                    'success' => true,
+                        return response()->json([
+                            'success' => true,
                     'message' => 'Deposit bank account is ready',
                     'data' => $existingVirtualAccount,
                 ]);
@@ -4767,19 +4767,19 @@ class BridgeWalletController extends Controller
                     $walletChain = $this->bridgeService->resolveWalletChain($customerId, $bridgeWalletId);
                 }
 
-                $result = $this->bridgeService->createVirtualAccountForWallet(
+                    $result = $this->bridgeService->createVirtualAccountForWallet(
                     $customerId,
                     $bridgeWalletId,
                     'USD',
                     $walletChain,
                 );
             } else {
-                $result = $this->bridgeService->createVirtualAccount(
+                    $result = $this->bridgeService->createVirtualAccount(
                     $customerId,
-                    ['currency' => 'usd'],
-                    [
+                        ['currency' => 'usd'],
+                        [
                         'payment_rail' => 'ethereum',
-                        'currency' => 'usdc',
+                            'currency' => 'usdc',
                         'address' => $this->bridgeService->generateEthereumAddress(),
                     ],
                 );
@@ -4992,6 +4992,19 @@ class BridgeWalletController extends Controller
                 'ach_reference' => 'nullable|string|max:10',
                 'wire_message' => 'nullable|string|max:140',
             ]);
+
+            $addressFix = $this->bridgeService->ensureExternalAccountAddressValid(
+                $integration->bridge_customer_id,
+                $validated['external_account_id'],
+            );
+
+            if (! ($addressFix['success'] ?? false) && ($addressFix['status'] ?? 0) !== 404) {
+                Log::warning('Could not normalize external account address before withdrawal', [
+                    'customer_id' => $integration->bridge_customer_id,
+                    'external_account_id' => $validated['external_account_id'],
+                    'response' => $addressFix,
+                ]);
+            }
 
             $result = $this->bridgeService->createTransferToExternalAccount(
                 $integration->bridge_customer_id,
@@ -5210,7 +5223,8 @@ class BridgeWalletController extends Controller
                 'account_data.bank_name' => 'required|string',
                 'account_data.first_name' => 'required|string',
                 'account_data.last_name' => 'required|string',
-                'account_data.street_line_1' => 'required|string',
+                'account_data.street_line_1' => 'required|string|max:35',
+                'account_data.street_line_2' => 'nullable|string|max:35',
                 'account_data.city' => 'required|string',
                 'account_data.state' => 'required|string',
                 'account_data.postal_code' => 'required|string',
@@ -5232,13 +5246,14 @@ class BridgeWalletController extends Controller
                     'account_number' => trim($validated['account_data']['account_number']),
                     'checking_or_savings' => $validated['account_data']['account_type'],
                 ],
-                'address' => [
+                'address' => $this->bridgeService->sanitizeExternalAccountAddress([
                     'street_line_1' => trim($validated['account_data']['street_line_1']),
+                    'street_line_2' => trim((string) ($validated['account_data']['street_line_2'] ?? '')),
                     'country' => trim($validated['account_data']['country']),
                     'state' => trim($validated['account_data']['state']),
                     'city' => trim($validated['account_data']['city']),
                     'postal_code' => trim($validated['account_data']['postal_code']),
-                ],
+                ]),
             ];
 
             // Generate idempotency key
@@ -5329,7 +5344,7 @@ class BridgeWalletController extends Controller
             $primaryWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
                 ->where('is_primary', true)
                 ->first();
-
+            
             if (! $primaryWallet && $integration->bridge_wallet_id) {
                 $primaryWallet = BridgeWallet::create([
                     'bridge_integration_id' => $integration->id,
@@ -5899,13 +5914,13 @@ class BridgeWalletController extends Controller
             $destination = $this->resolveLiquidationDestination($integration, $primaryWallet, $isSandbox);
 
             if (! $destination) {
-                return response()->json([
-                    'success' => false,
+                    return response()->json([
+                        'success' => false,
                     'message' => $isSandbox
                         ? 'No virtual account found. Open Deposit and create a deposit account first, then try crypto again.'
                         : 'No Bridge wallet found. Create your wallet first.',
-                ], 404);
-            }
+                    ], 404);
+                }
 
             $destinationAddress = $destination['address'];
             $destinationPaymentRail = $destination['payment_rail'];
@@ -6530,7 +6545,7 @@ class BridgeWalletController extends Controller
                     }
                 }
             } else {
-                if ($isOrgUser) {
+                    if ($isOrgUser) {
                     return response()->json([
                         'success' => false,
                         'message' => 'The control person must have a date of birth on file to create a card account. Please complete the KYC verification process first.',

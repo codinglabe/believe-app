@@ -41,6 +41,8 @@ export interface Activity {
     payment_method_label?: string | null
     /** Raw Bridge lifecycle state (transfer state, VA event type, wallet history type) */
     bridge_state?: string | null
+    /** Primary one-line label for activity lists (from Bridge API) */
+    display_label?: string | null
     deposit_id?: string | null
     bridge_transfer_id?: string | null
     virtual_account_event_id?: string | null
