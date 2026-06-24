@@ -47,6 +47,11 @@ import {
   filterMethodsForRail,
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
+import {
+  QuickAddBelievePointsModal,
+  readQuickAddBelievePointsPrompt,
+  resolveQuickAddPaymentMethod,
+} from "@/components/believe-points/QuickAddBelievePointsModal"
 
 interface Purchase {
   id: number
@@ -239,12 +244,53 @@ export default function BelievePointsIndex({
   const [arSavedCardId, setArSavedCardId] = useState<string | null>(
     autoReplenish.saved_payment_method_id,
   )
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [quickAddPmId, setQuickAddPmId] = useState<string | null>(null)
+  const [quickAddRail, setQuickAddRail] = useState<"card" | "bank">("card")
   const savedCards = useMemo(
     () => filterMethodsForRail(savedPaymentMethods, "card"),
     [savedPaymentMethods],
   )
 
   const believePointsFeePreviewSkipRef = useRef(true)
+
+  const paymentMethodsManageUrl = useMemo(() => {
+    const base = paymentMethodsUrl
+    const separator = base.includes("?") ? "&" : "?"
+    return `${base}${separator}return=${encodeURIComponent("/believe-points")}`
+  }, [paymentMethodsUrl])
+
+  useEffect(() => {
+    const prompt = readQuickAddBelievePointsPrompt()
+    if (!prompt) return
+    setQuickAddPmId(prompt.savedPaymentMethodId)
+    setQuickAddRail(prompt.paymentRail)
+    setQuickAddOpen(true)
+    if (prompt.paymentRail === "bank") {
+      setPaymentMethod("stripe_ach")
+      setSavedPaymentMethodId(prompt.savedPaymentMethodId)
+    } else {
+      setPaymentMethod("stripe_card")
+      setSavedPaymentMethodId(prompt.savedPaymentMethodId)
+    }
+  }, [])
+
+  const openQuickAddBelievePoints = (preferredId?: string | null) => {
+    const resolved = resolveQuickAddPaymentMethod(savedPaymentMethods, preferredId)
+    if (!resolved) {
+      showErrorToast("Add a saved card or bank in Payment Methods to use quick buy.")
+      return
+    }
+    setQuickAddPmId(resolved.id)
+    setQuickAddRail(resolved.rail)
+    setQuickAddOpen(true)
+  }
+
+  const hasSavedStripeMethods = savedPaymentMethods.length > 0
+  const quickBuyDefaultMethod = useMemo(
+    () => resolveQuickAddPaymentMethod(savedPaymentMethods, savedPaymentMethodId),
+    [savedPaymentMethods, savedPaymentMethodId],
+  )
 
   /** Profile menu (mobile): scroll past sidebar/header to the purchase form. */
   useEffect(() => {
@@ -538,18 +584,54 @@ export default function BelievePointsIndex({
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full shrink-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/80 sm:w-auto"
-                    onClick={() => router.visit(route("believe-points.refunds"))}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Refunds
-                  </Button>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0">
+                    {hasSavedStripeMethods && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full bg-purple-600 hover:bg-purple-700 sm:w-auto"
+                        onClick={() => openQuickAddBelievePoints(savedPaymentMethodId)}
+                      >
+                        <Coins className="mr-2 h-4 w-4" />
+                        Quick buy BP
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/80 sm:w-auto"
+                      onClick={() => router.visit(route("believe-points.refunds"))}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refunds
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
+
+            {hasSavedStripeMethods && quickBuyDefaultMethod && (
+              <Card className="border border-purple-200 bg-gradient-to-r from-purple-50/90 to-violet-50/90 shadow-sm dark:border-purple-800 dark:from-purple-950/25 dark:to-violet-950/20">
+                <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">
+                      Quick add with saved payment
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-purple-800/90 dark:text-purple-200/80 sm:text-sm">
+                      Charge your saved {quickBuyDefaultMethod.rail === "bank" ? "bank account" : "card"} instantly — pick an amount and add BP in seconds.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="h-10 shrink-0 bg-purple-600 px-5 hover:bg-purple-700"
+                    onClick={() => openQuickAddBelievePoints(quickBuyDefaultMethod.id)}
+                  >
+                    <Coins className="mr-2 h-4 w-4" />
+                    Quick buy Believe Points
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
             <Card
               id={ADD_BELIEVE_POINTS_SECTION_ID}
@@ -683,7 +765,7 @@ export default function BelievePointsIndex({
                         rail={paymentMethod === "stripe_ach" ? "bank" : "card"}
                         value={savedPaymentMethodId}
                         onChange={setSavedPaymentMethodId}
-                        manageHref={paymentMethodsUrl}
+                        manageHref={paymentMethodsManageUrl}
                       />
                     </div>
                     <p className="flex items-start gap-1.5 text-xs leading-snug text-gray-500 dark:text-gray-400">
@@ -1092,7 +1174,7 @@ export default function BelievePointsIndex({
               <CardContent className="space-y-4 pt-0">
                 <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
                   Choose a card from your saved payment methods. If charges fail, pick another card or add a new one in{" "}
-                  <a href={paymentMethodsUrl} className="font-medium text-purple-600 underline-offset-2 hover:underline dark:text-purple-400">
+                  <a href={paymentMethodsManageUrl} className="font-medium text-purple-600 underline-offset-2 hover:underline dark:text-purple-400">
                     Payment Methods
                   </a>
                   .
@@ -1102,7 +1184,7 @@ export default function BelievePointsIndex({
                   rail="card"
                   value={arSavedCardId}
                   onChange={setArSavedCardId}
-                  manageHref={paymentMethodsUrl}
+                  manageHref={paymentMethodsManageUrl}
                   showNewOption={false}
                 />
                 {autoReplenish.enabled && arSavedCardId && (
@@ -1268,6 +1350,27 @@ export default function BelievePointsIndex({
           </aside>
         </div>
       </div>
+
+      {quickAddPmId && (
+        <QuickAddBelievePointsModal
+          open={quickAddOpen}
+          onOpenChange={setQuickAddOpen}
+          savedPaymentMethodId={quickAddPmId}
+          paymentRail={quickAddRail}
+          paymentMethods={savedPaymentMethods}
+          minPurchaseAmount={minPurchaseAmount}
+          maxPurchaseAmount={maxPurchaseAmount}
+          purchaseSettings={purchaseSettings}
+          currentBalance={currentBalance}
+          feePreview={feePreview}
+          feePreviewUrl={route("believe-points.index")}
+          paymentSavedMessage={
+            flash?.success
+              ? `${flash.success} Add Believe Points now with your saved ${quickAddRail === "bank" ? "bank account" : "card"}.`
+              : "Buy Believe Points instantly with your saved payment method."
+          }
+        />
+      )}
     </>
   )
 
