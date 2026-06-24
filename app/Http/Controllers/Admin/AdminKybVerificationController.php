@@ -949,11 +949,15 @@ class AdminKybVerificationController extends Controller
                                     ]);
                                 }
                                 
-                                // Get KYC link for the customer (handles UBO/associated person verification including selfie)
-                                $kycLinkResult = $this->bridgeService->getCustomerKycLink($integration->bridge_customer_id);
+                                // Cards endorsement KYB link — GET ?endorsement=cards only (no standard KYC fallback)
+                                $kycLinkResult = $this->bridgeService->resolveCardsEndorsementKycLink(
+                                    $integration->bridge_customer_id,
+                                    null,
+                                    $integration->kyb_link_id ?? $integration->kyc_link_id,
+                                );
                                 
-                                if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
-                                    $kycLink = $kycLinkResult['data']['url'];
+                                $kycLink = $kycLinkResult['url'] ?? ($kycLinkResult['data']['url'] ?? null);
+                                if (($kycLinkResult['success'] ?? false) && $kycLink) {
                                     
                                     // Convert the KYC link for iframe embedding
                                     // Replace /verify with /widget for iframe use
@@ -963,8 +967,18 @@ class AdminKybVerificationController extends Controller
                                     $separator = strpos($iframeKycLink, '?') !== false ? '&' : '?';
                                     $iframeKycLink .= $separator . 'iframe-origin=' . urlencode(config('app.url'));
                                     
-                                    // Store KYC link in integration
-                                    $integration->kyc_link_url = $kycLink;
+                                    // Store cards endorsement KYB link on integration
+                                    $integration->kyb_link_url = $kycLink;
+                                    $linkId = $kycLinkResult['data']['id'] ?? null;
+                                    if ($linkId) {
+                                        $integration->kyb_link_id = $linkId;
+                                    }
+                                    $metadata = $integration->bridge_metadata ?? [];
+                                    if (! is_array($metadata)) {
+                                        $metadata = is_string($metadata) ? (json_decode($metadata, true) ?? []) : [];
+                                    }
+                                    $metadata['control_person_kyc_link'] = $kycLink;
+                                    $integration->bridge_metadata = $metadata;
                                     $integration->save();
                                     
                                     // Update associated person with KYC links
@@ -1227,11 +1241,15 @@ class AdminKybVerificationController extends Controller
                                         ]);
                                     }
                                     
-                                    // THEN get KYC link for the customer (handles UBO/associated person verification including selfie)
-                                    $kycLinkResult = $this->bridgeService->getCustomerKycLink($integration->bridge_customer_id);
+                                    // Cards endorsement KYB link — GET ?endorsement=cards only (no standard KYC fallback)
+                                    $kycLinkResult = $this->bridgeService->resolveCardsEndorsementKycLink(
+                                    $integration->bridge_customer_id,
+                                    null,
+                                    $integration->kyb_link_id ?? $integration->kyc_link_id,
+                                );
                                     
-                                    if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
-                                        $kycLink = $kycLinkResult['data']['url'];
+                                    $kycLink = $kycLinkResult['url'] ?? ($kycLinkResult['data']['url'] ?? null);
+                                    if (($kycLinkResult['success'] ?? false) && $kycLink) {
                                         
                                         // Convert the KYC link for iframe embedding
                                         // Replace /verify with /widget for iframe use
@@ -1241,8 +1259,18 @@ class AdminKybVerificationController extends Controller
                                         $separator = strpos($iframeKycLink, '?') !== false ? '&' : '?';
                                         $iframeKycLink .= $separator . 'iframe-origin=' . urlencode(config('app.url'));
                                         
-                                        // Store KYC link in integration
-                                        $integration->kyc_link_url = $kycLink;
+                                        // Store cards endorsement KYB link on integration
+                                        $integration->kyb_link_url = $kycLink;
+                                        $linkId = $kycLinkResult['data']['id'] ?? null;
+                                        if ($linkId) {
+                                            $integration->kyb_link_id = $linkId;
+                                        }
+                                        $metadata = $integration->bridge_metadata ?? [];
+                                        if (! is_array($metadata)) {
+                                            $metadata = is_string($metadata) ? (json_decode($metadata, true) ?? []) : [];
+                                        }
+                                        $metadata['control_person_kyc_link'] = $kycLink;
+                                        $integration->bridge_metadata = $metadata;
                                         $integration->save();
                                         
                                         // Update associated person with KYC links

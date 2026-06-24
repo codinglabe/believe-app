@@ -74,6 +74,18 @@ class Transaction extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Hide ledger rows voided because Bridge never confirmed the movement.
+     */
+    public function scopeVisibleInWalletActivity($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('meta')
+                ->orWhereRaw("JSON_EXTRACT(meta, '$.removed_from_active_ledger') IS NULL")
+                ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(meta, '$.removed_from_active_ledger')) != 'true'");
+        });
+    }
+
     public static function record(array $data): self
     {
         return self::create([

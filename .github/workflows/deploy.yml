@@ -83,16 +83,7 @@ jobs:
         --exclude=auth.json
 
     steps:
-      - name: Reset self-hosted workspace
-        run: |
-          set -euo pipefail
-          cd "${GITHUB_WORKSPACE}"
-          shopt -s dotglob nullglob
-          for item in * .[!.]* ..?*; do
-            [ -e "${item}" ] || continue
-            rm -rf "${item}"
-          done
-
+      # Keep .git between runs on the self-hosted runner — incremental fetch is ~seconds (no full re-clone).
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}

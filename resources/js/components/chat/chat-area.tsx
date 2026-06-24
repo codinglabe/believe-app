@@ -2,6 +2,7 @@
 
 import React from "react"
 import { callNotificationsEnabled, requestCallPermissionsPrompt } from "@/lib/call-permissions"
+import { useUnityCallStartUiEnabled } from "@/lib/app-environment"
 import { useChat } from "@/providers/chat-context"
 import { MessageList } from "@/components/chat/message-list"
 import { MessageInput } from "@/components/chat/message-input"
@@ -24,6 +25,7 @@ type ChatAreaProps = {
 
 export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAreaProps = {}) {
   const { activeRoom, currentUser, typingUsers, joinRoom, startAudioCall } = useChat()
+  const unityCallStartUiEnabled = useUnityCallStartUiEnabled()
   const otherTypingUsers = typingUsers.filter((u) => u.id !== currentUser?.id)
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
   const [startingCall, setStartingCall] = React.useState(false)
@@ -120,7 +122,7 @@ export function ChatArea({ mobileMenuButton, isMobile = false, onBack }: ChatAre
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5 pr-1 sm:gap-1">
-          {activeRoom.type === "direct" ? (
+          {unityCallStartUiEnabled && activeRoom.type === "direct" ? (
             <Button
               variant="ghost"
               size="icon"

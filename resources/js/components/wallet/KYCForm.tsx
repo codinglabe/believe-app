@@ -2,6 +2,7 @@ import { ImageUploadDropzone } from '@/components/ImageUploadDropzone'
 import { KycFormData } from './types'
 import { motion } from 'framer-motion'
 import { Clock } from 'lucide-react'
+import { isBridgeVerificationAwaitingReview } from '@/lib/bridge-verification'
 
 interface KYCFormProps {
     formData: KycFormData
@@ -9,7 +10,6 @@ interface KYCFormProps {
     onFormDataChange: (data: KycFormData) => void
     onSubmit: () => void
     kycStatus?: 'not_started' | 'incomplete' | 'under_review' | 'awaiting_questionnaire' | 'awaiting_ubo' | 'approved' | 'rejected' | 'paused' | 'offboarded'
-    kycSubmitted?: boolean
 }
 
 export function KYCForm({
@@ -18,7 +18,6 @@ export function KYCForm({
     onFormDataChange,
     onSubmit,
     kycStatus = 'not_started',
-    kycSubmitted = false
 }: KYCFormProps) {
     const handleFieldChange = (field: keyof KycFormData, value: string) => {
         onFormDataChange({
@@ -36,10 +35,8 @@ export function KYCForm({
         })
     }
 
-    // Show waiting screen if KYC has been submitted OR status is pending/under review
-    const shouldShowWaitingScreen = kycSubmitted || (kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected')
+    const shouldShowWaitingScreen = isBridgeVerificationAwaitingReview(kycStatus)
 
-    // Show form only when status is not_started (and not submitted) or rejected
     const shouldShowForm = !shouldShowWaitingScreen
 
     if (shouldShowWaitingScreen) {
@@ -55,6 +52,9 @@ export function KYCForm({
                 </motion.div>
                 <div className="text-center space-y-2">
                     <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
+                    <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                        Status: {kycStatus.replace(/_/g, ' ')}
+                    </div>
                     <p className="text-sm text-muted-foreground max-w-sm">
                         Your KYC information has been successfully submitted and is being reviewed.
                     </p>

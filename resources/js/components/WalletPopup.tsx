@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage, Loader2, CreditCard } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -14,9 +14,21 @@ import { SubscriptionRequiredModal } from './SubscriptionRequiredModal'
 import { usePage } from '@inertiajs/react'
 import {
     applyWalletBridgeStatusPayload,
+    isBridgeKycPending,
+    isBridgeKybPending,
     isWalletBridgeAccountVerified,
+    formatBridgeVerificationStatusLabel,
     type WalletBridgeStatusPayload,
 } from '@/lib/bridge-verification'
+import { pickWalletBalance } from '@/lib/wallet-balance-fetch'
+import { useWalletBridgeRealtime, type WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
+import { patchActivitiesFromBridgeUpdate, prependPendingTransferActivity } from '@/lib/patch-wallet-activities'
+import {
+    clearRecentWalletActivityCache,
+    clearAllWalletActivityCache,
+    patchRecentWalletActivityCache,
+    setRecentWalletActivityCache,
+} from '@/lib/wallet-activity-cache'
 import {
     SuccessMessage,
     BalanceDisplay,
@@ -37,16 +49,19 @@ import {
     VirtualCard,
     ServicesMenu,
     KYCForm,
+    KycVerificationStatusPanel,
     KYBForm,
     SplashScreen,
     BalanceSkeleton,
-    WalletAddressSkeleton,
-    SearchResultsSkeleton,
     ActivitySkeleton,
     QRCodeSkeleton,
     DepositInstructionsSkeleton,
     WaitingScreen,
+    BridgeVerificationModal,
+    BridgePersonaVerificationPanel,
     getCsrfToken as getWalletCsrfToken,
+    resolveBridgeVerificationWidgetUrl,
+    isBridgePersonaVerificationCompleteMessage,
     walletFetch,
     isCsrfMismatch,
     formatAddress as formatWalletAddress
@@ -90,18 +105,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         routing_number: string;
         account_type: string;
         account_holder_name: string;
+        bank_name?: string;
         status: string;
     }>>([])
     const [isLoadingExternalAccounts, setIsLoadingExternalAccounts] = useState(false)
+    const [isRemovingBankAccount, setIsRemovingBankAccount] = useState(false)
     const [transferAmount, setTransferAmount] = useState('')
     const [withdrawAmount, setWithdrawAmount] = useState('')
+    const [withdrawPaymentRail, setWithdrawPaymentRail] = useState<'ach' | 'wire'>('ach')
+    const [bankWithdrawalAvailable, setBankWithdrawalAvailable] = useState(true)
     const [selectedExternalAccount, setSelectedExternalAccount] = useState<string>('')
     const [sendAmount, setSendAmount] = useState('')
     const [addMoneyAmount, setAddMoneyAmount] = useState('')
-    const [sendAddress, setSendAddress] = useState('')
     const [recipientSearch, setRecipientSearch] = useState('')
-    const [selectedRecipient, setSelectedRecipient] = useState<{ id: string; type: string; name: string; email?: string; display_name: string; address: string } | null>(null)
-    const [searchResults, setSearchResults] = useState<Array<{ id: string; type: string; name: string; email?: string; display_name: string; address: string }>>([])
+    const [selectedRecipient, setSelectedRecipient] = useState<{ id: string; type: string; name: string; email?: string; display_name: string; address?: string } | null>(null)
+    const [searchResults, setSearchResults] = useState<Array<{ id: string; type: string; name: string; email?: string; display_name: string; address?: string }>>([])
     const [isLoadingSearch, setIsLoadingSearch] = useState(false)
     const [showDropdown, setShowDropdown] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
@@ -142,6 +160,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }>>([])
     const [isLoadingActivities, setIsLoadingActivities] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
+    const activitiesLoadedWhileOpenRef = useRef(false)
     const [hasMoreActivities, setHasMoreActivities] = useState(false)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
     const [bridgeInitialized, setBridgeInitialized] = useState(false)
@@ -190,11 +209,57 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [requiresVerification, setRequiresVerification] = useState(false)
     const [verificationType, setVerificationType] = useState<'kyc' | 'kyb' | null>(null)
     const [showVerificationIframe, setShowVerificationIframe] = useState(false)
-    const [useCustomKyc, setUseCustomKyc] = useState(true) // Toggle between custom form and iframe
-    const [kycSubmitted, setKycSubmitted] = useState(false) // Track if KYC has been submitted
+    const [isLoadingVerificationWidget, setIsLoadingVerificationWidget] = useState(false)
+    const [verificationModalWidgetUrl, setVerificationModalWidgetUrl] = useState<string | null>(null)
+
+    const applyBackendKycStatus = (backendStatus: string) => {
+        setKycStatus(backendStatus as typeof kycStatus)
+
+        if (backendStatus === 'approved') {
+            setRequiresVerification(false)
+        } else if (backendStatus !== 'not_started') {
+            setRequiresVerification(true)
+            setVerificationType('kyc')
+        }
+    }
+
+    const refreshKycStatusAfterSubmission = async () => {
+        try {
+            const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+
+            if (!statusResponse.ok) {
+                return
+            }
+
+            const statusData = await statusResponse.json()
+            if (statusData.success && statusData.kyc_status) {
+                applyBackendKycStatus(statusData.kyc_status)
+            }
+
+            if (statusData.requires_verification !== undefined) {
+                setRequiresVerification(statusData.requires_verification)
+            }
+            if (statusData.verification_type) {
+                setVerificationType(statusData.verification_type)
+            }
+        } catch (error) {
+            console.error('Failed to refresh KYC status:', error)
+        }
+    }
     const [tosIframeUrl, setTosIframeUrl] = useState<string | null>(null)
     const [signedAgreementId, setSignedAgreementId] = useState<string | null>(null)
     const processedTosAgreementIdsRef = useRef<Set<string>>(new Set())
+    const lastBridgeStatusCheckRef = useRef(0)
+    const bridgeStatusCheckMinIntervalMs = 5000
 
     // Custom KYC form state
     const [kycFormData, setKycFormData] = useState({
@@ -327,6 +392,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [isOpen, auth?.user])
 
+    // Remove legacy sessionStorage flags from older builds — backend kyc_status is the source of truth.
+    useEffect(() => {
+        if (!isOpen || !auth?.user?.id) {
+            return
+        }
+
+        sessionStorage.removeItem(`bridge_kyc_submitted_${auth.user.id}`)
+        sessionStorage.removeItem(`bridge_kyc_customer_${auth.user.id}`)
+    }, [isOpen, auth?.user?.id])
+
     // Auto-switch to correct KYB step when business-related fields are requested
     useEffect(() => {
         if (!requestedFields || requestedFields.length === 0) {
@@ -398,7 +473,13 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }, [requestedFields, verificationType])
 
     // Check Bridge status and fetch balance - moved outside useEffect so it can be called from other functions
-    const checkBridgeAndFetchBalance = async () => {
+    const checkBridgeAndFetchBalance = async (options?: { force?: boolean }) => {
+        const now = Date.now()
+        if (!options?.force && now - lastBridgeStatusCheckRef.current < bridgeStatusCheckMinIntervalMs) {
+            return
+        }
+        lastBridgeStatusCheckRef.current = now
+
         if (isInitialLoading) {
             setIsInitialLoading(true)
         } else {
@@ -452,27 +533,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 setTosStatus(bridgeStatus.tosStatus)
 
                 if (statusData.kyc_status) {
-                    // If KYC was submitted, preserve the waiting screen state
-                    // Only update to approved or rejected, otherwise keep current status if it's a pending state
-                    if (kycSubmitted) {
-                        if (statusData.kyc_status === 'approved') {
-                            setKycStatus('approved')
-                            setKycSubmitted(false) // Clear submitted flag when approved
-                            setRequiresVerification(false)
-                        } else if (statusData.kyc_status === 'rejected') {
-                            setKycStatus('rejected')
-                            // Keep kycSubmitted as true for resubmission
-                        } else if (statusData.kyc_status === 'not_started') {
-                            // Don't reset to not_started if KYC was already submitted - keep waiting screen
-                            // Keep current status (should be under_review or similar)
-                        } else {
-                            // Update to other pending states (incomplete, awaiting_questionnaire, etc.)
-                    setKycStatus(statusData.kyc_status)
-                        }
-                    } else {
-                        // KYC not submitted yet, update status normally
-                        setKycStatus(statusData.kyc_status)
-                    }
+                    applyBackendKycStatus(statusData.kyc_status)
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
@@ -521,122 +582,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (statusData.verification_type) {
                     setVerificationType(statusData.verification_type)
                 }
-
-                // Load KYB step progress from backend
-                if (statusData.kyb_step && statusData.verification_type === 'kyb') {
-                    const previousStep = kybStep
-
-                    // CRITICAL: Check has_control_person FIRST - this is the source of truth
-
-                    if (statusData.has_control_person) {
-                        // Check for rejected documents FIRST before setting controlPersonSubmitted
-                        const hasRejectedDocs = (statusData.document_statuses?.id_front === 'rejected' ||
-                            statusData.document_statuses?.id_back === 'rejected')
-                        const hasRequestedFields = statusData.requested_fields && statusData.requested_fields.length > 0
-                        
-                        // Check if requested fields are for control_person (start with 'control_person.' or are control person related)
-                        const controlPersonFields = ['control_person.first_name', 'control_person.last_name', 'control_person.email', 
-                            'control_person.birth_date', 'control_person.ssn', 'control_person.title', 'control_person.ownership_percentage',
-                            'control_person.street_line_1', 'control_person.city', 'control_person.state', 'control_person.postal_code',
-                            'control_person.country', 'control_person.id_type', 'control_person.id_number', 
-                            'control_person.id_front_image', 'control_person.id_back_image']
-                        const hasControlPersonRequestedFields = hasRequestedFields && 
-                            statusData.requested_fields.some((field: string) => 
-                                controlPersonFields.includes(field) || field.startsWith('control_person.')
-                            )
-
-                        // If rejected docs OR requested fields for control_person, set controlPersonSubmitted to false
-                        // Otherwise, control person exists and is submitted
-                        if (hasRejectedDocs || hasControlPersonRequestedFields) {
-                            setControlPersonSubmitted(false) // Show form for re-upload
-                        } else {
-                            // Control person EXISTS in database and no rejected docs - set state
-                            setControlPersonSubmitted(true)
-                        }
-
-                        // CRITICAL: If control person exists, we should NEVER be on control_person step
-                        // Check if step is control_person OR if we're currently on control_person step
-                        const needsAdvance = statusData.kyb_step === 'control_person' || kybStep === 'control_person'
-
-                        if (needsAdvance) {
-                            // If rejected docs OR requested fields for control_person, stay on control_person step
-                            if (hasRejectedDocs || hasControlPersonRequestedFields) {
-                                setKybStep('control_person')
-                                return // Exit early
-                            } else {
-                                // No rejected docs and no control_person requested fields - advance to business_documents
-                                console.error('FORCING: Control person exists - advancing to business_documents')
-                                setKybStep('business_documents')
-                                // CRITICAL: Don't set businessDocumentsSubmitted to true - user hasn't submitted documents yet!
-                                // Only set it if backend confirms documents were actually submitted
-                                if (statusData.business_documents_submitted) {
-                                    setBusinessDocumentsSubmitted(true)
-                                } else {
-                                    setBusinessDocumentsSubmitted(false)
-                                }
-                                // Don't return - continue to handle kyc_verification if needed
-                            }
-                        }
-
-                        // Handle kyc_verification step if backend says so
-                    if (statusData.kyb_step === 'kyc_verification') {
-                            // Handle kyc_verification step
-                            const isKybApproved = statusData.kyb_status === 'approved'
-                        const documentsApproved = statusData.kyb_submission_status === 'approved' ||
-                            (statusData.document_statuses &&
-                                (statusData.document_statuses.business_formation === 'approved' ||
-                                    statusData.document_statuses.business_ownership === 'approved'))
-
-                            if (isKybApproved && documentsApproved) {
-                            setKybStep('kyc_verification')
-                            setBusinessDocumentsSubmitted(true)
-                            if (previousStep !== 'kyc_verification' && !controlPersonKycIframeUrl && !controlPersonKycLink && kybFormData.control_person.email) {
-                                handleControlPersonKyc(true)
-                            }
-                        } else {
-                            setKybStep('business_documents')
-                                // Only set to true if documents were actually submitted
-                                if (statusData.business_documents_submitted) {
-                            setBusinessDocumentsSubmitted(true)
-                                } else {
-                                    setBusinessDocumentsSubmitted(false)
-                                }
-                            }
-                        } else if (statusData.kyb_step === 'business_documents') {
-                            // Step is business_documents - use it
-                            setKybStep(statusData.kyb_step)
-                            // IMPORTANT: Only set businessDocumentsSubmitted if backend confirms documents were submitted
-                            if (statusData.business_documents_submitted) {
-                                setBusinessDocumentsSubmitted(true)
-                    } else {
-                                setBusinessDocumentsSubmitted(false)
-                            }
-                        } else {
-                            // Other step - use it
-                        setKybStep(statusData.kyb_step)
-                        }
-                    } else {
-                        // Control person doesn't exist - use step from backend
-                        setKybStep(statusData.kyb_step)
-
-                        // Handle kyc_verification step if needed
-                        if (statusData.kyb_step === 'kyc_verification') {
-                            const isKybApproved = statusData.kyb_status === 'approved'
-                            const documentsApproved = statusData.kyb_submission_status === 'approved' ||
-                                (statusData.document_statuses &&
-                                    (statusData.document_statuses.business_formation === 'approved' ||
-                                        statusData.document_statuses.business_ownership === 'approved'))
-
-                            if (isKybApproved && documentsApproved) {
-                                setKybStep('kyc_verification')
-                                setBusinessDocumentsSubmitted(true)
-                            } else {
-                                setKybStep('business_documents')
-                                setBusinessDocumentsSubmitted(true)
-                            }
-                        }
-                    }
-                }
                 if (statusData.control_person_kyc_link) {
                     setControlPersonKycLink(statusData.control_person_kyc_link)
                 }
@@ -674,26 +619,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setDocumentStatuses(statuses)
                     setDocumentRejectionReasons(rejectionReasons)
                     
-                    // CRITICAL: Check for rejected documents FIRST and set controlPersonSubmitted to false
-                    // This must happen BEFORE any other logic to ensure the form shows when docs are rejected
-                    if (statuses.id_front === 'rejected' || statuses.id_back === 'rejected') {
-                        console.log('Control Person: Documents rejected - setting controlPersonSubmitted to false', {
-                            id_front: statuses.id_front,
-                            id_back: statuses.id_back
-                        })
-                        setKybStep('control_person')
-                        setControlPersonSubmitted(false) // Show form for re-upload - CRITICAL
-                    } else if ((statuses.id_front === 'pending' || statuses.id_back === 'pending') && 
-                               statuses.id_front !== 'rejected' && statuses.id_back !== 'rejected') {
-                        // If documents are pending (submitted but not rejected), show waiting screen
-                        console.log('Control Person: Documents pending - setting controlPersonSubmitted to true', {
-                            id_front: statuses.id_front,
-                            id_back: statuses.id_back
-                        })
-                        setControlPersonSubmitted(true)
-                        setKybStep('control_person')
-                    }
                 }
+
+                // Load requested fields and refill message from admin                }
 
                 // Load requested fields and refill message from admin
                 if (statusData.requested_fields && Array.isArray(statusData.requested_fields)) {
@@ -798,12 +726,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setIsSandbox(statusData.is_sandbox)
                 }
 
+                if (statusData.bank_withdrawal_available !== undefined) {
+                    setBankWithdrawalAvailable(statusData.bank_withdrawal_available)
+                }
+
                 // Set wallet address if available
                 if (statusData.wallet_address) {
                     setWalletAddress(statusData.wallet_address)
                 }
 
-                // Always fetch balance from user/organization table, not Bridge wallet
+                // Balance from Bridge API via /wallet/balance
                 const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
@@ -818,8 +750,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json()
                     if (balanceData.success) {
-                        // Use balance from user/organization table
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        // Bridge or ledger balance from API (never mix with local_balance fallback)
+                        setWalletBalance(pickWalletBalance(balanceData))
                         setHasSubscription(balanceData.has_subscription ?? null)
 
                         // If no subscription, show subscription modal instead (for regular users only)
@@ -853,7 +785,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (fallbackResponse.ok) {
                     const fallbackData = await fallbackResponse.json()
                     if (fallbackData.success) {
-                        setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
+                        setWalletBalance(pickWalletBalance(fallbackData))
                         setHasSubscription(fallbackData.has_subscription ?? null)
 
                         // If no subscription, show subscription modal instead (for regular users only)
@@ -886,7 +818,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (fallbackResponse.ok) {
                     const fallbackData = await fallbackResponse.json()
                     if (fallbackData.success) {
-                        setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
+                        setWalletBalance(pickWalletBalance(fallbackData))
                         setHasSubscription(fallbackData.has_subscription ?? null)
 
                         // If no subscription, show subscription modal instead (for regular users only)
@@ -909,15 +841,55 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
+    const bridgeBalanceRefreshRef = useRef<() => void>(() => {})
+    bridgeBalanceRefreshRef.current = () => {
+        void checkBridgeAndFetchBalance({ force: true })
+    }
+
+    const handleBridgeRealtimeUpdate = useCallback((payload: WalletBridgeUpdatePayload) => {
+        if (payload.refresh_activity !== false) {
+            setActivities((prev) => {
+                const next = patchActivitiesFromBridgeUpdate(prev, payload)
+                patchRecentWalletActivityCache(() => next)
+
+                return next
+            })
+        }
+        if (payload.refresh_balance !== false) {
+            bridgeBalanceRefreshRef.current()
+        }
+    }, [])
+
+    useWalletBridgeRealtime({
+        userId: auth?.user?.id ?? null,
+        enabled: Boolean(auth?.user?.id),
+        onUpdate: handleBridgeRealtimeUpdate,
+    })
+
+    useEffect(() => {
+        if (!isOpen || !isBridgeKycPending(kycStatus)) {
+            return
+        }
+
+        const interval = window.setInterval(() => {
+            void checkBridgeAndFetchBalance()
+        }, 30000)
+
+        return () => window.clearInterval(interval)
+    }, [isOpen, kycStatus])
+
     // On open: only restore an already-connected wallet from local DB — do not auto-link Bridge.
     // New connections start on the Connect Wallet screen until the user clicks Connect.
     useEffect(() => {
         if (!isOpen) {
             setIsInitialLoading(true)
             setBridgeInitialized(false)
+            setShowVerificationIframe(false)
+            setIsLoadingVerificationWidget(false)
+            setVerificationModalWidgetUrl(null)
             return
         }
-        checkBridgeAndFetchBalance()
+        checkBridgeAndFetchBalance({ force: true })
     }, [isOpen])
 
 
@@ -925,7 +897,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             // Verify origin for security - allow Bridge domains and our own origin
-            const allowedOrigins = ['bridge.withpersona.com', 'bridge.xyz', 'sandbox.bridge.xyz', window.location.origin]
+            const allowedOrigins = ['bridge.withpersona.com', 'withpersona.com', 'bridge.xyz', 'sandbox.bridge.xyz', window.location.origin]
             const isAllowedOrigin = allowedOrigins.some(origin => event.origin.includes(origin))
 
             if (!isAllowedOrigin) {
@@ -937,7 +909,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 const action = event.data.action
                 if (action === 'close') {
                     setTosIframeUrl(null)
-                    setTimeout(() => checkBridgeAndFetchBalance(), 500)
+                    setTimeout(() => checkBridgeAndFetchBalance({ force: true }), 500)
                     return
                 }
                 if (action === 'checkStatus') {
@@ -996,7 +968,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         showSuccessToast('Terms of Service accepted successfully')
 
                         setTimeout(() => {
-                            checkBridgeAndFetchBalance()
+                            checkBridgeAndFetchBalance({ force: true })
                         }, 1000)
                     } catch (error) {
                         processedTosAgreementIdsRef.current.delete(agreementId)
@@ -1011,48 +983,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             // Handle verification status updates from iframe
             if (event.data && typeof event.data === 'object') {
-                if (event.data.type === 'persona:inquiry:complete' || event.data.type === 'persona:inquiry:status') {
-                    // Verification completed or status updated
-
-                    // Refresh status from backend
-                    const refreshStatus = async () => {
-                        try {
-                            const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
-                                method: 'GET',
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': getCsrfToken(),
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                },
-                                credentials: 'include',
-                                cache: 'no-store',
-                            })
-
-                            if (statusResponse.ok) {
-                                const statusData = await statusResponse.json()
-                                if (statusData.success) {
-                                    if (statusData.kyc_status) {
-                                        setKycStatus(statusData.kyc_status)
-                                    }
-                                    if (statusData.kyb_status) {
-                                        setKybStatus(statusData.kyb_status)
-                                    }
-                                    if (statusData.tos_status) {
-                                        setTosStatus(statusData.tos_status)
-                                    }
-
-                                    // If verification is approved, refresh balance
-                                    if ((statusData.kyc_status === 'approved' || statusData.kyb_status === 'approved') && statusData.has_wallet) {
-                                        window.location.reload() // Reload to show wallet
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            console.error('Failed to refresh verification status:', error)
-                        }
-                    }
-
-                    refreshStatus()
+                if (
+                    isBridgePersonaVerificationCompleteMessage(event.data) ||
+                    event.data.type === 'persona:inquiry:complete'
+                ) {
+                    void refreshKycStatusAfterSubmission()
+                    void checkBridgeAndFetchBalance({ force: true })
+                } else if (event.data.type === 'persona:inquiry:status') {
+                    void refreshKycStatusAfterSubmission()
                 }
             }
         }
@@ -1063,19 +1001,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [])
 
-    // Fetch wallet activity when main view is active
+    // Fetch wallet activity once per popup open (Reverb patches update in place)
     useEffect(() => {
-        if (!isOpen || actionView !== 'main') return
+        if (!isOpen) {
+            activitiesLoadedWhileOpenRef.current = false
+            clearRecentWalletActivityCache()
+            clearAllWalletActivityCache()
+            return
+        }
 
-        const fetchActivities = async (page: number = 1, append: boolean = false) => {
-            if (append) {
-                setIsLoadingMore(true)
-            } else {
-                setIsLoadingActivities(true)
-            }
+        if (activitiesLoadedWhileOpenRef.current) {
+            return
+        }
+
+        const fetchActivities = async () => {
+            setIsLoadingActivities(true)
 
             try {
-                // Fetch activities for main screen (always limit to 10, no pagination)
                 const response = await fetch(`/wallet/activity?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
@@ -1090,15 +1032,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (response.ok) {
                     const data = await response.json()
                     if (data.success) {
-                        if (append) {
-                            // Append new activities
-                            setActivities(prev => [...prev, ...(data.activities || [])])
-                        } else {
-                            // First load: show all activities from backend
-                            setActivities(data.activities || [])
-                        }
+                        const nextActivities = data.activities || []
+                        setActivities(nextActivities)
+                        setRecentWalletActivityCache(nextActivities, data.has_more || false)
                         setHasMoreActivities(data.has_more || false)
-                        setCurrentPage(page)
+                        setCurrentPage(1)
+                        activitiesLoadedWhileOpenRef.current = true
                     }
                 }
             } catch (error) {
@@ -1109,11 +1048,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
         }
 
-        // Reset and fetch first page when main view is shown
         setCurrentPage(1)
         setHasMoreActivities(false)
-        fetchActivities(1, false)
-    }, [isOpen, actionView])
+        void fetchActivities()
+    }, [isOpen])
 
     // Handle "See More" button click
     const handleSeeMore = () => {
@@ -1168,21 +1106,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             })
 
             const data = await response.json()
-            
-            // Debug logging
-            console.log('External accounts API response:', data)
-            
+
             if (data.success && data.data) {
                 // Backend already returns mapped accounts in the correct format
                 // Handle nested structure: { success: true, data: { count: X, data: [...] } }
                 let accounts = []
                 if (Array.isArray(data.data)) {
-                    // Direct array - backend already mapped it
                     accounts = data.data
-                    console.log('Using direct array, accounts count:', accounts.length)
                 } else if (data.data && Array.isArray(data.data.data)) {
-                    // Nested structure: data.data.data (fallback for old format)
-                    console.log('Using nested structure')
                     accounts = data.data.data.map((account: any) => ({
                         id: account.id || '',
                         account_number: account.account?.last_4 || account.last_4 || '0000',
@@ -1192,18 +1123,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         status: account.active ? 'verified' : 'pending',
                     }))
                 }
-                
-                console.log('Final accounts to set:', accounts)
-                // Use accounts as-is since backend already mapped them correctly
+
                 setExternalAccounts(accounts)
                 setHasBankAccounts(accounts.length > 0)
             } else {
-                console.warn('No accounts found in response:', data)
                 setExternalAccounts([])
                 setHasBankAccounts(false)
             }
-        } catch (error) {
-            console.error('Failed to fetch external accounts:', error)
+        } catch {
             setExternalAccounts([])
             setHasBankAccounts(false)
         } finally {
@@ -1260,6 +1187,48 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (data.success && data.data?.deposit_instructions) {
                     applyDepositInstructions(data.data.deposit_instructions)
                     return true
+                }
+            }
+
+            // No local/Bridge instructions — sync or create deposit account automatically
+            const provisionResponse = await fetch('/wallet/bridge/virtual-account', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+                body: JSON.stringify({}),
+            })
+
+            const provisionData = await provisionResponse.json()
+            if (provisionData.success) {
+                const instructions = provisionData.data?.source_deposit_instructions
+                if (instructions) {
+                    applyDepositInstructions(instructions)
+                    return true
+                }
+
+                const retryResponse = await fetch(`/wallet/bridge/deposit-instructions?t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-store',
+                })
+
+                if (retryResponse.ok) {
+                    const retryData = await retryResponse.json()
+                    if (retryData.success && retryData.data?.deposit_instructions) {
+                        applyDepositInstructions(retryData.data.deposit_instructions)
+                        return true
+                    }
                 }
             }
 
@@ -1359,6 +1328,38 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
+    const handleRemoveExternalAccount = async (accountId: string) => {
+        setIsRemovingBankAccount(true)
+        try {
+            const response = await fetch(`/wallet/bridge/external-account/${encodeURIComponent(accountId)}`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+
+            const data = await response.json()
+            if (data.success) {
+                showSuccessToast('Bank account removed')
+                if (selectedExternalAccount === accountId) {
+                    setSelectedExternalAccount('')
+                }
+                await fetchExternalAccounts()
+            } else {
+                showErrorToast(data.message || 'Failed to remove bank account')
+            }
+        } catch (error) {
+            console.error('Failed to remove external account:', error)
+            showErrorToast('Failed to remove bank account. Please try again.')
+        } finally {
+            setIsRemovingBankAccount(false)
+        }
+    }
+
     // Transfer from external account
     const handleTransferFromExternal = async () => {
         if (!selectedExternalAccount || !transferAmount || parseFloat(transferAmount) <= 0) {
@@ -1454,35 +1455,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             return
         }
 
+        if (!bankWithdrawalAvailable) {
+            showErrorToast(
+                isSandbox
+                    ? 'Bank withdrawals are not available in sandbox mode.'
+                    : 'Bridge wallet required before withdrawing to a bank account.'
+            )
+            return
+        }
+
         setIsLoading(true)
         try {
-            // Get wallet ID from status
-            let walletId = null
-            if (bridgeInitialized) {
-                const statusResponse = await fetch('/wallet/bridge/status', {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': getCsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    cache: 'no-store',
-                })
-
-                if (statusResponse.ok) {
-                    const statusData = await statusResponse.json()
-                    if (statusData.success && statusData.wallet_id) {
-                        walletId = statusData.wallet_id
-                    }
-                }
-            }
-
-            if (!walletId) {
-                showErrorToast('Wallet not found. Please create a wallet first.')
-                return
-            }
-
             const response = await fetch('/wallet/bridge/transfer-to-external', {
                 method: 'POST',
                 headers: {
@@ -1495,10 +1478,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 cache: 'no-store',
                 body: JSON.stringify({
                     external_account_id: selectedExternalAccount,
-                    wallet_id: walletId,
                     amount: parseFloat(withdrawAmount),
                     currency: 'USD',
-                    payment_rail: 'ach', // Default to ACH, can be made configurable
+                    payment_rail: withdrawPaymentRail,
                 }),
             })
 
@@ -1632,8 +1614,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 credentials: 'include',
                                 cache: 'no-store',
                                 body: JSON.stringify({
-                                    chain: 'ethereum', // Default chain
-                                    currency: 'usdc', // Default currency
+                                    chain: 'ethereum',
+                                    currency: 'usdc',
                                 }),
                             })
                                 .then(res => res.json())
@@ -1711,7 +1693,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 setTosStatus(bridgeStatus.tosStatus)
 
                 if (statusData.kyc_status) {
-                    setKycStatus(statusData.kyc_status)
+                    applyBackendKycStatus(statusData.kyc_status)
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
@@ -1745,117 +1727,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setRequiresVerification(false)
                 }
 
-                // Load KYB step progress from backend
-                if (statusData.kyb_step && statusData.verification_type === 'kyb') {
-                    // CRITICAL: Check has_control_person FIRST - same logic as checkBridgeAndFetchBalance
-                    if (statusData.has_control_person) {
-                        // Control person EXISTS in database - set state immediately
-                        setControlPersonSubmitted(true)
-
-                        // CRITICAL: If control person exists, we should NEVER be on control_person step
-                        const needsAdvance = statusData.kyb_step === 'control_person' || kybStep === 'control_person'
-
-                        if (needsAdvance) {
-                            const hasRejectedDocs = (statusData.document_statuses?.id_front === 'rejected' ||
-                                statusData.document_statuses?.id_back === 'rejected')
-                            const hasRequestedFields = statusData.requested_fields && statusData.requested_fields.length > 0
-                            
-                            // Check if requested fields are for control_person
-                            const controlPersonFields = ['control_person.first_name', 'control_person.last_name', 'control_person.email', 
-                                'control_person.birth_date', 'control_person.ssn', 'control_person.title', 'control_person.ownership_percentage',
-                                'control_person.street_line_1', 'control_person.city', 'control_person.state', 'control_person.postal_code',
-                                'control_person.country', 'control_person.id_type', 'control_person.id_number', 
-                                'control_person.id_front_image', 'control_person.id_back_image']
-                            const hasControlPersonRequestedFields = hasRequestedFields && 
-                                statusData.requested_fields.some((field: string) => 
-                                    controlPersonFields.includes(field) || field.startsWith('control_person.')
-                                )
-
-                            // If rejected docs OR requested fields for control_person, stay on control_person step
-                            if (hasRejectedDocs || hasControlPersonRequestedFields) {
-                                setKybStep('control_person')
-                                setControlPersonSubmitted(false)
-                                return // Exit early
-                            } else {
-                                // No rejected docs and no control_person requested fields - advance to business_documents
-                                console.error('handleConnectWallet - FORCING: Control person exists - advancing to business_documents')
-                                setKybStep('business_documents')
-                                // CRITICAL: Don't set businessDocumentsSubmitted to true - user hasn't submitted documents yet!
-                                if (statusData.business_documents_submitted) {
-                                    setBusinessDocumentsSubmitted(true)
-                                } else {
-                                    setBusinessDocumentsSubmitted(false)
-                                }
-                            }
-                        }
-
-                        // Handle kyc_verification step if backend says so
-                        if (statusData.kyb_step === 'kyc_verification') {
-                            // Admin requested KYC verification - show it
-                            setKybStep('kyc_verification')
-                            setBusinessDocumentsSubmitted(true)
-                        } else if (statusData.kyb_step === 'business_documents') {
-                            // Step is business_documents - use it
-                            setKybStep(statusData.kyb_step)
-                            // IMPORTANT: Only set businessDocumentsSubmitted if backend confirms documents were submitted
-                            // BUT: If there are rejected docs or requested fields, don't show waiting screen
-                            const hasRejectedBusinessDocs = statusData.document_statuses?.business_formation === 'rejected' ||
-                                statusData.document_statuses?.business_ownership === 'rejected' ||
-                                statusData.document_statuses?.proof_of_address === 'rejected'
-                            const businessDocFields = ['business_formation_document', 'business_ownership_document', 
-                                'proof_of_address_document', 'proof_of_nature_of_business', 'entity_type', 'business_description',
-                                'business_industry', 'primary_website', 'source_of_funds', 'annual_revenue', 'transaction_volume',
-                                'account_purpose', 'high_risk_activities', 'high_risk_geographies', 'dao_status']
-                            const hasBusinessDocRequestedFields = statusData.requested_fields && 
-                                statusData.requested_fields.some((field: string) => 
-                                    businessDocFields.includes(field) || field.startsWith('physical_address.')
-                                )
-                            
-                            // If documents submitted AND no rejected docs AND no requested fields, show waiting screen
-                            if (statusData.business_documents_submitted && !hasRejectedBusinessDocs && !hasBusinessDocRequestedFields) {
-                            setBusinessDocumentsSubmitted(true)
-                        } else {
-                                // Has rejected docs or requested fields - show form for re-upload
-                                setBusinessDocumentsSubmitted(false)
-                            }
-                        } else {
-                            // Other step - use it (kyc_verification is already handled above)
-                            setKybStep(statusData.kyb_step)
-                        }
-                    } else {
-                        // Control person doesn't exist - use step from backend
-                        if (statusData.kyb_step === 'kyc_verification') {
-                            // Admin requested KYC verification - show it
-                            setKybStep('kyc_verification')
-                            setBusinessDocumentsSubmitted(true)
-                        } else if (statusData.kyb_step === 'business_documents') {
-                            // Check for rejected docs or requested fields for business documents
-                            const hasRejectedBusinessDocs = statusData.document_statuses?.business_formation === 'rejected' ||
-                                statusData.document_statuses?.business_ownership === 'rejected' ||
-                                statusData.document_statuses?.proof_of_address === 'rejected'
-                            const businessDocFields = ['business_formation_document', 'business_ownership_document', 
-                                'proof_of_address_document', 'proof_of_nature_of_business', 'entity_type', 'business_description',
-                                'business_industry', 'primary_website', 'source_of_funds', 'annual_revenue', 'transaction_volume',
-                                'account_purpose', 'high_risk_activities', 'high_risk_geographies', 'dao_status']
-                            const hasBusinessDocRequestedFields = statusData.requested_fields && 
-                                statusData.requested_fields.some((field: string) => 
-                                    businessDocFields.includes(field) || field.startsWith('physical_address.')
-                                )
-                            
-                            setKybStep('business_documents')
-                            // If documents submitted AND no rejected docs AND no requested fields, show waiting screen
-                            if (statusData.business_documents_submitted && !hasRejectedBusinessDocs && !hasBusinessDocRequestedFields) {
-                            setBusinessDocumentsSubmitted(true)
-                            } else {
-                                // Has rejected docs or requested fields - show form for re-upload
-                                setBusinessDocumentsSubmitted(false)
-                        }
-                    } else {
-                            // Other step - use it
-                        setKybStep(statusData.kyb_step)
-                        }
-                    }
-                }
                 if (statusData.control_person_kyc_link) {
                     setControlPersonKycLink(statusData.control_person_kyc_link)
                 }
@@ -1863,7 +1734,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setControlPersonKycIframeUrl(statusData.control_person_kyc_iframe_url)
                 }
 
-                // Always fetch balance from user/organization table, not Bridge wallet
+                // Balance from Bridge API via /wallet/balance
                 const balanceResponse = await walletFetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                 })
@@ -1871,8 +1742,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json()
                     if (balanceData.success) {
-                        // Use balance from user/organization table
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        // Bridge or ledger balance from API (never mix with local_balance fallback)
+                        setWalletBalance(pickWalletBalance(balanceData))
                         setHasSubscription(balanceData.has_subscription ?? null)
                     }
                 }
@@ -1901,7 +1772,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 })
                 setTosStatus(initBridgeStatus.tosStatus)
                 if (data.data.kyc_status) {
-                    setKycStatus(data.data.kyc_status)
+                    applyBackendKycStatus(data.data.kyc_status)
                 }
                 if (data.data.kyb_status) {
                     setKybStatus(data.data.kyb_status)
@@ -2712,77 +2583,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     const isInstantlyApproved = kycStatusFromResponse === 'approved'
 
                     if (isInstantlyApproved) {
-                        // Instantly approved - same behavior as KYB
                         showSuccessToast('KYC verification approved instantly! You can now access your wallet.')
                         setKycStatus('approved')
-                        setKycSubmitted(false) // Clear submitted flag since it's approved
                         setRequiresVerification(false)
 
-                        // Refresh wallet status to show wallet screen
                         setTimeout(() => {
                             checkBridgeAndFetchBalance()
                         }, 500)
                     } else {
-                        // Not instantly approved - show waiting screen
-                    showSuccessToast('KYC data submitted successfully. Verification is pending.')
-                        // Ensure verification type is set to 'kyc'
-                        setVerificationType('kyc')
-                        setKycStatus('under_review') // Set status to under_review after submission
-                        setKycSubmitted(true) // Mark that KYC has been submitted
-                    setRequiresVerification(true)
-                        // Force a re-render to show waiting screen immediately
-                        console.log('KYC submitted - setting waiting screen state', {
-                            kycSubmitted: true,
-                            kycStatus: 'under_review',
-                            verificationType: 'kyc'
-                        })
-                    // Refresh status from backend to ensure sync
-                    setTimeout(() => {
-                        fetch(`/wallet/bridge/status?t=${Date.now()}`, {
-                            method: 'GET',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': getCsrfToken(),
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-store',
-                        })
-                            .then(res => res.json())
-                            .then(statusData => {
-                                if (statusData.success) {
-                                    if (statusData.kyc_status) {
-                                            // If KYC was submitted, don't allow status to go back to not_started (which would show form)
-                                            // Keep waiting screen visible until approved or rejected
-                                            // Only update status if it's approved or rejected, otherwise keep it as under_review
-                                            if (statusData.kyc_status === 'approved') {
-                                                setKycStatus('approved')
-                                                setKycSubmitted(false)
-                                                setRequiresVerification(false)
-                                                // Refresh wallet status
-                                                checkBridgeAndFetchBalance()
-                                            } else if (statusData.kyc_status === 'rejected') {
-                                                setKycStatus('rejected')
-                                                // Keep kycSubmitted as true to show form for resubmission
-                                            } else {
-                                                // For pending states (under_review, incomplete, etc.), keep under_review to show waiting screen
-                                                // Don't overwrite with status from backend if it's still pending
-                                                if (statusData.kyc_status !== 'not_started') {
-                                        setKycStatus(statusData.kyc_status)
-                                                }
-                                            }
-                                    }
-                                    if (statusData.requires_verification !== undefined) {
-                                        setRequiresVerification(statusData.requires_verification)
-                                    }
-                                        // Ensure verification type is set
-                                        if (statusData.verification_type) {
-                                            setVerificationType(statusData.verification_type)
-                                    }
-                                }
-                            })
-                            .catch(err => console.error('Failed to refresh KYC status:', err))
-                    }, 500)
+                        showSuccessToast('KYC data submitted successfully. Verification is pending.')
+                        setTimeout(() => {
+                            void refreshKycStatusAfterSubmission()
+                        }, 500)
                     }
                 } else {
                     showErrorToast(data.message || 'Failed to submit KYC data')
@@ -2795,6 +2607,108 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             setIsLoading(false)
         }
     }
+
+    const handleCloseVerificationModal = () => {
+        setShowVerificationIframe(false)
+        setIsLoadingVerificationWidget(false)
+        setVerificationModalWidgetUrl(null)
+        void refreshKycStatusAfterSubmission()
+        void checkBridgeAndFetchBalance()
+    }
+
+    const handleBridgeVerificationComplete = () => {
+        setShowVerificationIframe(false)
+        setIsLoadingVerificationWidget(false)
+        setVerificationModalWidgetUrl(null)
+
+        if (verificationType === 'kyc') {
+            showSuccessToast('Verification submitted. We will update your status when review is complete.')
+        } else {
+            showSuccessToast('Business verification submitted. We will update your status when review is complete.')
+        }
+
+        void refreshKycStatusAfterSubmission()
+        void checkBridgeAndFetchBalance()
+    }
+
+    const openBridgeVerificationWithUrl = (linkUrl: string) => {
+        const embedUrl = resolveBridgeVerificationWidgetUrl(null, linkUrl)
+        setShowVerificationIframe(true)
+        setIsLoadingVerificationWidget(false)
+        setVerificationModalWidgetUrl(embedUrl ?? linkUrl)
+    }
+
+    const openBridgeVerificationWidget = async (options?: { endorsement?: 'base' | 'cards' }) => {
+        const linkType = verificationType || 'kyc'
+        const endorsement = options?.endorsement ?? 'base'
+
+        setShowVerificationIframe(true)
+
+        setIsLoadingVerificationWidget(true)
+        setVerificationModalWidgetUrl(null)
+
+        try {
+            const callbackPath = linkType === 'kyb' ? '/wallet/kyb-callback' : '/wallet/kyc-callback'
+            const endpoint = linkType === 'kyb' ? '/wallet/bridge/kyb-link' : '/wallet/bridge/kyc-link'
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+                body: JSON.stringify({
+                    redirect_url: `${window.location.origin}${callbackPath}`,
+                    endorsement,
+                }),
+            })
+
+            const data = await response.json().catch(() => ({}))
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to start verification')
+            }
+
+            const linkUrl = data.data?.link_url as string | undefined
+            const widgetUrl = data.data?.widget_url as string | undefined
+            const embedUrl = resolveBridgeVerificationWidgetUrl(widgetUrl, linkUrl)
+
+            if (linkType === 'kyb') {
+                if (linkUrl) {
+                    setKybLinkUrl(linkUrl)
+                }
+                if (widgetUrl) {
+                    setKybWidgetUrl(widgetUrl)
+                }
+            } else {
+                if (linkUrl) {
+                    setKycLinkUrl(linkUrl)
+                }
+                if (widgetUrl) {
+                    setKycWidgetUrl(widgetUrl)
+                }
+            }
+
+            if (embedUrl) {
+                setVerificationModalWidgetUrl(embedUrl)
+                return
+            }
+
+            throw new Error('Could not load the verification widget. Try opening in a new tab.')
+        } catch (error) {
+            console.error('Failed to open Bridge verification:', error)
+            showErrorToast(error instanceof Error ? error.message : 'Failed to create verification link')
+            setShowVerificationIframe(false)
+        } finally {
+            setIsLoadingVerificationWidget(false)
+        }
+    }
+
+    const openCardsEndorsementVerification = () => openBridgeVerificationWidget({ endorsement: 'cards' })
 
     const handleRefresh = async () => {
         setIsLoading(true)
@@ -2813,7 +2727,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json()
                 if (balanceData.success) {
-                    setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                    setWalletBalance(pickWalletBalance(balanceData))
                     setHasSubscription(balanceData.has_subscription ?? null)
                     showSuccessToast('Balance refreshed')
                 }
@@ -2839,6 +2753,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
         const timeoutId = setTimeout(async () => {
             setIsLoadingSearch(true)
+            setShowDropdown(true)
             try {
                 const response = await fetch(`/wallet/search-recipients?search=${encodeURIComponent(recipientSearch)}&limit=10`, {
                     method: 'GET',
@@ -2855,7 +2770,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     const data = await response.json()
                     if (data.success) {
                         setSearchResults(data.results || [])
-                        setShowDropdown(data.results && data.results.length > 0)
+                        setShowDropdown(true)
                     }
                 }
             } catch (error) {
@@ -2891,7 +2806,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         if (actionView !== 'send') {
             setRecipientSearch('')
             setSelectedRecipient(null)
-            setSendAddress('')
             setSearchResults([])
             setShowDropdown(false)
         }
@@ -3077,10 +2991,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address: string }) => {
+    const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address?: string }) => {
         setSelectedRecipient(recipient)
-        setSendAddress(recipient.address)
-        setRecipientSearch(recipient.display_name)
+        setRecipientSearch(recipient.name)
         setShowDropdown(false)
     }
 
@@ -3117,7 +3030,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 body: JSON.stringify({
                     amount: amount,
                     recipient_id: selectedRecipient.id,
-                    recipient_address: selectedRecipient.address,
                 }),
             })
 
@@ -3155,7 +3067,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json()
                     if (balanceData.success) {
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        setWalletBalance(pickWalletBalance(balanceData))
                     }
                 }
             }
@@ -3164,6 +3076,22 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             setSuccessType('send')
             setSuccessMessage(data.message || `Successfully sent $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${selectedRecipient.name}`)
             setShowSuccess(true)
+
+            const bridgeTransferId = typeof data.data?.bridge_transfer_id === 'string'
+                ? data.data.bridge_transfer_id
+                : ''
+
+            if (bridgeTransferId !== '') {
+                setActivities((prev) =>
+                    prependPendingTransferActivity(
+                        prev,
+                        bridgeTransferId,
+                        amount,
+                        selectedRecipient.name,
+                        selectedRecipient.type,
+                    ),
+                )
+            }
 
             // Refresh activities to show the new transaction
             if (actionView === 'main') {
@@ -3194,7 +3122,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             // Clear form
             setSendAmount('')
-            setSendAddress('')
             setSelectedRecipient(null)
             setRecipientSearch('')
             setIsLoading(false)
@@ -3300,7 +3227,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         if (balanceResponse.ok) {
                             const balanceData = await balanceResponse.json()
                             if (balanceData.success) {
-                                setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                                setWalletBalance(pickWalletBalance(balanceData))
                             }
                         }
                     }
@@ -3428,7 +3355,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                         actionView === 'external_accounts' ? 'Bank Accounts' :
                                                             actionView === 'transfer_from_external' ? 'Transfer from Bank' :
                                                                 actionView === 'withdraw_to_external' ? 'Withdraw to Bank' :
-                                                                actionView === 'virtual_card' ? 'Virtual Card' :
+                                                                actionView === 'virtual_card' ? 'Cards' :
                                                                 actionView === 'services_menu' ? 'Services' :
                                                                 actionView === 'activity' ? 'Activity' :
                                                                 actionView === 'transaction_details' ? 'Transaction Details' : 'Account'}
@@ -3455,7 +3382,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
 
                         {/* Content */}
-                        <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-h-0 wallet-kyc-scroll">
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-h-0 wallet-scroll wallet-kyc-scroll">
                             {/* Splash Screen - Show during initial load */}
                             {isInitialLoading ? (
                                 <SplashScreen key="splash-screen" />
@@ -3479,8 +3406,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         )}
                                     </AnimatePresence>
 
-                                    {/* Balance Display - Show at top for all action views */}
-                                    {(actionView === 'send' || actionView === 'receive' || actionView === 'swap' || actionView === 'addMoney' || actionView === 'transfer_from_external' || actionView === 'withdraw_to_external') && !showSuccess && (
+                                    {/* Balance Display - sticky top bar on wallet sub-pages */}
+                                    {(
+                                        actionView === 'send' ||
+                                        actionView === 'receive' ||
+                                        actionView === 'swap' ||
+                                        actionView === 'addMoney' ||
+                                        actionView === 'transfer_from_external' ||
+                                        actionView === 'withdraw_to_external' ||
+                                        actionView === 'external_accounts' ||
+                                        actionView === 'virtual_card' ||
+                                        actionView === 'services_menu'
+                                    ) && !showSuccess && (
                                         walletBalance === null && isLoading ? (
                                             <BalanceSkeleton />
                                         ) : (
@@ -3488,23 +3425,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 balance={walletBalance}
                                                 isLoading={isLoading}
                                                 onRefresh={handleRefresh}
+                                                isSandbox={isSandbox}
                                             />
                                         )
                                     )}
 
                                     {!showSuccess && actionView === 'send' ? (
-                                        isLoadingSearch && searchResults.length === 0 ? (
-                                            <div key="send-loading" className="p-4 space-y-4">
-                                                <BalanceSkeleton />
-                                                <div className="space-y-3">
-                                                    <Skeleton className="h-10 w-full" />
-                                                    <Skeleton className="h-10 w-full" />
-                                                    <div className="border border-border rounded-lg p-2">
-                                                        <SearchResultsSkeleton />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : (
                                             <SendMoney
                                                 key="send-money"
                                                 sendAmount={sendAmount}
@@ -3512,7 +3438,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 recipientSearch={recipientSearch}
                                                 searchResults={searchResults}
                                                 selectedRecipient={selectedRecipient}
-                                                sendAddress={sendAddress}
                                                 isLoading={isLoading}
                                                 isLoadingSearch={isLoadingSearch}
                                                 showDropdown={showDropdown}
@@ -3524,18 +3449,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     setShowDropdown(true)
                                                     if (!value) {
                                                         setSelectedRecipient(null)
-                                                        setSendAddress('')
                                                     }
                                                 }}
                                                 onSearchFocus={() => {
-                                                    if (searchResults.length > 0) {
+                                                    if (recipientSearch.length >= 2) {
                                                         setShowDropdown(true)
                                                     }
                                                 }}
                                                 onSelectRecipient={handleSelectRecipient}
                                                 onSend={handleSend}
                                             />
-                                        )
                                     ) : !showSuccess && actionView === 'external_accounts' ? (
                                         isLoadingExternalAccounts && externalAccounts.length === 0 ? (
                                             <div key="external-accounts-loading" className="p-4 space-y-4">
@@ -3554,9 +3477,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 key="external-accounts"
                                                 externalAccounts={externalAccounts}
                                                 isLoading={isLoadingExternalAccounts}
+                                                isLinking={isLoading}
+                                                isRemoving={isRemovingBankAccount}
                                                 initialShowAddForm={showAddBankFormOnEntry}
                                                 onRefresh={fetchExternalAccounts}
                                                 onLinkAccount={handleLinkExternalAccount}
+                                                onRemoveAccount={handleRemoveExternalAccount}
                                                 onWithdraw={() => {
                                                     setActionView('withdraw_to_external')
                                                     setSelectedExternalAccount('')
@@ -3597,10 +3523,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 externalAccounts={externalAccounts}
                                                 selectedExternalAccount={selectedExternalAccount}
                                                 withdrawAmount={withdrawAmount}
+                                                withdrawPaymentRail={withdrawPaymentRail}
                                                 walletBalance={walletBalance}
                                                 isLoading={isLoading}
+                                                isSandbox={isSandbox}
+                                                bankWithdrawalAvailable={bankWithdrawalAvailable}
                                                 onAccountChange={setSelectedExternalAccount}
                                                 onAmountChange={setWithdrawAmount}
+                                                onPaymentRailChange={setWithdrawPaymentRail}
                                                 onWithdraw={handleWithdrawToExternal}
                                                 onAddBankAccount={goToAddBankAccount}
                                             />
@@ -3608,7 +3538,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     ) : !showSuccess && actionView === 'services_menu' ? (
                                         <ServicesMenu
                                             onNavigate={setActionView}
-                                            hasCardWallet={hasCardWallet}
                                             isCheckingCardWallet={isCheckingCardWallet}
                                             hasBankAccounts={hasBankAccounts}
                                             isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
@@ -3616,6 +3545,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         />
                                     ) : !showSuccess && actionView === 'activity' ? (
                                         <ActivityScreen
+                                            userId={auth?.user?.id ?? null}
                                             onBack={() => setActionView('main')}
                                             onActivityClick={handleActivityClick}
                                         />
@@ -3638,6 +3568,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             expiryDate="12/25"
                                             cvv="123"
                                             onBack={() => setActionView('main')}
+                                            onOpenCardsEndorsementVerification={openCardsEndorsementVerification}
                                             onCardCreated={() => {
                                                 // Refresh card wallet status after card is created
                                                 setHasCardWallet(null)
@@ -3647,7 +3578,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     ) : !showSuccess && actionView === 'receive' ? (
                                         isLoadingReceiveData ? (
                                             <div key="receive-loading" className="p-4 space-y-4">
-                                                <BalanceSkeleton />
                                                 <QRCodeSkeleton />
                                                 <DepositInstructionsSkeleton />
                                             </div>
@@ -3660,6 +3590,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 walletAddress={walletAddress}
                                                 copied={copied}
                                                 onCopyAddress={handleCopyReceiveAddress}
+                                                isSandbox={isSandbox}
                                             />
                                         )
                                     ) : !showSuccess && actionView === 'swap' ? (
@@ -3667,7 +3598,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     ) : !showSuccess && actionView === 'addMoney' ? (
                                         isLoadingDepositInstructions ? (
                                             <div key="add-money-loading" className="p-4 space-y-4">
-                                                <BalanceSkeleton />
                                                 <DepositInstructionsSkeleton />
                                             </div>
                                         ) : (
@@ -3679,6 +3609,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 onPaymentMethodChange={setSelectedPaymentMethod}
                                                 isCreatingDepositAccount={isCreatingDepositAccount}
                                                 onCreateDepositAccount={handleCreateBridgeDepositAccount}
+                                                isSandbox={isSandbox}
                                             />
                                         )
                                     ) : actionView === 'main' ? (
@@ -3713,17 +3644,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                             return 'other' // Continue to other checks
                                         })() === 'skeleton' ? (
-                                            <div key="account-skeleton" className="p-4 space-y-4">
-                                                <BalanceSkeleton />
-                                                <div className="grid grid-cols-4 gap-2">
-                                                    {[1, 2, 3, 4].map((i) => (
-                                                        <div key={i} className="flex flex-col items-center space-y-2">
-                                                            <Skeleton className="h-12 w-12 rounded-full" />
-                                                            <Skeleton className="h-3 w-16" />
-                                                        </div>
-                                                    ))}
+                                            <div key="account-skeleton" className="space-y-4">
+                                                <BalanceSkeleton variant="hero" />
+                                                <div className="px-4">
+                                                    <Skeleton className="h-12 w-full rounded-xl mb-4" />
+                                                    <Skeleton className="h-3.5 w-24 mb-2" />
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {[1, 2, 3, 4].map((i) => (
+                                                            <Skeleton key={i} className="h-[68px] rounded-xl" />
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                                <WalletAddressSkeleton />
+                                                <ActivitySkeleton />
                                             </div>
                                         ) : (() => {
                                             // PRIORITY 1: If we have a wallet/virtual account address, show wallet screen
@@ -3913,29 +3845,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             // PRIORITY: For KYC - if submitted and pending, show simple waiting screen instead of full verification screen
                                             // Check if user is a regular user (not organization)
                                             const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-                                            // Pending states that should show waiting screen
-                                            const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
-                                            // If KYC was submitted, always show waiting screen unless approved or rejected
-                                            const isKycSubmittedAndPending = kycSubmitted && kycStatus !== 'approved' && kycStatus !== 'rejected'
-                                            // Or if status is in pending states
-                                            const isKycStatusPending = kycStatus && kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected' && kycPendingStates.includes(kycStatus)
-                                            
-                                            const isKycPending = isRegularUser && 
-                                                verificationType === 'kyc' && 
-                                                (isKycSubmittedAndPending || isKycStatusPending)
-                                            
-                                            // Debug logging
-                                            if (verificationType === 'kyc') {
-                                                console.log('KYC waiting screen check:', {
-                                                    isRegularUser,
-                                                    verificationType,
-                                                    kycSubmitted,
-                                                    kycStatus,
-                                                    isKycSubmittedAndPending,
-                                                    isKycStatusPending,
-                                                    isKycPending
-                                                })
-                                            }
+                                            const isKycPending = isRegularUser &&
+                                                verificationType === 'kyc' &&
+                                                isBridgeKycPending(kycStatus)
                                             
                                             if (isKycPending) {
                                                 return 'kyc_waiting' // Show simple waiting screen
@@ -3956,32 +3868,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             // Show verification screen if status exists and is NOT approved
                                             return isKybNotApproved || isKycNotApproved
                                         })() === 'kyc_waiting' ? (
-                                            /* Simple KYC Waiting Screen - No verification wrapper */
                                             <motion.div
                                                 key="kyc-waiting-screen"
                                                 initial={{ opacity: 0, y: 20 }}
                                                 animate={{ opacity: 1, y: 0 }}
                                                 exit={{ opacity: 0, y: -20 }}
                                                 transition={{ duration: 0.3 }}
-                                                className="flex-1 flex flex-col items-center justify-center p-3 sm:p-4 space-y-4"
+                                                className="flex-1 flex flex-col items-center justify-center p-3 sm:p-4"
                                             >
-                                                <motion.div
-                                                    initial={{ scale: 0.8, opacity: 0 }}
-                                                    animate={{ scale: 1, opacity: 1 }}
-                                                    transition={{ duration: 0.3 }}
-                                                    className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center"
-                                                >
-                                                    <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                                                </motion.div>
-                                                <div className="text-center space-y-2">
-                                                    <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
-                                                    <p className="text-sm text-muted-foreground max-w-sm">
-                                                        Your KYC information has been successfully submitted and is being reviewed.
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground mt-3">
-                                                        Please wait while we verify your identity. You will be notified once the verification is complete.
-                                                    </p>
-                                                </div>
+                                                <KycVerificationStatusPanel
+                                                    kycStatus={kycStatus}
+                                                    onRefresh={() => void checkBridgeAndFetchBalance()}
+                                                    isRefreshing={isLoading}
+                                                />
                                             </motion.div>
                                         ) : (() => {
                                             const walletVerified = isWalletBridgeAccountVerified({
@@ -4129,7 +4028,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                             )}
                                                         </motion.div>
 
-                                                        {/* Step 2: KYC/KYB Verification */}
+                                                        {/* Step 2: KYC/KYB — Bridge Persona modal only */}
                                                         <motion.div
                                                             initial={{ opacity: 0, x: -20 }}
                                                             animate={{ opacity: 1, x: 0 }}
@@ -4141,7 +4040,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                         : 'bg-muted border-border opacity-60'
                                                                 }`}
                                                         >
-                                                            {/* Title Section - Flex Layout */}
                                                             <div className="flex items-start gap-2 sm:gap-3 mb-3">
                                                                 <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${(verificationType === 'kyb' ? kybStatus : kycStatus) === 'approved'
                                                                         ? 'bg-green-500 text-white'
@@ -4163,7 +4061,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                         {(verificationType === 'kyb' ? kybStatus : kycStatus) === 'approved' && (
                                                                             <CheckCircle2 className="h-4 w-4 text-green-500" />
                                                                         )}
-                                                                        {/* Bridge statuses that indicate review in progress */}
                                                                         {(verificationType === 'kyb' ? kybStatus : kycStatus) !== 'approved' &&
                                                                             (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'rejected' &&
                                                                             (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'not_started' && (
@@ -4172,2124 +4069,39 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                     </div>
                                                                     <p className="text-xs text-muted-foreground mb-0 text-left">
                                                                         {verificationType === 'kyb'
-                                                                            ? 'Complete business verification to verify your organization'
-                                                                            : 'Complete identity verification to verify your identity'}
+                                                                            ? 'Complete business verification in the Bridge window'
+                                                                            : 'Complete identity verification in the Bridge window'}
                                                                     </p>
                                                                 </div>
                                                             </div>
 
-                                                            {/* Form Content - Full Width */}
                                                             {(tosStatus === 'accepted' || tosStatus === 'approved') && (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'approved' && (
-                                                                // For KYB multi-step flow, always show form (user is completing steps)
-                                                                verificationType === 'kyb' ||
-                                                                // For regular KYC, show form when status is not_started or rejected (needs resubmission)
-                                                                // Hide form when KYC is pending (for regular users only)
-                                                                (verificationType === 'kyc' && (() => {
-                                                                    const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-                                                                    const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
-                                                                    // For regular users: only show form if status is not_started or rejected (not pending)
-                                                                    // For organization users: show form if not approved
-                                                                    if (isRegularUser) {
-                                                                        return kycStatus === 'not_started' || kycStatus === 'rejected'
-                                                                    }
-                                                                    return kycStatus !== 'approved'
-                                                                })())
-                                                            ) && (
-                                                                    <div className="space-y-2 sm:space-y-3 w-full mt-3">
-                                                                        {/* Toggle between custom form and iframe - Hide when KYB waiting screen is shown OR KYC is pending (for regular users only) */}
-                                                                        {(() => {
-                                                                                            // Check if user is a regular user (not organization)
-                                                                                            const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-                                                                                            
-                                                                                            // Check if KYC is pending (for regular users only)
-                                                                                            // Pending states: 'under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo'
-                                                                                            const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
-                                                                                            const isKycPending = isRegularUser && 
-                                                                                                verificationType === 'kyc' && 
-                                                                                                (kycSubmitted || (kycStatus && kycPendingStates.includes(kycStatus)))
-                                                                                            
-                                                                                            // Check if KYB waiting screen should be shown
-                                                                                            const hasControlPersonSubmitted = controlPersonSubmitted && 
-                                                                                                (documentStatuses.id_front === 'pending' || 
-                                                                                                 documentStatuses.id_front === 'approved' ||
-                                                                                                 documentStatuses.id_back === 'pending' ||
-                                                                                                 documentStatuses.id_back === 'approved')
-                                                                                            const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
-                                                                                                (documentStatuses.business_formation === 'pending' ||
-                                                                                                 documentStatuses.business_formation === 'approved' ||
-                                                                                                 documentStatuses.business_ownership === 'pending' ||
-                                                                                                 documentStatuses.business_ownership === 'approved')
-                                                                                            const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
-                                                                                                documentStatuses.id_back === 'rejected' ||
-                                                                                                documentStatuses.business_formation === 'rejected' ||
-                                                                                                documentStatuses.business_ownership === 'rejected' ||
-                                                                                                documentStatuses.proof_of_address === 'rejected'
-                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                            const shouldShowKybWaitingScreen = verificationType === 'kyb' &&
-                                                                                                kybStatus !== 'approved' &&
-                                                                                                (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
-                                                                                                !hasRejectedDocs &&
-                                                                                                !hasRequestedFields
-                                                                                            
-                                                                                            // Hide toggle buttons when waiting screen is shown OR KYC is pending
-                                                                                            if (shouldShowKybWaitingScreen || isKycPending) {
-                                                                                                return null
-                                                                                            }
-                                                                                            
-                                                                                            return (
-                                                                        <div className="flex gap-2 w-full">
-                                                                            <Button
-                                                                                size="sm"
-                                                                                variant={useCustomKyc ? "default" : "outline"}
-                                                                                onClick={() => setUseCustomKyc(true)}
-                                                                                className={`flex-1 text-xs ${useCustomKyc
-                                                                                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white'
-                                                                                        : 'border-border'
-                                                                                    }`}
-                                                                            >
-                                                                                Custom Form
-                                                                            </Button>
-                                                                            <Button
-                                                                                size="sm"
-                                                                                variant={!useCustomKyc ? "default" : "outline"}
-                                                                                onClick={() => setUseCustomKyc(false)}
-                                                                                className={`flex-1 text-xs ${!useCustomKyc
-                                                                                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white'
-                                                                                        : 'border-border'
-                                                                                    }`}
-                                                                            >
-                                                                                Bridge Widget
-                                                                            </Button>
-                                                                        </div>
-                                                                                            )
-                                                                                        })()}
-
-                                                                        {useCustomKyc ? (
-                                                                            /* Custom KYC/KYB Form */
-                                                                            <div className="flex w-full flex-col gap-2 sm:gap-3">
-                                                                                <div className="w-full">
-                                                                                {verificationType === 'kyc' ? (
-                                                                                    // Show waiting screen until KYC is approved
-                                                                                    // Show waiting screen if:
-                                                                                    // 1. KYC has been submitted (kycSubmitted flag is true), OR
-                                                                                    // 2. Status is not not_started, not approved, and not rejected
-                                                                                    // Only show form when status is not_started (initial) and NOT submitted, or rejected (needs resubmission)
-                                                                                    (kycSubmitted || (kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected')) ? (
-                                                                                        /* KYC Waiting Screen */
-                                                                                        <div className="flex flex-col items-center justify-center py-8 px-4 space-y-4 w-full">
-                                                                                            <motion.div
-                                                                                                initial={{ scale: 0.8, opacity: 0 }}
-                                                                                                animate={{ scale: 1, opacity: 1 }}
-                                                                                                transition={{ duration: 0.3 }}
-                                                                                                className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center"
-                                                                                            >
-                                                                                                <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                                                                                            </motion.div>
-                                                                                            <div className="text-center space-y-2">
-                                                                                                <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
-                                                                                                <p className="text-sm text-muted-foreground max-w-sm">
-                                                                                                    Your KYC information has been successfully submitted and is being reviewed.
-                                                                                                </p>
-                                                                                                <p className="text-xs text-muted-foreground mt-3">
-                                                                                                    Please wait while we verify your identity. You will be notified once the verification is complete.
-                                                                                                </p>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                    <KYCForm
-                                                                                        formData={kycFormData}
-                                                                                        isLoading={isLoading}
-                                                                                        onFormDataChange={setKycFormData}
-                                                                                        onSubmit={handleSubmitCustomKyc}
-                                                                                            kycStatus={kycStatus}
-                                                                                            kycSubmitted={kycSubmitted}
-                                                                                    />
-                                                                                    )
-                                                                                ) : verificationType === 'kyb' ? (
-                                                                                    /* Business KYB Multi-Step Form */
-                                                                                    <>
-                                                                                        {/* Single KYB Submitted Waiting Screen - Show when KYB is submitted but not approved */}
-                                                                                        {(() => {
-                                                                                            // Check if KYB is submitted (any step completed) but not yet approved
-                                                                                            const hasControlPersonSubmitted = controlPersonSubmitted && 
-                                                                                                (documentStatuses.id_front === 'pending' || 
-                                                                                                 documentStatuses.id_front === 'approved' ||
-                                                                                                 documentStatuses.id_back === 'pending' ||
-                                                                                                 documentStatuses.id_back === 'approved')
-                                                                                            const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
-                                                                                                (documentStatuses.business_formation === 'pending' ||
-                                                                                                 documentStatuses.business_formation === 'approved' ||
-                                                                                                 documentStatuses.business_ownership === 'pending' ||
-                                                                                                 documentStatuses.business_ownership === 'approved')
-                                                                                            const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
-                                                                                                documentStatuses.id_back === 'rejected' ||
-                                                                                                documentStatuses.business_formation === 'rejected' ||
-                                                                                                documentStatuses.business_ownership === 'rejected' ||
-                                                                                                documentStatuses.proof_of_address === 'rejected'
-                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                            
-                                                                                            // Show waiting screen if KYB is submitted (any step) but not approved, and no rejected docs/requested fields
-                                                                                            const shouldShowKybWaitingScreen = kybStatus !== 'approved' &&
-                                                                                                (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
-                                                                                                !hasRejectedDocs &&
-                                                                                                !hasRequestedFields
-                                                                                            
-                                                                                            if (shouldShowKybWaitingScreen) {
-                                                                                                return (
-                                                                                                    <WaitingScreen
-                                                                                                        variant="business_documents"
-                                                                                                        title="KYB Submitted"
-                                                                                                        message="Your KYB (Know Your Business) verification has been submitted and is currently under review."
-                                                                                                        subMessage="Please wait while we verify your business information. You will be notified once the verification is complete."
-                                                                                                    />
-                                                                                                )
-                                                                                            }
-                                                                                            
-                                                                                            // Show steps if not showing waiting screen
-                                                                                            return null
-                                                                                        })()}
-                                                                                        
-                                                                                        {/* Step Indicator with Labels - Hide when waiting screen is shown */}
-                                                                                        {(() => {
-                                                                                            const hasControlPersonSubmitted = controlPersonSubmitted && 
-                                                                                                (documentStatuses.id_front === 'pending' || 
-                                                                                                 documentStatuses.id_front === 'approved' ||
-                                                                                                 documentStatuses.id_back === 'pending' ||
-                                                                                                 documentStatuses.id_back === 'approved')
-                                                                                            const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
-                                                                                                (documentStatuses.business_formation === 'pending' ||
-                                                                                                 documentStatuses.business_formation === 'approved' ||
-                                                                                                 documentStatuses.business_ownership === 'pending' ||
-                                                                                                 documentStatuses.business_ownership === 'approved')
-                                                                                            const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
-                                                                                                documentStatuses.id_back === 'rejected' ||
-                                                                                                documentStatuses.business_formation === 'rejected' ||
-                                                                                                documentStatuses.business_ownership === 'rejected' ||
-                                                                                                documentStatuses.proof_of_address === 'rejected'
-                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                            const shouldShowKybWaitingScreen = kybStatus !== 'approved' &&
-                                                                                                (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
-                                                                                                !hasRejectedDocs &&
-                                                                                                !hasRequestedFields
-                                                                                            
-                                                                                            if (shouldShowKybWaitingScreen) {
-                                                                                                return null // Hide steps when waiting screen is shown
-                                                                                            }
-                                                                                            
-                                                                                            return (
-                                                                                                <>
-                                                                                        <div className="mb-3 space-y-2">
-                                                                                            <div className="flex items-center gap-1">
-                                                                                                {/* Step 1 */}
-                                                                                                <div className="flex items-center gap-1 flex-shrink-0">
-                                                                                                    {(() => {
-                                                                                                        // Check if control person documents are rejected
-                                                                                                        const hasRejectedControlPersonDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                        // Only show checkmark if we've moved past step 1 AND no documents are rejected
-                                                                                                        const shouldShowCheckmark = (kybStep === 'business_documents' || kybStep === 'kyc_verification') && !hasRejectedControlPersonDocs
-                                                                                                        
-                                                                                                        return (
-                                                                                                            <>
-                                                                                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-200 ${kybStep === 'control_person'
-                                                                                                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                                                                                                        : shouldShowCheckmark
-                                                                                                                            ? 'bg-green-500 text-white'
-                                                                                                                            : hasRejectedControlPersonDocs
-                                                                                                                                ? 'bg-red-500 text-white'
-                                                                                                                                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                                                                                                                    }`}>
-                                                                                                                    {shouldShowCheckmark ? (
-                                                                                                                        <CheckCircle2 className="h-3 w-3" />
-                                                                                                                    ) : hasRejectedControlPersonDocs ? (
-                                                                                                                        <AlertCircle className="h-3 w-3" />
-                                                                                                                    ) : (
-                                                                                                                        '1'
-                                                                                                                    )}
-                                                                                                                </div>
-                                                                                                                <span className={`text-[10px] font-medium whitespace-nowrap hidden sm:inline ${kybStep === 'control_person'
-                                                                                                                        ? 'text-blue-600 dark:text-blue-400'
-                                                                                                                        : shouldShowCheckmark
-                                                                                                                            ? 'text-green-600 dark:text-green-400'
-                                                                                                                            : hasRejectedControlPersonDocs
-                                                                                                                                ? 'text-red-600 dark:text-red-400'
-                                                                                                                                : 'text-gray-500 dark:text-gray-400'
-                                                                                                                    }`}>
-                                                                                                                    Control Person
-                                                                                                                </span>
-                                                                                                            </>
-                                                                                                        )
-                                                                                                    })()}
-                                                                                                </div>
-
-                                                                                                {/* Connector 1 */}
-                                                                                                <div className={`flex-1 h-0.5 rounded-full transition-all duration-200 ${kybStep === 'business_documents' || kybStep === 'kyc_verification'
-                                                                                                        ? 'bg-green-500'
-                                                                                                        : 'bg-gray-200 dark:bg-gray-700'
-                                                                                                    }`}></div>
-
-                                                                                                {/* Step 2 */}
-                                                                                                <div className="flex items-center gap-1 flex-shrink-0">
-                                                                                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-200 ${kybStep === 'business_documents'
-                                                                                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                                                                                            : (kybStep === 'kyc_verification' || businessDocumentsSubmitted ||
-                                                                                                                (documentStatuses.business_formation === 'pending' ||
-                                                                                                                    documentStatuses.business_ownership === 'pending' ||
-                                                                                                                    documentStatuses.business_formation === 'approved' ||
-                                                                                                                    documentStatuses.business_ownership === 'approved'))
-                                                                                                                ? 'bg-green-500 text-white'
-                                                                                                                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                                                                                                        }`}>
-                                                                                                        {(kybStep === 'kyc_verification' || businessDocumentsSubmitted ||
-                                                                                                            documentStatuses.business_formation === 'pending' ||
-                                                                                                            documentStatuses.business_ownership === 'pending' ||
-                                                                                                            documentStatuses.business_formation === 'approved' ||
-                                                                                                            documentStatuses.business_ownership === 'approved') ? (
-                                                                                                            <CheckCircle2 className="h-3 w-3" />
-                                                                                                        ) : (
-                                                                                                            '2'
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                    <span className={`text-[10px] font-medium whitespace-nowrap hidden sm:inline ${kybStep === 'business_documents'
-                                                                                                            ? 'text-blue-600 dark:text-blue-400'
-                                                                                                            : (kybStep === 'kyc_verification' || businessDocumentsSubmitted ||
-                                                                                                                documentStatuses.business_formation === 'pending' ||
-                                                                                                                documentStatuses.business_ownership === 'pending' ||
-                                                                                                                documentStatuses.business_formation === 'approved' ||
-                                                                                                                documentStatuses.business_ownership === 'approved')
-                                                                                                                ? 'text-green-600 dark:text-green-400'
-                                                                                                                : 'text-gray-500 dark:text-gray-400'
-                                                                                                        }`}>
-                                                                                                        Documents
-                                                                                                    </span>
-                                                                                                </div>
-
-                                                                                                {/* Connector 2 */}
-                                                                                                <div className={`flex-1 h-0.5 rounded-full transition-all duration-200 ${kybStep === 'kyc_verification'
-                                                                                                        ? 'bg-green-500'
-                                                                                                        : (kybSubmissionStatus === 'approved' || businessDocumentsSubmitted ||
-                                                                                                            documentStatuses.business_formation === 'pending' ||
-                                                                                                            documentStatuses.business_ownership === 'pending' ||
-                                                                                                            documentStatuses.business_formation === 'approved' ||
-                                                                                                            documentStatuses.business_ownership === 'approved')
-                                                                                                            ? 'bg-green-500'
-                                                                                                            : 'bg-gray-200 dark:bg-gray-700'
-                                                                                                    }`}></div>
-
-                                                                                                {/* Step 3 */}
-                                                                                                <div className="flex items-center gap-1 flex-shrink-0">
-                                                                                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-200 ${kybStep === 'kyc_verification'
-                                                                                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                                                                                            : (kybSubmissionStatus === 'approved' ||
-                                                                                                                (documentStatuses.business_formation === 'approved' &&
-                                                                                                                    documentStatuses.business_ownership === 'approved'))
-                                                                                                                ? 'bg-green-500 text-white'
-                                                                                                                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                                                                                                        }`}>
-                                                                                                        {kybStep === 'kyc_verification' ? (
-                                                                                                            <CheckCircle2 className="h-3 w-3" />
-                                                                                                        ) : (kybSubmissionStatus === 'approved' ||
-                                                                                                            (documentStatuses.business_formation === 'approved' &&
-                                                                                                                documentStatuses.business_ownership === 'approved')) ? (
-                                                                                                            <CheckCircle2 className="h-3 w-3" />
-                                                                                                        ) : (
-                                                                                                            '3'
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                    <span className={`text-[10px] font-medium whitespace-nowrap hidden sm:inline ${kybStep === 'kyc_verification'
-                                                                                                            ? 'text-blue-600 dark:text-blue-400'
-                                                                                                            : (kybSubmissionStatus === 'approved' ||
-                                                                                                                (documentStatuses.business_formation === 'approved' &&
-                                                                                                                    documentStatuses.business_ownership === 'approved'))
-                                                                                                                ? 'text-green-600 dark:text-green-400'
-                                                                                                                : 'text-gray-500 dark:text-gray-400'
-                                                                                                        }`}>
-                                                                                                        KYC Verify
-                                                                                                    </span>
-                                                                                                </div>
-                                                                                            </div>
-
-                                                                                            {/* Step Labels (Mobile) */}
-                                                                                            <div className="sm:hidden text-center">
-                                                                                                <p className={`text-[10px] font-medium ${kybStep === 'control_person'
-                                                                                                        ? 'text-blue-600 dark:text-blue-400'
-                                                                                                        : kybStep === 'business_documents'
-                                                                                                            ? 'text-blue-600 dark:text-blue-400'
-                                                                                                            : 'text-blue-600 dark:text-blue-400'
-                                                                                                    }`}>
-                                                                                                    {kybStep === 'control_person' && 'Step 1: Control Person'}
-                                                                                                    {kybStep === 'business_documents' && 'Step 2: Business Documents'}
-                                                                                                    {kybStep === 'kyc_verification' && 'Step 3: KYC Verification'}
-                                                                                                </p>
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        {/* Step 1: Control Person */}
-                                                                                        {kybStep === 'control_person' && (
-                                                                                            <>
-                                                                                                {/* Control Person Form - Always show form, no waiting screen */}
-                                                                                                {(() => {
-                                                                                                    return (
-                                                                                            <>
-                                                                                                {/* Show refill message banner if admin requested re-fill */}
-                                                                                                {(refillMessage || (requestedFields && requestedFields.length > 0)) && (
-                                                                                                    <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                                                                                                        <div className="flex items-start gap-2 text-left">
-                                                                                                            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                                                                                                            <div className="flex-1 text-left">
-                                                                                                                <p className="text-xs font-semibold text-amber-900 dark:text-amber-100 mb-1 text-left">
-                                                                                                                    Admin Request: Please Re-fill the Following Fields
-                                                                                                                </p>
-                                                                                                                {refillMessage && (
-                                                                                                                    <p className="text-xs text-amber-800 dark:text-amber-200 mb-2 text-left">
-                                                                                                                        {refillMessage}
-                                                                                                                    </p>
-                                                                                                                )}
-                                                                                                                {requestedFields && requestedFields.length > 0 && (
-                                                                                                                    <div className="mt-2 text-left">
-                                                                                                                        <p className="text-xs font-medium text-amber-900 dark:text-amber-100 mb-1 text-left">
-                                                                                                                            Requested Fields ({requestedFields.length}):
-                                                                                                                        </p>
-                                                                                                                        <div className="flex flex-wrap gap-1 text-left">
-                                                                                                                            {requestedFields.map((field, idx) => (
-                                                                                                                                <span key={`control-person-field-${idx}-${String(field || 'empty').replace(/\s+/g, '-')}`} className="text-xs px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 rounded">
-                                                                                                                                    {field}
-                                                                                                                                </span>
-                                                                                                                            ))}
-                                                                                                                        </div>
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                )}
-
-                                                                                                {/* Display business info (read-only) from organization */}
-                                                                                                {shouldShowField('business_name') || shouldShowField('email') || shouldShowField('ein') || shouldShowField('street_line_1') ? (
-                                                                                                    <div className="mb-3 p-2 bg-muted/50 rounded-lg border border-border">
-                                                                                                        <p className="text-xs font-semibold mb-2 text-left">Business Information (from your organization profile)</p>
-                                                                                                        <div className="space-y-1 text-xs text-muted-foreground text-left">
-                                                                                                            {shouldShowField('business_name') && <p><span className="font-medium">Business Name:</span> {kybFormData.business_name || 'N/A'}</p>}
-                                                                                                            {shouldShowField('email') && <p><span className="font-medium">Email:</span> {kybFormData.email || 'N/A'}</p>}
-                                                                                                            {shouldShowField('ein') && <p><span className="font-medium">EIN:</span> {kybFormData.ein || 'N/A'}</p>}
-                                                                                                            {shouldShowField('street_line_1') && <p><span className="font-medium">Address:</span> {[kybFormData.street_line_1, kybFormData.city, kybFormData.subdivision, kybFormData.postal_code].filter(Boolean).join(', ') || 'N/A'}</p>}
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                ) : null}
-
-                                                                                                <div className="border-t border-border pt-3 mt-3">
-                                                                                                    {(() => {
-                                                                                                        // Check if only ID-related fields are rejected/requested
-                                                                                                        const idRelatedFields = [
-                                                                                                            'control_person.id_type',
-                                                                                                            'control_person.id_number',
-                                                                                                            'control_person.id_front_image',
-                                                                                                            'control_person.id_back_image'
-                                                                                                        ]
-                                                                                                        const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                        const hasOnlyIdFieldsRequested = requestedFields.length > 0 && 
-                                                                                                            requestedFields.every((field: string) => idRelatedFields.includes(field))
-                                                                                                        const isOnlyIdRejection = hasRejectedIdDocs && 
-                                                                                                            (!requestedFields || requestedFields.length === 0 || hasOnlyIdFieldsRequested)
-                                                                                                        
-                                                                                                        return (
-                                                                                                            <>
-                                                                                                                <p className="text-xs font-semibold mb-2 text-left">
-                                                                                                                    {isOnlyIdRejection 
-                                                                                                                        ? 'ID Document Information *' 
-                                                                                                                        : 'Step 1: Control Person (Beneficial Owner) Information *'}
-                                                                                                                </p>
-                                                                                                                <p className="text-xs text-muted-foreground mb-3 text-left">
-                                                                                                                    {isOnlyIdRejection
-                                                                                                                        ? 'Please update your ID information and re-upload the rejected document(s).'
-                                                                                                                        : requestedFields.length > 0
-                                                                                                                            ? 'Please re-fill the requested fields below.'
-                                                                                                                            : 'Required by Bridge for business verification'}
-                                                                                                                </p>
-                                                                                                            </>
-                                                                                                        )
-                                                                                                    })()}
-
-                                                                                                    {/* Control Person Fields */}
-                                                                                                    <div className="space-y-2 sm:space-y-3">
-                                                                                                        {(() => {
-                                                                                                            // Check if only ID-related fields are rejected/requested
-                                                                                                            const idRelatedFields = [
-                                                                                                                'control_person.id_type',
-                                                                                                                'control_person.id_number',
-                                                                                                                'control_person.id_front_image',
-                                                                                                                'control_person.id_back_image'
-                                                                                                            ]
-                                                                                                            const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                            const hasOnlyIdFieldsRequested = requestedFields.length > 0 && 
-                                                                                                                requestedFields.every((field: string) => idRelatedFields.includes(field))
-                                                                                                            const isOnlyIdRejection = hasRejectedIdDocs && 
-                                                                                                                (!requestedFields || requestedFields.length === 0 || hasOnlyIdFieldsRequested)
-                                                                                                            
-                                                                                                            // If only ID rejection, show only ID fields; otherwise show all requested fields
-                                                                                                            if (isOnlyIdRejection) {
-                                                                                                                return (
-                                                                                                                    <>
-                                                                                                                        {/* ID Type - Always show when ID docs are rejected */}
-                                                                                                                        <div>
-                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">ID Type *</label>
-                                                                                                                            <select
-                                                                                                                                value={kybFormData.control_person.id_type}
-                                                                                                                                onChange={(e) => {
-                                                                                                                                    const newIdType = e.target.value
-                                                                                                                                    setKybFormData(prev => ({
-                                                                                                                                        ...prev,
-                                                                                                                                        control_person: {
-                                                                                                                                            ...prev.control_person,
-                                                                                                                                            id_type: newIdType,
-                                                                                                                                            id_back_image: newIdType !== 'drivers_license' ? '' : prev.control_person.id_back_image
-                                                                                                                                        }
-                                                                                                                                    }))
-                                                                                                                                    if (newIdType !== 'drivers_license' && controlPersonErrors.id_back_image) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_back_image
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                    if (controlPersonErrors.id_type) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_type
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                }}
-                                                                                                                                className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground ${controlPersonErrors.id_type ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'}`}
-                                                                                                                            >
-                                                                                                                                <option value="">Select ID Type...</option>
-                                                                                                                                <option value="drivers_license">Driver's License</option>
-                                                                                                                                <option value="passport">Passport</option>
-                                                                                                                            </select>
-                                                                                                                            {controlPersonErrors.id_type && (
-                                                                                                                                <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_type}</p>
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                        
-                                                                                                                        {/* ID Number - Always show when ID docs are rejected */}
-                                                                                                                        <div>
-                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">ID Number *</label>
-                                                                                                                            <input
-                                                                                                                                type="text"
-                                                                                                                                value={kybFormData.control_person.id_number}
-                                                                                                                                onChange={(e) => {
-                                                                                                                                    setKybFormData({
-                                                                                                                                        ...kybFormData,
-                                                                                                                                        control_person: { ...kybFormData.control_person, id_number: e.target.value }
-                                                                                                                                    })
-                                                                                                                                    if (controlPersonErrors.id_number) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_number
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                }}
-                                                                                                                                className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.id_number ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'}`}
-                                                                                                                                placeholder="ID Number"
-                                                                                                                            />
-                                                                                                                            {controlPersonErrors.id_number && (
-                                                                                                                                <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_number}</p>
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                        
-                                                                                                                        {/* ID Image Upload Fields */}
-                                                                                                                        <div className={kybFormData.control_person.id_type === 'drivers_license' ? "grid grid-cols-1 sm:grid-cols-2 gap-3" : "space-y-3"}>
-                                                                                                                            {/* ID Front Image */}
-                                                                                                                            {(shouldShowField('control_person.id_front_image') || documentStatuses.id_front === 'rejected') && (
-                                                                                                                                documentStatuses.id_front === 'approved' ? (
-                                                                                                                                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                                        <div className="flex items-center gap-2">
-                                                                                                                                            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                                            <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                                                {kybFormData.control_person.id_type === 'drivers_license' ? 'ID Front Image' : 'Passport Image'} has been approved.
-                                                                                                                                            </p>
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                ) : (documentStatuses.id_front === 'rejected' || shouldShowField('control_person.id_front_image')) && (
-                                                                                                                                    <div>
-                                                                                                                                        {documentStatuses.id_front === 'rejected' && (
-                                                                                                                                            <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                                                <strong>Document Rejected:</strong> {documentRejectionReasons.id_front || 'Please re-upload the ' + (kybFormData.control_person.id_type === 'drivers_license' ? 'ID Front Image' : 'Passport Image') + '.'}
-                                                                                                                                            </div>
-                                                                                                                                        )}
-                                                                                                                                        <ImageUploadDropzone
-                                                                                                                                            label={kybFormData.control_person.id_type === 'drivers_license' ? "ID Front Image *" : "Passport Image *"}
-                                                                                                                                            value={kybFormData.control_person.id_front_image}
-                                                                                                                                            onChange={(base64) => {
-                                                                                                                                                setKybFormData({
-                                                                                                                                                    ...kybFormData,
-                                                                                                                                                    control_person: { ...kybFormData.control_person, id_front_image: base64 }
-                                                                                                                                                })
-                                                                                                                                                if (controlPersonErrors.id_front_image) {
-                                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                                        delete newErrors.id_front_image
-                                                                                                                                                        return newErrors
-                                                                                                                                                    })
-                                                                                                                                                }
-                                                                                                                                            }}
-                                                                                                                                            required={true}
-                                                                                                                                            maxSizeMB={5}
-                                                                                                                                        />
-                                                                                                                                        {controlPersonErrors.id_front_image && (
-                                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_front_image}</p>
-                                                                                                                                        )}
-                                                                                                                                    </div>
-                                                                                                                                )
-                                                                                                                            )}
-                                                                                                                            
-                                                                                                                            {/* ID Back Image - Only for Driver's License */}
-                                                                                                                            {kybFormData.control_person.id_type === 'drivers_license' && (shouldShowField('control_person.id_back_image') || documentStatuses.id_back === 'rejected') && (
-                                                                                                                                documentStatuses.id_back === 'approved' ? (
-                                                                                                                                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                                        <div className="flex items-center gap-2">
-                                                                                                                                            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                                            <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                                                ID Back Image has been approved.
-                                                                                                                                            </p>
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                ) : (documentStatuses.id_back === 'rejected' || shouldShowField('control_person.id_back_image')) && (
-                                                                                                                                    <div>
-                                                                                                                                        {documentStatuses.id_back === 'rejected' && (
-                                                                                                                                            <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                                                <strong>Document Rejected:</strong> {documentRejectionReasons.id_back || 'Please re-upload the ID Back Image.'}
-                                                                                                                                            </div>
-                                                                                                                                        )}
-                                                                                                                                        <ImageUploadDropzone
-                                                                                                                                            label="ID Back Image *"
-                                                                                                                                            value={kybFormData.control_person.id_back_image}
-                                                                                                                                            onChange={(base64) => {
-                                                                                                                                                setKybFormData({
-                                                                                                                                                    ...kybFormData,
-                                                                                                                                                    control_person: { ...kybFormData.control_person, id_back_image: base64 }
-                                                                                                                                                })
-                                                                                                                                                if (controlPersonErrors.id_back_image) {
-                                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                                        delete newErrors.id_back_image
-                                                                                                                                                        return newErrors
-                                                                                                                                                    })
-                                                                                                                                                }
-                                                                                                                                            }}
-                                                                                                                                            required={true}
-                                                                                                                                            maxSizeMB={5}
-                                                                                                                                        />
-                                                                                                                                        {controlPersonErrors.id_back_image && (
-                                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_back_image}</p>
-                                                                                                                                        )}
-                                                                                                                                    </div>
-                                                                                                                                )
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                    </>
-                                                                                                                )
-                                                                                                            }
-                                                                                                            
-                                                                                                            // Otherwise, show all requested fields (normal flow)
-                                                                                                            return null
-                                                                                                        })()}
-                                                                                                        
-                                                                                                        {/* Show other control person fields only if NOT an ID-only rejection */}
-                                                                                                        {(() => {
-                                                                                                            const idRelatedFields = [
-                                                                                                                'control_person.id_type',
-                                                                                                                'control_person.id_number',
-                                                                                                                'control_person.id_front_image',
-                                                                                                                'control_person.id_back_image'
-                                                                                                            ]
-                                                                                                            const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                            const hasOnlyIdFieldsRequested = requestedFields.length > 0 && 
-                                                                                                                requestedFields.every((field: string) => idRelatedFields.includes(field))
-                                                                                                            const isOnlyIdRejection = hasRejectedIdDocs && 
-                                                                                                                (!requestedFields || requestedFields.length === 0 || hasOnlyIdFieldsRequested)
-                                                                                                            
-                                                                                                            // Don't show other fields if it's an ID-only rejection
-                                                                                                            if (isOnlyIdRejection) {
-                                                                                                                return null
-                                                                                                            }
-                                                                                                            
-                                                                                                            return (
-                                                                                                                <>
-                                                                                                                    {(shouldShowField('control_person.first_name') || shouldShowField('control_person.last_name')) && (
-                                                                                                            <div className="grid grid-cols-2 gap-2">
-                                                                                                                {shouldShowField('control_person.first_name') && (
-                                                                                                                    <div>
-                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">First Name *</label>
-                                                                                                                        <input
-                                                                                                                            type="text"
-                                                                                                                            value={kybFormData.control_person.first_name}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, first_name: e.target.value }
-                                                                                                                                })
-                                                                                                                                // Clear error when user starts typing
-                                                                                                                                if (controlPersonErrors.first_name) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.first_name
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.first_name ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                            placeholder="John"
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.first_name && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.first_name}</p>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                                {shouldShowField('control_person.last_name') && (
-                                                                                                                    <div>
-                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Last Name *</label>
-                                                                                                                        <input
-                                                                                                                            type="text"
-                                                                                                                            value={kybFormData.control_person.last_name}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, last_name: e.target.value }
-                                                                                                                                })
-                                                                                                                                if (controlPersonErrors.last_name) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.last_name
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.last_name ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                            placeholder="Doe"
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.last_name && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.last_name}</p>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        {shouldShowField('control_person.email') && (
-                                                                                                            <div>
-                                                                                                                <label className="text-xs font-medium mb-1 block text-left">Email *</label>
-                                                                                                                <input
-                                                                                                                    type="email"
-                                                                                                                    value={kybFormData.control_person.email}
-                                                                                                                    onChange={(e) => {
-                                                                                                                        setKybFormData({
-                                                                                                                            ...kybFormData,
-                                                                                                                            control_person: { ...kybFormData.control_person, email: e.target.value }
-                                                                                                                        })
-                                                                                                                        if (controlPersonErrors.email) {
-                                                                                                                            setControlPersonErrors(prev => {
-                                                                                                                                const newErrors = { ...prev }
-                                                                                                                                delete newErrors.email
-                                                                                                                                return newErrors
-                                                                                                                            })
-                                                                                                                        }
-                                                                                                                    }}
-                                                                                                                    className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.email ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                        }`}
-                                                                                                                    placeholder="john@example.com"
-                                                                                                                />
-                                                                                                                {controlPersonErrors.email && (
-                                                                                                                    <p className="text-xs text-red-500 mt-1">{controlPersonErrors.email}</p>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        {(shouldShowField('control_person.birth_date') || shouldShowField('control_person.ssn')) && (
-                                                                                                            <div className="grid grid-cols-2 gap-2">
-                                                                                                                {shouldShowField('control_person.birth_date') && (
-                                                                                                                    <div>
-                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Date of Birth *</label>
-                                                                                                                        <input
-                                                                                                                            type="date"
-                                                                                                                            value={kybFormData.control_person.birth_date}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, birth_date: e.target.value }
-                                                                                                                                })
-                                                                                                                                if (controlPersonErrors.birth_date) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.birth_date
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground ${controlPersonErrors.birth_date ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.birth_date && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.birth_date}</p>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                                {shouldShowField('control_person.ssn') && (
-                                                                                                                    <div>
-                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">SSN *</label>
-                                                                                                                        <input
-                                                                                                                            type="text"
-                                                                                                                            value={kybFormData.control_person.ssn}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, ssn: e.target.value }
-                                                                                                                                })
-                                                                                                                                if (controlPersonErrors.ssn) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.ssn
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.ssn ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                            placeholder="123-45-6789"
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.ssn && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.ssn}</p>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        {(shouldShowField('control_person.title') || shouldShowField('control_person.ownership_percentage')) && (
-                                                                                                            <div className="grid grid-cols-2 gap-2">
-                                                                                                                {shouldShowField('control_person.title') && (
-                                                                                                                    <div>
-                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Title *</label>
-                                                                                                                        <input
-                                                                                                                            type="text"
-                                                                                                                            value={kybFormData.control_person.title}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, title: e.target.value }
-                                                                                                                                })
-                                                                                                                                if (controlPersonErrors.title) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.title
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.title ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                            placeholder="CEO, President, etc."
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.title && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.title}</p>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                                {shouldShowField('control_person.ownership_percentage') && (
-                                                                                                                    <div>
-                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Ownership % *</label>
-                                                                                                                        <input
-                                                                                                                            type="number"
-                                                                                                                            min="0"
-                                                                                                                            max="100"
-                                                                                                                            value={kybFormData.control_person.ownership_percentage}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, ownership_percentage: e.target.value }
-                                                                                                                                })
-                                                                                                                                if (controlPersonErrors.ownership_percentage) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.ownership_percentage
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.ownership_percentage ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                            placeholder="50"
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.ownership_percentage && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1">{controlPersonErrors.ownership_percentage}</p>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        {(shouldShowField('control_person.street_line_1') || shouldShowField('control_person.city') || shouldShowField('control_person.state') || shouldShowField('control_person.postal_code')) && (
-                                                                                                            <div>
-                                                                                                                <label className="text-xs font-medium mb-1 block text-left">Control Person Address *</label>
-                                                                                                                {shouldShowField('control_person.street_line_1') && (
-                                                                                                                    <>
-                                                                                                                        <input
-                                                                                                                            type="text"
-                                                                                                                            value={kybFormData.control_person.street_line_1}
-                                                                                                                            onChange={(e) => {
-                                                                                                                                setKybFormData({
-                                                                                                                                    ...kybFormData,
-                                                                                                                                    control_person: { ...kybFormData.control_person, street_line_1: e.target.value }
-                                                                                                                                })
-                                                                                                                                if (controlPersonErrors.street_line_1) {
-                                                                                                                                    setControlPersonErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.street_line_1
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground mb-2 ${controlPersonErrors.street_line_1 ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                }`}
-                                                                                                                            placeholder="123 Main St"
-                                                                                                                        />
-                                                                                                                        {controlPersonErrors.street_line_1 && (
-                                                                                                                            <p className="text-xs text-red-500 mt-1 mb-2">{controlPersonErrors.street_line_1}</p>
-                                                                                                                        )}
-                                                                                                                    </>
-                                                                                                                )}
-                                                                                                                {(shouldShowField('control_person.city') || shouldShowField('control_person.state') || shouldShowField('control_person.postal_code')) && (
-                                                                                                                    <div className="grid grid-cols-3 gap-2">
-                                                                                                                        {shouldShowField('control_person.city') && (
-                                                                                                                            <div>
-                                                                                                                                <input
-                                                                                                                                    type="text"
-                                                                                                                                    value={kybFormData.control_person.city}
-                                                                                                                                    onChange={(e) => {
-                                                                                                                                        setKybFormData({
-                                                                                                                                            ...kybFormData,
-                                                                                                                                            control_person: { ...kybFormData.control_person, city: e.target.value }
-                                                                                                                                        })
-                                                                                                                                        if (controlPersonErrors.city) {
-                                                                                                                                            setControlPersonErrors(prev => {
-                                                                                                                                                const newErrors = { ...prev }
-                                                                                                                                                delete newErrors.city
-                                                                                                                                                return newErrors
-                                                                                                                                            })
-                                                                                                                                        }
-                                                                                                                                    }}
-                                                                                                                                    className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.city ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                        }`}
-                                                                                                                                    placeholder="City"
-                                                                                                                                />
-                                                                                                                                {controlPersonErrors.city && (
-                                                                                                                                    <p className="text-xs text-red-500 mt-1">{controlPersonErrors.city}</p>
-                                                                                                                                )}
-                                                                                                                            </div>
-                                                                                                                        )}
-                                                                                                                        {shouldShowField('control_person.state') && (
-                                                                                                                            <div>
-                                                                                                                                <input
-                                                                                                                                    type="text"
-                                                                                                                                    value={kybFormData.control_person.state}
-                                                                                                                                    onChange={(e) => {
-                                                                                                                                        setKybFormData({
-                                                                                                                                            ...kybFormData,
-                                                                                                                                            control_person: { ...kybFormData.control_person, state: e.target.value }
-                                                                                                                                        })
-                                                                                                                                        if (controlPersonErrors.state) {
-                                                                                                                                            setControlPersonErrors(prev => {
-                                                                                                                                                const newErrors = { ...prev }
-                                                                                                                                                delete newErrors.state
-                                                                                                                                                return newErrors
-                                                                                                                                            })
-                                                                                                                                        }
-                                                                                                                                    }}
-                                                                                                                                    className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.state ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                        }`}
-                                                                                                                                    placeholder="State"
-                                                                                                                                />
-                                                                                                                                {controlPersonErrors.state && (
-                                                                                                                                    <p className="text-xs text-red-500 mt-1">{controlPersonErrors.state}</p>
-                                                                                                                                )}
-                                                                                                                            </div>
-                                                                                                                        )}
-                                                                                                                        {shouldShowField('control_person.postal_code') && (
-                                                                                                                            <div>
-                                                                                                                                <input
-                                                                                                                                    type="text"
-                                                                                                                                    value={kybFormData.control_person.postal_code}
-                                                                                                                                    onChange={(e) => {
-                                                                                                                                        setKybFormData({
-                                                                                                                                            ...kybFormData,
-                                                                                                                                            control_person: { ...kybFormData.control_person, postal_code: e.target.value }
-                                                                                                                                        })
-                                                                                                                                        if (controlPersonErrors.postal_code) {
-                                                                                                                                            setControlPersonErrors(prev => {
-                                                                                                                                                const newErrors = { ...prev }
-                                                                                                                                                delete newErrors.postal_code
-                                                                                                                                                return newErrors
-                                                                                                                                            })
-                                                                                                                                        }
-                                                                                                                                    }}
-                                                                                                                                    className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.postal_code ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                        }`}
-                                                                                                                                    placeholder="ZIP"
-                                                                                                                                />
-                                                                                                                                {controlPersonErrors.postal_code && (
-                                                                                                                                    <p className="text-xs text-red-500 mt-1">{controlPersonErrors.postal_code}</p>
-                                                                                                                                )}
-                                                                                                                            </div>
-                                                                                                                        )}
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        {/* Show ID Type and ID Number in normal flow only if NOT an ID-only rejection */}
-                                                                                                        {(() => {
-                                                                                                            const idRelatedFields = [
-                                                                                                                'control_person.id_type',
-                                                                                                                'control_person.id_number',
-                                                                                                                'control_person.id_front_image',
-                                                                                                                'control_person.id_back_image'
-                                                                                                            ]
-                                                                                                            const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                            const hasOnlyIdFieldsRequested = requestedFields.length > 0 && 
-                                                                                                                requestedFields.every((field: string) => idRelatedFields.includes(field))
-                                                                                                            const isOnlyIdRejection = hasRejectedIdDocs && 
-                                                                                                                (!requestedFields || requestedFields.length === 0 || hasOnlyIdFieldsRequested)
-                                                                                                            
-                                                                                                            // Don't show these fields if it's an ID-only rejection (they're shown in the ID-only section above)
-                                                                                                            if (isOnlyIdRejection) {
-                                                                                                                return null
-                                                                                                            }
-                                                                                                            
-                                                                                                            return (
-                                                                                                                <>
-                                                                                                                    {shouldShowField('control_person.id_type') && (
-                                                                                                                        <div>
-                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">ID Type *</label>
-                                                                                                                            <select
-                                                                                                                                value={kybFormData.control_person.id_type}
-                                                                                                                                onChange={(e) => {
-                                                                                                                                    const newIdType = e.target.value
-                                                                                                                                    setKybFormData(prev => ({
-                                                                                                                                        ...prev,
-                                                                                                                                        control_person: {
-                                                                                                                                            ...prev.control_person,
-                                                                                                                                            id_type: newIdType,
-                                                                                                                                            id_back_image: newIdType !== 'drivers_license' ? '' : prev.control_person.id_back_image
-                                                                                                                                        }
-                                                                                                                                    }))
-                                                                                                                                    if (newIdType !== 'drivers_license' && controlPersonErrors.id_back_image) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_back_image
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                    if (controlPersonErrors.id_type) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_type
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                }}
-                                                                                                                                className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground ${controlPersonErrors.id_type ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'}`}
-                                                                                                                            >
-                                                                                                                                <option value="">Select ID Type...</option>
-                                                                                                                                <option value="drivers_license">Driver's License</option>
-                                                                                                                                <option value="passport">Passport</option>
-                                                                                                                            </select>
-                                                                                                                            {controlPersonErrors.id_type && (
-                                                                                                                                <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_type}</p>
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                    )}
-                                                                                                                    {shouldShowField('control_person.id_number') && (
-                                                                                                                        <div>
-                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">ID Number *</label>
-                                                                                                                            <input
-                                                                                                                                type="text"
-                                                                                                                                value={kybFormData.control_person.id_number}
-                                                                                                                                onChange={(e) => {
-                                                                                                                                    setKybFormData({
-                                                                                                                                        ...kybFormData,
-                                                                                                                                        control_person: { ...kybFormData.control_person, id_number: e.target.value }
-                                                                                                                                    })
-                                                                                                                                    if (controlPersonErrors.id_number) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_number
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                }}
-                                                                                                                                className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground ${controlPersonErrors.id_number ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'}`}
-                                                                                                                                placeholder="ID Number"
-                                                                                                                            />
-                                                                                                                            {controlPersonErrors.id_number && (
-                                                                                                                                <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_number}</p>
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                    )}
-                                                                                                                </>
-                                                                                                            )
-                                                                                                        })()}
-                                                                                                                </>
-                                                                                                            )
-                                                                                                        })()}
-                                                                                                        
-                                                                                                        {/* ID Image Upload Fields - Show in normal flow only if NOT an ID-only rejection */}
-                                                                                                        {(() => {
-                                                                                                            const idRelatedFields = [
-                                                                                                                'control_person.id_type',
-                                                                                                                'control_person.id_number',
-                                                                                                                'control_person.id_front_image',
-                                                                                                                'control_person.id_back_image'
-                                                                                                            ]
-                                                                                                            const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                            const hasOnlyIdFieldsRequested = requestedFields.length > 0 && 
-                                                                                                                requestedFields.every((field: string) => idRelatedFields.includes(field))
-                                                                                                            const isOnlyIdRejection = hasRejectedIdDocs && 
-                                                                                                                (!requestedFields || requestedFields.length === 0 || hasOnlyIdFieldsRequested)
-                                                                                                            
-                                                                                                            // Don't show ID image fields in normal flow if it's an ID-only rejection (they're shown in ID-only section)
-                                                                                                            if (isOnlyIdRejection) {
-                                                                                                                return null
-                                                                                                            }
-                                                                                                            
-                                                                                                            return (
-                                                                                                                (shouldShowField('control_person.id_front_image') || shouldShowField('control_person.id_back_image') || documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected') && (
-                                                                                                            <div className={kybFormData.control_person.id_type === 'drivers_license' ? "grid grid-cols-1 sm:grid-cols-2 gap-3" : "space-y-3"}>
-                                                                                                                {/* Show ID Front approval message or upload field */}
-                                                                                                                {/* Show ONLY if: field is in requestedFields OR document is rejected */}
-                                                                                                                {(shouldShowField('control_person.id_front_image') || documentStatuses.id_front === 'rejected') && (
-                                                                                                                    documentStatuses.id_front === 'approved' ? (
-                                                                                                                        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                            <div className="flex items-center gap-2">
-                                                                                                                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                                <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                                    {kybFormData.control_person.id_type === 'drivers_license' ? 'ID Front Image' : 'Passport Image'} has been approved.
-                                                                                                                                </p>
-                                                                                                                            </div>
-                                                                                                                        </div>
-                                                                                                                    ) : (documentStatuses.id_front === 'rejected' || shouldShowField('control_person.id_front_image')) && (
-                                                                                                                        <div>
-                                                                                                                            {documentStatuses.id_front === 'rejected' && (
-                                                                                                                                <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                                    <strong>Document Rejected:</strong> {documentRejectionReasons.id_front || 'Please re-upload the ' + (kybFormData.control_person.id_type === 'drivers_license' ? 'ID Front Image' : 'Passport Image') + '.'}
-                                                                                                                                </div>
-                                                                                                                            )}
-                                                                                                                            <ImageUploadDropzone
-                                                                                                                                label={kybFormData.control_person.id_type === 'drivers_license' ? "ID Front Image *" : "Passport Image *"}
-                                                                                                                                value={kybFormData.control_person.id_front_image}
-                                                                                                                                onChange={(base64) => {
-                                                                                                                                    setKybFormData({
-                                                                                                                                        ...kybFormData,
-                                                                                                                                        control_person: { ...kybFormData.control_person, id_front_image: base64 }
-                                                                                                                                    })
-                                                                                                                                    if (controlPersonErrors.id_front_image) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_front_image
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                }}
-                                                                                                                                required={true}
-                                                                                                                                maxSizeMB={5}
-                                                                                                                            />
-                                                                                                                            {controlPersonErrors.id_front_image && (
-                                                                                                                                <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_front_image}</p>
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                    )
-                                                                                                                )}
-                                                                                                                {/* Show ID Back approval message or upload field for Driver's License */}
-                                                                                                                {/* Show ONLY if: field is in requestedFields OR document is rejected */}
-                                                                                                                {kybFormData.control_person.id_type === 'drivers_license' && (shouldShowField('control_person.id_back_image') || documentStatuses.id_back === 'rejected') && (
-                                                                                                                    documentStatuses.id_back === 'approved' ? (
-                                                                                                                        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                            <div className="flex items-center gap-2">
-                                                                                                                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                                <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                                    ID Back Image has been approved.
-                                                                                                                                </p>
-                                                                                                                            </div>
-                                                                                                                        </div>
-                                                                                                                    ) : (documentStatuses.id_back === 'rejected' || shouldShowField('control_person.id_back_image')) && (
-                                                                                                                        <div>
-                                                                                                                            {documentStatuses.id_back === 'rejected' && (
-                                                                                                                                <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                                    <strong>Document Rejected:</strong> {documentRejectionReasons.id_back || 'Please re-upload the ID Back Image.'}
-                                                                                                                                </div>
-                                                                                                                            )}
-                                                                                                                            <ImageUploadDropzone
-                                                                                                                                label="ID Back Image *"
-                                                                                                                                value={kybFormData.control_person.id_back_image}
-                                                                                                                                onChange={(base64) => {
-                                                                                                                                    setKybFormData({
-                                                                                                                                        ...kybFormData,
-                                                                                                                                        control_person: { ...kybFormData.control_person, id_back_image: base64 }
-                                                                                                                                    })
-                                                                                                                                    if (controlPersonErrors.id_back_image) {
-                                                                                                                                        setControlPersonErrors(prev => {
-                                                                                                                                            const newErrors = { ...prev }
-                                                                                                                                            delete newErrors.id_back_image
-                                                                                                                                            return newErrors
-                                                                                                                                        })
-                                                                                                                                    }
-                                                                                                                                }}
-                                                                                                                                required={true}
-                                                                                                                                maxSizeMB={5}
-                                                                                                                            />
-                                                                                                                            {controlPersonErrors.id_back_image && (
-                                                                                                                                <p className="text-xs text-red-500 mt-1">{controlPersonErrors.id_back_image}</p>
-                                                                                                                            )}
-                                                                                                                        </div>
-                                                                                                                    )
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        )
-                                                                                                    )
-                                                                                                })()}
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                                        </>
-                                                                                                    )
-                                                                                                })()}
-                                                                                            </>
-                                                                                        )}
-
-                                                                                        {/* Step 2: Business Documents */}
-                                                                                        {kybStep === 'business_documents' && (
-                                                                                            <>
-                                                                                                {/* Show refill message banner if admin requested re-fill */}
-                                                                                                {(refillMessage || (requestedFields && requestedFields.length > 0)) && (
-                                                                                                    <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                                                                                                        <div className="flex items-start gap-2 text-left">
-                                                                                                            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                                                                                                            <div className="flex-1 text-left">
-                                                                                                                <p className="text-xs font-semibold text-amber-900 dark:text-amber-100 mb-1 text-left">
-                                                                                                                    Admin Request: Please Re-fill the Following Fields
-                                                                                                                </p>
-                                                                                                                {refillMessage && (
-                                                                                                                    <p className="text-xs text-amber-800 dark:text-amber-200 mb-2 text-left">
-                                                                                                                        {refillMessage}
-                                                                                                                    </p>
-                                                                                                                )}
-                                                                                                                {requestedFields && requestedFields.length > 0 && (
-                                                                                                                    <div className="mt-2 text-left">
-                                                                                                                        <p className="text-xs font-medium text-amber-900 dark:text-amber-100 mb-1 text-left">
-                                                                                                                            Requested Fields ({requestedFields.length}):
-                                                                                                                        </p>
-                                                                                                                        <div className="flex flex-wrap gap-1 text-left">
-                                                                                                                            {requestedFields.map((field, idx) => (
-                                                                                                                                <span key={`business-docs-field-${idx}-${String(field || 'empty').replace(/\s+/g, '-')}`} className="text-xs px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 rounded">
-                                                                                                                                    {field}
-                                                                                                                                </span>
-                                                                                                                            ))}
-                                                                                                                        </div>
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                )}
-
-                                                                                                {/* Check if documents are submitted and pending approval - show waiting screen */}
-                                                                                                {(() => {
-                                                                                                    // Check if there are any rejected documents that need re-upload
-                                                                                                    const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
-                                                                                                        documentStatuses.business_ownership === 'rejected' ||
-                                                                                                        documentStatuses.proof_of_address === 'rejected'
-
-                                                                                                    // Check if documents are in pending or approved state (submitted)
-                                                                                                    const hasPendingOrApprovedDocuments = documentStatuses.business_formation === 'pending' ||
-                                                                                                        documentStatuses.business_ownership === 'pending' ||
-                                                                                                        documentStatuses.business_formation === 'approved' ||
-                                                                                                        documentStatuses.business_ownership === 'approved'
-
-                                                                                                    // Check if admin requested re-fill of any fields
-                                                                                                    const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                                    
-                                                                                                    // Show waiting screen if:
-                                                                                                    // 1. We're on the business_documents step
-                                                                                                    // 2. Documents have been submitted (businessDocumentsSubmitted flag OR documents are pending/approved)
-                                                                                                    // 3. NO documents are currently rejected (all are pending/approved/not set)
-                                                                                                    // 4. NO requested fields from admin (if admin requested re-fill, show form instead)
-                                                                                                    // This means: if submitted and no rejected docs and no requested fields, show waiting screen
-                                                                                                    const shouldShowWaiting = kybStep === 'business_documents' &&
-                                                                                                        (businessDocumentsSubmitted || hasPendingOrApprovedDocuments) &&
-                                                                                                        !hasRejectedDocuments &&
-                                                                                                        !hasRequestedFields
-
-                                                                                                    return shouldShowWaiting
-                                                                                                })() ? (
-                                                                                                    <WaitingScreen
-                                                                                                        variant="business_documents"
-                                                                                                        title="Documents Submitted"
-                                                                                                        message="Your business documents are currently under review."
-                                                                                                        subMessage="Once your documents are approved, you will be able to proceed to Step 3: KYC Verification."
-                                                                                                    />
-                                                                                                ) : (
-                                                                                                    /* Show only rejected documents or initial form if nothing submitted yet */
-                                                                                                    <>
-                                                                                                        {/* Show header if there are rejected documents, requested fields, or if form hasn't been submitted and no pending documents */}
-                                                                                                        {(() => {
-                                                                                                            const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
-                                                                                                                documentStatuses.business_ownership === 'rejected' ||
-                                                                                                                documentStatuses.proof_of_address === 'rejected'
-                                                                                                            const hasPendingDocuments = documentStatuses.business_formation === 'pending' ||
-                                                                                                                documentStatuses.business_ownership === 'pending'
-                                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                                            // Show header if: rejected docs OR requested fields OR (not submitted AND no pending docs)
-                                                                                                            return hasRejectedDocuments || hasRequestedFields || (!businessDocumentsSubmitted && !hasPendingDocuments)
-                                                                                                        })() && (
-                                                                                                                <div className="mb-3">
-                                                                                                                    <p className="text-xs font-semibold mb-2 text-left">Step 2: Business Documents *</p>
-                                                                                                                    {(documentStatuses.business_formation === 'rejected' ||
-                                                                                                                        documentStatuses.business_ownership === 'rejected' ||
-                                                                                                                        documentStatuses.proof_of_address === 'rejected') ? (
-                                                                                                                        <p className="text-xs text-muted-foreground mb-3 text-left">Please re-upload the rejected documents below.</p>
-                                                                                                                    ) : (requestedFields && requestedFields.length > 0) ? (
-                                                                                                                        <p className="text-xs text-muted-foreground mb-3 text-left">Please re-fill the requested fields below.</p>
-                                                                                                                    ) : (
-                                                                                                                        <p className="text-xs text-muted-foreground mb-3 text-left">Upload required business formation and ownership documents</p>
-                                                                                                                    )}
-                                                                                                                </div>
-                                                                                                            )}
-
-                                                                                                        <div className="space-y-4">
-                                                                                                            {/* Business Formation Document - Only show if rejected (in re-upload mode) or not uploaded yet (initial submission) */}
-                                                                                                            {shouldShowField('business_formation_document') && (() => {
-                                                                                                                const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
-                                                                                                                    documentStatuses.business_ownership === 'rejected' ||
-                                                                                                                    documentStatuses.proof_of_address === 'rejected'
-                                                                                                                const hasPendingDocuments = documentStatuses.business_formation === 'pending' ||
-                                                                                                                    documentStatuses.business_ownership === 'pending'
-                                                                                                                const formationStatus = documentStatuses.business_formation
-
-                                                                                                                // Don't show if documents are submitted and pending (waiting screen should show instead)
-                                                                                                                // UNLESS admin requested refill - then always show
-                                                                                                                const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments && !hasRequestedFields) {
-                                                                                                                    return false
-                                                                                                                }
-
-                                                                                                                // In re-upload mode: only show if explicitly rejected
-                                                                                                                if (hasRejectedDocuments) {
-                                                                                                                    return formationStatus === 'rejected'
-                                                                                                                }
-                                                                                                                // In initial submission: show if not uploaded yet (undefined or null) and not pending
-                                                                                                                // OR if admin requested refill
-                                                                                                                return !formationStatus || (formationStatus !== 'pending' && !businessDocumentsSubmitted) || hasRequestedFields
-                                                                                                            })() && (
-                                                                                                                    <>
-                                                                                                                        {documentStatuses.business_formation === 'rejected' && (
-                                                                                                                            <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                                <strong>Document Rejected:</strong> {documentRejectionReasons.business_formation || 'Please re-upload the Business Formation Document.'}
-                                                                                                                            </div>
-                                                                                                                        )}
-                                                                                                                        <DocumentUploadDropzone
-                                                                                                                            label="Business Formation Document"
-                                                                                                                            description="e.g., Articles of Incorporation, Certificate of Formation"
-                                                                                                                            value={kybFormData.business_formation_document}
-                                                                                                                            onChange={async (base64) => {
-                                                                                                                                setKybFormData({ ...kybFormData, business_formation_document: base64 })
-                                                                                                                                if (businessDocumentErrors.business_formation_document) {
-                                                                                                                                    setBusinessDocumentErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.business_formation_document
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            required={true}
-                                                                                                                            accept=".pdf,.jpg,.jpeg,.png"
-                                                                                                                            maxSizeMB={10}
-                                                                                                                        />
-                                                                                                                        {businessDocumentErrors.business_formation_document && (
-                                                                                                                            <p className="text-xs text-red-500 -mt-2">{businessDocumentErrors.business_formation_document}</p>
-                                                                                                                        )}
-                                                                                                                    </>
-                                                                                                                )}
-                                                                                                            {documentStatuses.business_formation === 'approved' && (
-                                                                                                                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                    <div className="flex items-center gap-2 text-left">
-                                                                                                                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                                                                                                                        <p className="text-xs text-green-900 dark:text-green-100 text-left">
-                                                                                                                            Business Formation Document has been approved.
-                                                                                                                        </p>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
-
-                                                                                                            {/* Business Ownership Document - Only show if rejected (in re-upload mode) or not uploaded yet (initial submission) */}
-                                                                                                            {shouldShowField('business_ownership_document') && (() => {
-                                                                                                                const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
-                                                                                                                    documentStatuses.business_ownership === 'rejected' ||
-                                                                                                                    documentStatuses.proof_of_address === 'rejected'
-                                                                                                                const hasPendingDocuments = documentStatuses.business_formation === 'pending' ||
-                                                                                                                    documentStatuses.business_ownership === 'pending'
-                                                                                                                const ownershipStatus = documentStatuses.business_ownership
-
-                                                                                                                // Don't show if documents are submitted and pending (waiting screen should show instead)
-                                                                                                                // UNLESS admin requested refill - then always show
-                                                                                                                const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments && !hasRequestedFields) {
-                                                                                                                    return false
-                                                                                                                }
-
-                                                                                                                // In re-upload mode: only show if explicitly rejected
-                                                                                                                if (hasRejectedDocuments) {
-                                                                                                                    return ownershipStatus === 'rejected'
-                                                                                                                }
-                                                                                                                // In initial submission: show if not uploaded yet (undefined or null) and not pending
-                                                                                                                // OR if admin requested refill
-                                                                                                                return !ownershipStatus || (ownershipStatus !== 'pending' && !businessDocumentsSubmitted) || hasRequestedFields
-                                                                                                            })() && (
-                                                                                                                    <>
-                                                                                                                        {documentStatuses.business_ownership === 'rejected' && (
-                                                                                                                            <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                                <strong>Document Rejected:</strong> {documentRejectionReasons.business_ownership || 'Please re-upload the Business Ownership Document.'}
-                                                                                                                            </div>
-                                                                                                                        )}
-                                                                                                                        <DocumentUploadDropzone
-                                                                                                                            label="Business Ownership Document"
-                                                                                                                            description="e.g., Cap table, Shareholder ledger, Operating Agreement"
-                                                                                                                            value={kybFormData.business_ownership_document}
-                                                                                                                            onChange={async (base64) => {
-                                                                                                                                setKybFormData({ ...kybFormData, business_ownership_document: base64 })
-                                                                                                                                if (businessDocumentErrors.business_ownership_document) {
-                                                                                                                                    setBusinessDocumentErrors(prev => {
-                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                        delete newErrors.business_ownership_document
-                                                                                                                                        return newErrors
-                                                                                                                                    })
-                                                                                                                                }
-                                                                                                                            }}
-                                                                                                                            required={true}
-                                                                                                                            accept=".pdf,.jpg,.jpeg,.png"
-                                                                                                                            maxSizeMB={10}
-                                                                                                                        />
-                                                                                                                        {businessDocumentErrors.business_ownership_document && (
-                                                                                                                            <p className="text-xs text-red-500 -mt-2">{businessDocumentErrors.business_ownership_document}</p>
-                                                                                                                        )}
-                                                                                                                    </>
-                                                                                                                )}
-                                                                                                            {documentStatuses.business_ownership === 'approved' && (
-                                                                                                                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                    <div className="flex items-center gap-2 text-left">
-                                                                                                                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                                                                                                                        <p className="text-xs text-green-900 dark:text-green-100 text-left">
-                                                                                                                            Business Ownership Document has been approved.
-                                                                                                                        </p>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
-
-                                                                                                            {/* Proof of Address Document - Only show if rejected or not uploaded or requested */}
-                                                                                                            {shouldShowField('proof_of_address_document') && (documentStatuses.proof_of_address === 'rejected' || (!documentStatuses.proof_of_address && kybFormData.proof_of_address_document)) && (
-                                                                                                                <>
-                                                                                                                    {documentStatuses.proof_of_address === 'rejected' && (
-                                                                                                                        <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                            <strong>Document Rejected:</strong> {documentRejectionReasons.proof_of_address || 'Please re-upload the Proof of Address Document.'}
-                                                                                                                        </div>
-                                                                                                                    )}
-                                                                                                                    <DocumentUploadDropzone
-                                                                                                                        label="Proof of Address Document (Optional)"
-                                                                                                                        description="Required if different from registered address"
-                                                                                                                        value={kybFormData.proof_of_address_document}
-                                                                                                                        onChange={async (base64) => {
-                                                                                                                            setKybFormData({ ...kybFormData, proof_of_address_document: base64 })
-                                                                                                                        }}
-                                                                                                                        required={false}
-                                                                                                                        accept=".pdf,.jpg,.jpeg,.png"
-                                                                                                                        maxSizeMB={10}
-                                                                                                                    />
-                                                                                                                </>
-                                                                                                            )}
-                                                                                                            {documentStatuses.proof_of_address === 'approved' && (
-                                                                                                                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                    <div className="flex items-center gap-2">
-                                                                                                                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                        <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                            Proof of Address Document has been approved.
-                                                                                                                        </p>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
-
-                                                                                                            {/* Proof of Nature of Business Document - For Bridge verification */}
-                                                                                                            {shouldShowField('proof_of_nature_of_business') && (documentStatuses.proof_of_nature_of_business === 'rejected' || !documentStatuses.proof_of_nature_of_business) && (
-                                                                                                                <>
-                                                                                                                    {documentStatuses.proof_of_nature_of_business === 'rejected' && (
-                                                                                                                        <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                            <strong>Document Rejected:</strong> {documentRejectionReasons.proof_of_nature_of_business || 'Please re-upload the Proof of Nature of Business Document.'}
-                                                                                                                        </div>
-                                                                                                                    )}
-                                                                                                                    <DocumentUploadDropzone
-                                                                                                                        label="Proof of Nature of Business Document (Optional)"
-                                                                                                                        description="Alternative to website verification for Bridge (useful in sandbox mode)"
-                                                                                                                        value={kybFormData.proof_of_nature_of_business}
-                                                                                                                        onChange={async (base64) => {
-                                                                                                                            setKybFormData({ ...kybFormData, proof_of_nature_of_business: base64 })
-                                                                                                                        }}
-                                                                                                                        required={false}
-                                                                                                                        accept=".pdf,.jpg,.jpeg,.png"
-                                                                                                                        maxSizeMB={10}
-                                                                                                                    />
-                                                                                                                </>
-                                                                                                            )}
-                                                                                                            {shouldShowField('proof_of_nature_of_business') && documentStatuses.proof_of_nature_of_business === 'approved' && (
-                                                                                                                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                    <div className="flex items-center gap-2">
-                                                                                                                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                        <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                            Proof of Nature of Business Document has been approved.
-                                                                                                                        </p>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
-
-                                                                                                            {/* 501c3 Determination Letter - Only for internal use, not sent to Bridge */}
-                                                                                                            {shouldShowField('determination_letter_501c3') && (documentStatuses.determination_letter_501c3 === 'rejected' || !documentStatuses.determination_letter_501c3) && (
-                                                                                                                <>
-                                                                                                                    {documentStatuses.determination_letter_501c3 === 'rejected' && (
-                                                                                                                        <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200">
-                                                                                                                            <strong>Document Rejected:</strong> {documentRejectionReasons.determination_letter_501c3 || 'Please re-upload the 501c3 Determination Letter.'}
-                                                                                                                        </div>
-                                                                                                                    )}
-                                                                                                                    <DocumentUploadDropzone
-                                                                                                                        label="501c3 Determination Letter"
-                                                                                                                        description="For internal use only (not sent to Bridge)"
-                                                                                                                        value={kybFormData.determination_letter_501c3}
-                                                                                                                        onChange={async (base64) => {
-                                                                                                                            setKybFormData({ ...kybFormData, determination_letter_501c3: base64 })
-                                                                                                                        }}
-                                                                                                                        required={false}
-                                                                                                                        accept=".pdf,.jpg,.jpeg,.png"
-                                                                                                                        maxSizeMB={10}
-                                                                                                                    />
-                                                                                                                </>
-                                                                                                            )}
-                                                                                                            {shouldShowField('determination_letter_501c3') && documentStatuses.determination_letter_501c3 === 'approved' && (
-                                                                                                                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                                                                                                                    <div className="flex items-center gap-2">
-                                                                                                                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                                                                                        <p className="text-xs text-green-900 dark:text-green-100">
-                                                                                                                            501c3 Determination Letter has been approved.
-                                                                                                                        </p>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
-
-                                                                                                            {/* Only show Business Information and Enhanced KYB sections if no documents are rejected and not in waiting state */}
-                                                                                                            {(() => {
-                                                                                                                const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
-                                                                                                                    documentStatuses.business_ownership === 'rejected' ||
-                                                                                                                    documentStatuses.proof_of_address === 'rejected'
-                                                                                                                const hasPendingDocuments = documentStatuses.business_formation === 'pending' ||
-                                                                                                                    documentStatuses.business_ownership === 'pending'
-                                                                                                                // Don't show if documents are submitted and pending (waiting screen should show instead)
-                                                                                                                // UNLESS admin requested refill - then always show
-                                                                                                                const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments && !hasRequestedFields) {
-                                                                                                                    return false
-                                                                                                                }
-                                                                                                                // Show if no rejected documents OR if fields are requested
-                                                                                                                // Always show if admin requested refill (hasRequestedFields)
-                                                                                                                return hasRequestedFields || !hasRejectedDocuments ||
-                                                                                                                    (shouldShowField('entity_type') || shouldShowField('business_description') || shouldShowField('business_industry') || shouldShowField('primary_website'))
-                                                                                                            })() && (
-                                                                                                                    <>
-                                                                                                                        {/* Standard KYB Requirements */}
-                                                                                                                        <div className="border-t border-border pt-4 mt-4">
-                                                                                                                            <p className="text-xs font-semibold mb-3 text-left">Business Information</p>
-
-                                                                                                                            <div className="space-y-3">
-                                                                                                                                {shouldShowField('entity_type') && (
-                                                                                                                                    <div>
-                                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Entity Type *</label>
-                                                                                                                                        <select
-                                                                                                                                            value={kybFormData.entity_type}
-                                                                                                                                            onChange={(e) => {
-                                                                                                                                                setKybFormData({ ...kybFormData, entity_type: e.target.value })
-                                                                                                                                                if (businessDocumentErrors.entity_type) {
-                                                                                                                                                    setBusinessDocumentErrors(prev => {
-                                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                                        delete newErrors.entity_type
-                                                                                                                                                        return newErrors
-                                                                                                                                                    })
-                                                                                                                                                }
-                                                                                                                                            }}
-                                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground ${businessDocumentErrors.entity_type ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                                }`}
-                                                                                                                                        >
-                                                                                                                                            <option value="">Select entity type...</option>
-                                                                                                                                            {/* Bridge supported business entity types */}
-                                                                                                                                            <option value="corporation">corporation</option>
-                                                                                                                                            <option value="llc">llc</option>
-                                                                                                                                            <option value="partnership">partnership</option>
-                                                                                                                                            <option value="sole_prop">sole_prop</option>
-                                                                                                                                            <option value="cooperative">cooperative</option>
-                                                                                                                                            <option value="trust">trust</option>
-                                                                                                                                            <option value="other">other</option>
-                                                                                                                                        </select>
-                                                                                                                                        {businessDocumentErrors.entity_type && (
-                                                                                                                                            <p className="text-xs text-red-500 mt-1">{businessDocumentErrors.entity_type}</p>
-                                                                                                                                        )}
-                                                                                                                                        <p className="text-[10px] text-muted-foreground mt-1 text-left">
-                                                                                                                                            Must be one of: cooperative, corporation, llc, other, partnership, sole_prop, trust.
-                                                                                                                                        </p>
-                                                                                                                                    </div>
-                                                                                                                                )}
-
-                                                                                                                                {shouldShowField('dao_status') && (
-                                                                                                                                    <div className="flex items-center gap-2">
-                                                                                                                                        <input
-                                                                                                                                            type="checkbox"
-                                                                                                                                            id="dao_status"
-                                                                                                                                            checked={kybFormData.dao_status}
-                                                                                                                                            onChange={(e) => setKybFormData({ ...kybFormData, dao_status: e.target.checked })}
-                                                                                                                                            className="w-4 h-4 text-purple-600 border-border rounded focus:ring-purple-500"
-                                                                                                                                        />
-                                                                                                                                        <label htmlFor="dao_status" className="text-xs font-medium text-left cursor-pointer">
-                                                                                                                                            This is a DAO (Decentralized Autonomous Organization)
-                                                                                                                                        </label>
-                                                                                                                                    </div>
-                                                                                                                                )}
-
-                                                                                                                                {shouldShowField('business_description') && (
-                                                                                                                                    <div>
-                                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Business Description *</label>
-                                                                                                                                        <textarea
-                                                                                                                                            value={kybFormData.business_description}
-                                                                                                                                            onChange={(e) => {
-                                                                                                                                                setKybFormData({ ...kybFormData, business_description: e.target.value })
-                                                                                                                                                if (businessDocumentErrors.business_description) {
-                                                                                                                                                    setBusinessDocumentErrors(prev => {
-                                                                                                                                                        const newErrors = { ...prev }
-                                                                                                                                                        delete newErrors.business_description
-                                                                                                                                                        return newErrors
-                                                                                                                                                    })
-                                                                                                                                                }
-                                                                                                                                            }}
-                                                                                                                                            className={`w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground ${businessDocumentErrors.business_description ? 'border-red-500 dark:border-red-500' : 'border-border dark:border-gray-700'
-                                                                                                                                                }`}
-                                                                                                                                            rows={3}
-                                                                                                                                            placeholder="Brief description of your business operations"
-                                                                                                                                        />
-                                                                                                                                        {businessDocumentErrors.business_description && (
-                                                                                                                                            <p className="text-xs text-red-500 mt-1">{businessDocumentErrors.business_description}</p>
-                                                                                                                                        )}
-                                                                                                                                    </div>
-                                                                                                                                )}
-
-                                                                                                                                {shouldShowField('primary_website') && (
-                                                                                                                                    <div>
-                                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Primary Website</label>
-                                                                                                                                        <input
-                                                                                                                                            type="url"
-                                                                                                                                            value={kybFormData.primary_website}
-                                                                                                                                            onChange={(e) => setKybFormData({ ...kybFormData, primary_website: e.target.value })}
-                                                                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                            placeholder="https://example.com"
-                                                                                                                                        />
-                                                                                                                                    </div>
-                                                                                                                                )}
-
-                                                                                                                                {shouldShowField('business_industry') && (
-                                                                                                                                    <div>
-                                                                                                                                        <label className="text-xs font-medium mb-1 block text-left">Business Industry</label>
-                                                                                                                                        <input
-                                                                                                                                            type="text"
-                                                                                                                                            value={kybFormData.business_industry}
-                                                                                                                                            onChange={(e) => setKybFormData({ ...kybFormData, business_industry: e.target.value })}
-                                                                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                            placeholder="e.g., Technology, Healthcare, Finance"
-                                                                                                                                        />
-                                                                                                                                    </div>
-                                                                                                                                )}
-
-                                                                                                                                {/* Principal Operating Address */}
-                                                                                                                                {(shouldShowField('physical_address.street_line_1') || shouldShowField('physical_address.city') || shouldShowField('physical_address.subdivision') || shouldShowField('physical_address.postal_code') || shouldShowField('physical_address.country')) && (
-                                                                                                                                    <div className="border-t border-border pt-3 mt-3">
-                                                                                                                                        <p className="text-xs font-semibold mb-2 text-left">Principal Operating Address</p>
-                                                                                                                                        <p className="text-xs text-muted-foreground mb-3 text-left">Required if different from registered address</p>
-
-                                                                                                                                        <div className="space-y-2">
-                                                                                                                                            {shouldShowField('physical_address.street_line_1') && (
-                                                                                                                                                <div>
-                                                                                                                                                    <label className="text-xs font-medium mb-1 block text-left">Street Address</label>
-                                                                                                                                                    <input
-                                                                                                                                                        type="text"
-                                                                                                                                                        value={kybFormData.physical_address.street_line_1}
-                                                                                                                                                        onChange={(e) => setKybFormData({
-                                                                                                                                                            ...kybFormData,
-                                                                                                                                                            physical_address: { ...kybFormData.physical_address, street_line_1: e.target.value }
-                                                                                                                                                        })}
-                                                                                                                                                        className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                                        placeholder="123 Main St"
-                                                                                                                                                    />
-                                                                                                                                                </div>
-                                                                                                                                            )}
-                                                                                                                                            {(shouldShowField('physical_address.city') || shouldShowField('physical_address.subdivision')) && (
-                                                                                                                                                <div className="grid grid-cols-2 gap-2">
-                                                                                                                                                    {shouldShowField('physical_address.city') && (
-                                                                                                                                                        <div>
-                                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">City</label>
-                                                                                                                                                            <input
-                                                                                                                                                                type="text"
-                                                                                                                                                                value={kybFormData.physical_address.city}
-                                                                                                                                                                onChange={(e) => setKybFormData({
-                                                                                                                                                                    ...kybFormData,
-                                                                                                                                                                    physical_address: { ...kybFormData.physical_address, city: e.target.value }
-                                                                                                                                                                })}
-                                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                                                placeholder="New York"
-                                                                                                                                                            />
-                                                                                                                                                        </div>
-                                                                                                                                                    )}
-                                                                                                                                                    {shouldShowField('physical_address.subdivision') && (
-                                                                                                                                                        <div>
-                                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">State</label>
-                                                                                                                                                            <input
-                                                                                                                                                                type="text"
-                                                                                                                                                                value={kybFormData.physical_address.subdivision}
-                                                                                                                                                                onChange={(e) => setKybFormData({
-                                                                                                                                                                    ...kybFormData,
-                                                                                                                                                                    physical_address: { ...kybFormData.physical_address, subdivision: e.target.value }
-                                                                                                                                                                })}
-                                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                                                placeholder="NY"
-                                                                                                                                                            />
-                                                                                                                                                        </div>
-                                                                                                                                                    )}
-                                                                                                                                                </div>
-                                                                                                                                            )}
-                                                                                                                                            {(shouldShowField('physical_address.postal_code') || shouldShowField('physical_address.country')) && (
-                                                                                                                                                <div className="grid grid-cols-2 gap-2">
-                                                                                                                                                    {shouldShowField('physical_address.postal_code') && (
-                                                                                                                                                        <div>
-                                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">ZIP Code</label>
-                                                                                                                                                            <input
-                                                                                                                                                                type="text"
-                                                                                                                                                                value={kybFormData.physical_address.postal_code}
-                                                                                                                                                                onChange={(e) => setKybFormData({
-                                                                                                                                                                    ...kybFormData,
-                                                                                                                                                                    physical_address: { ...kybFormData.physical_address, postal_code: e.target.value }
-                                                                                                                                                                })}
-                                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                                                placeholder="10001"
-                                                                                                                                                            />
-                                                                                                                                                        </div>
-                                                                                                                                                    )}
-                                                                                                                                                    {shouldShowField('physical_address.country') && (
-                                                                                                                                                        <div>
-                                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">Country</label>
-                                                                                                                                                            <input
-                                                                                                                                                                type="text"
-                                                                                                                                                                value={kybFormData.physical_address.country}
-                                                                                                                                                                onChange={(e) => setKybFormData({
-                                                                                                                                                                    ...kybFormData,
-                                                                                                                                                                    physical_address: { ...kybFormData.physical_address, country: e.target.value }
-                                                                                                                                                                })}
-                                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                                                placeholder="USA"
-                                                                                                                                                            />
-                                                                                                                                                        </div>
-                                                                                                                                                    )}
-                                                                                                                                                </div>
-                                                                                                                                            )}
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                )}
-                                                                                                                            </div>
-                                                                                                                        </div>
-
-                                                                                                                        {/* Enhanced KYB Requirements */}
-                                                                                                                        {(shouldShowField('source_of_funds') || shouldShowField('annual_revenue') || shouldShowField('transaction_volume') || shouldShowField('account_purpose') || shouldShowField('high_risk_activities') || shouldShowField('high_risk_geographies')) && (
-                                                                                                                            <div className="border-t border-border pt-4 mt-4">
-                                                                                                                                <p className="text-xs font-semibold mb-3 text-left">Enhanced KYB Information</p>
-
-                                                                                                                                <div className="space-y-3">
-                                                                                                                                    {shouldShowField('source_of_funds') && (
-                                                                                                                                        <div>
-                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">Source of Funds</label>
-                                                                                                                                            <select
-                                                                                                                                                value={kybFormData.source_of_funds}
-                                                                                                                                                onChange={(e) => setKybFormData({ ...kybFormData, source_of_funds: e.target.value })}
-                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground"
-                                                                                                                                            >
-                                                                                                                                                <option value="">Select source of funds...</option>
-                                                                                                                                                <option value="business_operations">Business Operations</option>
-                                                                                                                                                <option value="investment_income">Investment Income</option>
-                                                                                                                                                <option value="loan_proceeds">Loan Proceeds</option>
-                                                                                                                                                <option value="sale_of_assets">Sale of Assets</option>
-                                                                                                                                                <option value="personal_savings">Personal Savings</option>
-                                                                                                                                                <option value="other">Other</option>
-                                                                                                                                            </select>
-                                                                                                                                        </div>
-                                                                                                                                    )}
-
-                                                                                                                                    {shouldShowField('annual_revenue') && (
-                                                                                                                                        <div>
-                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">Estimated Annual Revenue (USD)</label>
-                                                                                                                                            <select
-                                                                                                                                                value={kybFormData.annual_revenue}
-                                                                                                                                                onChange={(e) => setKybFormData({ ...kybFormData, annual_revenue: e.target.value })}
-                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground"
-                                                                                                                                            >
-                                                                                                                                                <option value="">Select range...</option>
-                                                                                                                                                <option value="0-50000">$0 - $50,000</option>
-                                                                                                                                                <option value="50000-100000">$50,000 - $100,000</option>
-                                                                                                                                                <option value="100000-500000">$100,000 - $500,000</option>
-                                                                                                                                                <option value="500000-1000000">$500,000 - $1,000,000</option>
-                                                                                                                                                <option value="1000000-5000000">$1,000,000 - $5,000,000</option>
-                                                                                                                                                <option value="5000000+">$5,000,000+</option>
-                                                                                                                                            </select>
-                                                                                                                                        </div>
-                                                                                                                                    )}
-
-                                                                                                                                    {shouldShowField('transaction_volume') && (
-                                                                                                                                        <div>
-                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">Expected Monthly Transaction Volume (USD)</label>
-                                                                                                                                            <input
-                                                                                                                                                type="text"
-                                                                                                                                                value={kybFormData.transaction_volume}
-                                                                                                                                                onChange={(e) => setKybFormData({ ...kybFormData, transaction_volume: e.target.value })}
-                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                                                                placeholder="e.g., 10000"
-                                                                                                                                            />
-                                                                                                                                        </div>
-                                                                                                                                    )}
-
-                                                                                                                                    {shouldShowField('account_purpose') && (
-                                                                                                                                        <div>
-                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">Primary Account Purpose</label>
-                                                                                                                                            <select
-                                                                                                                                                value={kybFormData.account_purpose}
-                                                                                                                                                onChange={(e) => setKybFormData({ ...kybFormData, account_purpose: e.target.value })}
-                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground"
-                                                                                                                                            >
-                                                                                                                                                <option value="">Select purpose...</option>
-                                                                                                                                                <option value="operating_account">Operating Account</option>
-                                                                                                                                                <option value="payroll">Payroll</option>
-                                                                                                                                                <option value="investment">Investment</option>
-                                                                                                                                                <option value="savings">Savings</option>
-                                                                                                                                                <option value="payment_processing">Payment Processing</option>
-                                                                                                                                                <option value="other">Other</option>
-                                                                                                                                            </select>
-                                                                                                                                        </div>
-                                                                                                                                    )}
-
-                                                                                                                                    {shouldShowField('high_risk_activities') && (
-                                                                                                                                        <div>
-                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">High Risk Activities (if applicable)</label>
-                                                                                                                                            <textarea
-                                                                                                                                                value={kybFormData.high_risk_activities}
-                                                                                                                                                onChange={(e) => setKybFormData({ ...kybFormData, high_risk_activities: e.target.value })}
-                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground"
-                                                                                                                                                rows={2}
-                                                                                                                                                placeholder="Describe any high-risk activities your business engages in (if any)"
-                                                                                                                                            />
-                                                                                                                                        </div>
-                                                                                                                                    )}
-
-                                                                                                                                    {shouldShowField('high_risk_geographies') && (
-                                                                                                                                        <div>
-                                                                                                                                            <label className="text-xs font-medium mb-1 block text-left">High Risk Geographies (if applicable)</label>
-                                                                                                                                            <textarea
-                                                                                                                                                value={kybFormData.high_risk_geographies}
-                                                                                                                                                onChange={(e) => setKybFormData({ ...kybFormData, high_risk_geographies: e.target.value })}
-                                                                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground"
-                                                                                                                                                rows={2}
-                                                                                                                                                placeholder="List any high-risk geographies your business operates in (if any)"
-                                                                                                                                            />
-                                                                                                                                        </div>
-                                                                                                                                    )}
-                                                                                                                                </div>
-                                                                                                                            </div>
-                                                                                                                        )}
-                                                                                                                    </>
-                                                                                                                )}
-                                                                                                        </div>
-                                                                                                    </>
-                                                                                                )}
-                                                                                            </>
-                                                                                        )}
-
-                                                                                        {/* Step 3: Control Person KYC Verification - Show when step is set to kyc_verification */}
-                                                                                        {kybStep === 'kyc_verification' && (
-                                                                                            <>
-                                                                                                {/* Show waiting screen until KYB is approved */}
-                                                                                                {kybStatus !== 'approved' ? (
-                                                                                                    <WaitingScreen
-                                                                                                        variant="kyc_verification"
-                                                                                                        title="KYB Verification Pending"
-                                                                                                        message="Your business documents have been submitted and are being reviewed."
-                                                                                                        subMessage="Please wait while we verify your business information. Once KYB is approved, you will be able to proceed with Control Person KYC verification."
-                                                                                                    />
-                                                                                                ) : (
-                                                                                            <>
-                                                                                                <div className="mb-3">
-                                                                                                    <p className="text-xs font-semibold mb-2 text-left">Step 3: Control Person KYC Verification *</p>
-                                                                                                    <p className="text-xs text-muted-foreground mb-3 text-left">Your business documents have been approved. The Control Person must complete KYC verification to finalize business verification</p>
-                                                                                                </div>
-
-                                                                                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4">
-                                                                                                    <p className="text-xs text-blue-900 dark:text-blue-100 mb-2">
-                                                                                                        <strong>Control Person:</strong> {kybFormData.control_person.first_name} {kybFormData.control_person.last_name}
-                                                                                                    </p>
-                                                                                                    <p className="text-xs text-blue-900 dark:text-blue-100 mb-3">
-                                                                                                        <strong>Email:</strong> {kybFormData.control_person.email}
-                                                                                                    </p>
-                                                                                                    <p className="text-xs text-blue-900 dark:text-blue-100 mb-2">
-                                                                                                        Complete the KYC verification below. You will need to verify your ID and take a selfie.
-                                                                                                    </p>
-                                                                                                    <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-900 dark:text-amber-100">
-                                                                                                        <p className="font-semibold mb-1">⚠️ Important Note:</p>
-                                                                                                        <p className="mb-1">Even though your information was already submitted, Bridge's KYC verification system requires you to complete the verification flow again.</p>
-                                                                                                        <p>This is required for <strong>live selfie verification</strong> and additional identity checks that cannot be done via API. Please complete all steps in the verification form.</p>
-                                                                                                    </div>
-                                                                                                </div>
-
-                                                                                                {/* KYC Verification Iframe */}
-                                                                                                {controlPersonKycIframeUrl ? (
-                                                                                                    <div className="space-y-3">
-                                                                                                        <div className="relative w-full border border-border rounded-lg overflow-hidden" style={{ minHeight: '600px' }}>
-                                                                                                            <iframe
-                                                                                                                src={controlPersonKycIframeUrl}
-                                                                                                                allow="camera; microphone;"
-                                                                                                                className="w-full border-0"
-                                                                                                                style={{ minHeight: '600px', height: '600px' }}
-                                                                                                                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation"
-                                                                                                                title="Control Person KYC Verification"
-                                                                                                            />
-                                                                                                        </div>
-                                                                                                        {controlPersonKycLink && (
-                                                                                                            <Button
-                                                                                                                size="sm"
-                                                                                                                variant="outline"
-                                                                                                                onClick={() => window.open(controlPersonKycLink, '_blank')}
-                                                                                                                className="w-full text-xs"
-                                                                                                            >
-                                                                                                                <ExternalLink className="h-3 w-3 mr-2" />
-                                                                                                                Open in New Tab
-                                                                                                            </Button>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                ) : controlPersonKycLink ? (
-                                                                                                    <div className="space-y-3">
-                                                                                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                                                                                                            <p className="text-xs text-amber-900 dark:text-amber-100 mb-2 font-semibold">
-                                                                                                                ⚠️ Iframe verification is not available
-                                                                                                            </p>
-                                                                                                            <p className="text-xs text-amber-900 dark:text-amber-100 mb-3">
-                                                                                                                Please click the button below to open the verification link in a new tab. You will need to complete the verification form again (including selfie) even though your information was already submitted via API.
-                                                                                                            </p>
-                                                                                                            <Button
-                                                                                                                size="sm"
-                                                                                                                onClick={() => window.open(controlPersonKycLink, '_blank')}
-                                                                                                                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-xs"
-                                                                                                            >
-                                                                                                                <ExternalLink className="h-3 w-3 mr-2" />
-                                                                                                                Open KYC Verification Link
-                                                                                                            </Button>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                ) : (
-                                                                                                    <div className="p-4 bg-muted rounded-lg border border-border">
-                                                                                                        <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-900 dark:text-amber-100">
-                                                                                                            <p className="font-semibold mb-1">⏳ Waiting for Ultimate Beneficial Owner (UBO) verification</p>
-                                                                                                            <p className="mb-1">Your information has been submitted to Bridge via API. A KYC verification link is being generated for you to complete live selfie verification.</p>
-                                                                                                            <p className="text-[10px] mt-1 opacity-90">Note: The KYC link will ask you to enter your information again - this is required for selfie verification and cannot be done via API.</p>
-                                                                                                        </div>
-                                                                                                        <Button
-                                                                                                            size="sm"
-                                                                                                            onClick={handleControlPersonKyc}
-                                                                                                            disabled={isLoading}
-                                                                                                            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-xs"
-                                                                                                        >
-                                                                                                            {isLoading ? (
-                                                                                                                <>
-                                                                                                                    <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
-                                                                                                                    Loading...
-                                                                                                                </>
-                                                                                                            ) : (
-                                                                                                                <>
-                                                                                                                    <Shield className="h-3 w-3 mr-2" />
-                                                                                                                    Get KYC Verification Link
-                                                                                                                </>
-                                                                                                            )}
-                                                                                                        </Button>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </>
-                                                                                        )}
-                                                                                                </>
-                                                                                            )}
-                                                                                        </>
-                                                                                    )
-                                                                                })()}
-                                                                                    </>
-                                                                                ) : (
-                                                                                    <KYCForm
-                                                                                        formData={kycFormData}
-                                                                                        isLoading={isLoading}
-                                                                                        onFormDataChange={setKycFormData}
-                                                                                        onSubmit={handleSubmitCustomKyc}
-                                                                                    />
-                                                                                )}
-                                                                                </div>
-                                                                                {/* Hide button when KYB waiting screen is shown, BUT always show it if admin requested refill */}
-                                                                                {(() => {
-                                                                                    // Check if KYB waiting screen should be shown
-                                                                                    const hasControlPersonSubmitted = controlPersonSubmitted && 
-                                                                                        (documentStatuses.id_front === 'pending' || 
-                                                                                         documentStatuses.id_front === 'approved' ||
-                                                                                         documentStatuses.id_back === 'pending' ||
-                                                                                         documentStatuses.id_back === 'approved')
-                                                                                    const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
-                                                                                        (documentStatuses.business_formation === 'pending' ||
-                                                                                         documentStatuses.business_formation === 'approved' ||
-                                                                                         documentStatuses.business_ownership === 'pending' ||
-                                                                                         documentStatuses.business_ownership === 'approved')
-                                                                                    const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
-                                                                                        documentStatuses.id_back === 'rejected' ||
-                                                                                        documentStatuses.business_formation === 'rejected' ||
-                                                                                        documentStatuses.business_ownership === 'rejected' ||
-                                                                                        documentStatuses.proof_of_address === 'rejected'
-                                                                                    const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                    const shouldShowKybWaitingScreen = verificationType === 'kyb' &&
-                                                                                        kybStatus !== 'approved' &&
-                                                                                        (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
-                                                                                        !hasRejectedDocs &&
-                                                                                        !hasRequestedFields
-
-                                                                                    // Show button if:
-                                                                                    // 1. Admin requested refill (requestedFields exist), OR
-                                                                                    // 2. KYB waiting screen is NOT showing
-                                                                                    return hasRequestedFields || !shouldShowKybWaitingScreen
-                                                                                })() && (
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            onClick={
-                                                                                                verificationType === 'kyb' && kybStep === 'control_person' ? handleSubmitControlPerson :
-                                                                                                    verificationType === 'kyb' && kybStep === 'business_documents' ? handleSubmitBusinessDocuments :
-                                                                                                        verificationType === 'kyb' && kybStep === 'kyc_verification' ? handleControlPersonKyc :
-                                                                                                            handleSubmitCustomKyc
-                                                                                            }
-                                                                                            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                                            disabled={isLoading}
-                                                                                        >
-                                                                                            {isLoading ? (
-                                                                                                <>
-                                                                                                    <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
-                                                                                                    {verificationType === 'kyb' && kybStep === 'kyc_verification' ? 'Opening...' : 'Submitting...'}
-                                                                                                </>
-                                                                                            ) : (
-                                                                                                <>
-                                                                                                    <Shield className="h-3 w-3 mr-2" />
-                                                                                                    {verificationType === 'kyb' && kybStep === 'control_person' ? 'Submit Control Person' :
-                                                                                                        verificationType === 'kyb' && kybStep === 'business_documents' ? 'Submit Business Documents' :
-                                                                                                            verificationType === 'kyb' && kybStep === 'kyc_verification' ? 'Open KYC Verification Link' :
-                                                                                                                `Submit ${verificationType === 'kyb' ? 'KYB' : 'KYC'} Verification`}
-                                                                                                </>
-                                                                                            )}
-                                                                                        </Button>
-                                                                                    )}
-                                                                            </div>
-                                                                        ) : (
-                                                                            /* Bridge Widget Iframe (Fallback) */
-                                                                            (showVerificationIframe && (verificationType === 'kyb' ? kybWidgetUrl : kycWidgetUrl)) ? (
-                                                                                <div className="space-y-2">
-                                                                                    <div className="relative w-full" style={{ minHeight: '600px' }}>
-                                                                                        <iframe
-                                                                                            src={verificationType === 'kyb' ? kybWidgetUrl : kycWidgetUrl || ''}
-                                                                                            allow="camera; microphone;"
-                                                                                            className="w-full border border-border rounded-lg"
-                                                                                            style={{ minHeight: '600px', height: '600px' }}
-                                                                                            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation"
-                                                                                            title={`${verificationType === 'kyb' ? 'KYB' : 'KYC'} Verification`}
-                                                                                        />
-                                                                                    </div>
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        variant="outline"
-                                                                                        onClick={() => setShowVerificationIframe(false)}
-                                                                                        className="w-full text-xs"
-                                                                                    >
-                                                                                        Close Verification
-                                                                                    </Button>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <Button
-                                                                                    size="sm"
-                                                                                    onClick={async () => {
-                                                                                        try {
-                                                                                            const linkType = verificationType || 'kyc'
-                                                                                            const widgetUrl = linkType === 'kyb' ? kybWidgetUrl : kycWidgetUrl
-
-                                                                                            if (widgetUrl) {
-                                                                                                setShowVerificationIframe(true)
-                                                                                                return
-                                                                                            }
-
-                                                                                            const response = await fetch(`/wallet/bridge/${linkType}-link`, {
-                                                                                                method: 'POST',
-                                                                                                headers: {
-                                                                                                    'Accept': 'application/json',
-                                                                                                    'X-CSRF-TOKEN': getCsrfToken(),
-                                                                                                    'X-Requested-With': 'XMLHttpRequest',
-                                                                                                },
-                                                                                                credentials: 'include',
-                                                                                                cache: 'no-store',
-                                                                                            })
-                                                                                            if (response.ok) {
-                                                                                                const data = await response.json()
-                                                                                                if (data.success && data.data?.widget_url) {
-                                                                                                    if (linkType === 'kyb') {
-                                                                                                        setKybWidgetUrl(data.data.widget_url)
-                                                                                                    } else {
-                                                                                                        setKycWidgetUrl(data.data.widget_url)
-                                                                                                    }
-                                                                                                    setShowVerificationIframe(true)
-                                                                                                } else if (data.success && data.data?.link_url) {
-                                                                                                    window.open(data.data.link_url, '_blank')
-                                                                                                    showSuccessToast('Verification link opened in a new tab')
-                                                                                                }
-                                                                                            }
-                                                                                        } catch (error) {
-                                                                                            console.error('Failed to create verification link:', error)
-                                                                                            showErrorToast('Failed to create verification link')
-                                                                                        }
-                                                                                    }}
-                                                                                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-xs"
-                                                                                    disabled={isLoading}
-                                                                                >
-                                                                                    <Shield className="h-3 w-3 mr-2" />
-                                                                                    Start {verificationType === 'kyb' ? 'KYB' : 'KYC'} Verification
-                                                                                </Button>
-                                                                            )
-                                                                        )}
-                                                                    </div>
-                                                                )}
+                                                                <div className="space-y-2 sm:space-y-3 w-full mt-3">
+                                                                    <BridgePersonaVerificationPanel
+                                                                        verificationType={verificationType}
+                                                                        kycStatus={kycStatus}
+                                                                        kybStatus={kybStatus}
+                                                                        isLoading={isLoading}
+                                                                        isLoadingVerificationWidget={isLoadingVerificationWidget}
+                                                                        onOpenVerification={() => void openBridgeVerificationWidget()}
+                                                                        onRefresh={() => void checkBridgeAndFetchBalance()}
+                                                                    />
+                                                                </div>
+                                                            )}
                                                             {tosStatus !== 'accepted' && tosStatus !== 'approved' && (
                                                                 <p className="text-xs text-amber-600 dark:text-amber-400 italic mt-3">
                                                                     Complete step 1 first
                                                                 </p>
                                                             )}
                                                         </motion.div>
+
                                                     </div>
 
                                                     {/* Status Badge - Show for all "in progress" statuses */}
                                                     {/* Bridge KYC/KYB statuses: not_started, incomplete, under_review, awaiting_questionnaire, awaiting_ubo, approved, rejected, paused, offboarded */}
-                                                    {(verificationType === 'kyb' ? kybStatus : kycStatus) !== 'approved' &&
-                                                        (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'rejected' &&
-                                                        (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'not_started' && (
+                                                    {(verificationType === 'kyb'
+                                                        ? isBridgeKybPending(kybStatus)
+                                                        : isBridgeKycPending(kycStatus)) && (
                                                             <motion.div
                                                                 initial={{ opacity: 0 }}
                                                                 animate={{ opacity: 1 }}
@@ -6299,7 +4111,13 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                 <div className="flex items-center gap-2 text-xs sm:text-sm">
                                                                     <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                                                                     <span className="text-blue-900 dark:text-blue-100">
-                                                                        Verification is being reviewed. This usually takes a few minutes.
+                                                                        Status:{' '}
+                                                                        {formatBridgeVerificationStatusLabel(
+                                                                            verificationType === 'kyb'
+                                                                                ? kybStatus
+                                                                                : kycStatus,
+                                                                        )}
+                                                                        . This usually takes a few minutes.
                                                                     </span>
                                                                 </div>
                                                             </motion.div>
@@ -6428,8 +4246,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         )
                                     ) : null}
 
-                                    {/* Activity - Only show when wallet is created */}
-                                    {actionView === 'main' && (hasWallet || walletAddress) && (
+                                    {/* Activity - show once Bridge account is verified (org wallets may lack local wallet_address) */}
+                                    {actionView === 'main' && (hasWallet || walletAddress || kybStatus === 'approved' || kycStatus === 'approved') && (
                                         <div className="flex-shrink-0 max-h-[350px] min-h-0 flex flex-col">
                                             {isLoadingActivities && activities.length === 0 ? (
                                             <ActivitySkeleton />
@@ -6474,6 +4292,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 feature="wallet"
             />
             )}
+
+            <BridgeVerificationModal
+                isOpen={showVerificationIframe}
+                onClose={handleCloseVerificationModal}
+                onVerificationComplete={handleBridgeVerificationComplete}
+                widgetUrl={verificationModalWidgetUrl}
+                fallbackLinkUrl={verificationType === 'kyb' ? kybLinkUrl : kycLinkUrl}
+                verificationType={verificationType === 'kyb' ? 'kyb' : 'kyc'}
+                isLoading={isLoadingVerificationWidget}
+            />
         </AnimatePresence>,
         document.body,
     )

@@ -105,6 +105,62 @@ export function applyWalletBridgeStatusPayload(payload: WalletBridgeStatusPayloa
   }
 }
 
+/** True when the user has submitted and Bridge is processing — not when they still need to open Persona. */
+export function isBridgeVerificationAwaitingReview(
+  status: string | null | undefined,
+): boolean {
+  if (!status) {
+    return false
+  }
+
+  return (
+    status === "under_review" ||
+    status === "awaiting_questionnaire" ||
+    status === "awaiting_ubo" ||
+    status === "paused" ||
+    status === "pending"
+  )
+}
+
+/** User still needs to complete verification (ToS done but Persona not finished, etc.). */
+export function isBridgeVerificationActionRequired(
+  status: string | null | undefined,
+): boolean {
+  return status === "not_started" || status === "incomplete"
+}
+
+/** @alias isBridgeVerificationAwaitingReview */
+export function isBridgeVerificationPending(
+  status: string | null | undefined,
+): boolean {
+  return isBridgeVerificationAwaitingReview(status)
+}
+
+export function isBridgeKycPending(status: string | null | undefined): boolean {
+  return isBridgeVerificationAwaitingReview(status)
+}
+
+export function isBridgeKybPending(status: string | null | undefined): boolean {
+  return isBridgeVerificationAwaitingReview(status)
+}
+
+export function formatBridgeVerificationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    not_started: "Not started",
+    incomplete: "Needs completion",
+    under_review: "Under review",
+    pending: "Pending review",
+    awaiting_questionnaire: "Awaiting questionnaire",
+    awaiting_ubo: "Awaiting UBO information",
+    paused: "Paused",
+    offboarded: "Offboarded",
+    approved: "Approved",
+    rejected: "Rejected",
+  }
+
+  return labels[status] ?? status.replace(/_/g, " ")
+}
+
 /** Match WalletPopup: org wallet is ready only after KYB + KYC + wallet exist. */
 type AuthLike = {
   user?: { role?: string; current_plan_id?: number | null } | null

@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { router } from "@inertiajs/react"
 import type { UnityCallSessionSnapshot } from "@/contexts/unity-call-session-context"
 import {
   fetchActiveUnityCallSession,
@@ -34,6 +33,9 @@ export function useUnityCallSessionRestore({ session, registerSession, onRestore
   const registerSessionRef = useRef(registerSession)
   const onRestoredRef = useRef(onRestored)
   const restoringRef = useRef(false)
+  const lastRestoreAtRef = useRef(0)
+
+  const RESTORE_MIN_GAP_MS = 15_000
 
   useEffect(() => {
     sessionRef.current = session
@@ -48,12 +50,18 @@ export function useUnityCallSessionRestore({ session, registerSession, onRestore
   }, [onRestored])
 
   useEffect(() => {
-    const restore = async () => {
+    const restore = async (force = false) => {
       if (sessionRef.current || restoringRef.current || !readAuthUserId()) {
         return
       }
 
+      const now = Date.now()
+      if (!force && now - lastRestoreAtRef.current < RESTORE_MIN_GAP_MS) {
+        return
+      }
+
       restoringRef.current = true
+      lastRestoreAtRef.current = now
       try {
         const active = await fetchActiveUnityCallSession()
         if (!active || sessionRef.current) {
@@ -77,26 +85,21 @@ export function useUnityCallSessionRestore({ session, registerSession, onRestore
       }
     }
 
-    void restore()
+    void restore(true)
 
     const onResume = () => {
       void restore()
     }
 
     window.addEventListener("pageshow", onResume)
-    window.addEventListener("focus", onResume)
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         onResume()
       }
     })
 
-    const unsubRouter = router.on("success", onResume)
-
     return () => {
       window.removeEventListener("pageshow", onResume)
-      window.removeEventListener("focus", onResume)
-      unsubRouter()
     }
   }, [])
 }

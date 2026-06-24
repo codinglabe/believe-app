@@ -1,6 +1,17 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
-import { Building2, Loader2, ArrowLeft, AlertCircle } from 'lucide-react'
+import {
+    Building2,
+    Loader2,
+    ArrowLeft,
+    ArrowRight,
+    AlertCircle,
+    Landmark,
+    User,
+    MapPin,
+    Shield,
+    Check,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -11,30 +22,43 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 
+export type BankAccountFormData = {
+    routing_number: string
+    account_number: string
+    account_type: 'checking' | 'savings'
+    account_holder_name: string
+    bank_name: string
+    first_name: string
+    last_name: string
+    street_line_1: string
+    street_line_2?: string
+    city: string
+    state: string
+    postal_code: string
+    country: string
+}
+
 interface AddBankAccountProps {
     isLoading: boolean
-    onLinkAccount: (accountData: {
-        routing_number: string
-        account_number: string
-        account_type: 'checking' | 'savings'
-        account_holder_name: string
-        bank_name: string
-        first_name: string
-        last_name: string
-        street_line_1: string
-        city: string
-        state: string
-        postal_code: string
-        country: string
-    }) => void
+    onLinkAccount: (accountData: BankAccountFormData) => void
     onCancel: () => void
 }
 
-export function AddBankAccount({
-    isLoading,
-    onLinkAccount,
-    onCancel
-}: AddBankAccountProps) {
+const STEPS = [
+    { id: 'bank', label: 'Bank', icon: Landmark },
+    { id: 'holder', label: 'Holder', icon: User },
+    { id: 'address', label: 'Address', icon: MapPin },
+] as const
+
+type StepId = (typeof STEPS)[number]['id']
+
+const inputClass = (hasError: boolean) =>
+    `w-full px-4 py-2.5 bg-background border ${
+        hasError ? 'border-red-500' : 'border-border'
+    } rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`
+
+export function AddBankAccount({ isLoading, onLinkAccount, onCancel }: AddBankAccountProps) {
+    const [step, setStep] = useState<StepId>('bank')
     const [formData, setFormData] = useState({
         routing_number: '',
         account_number: '',
@@ -44,6 +68,7 @@ export function AddBankAccount({
         first_name: '',
         last_name: '',
         street_line_1: '',
+        street_line_2: '',
         city: '',
         state: '',
         postal_code: '',
@@ -51,85 +76,129 @@ export function AddBankAccount({
     })
     const [errors, setErrors] = useState<Record<string, string>>({})
 
-    const validateForm = (): boolean => {
+    const stepIndex = STEPS.findIndex((s) => s.id === step)
+
+    const clearFieldError = (field: string) => {
+        if (errors[field]) {
+            setErrors((prev) => {
+                const next = { ...prev }
+                delete next[field]
+                return next
+            })
+        }
+    }
+
+    const handleInputChange = (field: string, value: string) => {
+        setFormData((prev) => ({ ...prev, [field]: value }))
+        clearFieldError(field)
+    }
+
+    const validateStep = (currentStep: StepId): boolean => {
         const newErrors: Record<string, string> = {}
 
-        if (!formData.routing_number.trim()) {
-            newErrors.routing_number = 'Routing number is required'
-        } else if (!/^\d{9}$/.test(formData.routing_number.replace(/\D/g, ''))) {
-            newErrors.routing_number = 'Routing number must be 9 digits'
+        if (currentStep === 'bank') {
+            if (!formData.routing_number.trim()) {
+                newErrors.routing_number = 'Routing number is required'
+            } else if (!/^\d{9}$/.test(formData.routing_number.replace(/\D/g, ''))) {
+                newErrors.routing_number = 'Routing number must be 9 digits'
+            }
+
+            if (!formData.account_number.trim()) {
+                newErrors.account_number = 'Account number is required'
+            } else if (formData.account_number.replace(/\D/g, '').length < 4) {
+                newErrors.account_number = 'Account number must be at least 4 digits'
+            }
+
+            if (!formData.account_type) {
+                newErrors.account_type = 'Account type is required'
+            }
+
+            if (!formData.bank_name.trim()) {
+                newErrors.bank_name = 'Bank name is required'
+            }
         }
 
-        if (!formData.account_number.trim()) {
-            newErrors.account_number = 'Account number is required'
-        } else if (formData.account_number.replace(/\D/g, '').length < 4) {
-            newErrors.account_number = 'Account number must be at least 4 digits'
+        if (currentStep === 'holder') {
+            if (!formData.account_holder_name.trim()) {
+                newErrors.account_holder_name = 'Account holder name is required'
+            }
+            if (!formData.first_name.trim()) {
+                newErrors.first_name = 'First name is required'
+            }
+            if (!formData.last_name.trim()) {
+                newErrors.last_name = 'Last name is required'
+            }
         }
 
-        if (!formData.account_type) {
-            newErrors.account_type = 'Account type is required'
-        }
+        if (currentStep === 'address') {
+            if (!formData.street_line_1.trim()) {
+                newErrors.street_line_1 = 'Street address is required'
+            } else if (formData.street_line_1.trim().length < 3) {
+                newErrors.street_line_1 = 'Must be at least 3 characters'
+            } else if (formData.street_line_1.trim().length > 35) {
+                newErrors.street_line_1 = 'Must be 35 characters or less'
+            }
 
-        if (!formData.account_holder_name.trim()) {
-            newErrors.account_holder_name = 'Account holder name is required'
-        }
+            if (formData.street_line_2.trim().length > 35) {
+                newErrors.street_line_2 = 'Must be 35 characters or less'
+            }
 
-        if (!formData.bank_name.trim()) {
-            newErrors.bank_name = 'Bank name is required'
-        }
-
-        if (!formData.first_name.trim()) {
-            newErrors.first_name = 'First name is required'
-        }
-
-        if (!formData.last_name.trim()) {
-            newErrors.last_name = 'Last name is required'
-        }
-
-        if (!formData.street_line_1.trim()) {
-            newErrors.street_line_1 = 'Street address is required'
-        }
-
-        if (!formData.city.trim()) {
-            newErrors.city = 'City is required'
-        }
-
-        if (!formData.state.trim()) {
-            newErrors.state = 'State is required'
-        }
-
-        if (!formData.postal_code.trim()) {
-            newErrors.postal_code = 'Postal code is required'
-        }
-
-        if (!formData.country.trim()) {
-            newErrors.country = 'Country is required'
+            if (!formData.city.trim()) {
+                newErrors.city = 'City is required'
+            }
+            if (!formData.state.trim()) {
+                newErrors.state = 'State is required'
+            }
+            if (!formData.postal_code.trim()) {
+                newErrors.postal_code = 'Postal code is required'
+            }
+            if (!formData.country.trim()) {
+                newErrors.country = 'Country is required'
+            }
         }
 
         setErrors(newErrors)
         return Object.keys(newErrors).length === 0
     }
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault()
-
-        if (!validateForm()) {
+    const goNext = () => {
+        if (!validateStep(step)) {
             return
         }
 
-        // Format routing number (remove non-digits)
-        const routingNumber = formData.routing_number.replace(/\D/g, '')
-        const accountNumber = formData.account_number.replace(/\D/g, '')
+        if (step === 'bank') {
+            setStep('holder')
+        } else if (step === 'holder') {
+            setStep('address')
+        }
+    }
+
+    const goBack = () => {
+        if (step === 'holder') {
+            setStep('bank')
+        } else if (step === 'address') {
+            setStep('holder')
+        } else {
+            onCancel()
+        }
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!validateStep('address')) {
+            return
+        }
 
         onLinkAccount({
-            routing_number: routingNumber,
-            account_number: accountNumber,
+            routing_number: formData.routing_number.replace(/\D/g, ''),
+            account_number: formData.account_number.replace(/\D/g, ''),
             account_type: formData.account_type as 'checking' | 'savings',
             account_holder_name: formData.account_holder_name.trim(),
             bank_name: formData.bank_name.trim(),
             first_name: formData.first_name.trim(),
             last_name: formData.last_name.trim(),
             street_line_1: formData.street_line_1.trim(),
+            street_line_2: formData.street_line_2.trim() || undefined,
             city: formData.city.trim(),
             state: formData.state.trim(),
             postal_code: formData.postal_code.trim(),
@@ -137,29 +206,13 @@ export function AddBankAccount({
         })
     }
 
-    const handleInputChange = (field: string, value: string) => {
-        setFormData(prev => ({ ...prev, [field]: value }))
-        // Clear error when user starts typing
-        if (errors[field]) {
-            setErrors(prev => {
-                const newErrors = { ...prev }
-                delete newErrors[field]
-                return newErrors
-            })
-        }
-    }
-
-    const formatRoutingNumber = (value: string) => {
-        // Remove all non-digits
-        const digits = value.replace(/\D/g, '')
-        // Limit to 9 digits
-        return digits.slice(0, 9)
-    }
-
-    const formatAccountNumber = (value: string) => {
-        // Remove all non-digits
-        return value.replace(/\D/g, '')
-    }
+    const FieldError = ({ message }: { message?: string }) =>
+        message ? (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                {message}
+            </p>
+        ) : null
 
     return (
         <motion.div
@@ -167,324 +220,340 @@ export function AddBankAccount({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
-            className="p-4 space-y-4"
+            className="p-4 space-y-5"
         >
-            <div className="space-y-4">
-                {/* Header */}
-                <div className="flex items-center gap-3">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onCancel}
-                        disabled={isLoading}
-                        className="h-8 w-8 p-0"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5 text-primary" />
-                        <h3 className="text-lg font-semibold">Add Bank Account</h3>
-                    </div>
+            <div className="flex items-center gap-3">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={goBack}
+                    disabled={isLoading}
+                    className="h-8 w-8 p-0 shrink-0"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold">Link Bank Account</h3>
+                    <p className="text-xs text-muted-foreground truncate">
+                        Step {stepIndex + 1} of {STEPS.length} · {STEPS[stepIndex].label}
+                    </p>
                 </div>
+            </div>
 
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Account Holder Name */}
-                    <div className="space-y-2">
-                        <Label htmlFor="account_holder_name">
-                            Account Holder Name <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="account_holder_name"
-                            type="text"
-                            placeholder="John Doe"
-                            value={formData.account_holder_name}
-                            onChange={(e) => handleInputChange('account_holder_name', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.account_holder_name ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.account_holder_name && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.account_holder_name}
-                            </p>
-                        )}
-                    </div>
+            <div className="flex items-center gap-2">
+                {STEPS.map((s, index) => {
+                    const Icon = s.icon
+                    const isActive = s.id === step
+                    const isComplete = index < stepIndex
 
-                    {/* Routing Number */}
-                    <div className="space-y-2">
-                        <Label htmlFor="routing_number">
-                            Routing Number <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="routing_number"
-                            type="text"
-                            placeholder="123456789"
-                            value={formData.routing_number}
-                            onChange={(e) => handleInputChange('routing_number', formatRoutingNumber(e.target.value))}
-                            disabled={isLoading}
-                            maxLength={9}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.routing_number ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.routing_number && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.routing_number}
-                            </p>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                            9-digit routing number (found on your checks or bank statement)
-                        </p>
-                    </div>
+                    return (
+                        <div key={s.id} className="flex items-center gap-2 flex-1 min-w-0">
+                            <div
+                                className={`flex items-center justify-center h-8 w-8 rounded-full border shrink-0 transition-colors ${
+                                    isActive
+                                        ? 'border-purple-500 bg-purple-500/10 text-purple-600'
+                                        : isComplete
+                                          ? 'border-purple-500 bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                                          : 'border-border bg-muted text-muted-foreground'
+                                }`}
+                            >
+                                {isComplete ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                            </div>
+                            {index < STEPS.length - 1 && (
+                                <div
+                                    className={`h-0.5 flex-1 rounded-full ${
+                                        index < stepIndex ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-border'
+                                    }`}
+                                />
+                            )}
+                        </div>
+                    )
+                })}
+            </div>
 
-                    {/* Account Number */}
-                    <div className="space-y-2">
-                        <Label htmlFor="account_number">
-                            Account Number <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="account_number"
-                            type="text"
-                            placeholder="000123456789"
-                            value={formData.account_number}
-                            onChange={(e) => handleInputChange('account_number', formatAccountNumber(e.target.value))}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.account_number ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.account_number && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.account_number}
-                            </p>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                            Your bank account number
-                        </p>
-                    </div>
-
-                    {/* Account Type */}
-                    <div className="space-y-2">
-                        <Label htmlFor="account_type">
-                            Account Type <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                            value={formData.account_type}
-                            onValueChange={(value) => handleInputChange('account_type', value)}
-                            disabled={isLoading}
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <AnimatePresence mode="wait">
+                    {step === 'bank' && (
+                        <motion.div
+                            key="bank"
+                            initial={{ opacity: 0, x: 12 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -12 }}
+                            className="space-y-4 rounded-xl border border-border bg-muted/30 p-4"
                         >
-                            <SelectTrigger className={`w-full h-auto px-4 py-2.5 bg-muted border ${errors.account_type ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}>
-                                <SelectValue placeholder="Select account type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="checking">Checking</SelectItem>
-                                <SelectItem value="savings">Savings</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {errors.account_type && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.account_type}
-                            </p>
-                        )}
-                    </div>
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <Landmark className="h-4 w-4 text-purple-600" />
+                                Bank account details
+                            </div>
 
-                    {/* Bank Name */}
-                    <div className="space-y-2">
-                        <Label htmlFor="bank_name">
-                            Bank Name <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="bank_name"
-                            type="text"
-                            placeholder="e.g., Chase Bank, Bank of America"
-                            value={formData.bank_name}
-                            onChange={(e) => handleInputChange('bank_name', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.bank_name ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.bank_name && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.bank_name}
-                            </p>
-                        )}
-                    </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="bank_name">Bank name <span className="text-red-500">*</span></Label>
+                                <input
+                                    id="bank_name"
+                                    type="text"
+                                    placeholder="Chase, Bank of America, etc."
+                                    value={formData.bank_name}
+                                    onChange={(e) => handleInputChange('bank_name', e.target.value)}
+                                    disabled={isLoading}
+                                    className={inputClass(Boolean(errors.bank_name))}
+                                />
+                                <FieldError message={errors.bank_name} />
+                            </div>
 
-                    {/* First Name */}
-                    <div className="space-y-2">
-                        <Label htmlFor="first_name">
-                            First Name <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="first_name"
-                            type="text"
-                            placeholder="John"
-                            value={formData.first_name}
-                            onChange={(e) => handleInputChange('first_name', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.first_name ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.first_name && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.first_name}
-                            </p>
-                        )}
-                    </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="routing_number">Routing number <span className="text-red-500">*</span></Label>
+                                <input
+                                    id="routing_number"
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="123456789"
+                                    value={formData.routing_number}
+                                    onChange={(e) =>
+                                        handleInputChange('routing_number', e.target.value.replace(/\D/g, '').slice(0, 9))
+                                    }
+                                    disabled={isLoading}
+                                    maxLength={9}
+                                    className={inputClass(Boolean(errors.routing_number))}
+                                />
+                                <FieldError message={errors.routing_number} />
+                                <p className="text-xs text-muted-foreground">9-digit number from your check or bank app</p>
+                            </div>
 
-                    {/* Last Name */}
-                    <div className="space-y-2">
-                        <Label htmlFor="last_name">
-                            Last Name <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="last_name"
-                            type="text"
-                            placeholder="Doe"
-                            value={formData.last_name}
-                            onChange={(e) => handleInputChange('last_name', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.last_name ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.last_name && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.last_name}
-                            </p>
-                        )}
-                    </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="account_number">Account number <span className="text-red-500">*</span></Label>
+                                <input
+                                    id="account_number"
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="Account number"
+                                    value={formData.account_number}
+                                    onChange={(e) =>
+                                        handleInputChange('account_number', e.target.value.replace(/\D/g, ''))
+                                    }
+                                    disabled={isLoading}
+                                    className={inputClass(Boolean(errors.account_number))}
+                                />
+                                <FieldError message={errors.account_number} />
+                            </div>
 
-                    {/* Street Address */}
-                    <div className="space-y-2">
-                        <Label htmlFor="street_line_1">
-                            Street Address <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="street_line_1"
-                            type="text"
-                            placeholder="123 Main Street"
-                            value={formData.street_line_1}
-                            onChange={(e) => handleInputChange('street_line_1', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.street_line_1 ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.street_line_1 && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.street_line_1}
-                            </p>
-                        )}
-                    </div>
+                            <div className="space-y-2">
+                                <Label>Account type <span className="text-red-500">*</span></Label>
+                                <Select
+                                    value={formData.account_type || undefined}
+                                    onValueChange={(value) => handleInputChange('account_type', value)}
+                                    disabled={isLoading}
+                                >
+                                    <SelectTrigger className={inputClass(Boolean(errors.account_type))}>
+                                        <SelectValue placeholder="Checking or savings" />
+                                    </SelectTrigger>
+                                    <SelectContent className="z-[100]">
+                                        <SelectItem value="checking">Checking</SelectItem>
+                                        <SelectItem value="savings">Savings</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FieldError message={errors.account_type} />
+                            </div>
+                        </motion.div>
+                    )}
 
-                    {/* City */}
-                    <div className="space-y-2">
-                        <Label htmlFor="city">
-                            City <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="city"
-                            type="text"
-                            placeholder="San Francisco"
-                            value={formData.city}
-                            onChange={(e) => handleInputChange('city', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.city ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.city && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.city}
-                            </p>
-                        )}
-                    </div>
+                    {step === 'holder' && (
+                        <motion.div
+                            key="holder"
+                            initial={{ opacity: 0, x: 12 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -12 }}
+                            className="space-y-4 rounded-xl border border-border bg-muted/30 p-4"
+                        >
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <User className="h-4 w-4 text-purple-600" />
+                                Account holder
+                            </div>
 
-                    {/* State and Postal Code - Side by Side */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="state">
-                                State <span className="text-red-500">*</span>
-                            </Label>
-                            <input
-                                id="state"
-                                type="text"
-                                placeholder="CA"
-                                value={formData.state}
-                                onChange={(e) => handleInputChange('state', e.target.value.toUpperCase())}
-                                disabled={isLoading}
-                                maxLength={2}
-                                className={`w-full px-4 py-2.5 bg-muted border ${errors.state ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                            />
-                            {errors.state && (
-                                <p className="text-xs text-red-500 flex items-center gap-1">
-                                    <AlertCircle className="h-3 w-3" />
-                                    {errors.state}
+                            <div className="space-y-2">
+                                <Label htmlFor="account_holder_name">
+                                    Name on account <span className="text-red-500">*</span>
+                                </Label>
+                                <input
+                                    id="account_holder_name"
+                                    type="text"
+                                    placeholder="As shown on your bank account"
+                                    value={formData.account_holder_name}
+                                    onChange={(e) => handleInputChange('account_holder_name', e.target.value)}
+                                    disabled={isLoading}
+                                    className={inputClass(Boolean(errors.account_holder_name))}
+                                />
+                                <FieldError message={errors.account_holder_name} />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="first_name">First name <span className="text-red-500">*</span></Label>
+                                    <input
+                                        id="first_name"
+                                        type="text"
+                                        value={formData.first_name}
+                                        onChange={(e) => handleInputChange('first_name', e.target.value)}
+                                        disabled={isLoading}
+                                        className={inputClass(Boolean(errors.first_name))}
+                                    />
+                                    <FieldError message={errors.first_name} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="last_name">Last name <span className="text-red-500">*</span></Label>
+                                    <input
+                                        id="last_name"
+                                        type="text"
+                                        value={formData.last_name}
+                                        onChange={(e) => handleInputChange('last_name', e.target.value)}
+                                        disabled={isLoading}
+                                        className={inputClass(Boolean(errors.last_name))}
+                                    />
+                                    <FieldError message={errors.last_name} />
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {step === 'address' && (
+                        <motion.div
+                            key="address"
+                            initial={{ opacity: 0, x: 12 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -12 }}
+                            className="space-y-4 rounded-xl border border-border bg-muted/30 p-4"
+                        >
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <MapPin className="h-4 w-4 text-purple-600" />
+                                Billing address
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="street_line_1">
+                                        Street address <span className="text-red-500">*</span>
+                                    </Label>
+                                    <span
+                                        className={`text-xs ${
+                                            formData.street_line_1.length > 35
+                                                ? 'text-red-500'
+                                                : 'text-muted-foreground'
+                                        }`}
+                                    >
+                                        {formData.street_line_1.length}/35
+                                    </span>
+                                </div>
+                                <input
+                                    id="street_line_1"
+                                    type="text"
+                                    placeholder="123 Main St"
+                                    maxLength={35}
+                                    value={formData.street_line_1}
+                                    onChange={(e) => handleInputChange('street_line_1', e.target.value)}
+                                    disabled={isLoading}
+                                    className={inputClass(Boolean(errors.street_line_1))}
+                                />
+                                <FieldError message={errors.street_line_1} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="street_line_2">Apt, suite, etc. (optional)</Label>
+                                    <span className="text-xs text-muted-foreground">
+                                        {formData.street_line_2.length}/35
+                                    </span>
+                                </div>
+                                <input
+                                    id="street_line_2"
+                                    type="text"
+                                    placeholder="Apt 4B"
+                                    maxLength={35}
+                                    value={formData.street_line_2}
+                                    onChange={(e) => handleInputChange('street_line_2', e.target.value)}
+                                    disabled={isLoading}
+                                    className={inputClass(Boolean(errors.street_line_2))}
+                                />
+                                <FieldError message={errors.street_line_2} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="city">City <span className="text-red-500">*</span></Label>
+                                <input
+                                    id="city"
+                                    type="text"
+                                    value={formData.city}
+                                    onChange={(e) => handleInputChange('city', e.target.value)}
+                                    disabled={isLoading}
+                                    className={inputClass(Boolean(errors.city))}
+                                />
+                                <FieldError message={errors.city} />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="state">State <span className="text-red-500">*</span></Label>
+                                    <input
+                                        id="state"
+                                        type="text"
+                                        placeholder="CA"
+                                        maxLength={2}
+                                        value={formData.state}
+                                        onChange={(e) =>
+                                            handleInputChange('state', e.target.value.toUpperCase().slice(0, 2))
+                                        }
+                                        disabled={isLoading}
+                                        className={inputClass(Boolean(errors.state))}
+                                    />
+                                    <FieldError message={errors.state} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="postal_code">ZIP <span className="text-red-500">*</span></Label>
+                                    <input
+                                        id="postal_code"
+                                        type="text"
+                                        placeholder="94107"
+                                        value={formData.postal_code}
+                                        onChange={(e) => handleInputChange('postal_code', e.target.value)}
+                                        disabled={isLoading}
+                                        className={inputClass(Boolean(errors.postal_code))}
+                                    />
+                                    <FieldError message={errors.postal_code} />
+                                </div>
+                            </div>
+
+                            <div className="flex items-start gap-2 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                                <Shield className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-muted-foreground">
+                                    Your bank details are encrypted and processed securely through Bridge.
+                                    Street line 1 must be 3–35 characters for US bank transfers.
                                 </p>
-                            )}
-                        </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="postal_code">
-                                Postal Code <span className="text-red-500">*</span>
-                            </Label>
-                            <input
-                                id="postal_code"
-                                type="text"
-                                placeholder="94107"
-                                value={formData.postal_code}
-                                onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                                disabled={isLoading}
-                                className={`w-full px-4 py-2.5 bg-muted border ${errors.postal_code ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                            />
-                            {errors.postal_code && (
-                                <p className="text-xs text-red-500 flex items-center gap-1">
-                                    <AlertCircle className="h-3 w-3" />
-                                    {errors.postal_code}
-                                </p>
-                            )}
-                        </div>
-                    </div>
+                <div className="flex gap-2 pt-1">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={step === 'bank' ? onCancel : goBack}
+                        disabled={isLoading}
+                        className="flex-1"
+                    >
+                        {step === 'bank' ? 'Cancel' : 'Back'}
+                    </Button>
 
-                    {/* Country */}
-                    <div className="space-y-2">
-                        <Label htmlFor="country">
-                            Country <span className="text-red-500">*</span>
-                        </Label>
-                        <input
-                            id="country"
-                            type="text"
-                            placeholder="USA"
-                            value={formData.country}
-                            onChange={(e) => handleInputChange('country', e.target.value)}
-                            disabled={isLoading}
-                            className={`w-full px-4 py-2.5 bg-muted border ${errors.country ? 'border-red-500' : 'border-border'} rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200`}
-                        />
-                        {errors.country && (
-                            <p className="text-xs text-red-500 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {errors.country}
-                            </p>
-                        )}
-                    </div>
-
-                    {/* Security Notice */}
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                        <p className="text-xs text-blue-800 dark:text-blue-200">
-                            <strong>Security:</strong> Your bank account information is encrypted and securely stored. 
-                            We use industry-standard security measures to protect your data.
-                        </p>
-                    </div>
-
-                    {/* Submit Button */}
-                    <div className="flex gap-2 pt-2">
+                    {step !== 'address' ? (
                         <Button
                             type="button"
-                            variant="outline"
-                            onClick={onCancel}
+                            onClick={goNext}
                             disabled={isLoading}
-                            className="flex-1"
+                            className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                         >
-                            Cancel
+                            Continue
+                            <ArrowRight className="h-4 w-4 ml-2" />
                         </Button>
+                    ) : (
                         <Button
                             type="submit"
                             disabled={isLoading}
@@ -502,10 +571,9 @@ export function AddBankAccount({
                                 </>
                             )}
                         </Button>
-                    </div>
-                </form>
-            </div>
+                    )}
+                </div>
+            </form>
         </motion.div>
     )
 }
-

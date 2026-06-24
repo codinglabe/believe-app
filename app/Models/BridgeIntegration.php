@@ -95,6 +95,102 @@ class BridgeIntegration extends Model
     }
 
     /**
+     * Find the Bridge integration for a logged-in user (org + user rows).
+     */
+    public static function resolveForUser(User $user): ?self
+    {
+        $candidates = [];
+        $seen = [];
+
+        $add = function (?int $id, ?string $type) use (&$candidates, &$seen): void {
+            if ($id === null || $type === null) {
+                return;
+            }
+
+            $key = $type.'#'.$id;
+            if (isset($seen[$key])) {
+                return;
+            }
+
+            $seen[$key] = true;
+            $candidates[] = [$id, $type];
+        };
+
+        if (in_array($user->role, ['organization', 'organization_pending'], true)) {
+            $add(Organization::forAuthUser($user)?->id, Organization::class);
+            $add($user->organization?->id, Organization::class);
+
+            foreach (Organization::where('user_id', $user->id)->pluck('id') as $orgId) {
+                $add((int) $orgId, Organization::class);
+            }
+
+            foreach ($user->boardMemberships()->pluck('organization_id') as $orgId) {
+                $add((int) $orgId, Organization::class);
+            }
+        }
+
+        $add($user->id, User::class);
+
+        foreach ($candidates as [$id, $type]) {
+            $integration = static::with(['primaryWallet', 'wallets'])
+                ->where('integratable_id', $id)
+                ->where('integratable_type', $type)
+                ->whereNotNull('bridge_customer_id')
+                ->where('bridge_customer_id', '!=', '')
+                ->first();
+
+            if ($integration !== null) {
+                return $integration;
+            }
+        }
+
+        foreach ($candidates as [$id, $type]) {
+            $integration = static::with(['primaryWallet', 'wallets'])
+                ->where('integratable_id', $id)
+                ->where('integratable_type', $type)
+                ->first();
+
+            if ($integration !== null) {
+                return $integration;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve Bridge integration for the logged-in user, preferring the canonical
+     * organization entity (owner or board-linked) for business accounts — same
+     * entity BridgeWalletController uses for status, balance, and KYB.
+     */
+    public static function resolveForAuthUser(User $user): ?self
+    {
+        $isOrgUser = in_array($user->role, ['organization', 'organization_pending'], true);
+
+        if ($isOrgUser) {
+            $organization = Organization::forAuthUser($user);
+            if ($organization) {
+                $orgIntegration = static::with(['primaryWallet', 'wallets'])
+                    ->where('integratable_id', $organization->id)
+                    ->where('integratable_type', Organization::class)
+                    ->whereNotNull('bridge_customer_id')
+                    ->where('bridge_customer_id', '!=', '')
+                    ->first()
+                    ?? static::with(['primaryWallet', 'wallets'])
+                        ->where('integratable_id', $organization->id)
+                        ->where('integratable_type', Organization::class)
+                        ->first();
+
+                if ($orgIntegration !== null) {
+                    return $orgIntegration;
+                }
+            }
+        }
+
+        return static::resolveForUser($user);
+    }
+
+    /**
      * Get the parent integratable model (User or Organization).
      */
     public function integratable(): MorphTo
@@ -141,6 +237,25 @@ class BridgeIntegration extends Model
     }
 
     /**
+     * Bridge ToS DB values: pending, approved (legacy code may still say "accepted").
+     */
+    public static function normalizeTosStatus(?string $status): string
+    {
+        $status = strtolower(trim((string) $status));
+
+        if (in_array($status, ['approved', 'accepted'], true)) {
+            return 'approved';
+        }
+
+        return 'pending';
+    }
+
+    public static function isTosAccepted(?string $status): bool
+    {
+        return in_array(strtolower(trim((string) $status)), ['approved', 'accepted'], true);
+    }
+
+    /**
      * Check if KYC is approved
      */
     public function isKYCApproved(): bool
@@ -168,6 +283,44 @@ class BridgeIntegration extends Model
         
         // For users, need KYC approval
         return $this->isKYCApproved();
+    }
+
+    /**
+     * Integrations that can receive wallet sends (verified + wallet/VA on file).
+     */
+    public function scopeEligibleSendRecipient($query)
+    {
+        return $query
+            ->whereNotNull('bridge_customer_id')
+            ->where('bridge_customer_id', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($userQ) {
+                    $userQ->where('integratable_type', User::class)
+                        ->where('kyc_status', 'approved');
+                })->orWhere(function ($orgQ) {
+                    $orgQ->where('integratable_type', Organization::class)
+                        ->where('kyb_status', 'approved');
+                });
+            })
+            ->where(function ($q) {
+                $q->where(function ($idQ) {
+                    $idQ->whereNotNull('bridge_wallet_id')
+                        ->where('bridge_wallet_id', '!=', '');
+                })->orWhereHas('wallets', function ($w) {
+                    $w->where(function ($wq) {
+                        $wq->where(function ($bw) {
+                            $bw->whereNotNull('bridge_wallet_id')
+                                ->where('bridge_wallet_id', '!=', '');
+                        })->orWhere(function ($va) {
+                            $va->whereNotNull('virtual_account_id')
+                                ->where('virtual_account_id', '!=', '');
+                        })->orWhere(function ($addr) {
+                            $addr->whereNotNull('wallet_address')
+                                ->where('wallet_address', '!=', '');
+                        });
+                    });
+                });
+            });
     }
 
     /**

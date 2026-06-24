@@ -35,6 +35,17 @@ export interface Activity {
     transaction_id?: string
     is_outgoing?: boolean
     recipient_type?: string
+    /** Bridge on-ramp rail: ach, wire, fednow, sepa, etc. */
+    payment_method?: string | null
+    /** Human label for UI: ACH, Wire, FedNow, … */
+    payment_method_label?: string | null
+    /** Raw Bridge lifecycle state (transfer state, VA event type, wallet history type) */
+    bridge_state?: string | null
+    /** Primary one-line label for activity lists (from Bridge API) */
+    display_label?: string | null
+    deposit_id?: string | null
+    bridge_transfer_id?: string | null
+    virtual_account_event_id?: string | null
 }
 
 export interface ExternalAccount {
@@ -43,6 +54,7 @@ export interface ExternalAccount {
     routing_number: string
     account_type: string
     account_holder_name: string
+    bank_name?: string
     status: string
 }
 
@@ -52,7 +64,6 @@ export interface Recipient {
     name: string
     email?: string
     display_name: string
-    address: string
 }
 
 export interface KycFormData {

@@ -58,6 +58,25 @@ class StripePaymentSettingsProvisioningJob implements ShouldQueue
 
         $updates = $this->stripeModelToConfigArray($stripe);
 
+        if (! empty(trim((string) $stripe->sandbox_secret_key))) {
+            $cid = $provisioning->createOrFetchStripeCustomer(
+                $stripe->sandbox_secret_key,
+                'sandbox',
+                $user
+            );
+            if ($cid) {
+                $updates['sandbox_customer_id'] = $cid;
+            }
+            $accountId = StripeConfigService::resolveAccountIdWithSecretKey($stripe->sandbox_secret_key);
+            if ($accountId) {
+                $updates['sandbox_account_id'] = $accountId;
+            }
+            $wh = $provisioning->fetchWebhookSecret($stripe->sandbox_secret_key, 'sandbox');
+            if ($wh) {
+                $updates['sandbox_webhook_secret'] = $wh;
+            }
+        }
+
         if (! empty(trim((string) $stripe->test_secret_key))) {
             $cid = $provisioning->createOrFetchStripeCustomer(
                 $stripe->test_secret_key,
@@ -66,6 +85,10 @@ class StripePaymentSettingsProvisioningJob implements ShouldQueue
             );
             if ($cid) {
                 $updates['test_customer_id'] = $cid;
+            }
+            $accountId = StripeConfigService::resolveAccountIdWithSecretKey($stripe->test_secret_key);
+            if ($accountId) {
+                $updates['test_account_id'] = $accountId;
             }
             $wh = $provisioning->fetchWebhookSecret($stripe->test_secret_key, 'test');
             if ($wh) {
@@ -81,6 +104,10 @@ class StripePaymentSettingsProvisioningJob implements ShouldQueue
             );
             if ($cid) {
                 $updates['live_customer_id'] = $cid;
+            }
+            $accountId = StripeConfigService::resolveAccountIdWithSecretKey($stripe->live_secret_key);
+            if ($accountId) {
+                $updates['live_account_id'] = $accountId;
             }
             $wh = $provisioning->fetchWebhookSecret($stripe->live_secret_key, 'live');
             if ($wh) {
@@ -139,7 +166,9 @@ class StripePaymentSettingsProvisioningJob implements ShouldQueue
 
     private function normalizeActiveEnvironment(string $activeEnvironment): string
     {
-        return $activeEnvironment === 'live' ? 'live' : 'sandbox';
+        $environment = strtolower(trim($activeEnvironment));
+
+        return in_array($environment, ['sandbox', 'test', 'live'], true) ? $environment : 'sandbox';
     }
 
     /**
@@ -149,14 +178,22 @@ class StripePaymentSettingsProvisioningJob implements ShouldQueue
     {
         return [
             'mode_environment' => $s->mode_environment,
+            'sandbox_publishable_key' => $s->sandbox_publishable_key,
+            'sandbox_secret_key' => $s->sandbox_secret_key,
+            'sandbox_customer_id' => $s->sandbox_customer_id,
+            'sandbox_account_id' => $s->sandbox_account_id,
+            'sandbox_webhook_secret' => $s->sandbox_webhook_secret,
             'test_publishable_key' => $s->test_publishable_key,
             'test_secret_key' => $s->test_secret_key,
             'test_customer_id' => $s->test_customer_id,
+            'test_account_id' => $s->test_account_id,
             'test_webhook_secret' => $s->test_webhook_secret,
             'live_publishable_key' => $s->live_publishable_key,
             'live_secret_key' => $s->live_secret_key,
             'live_customer_id' => $s->live_customer_id,
+            'live_account_id' => $s->live_account_id,
             'live_webhook_secret' => $s->live_webhook_secret,
+            'sandbox_donation_product_id' => $s->sandbox_donation_product_id,
             'test_donation_product_id' => $s->test_donation_product_id,
             'live_donation_product_id' => $s->live_donation_product_id,
         ];

@@ -1,26 +1,38 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react'
 import { Activity as ActivityType } from './types'
-import { formatDate, formatCurrency } from './utils'
+import { formatDate, formatCurrency, getActivityDisplayLabel } from './utils'
+import { DepositPaymentMethodBadge } from './DepositPaymentMethodBadge'
+import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatusBadge'
 import { getCsrfToken as getWalletCsrfToken } from './utils'
+import { useWalletBridgeRealtime } from '@/hooks/use-wallet-bridge-realtime'
+import { patchActivitiesFromBridgeUpdate } from '@/lib/patch-wallet-activities'
+import {
+    getAllWalletActivityCache,
+    patchAllWalletActivityCache,
+    setAllWalletActivityCache,
+} from '@/lib/wallet-activity-cache'
+import type { WalletBridgeUpdatePayload } from '@/hooks/use-wallet-bridge-realtime'
 
 interface ActivityScreenProps {
     onBack: () => void
     onActivityClick?: (activity: ActivityType) => void
+    userId?: number | null
 }
 
-export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps) {
-    const [activities, setActivities] = useState<ActivityType[]>([])
-    const [isLoading, setIsLoading] = useState(false)
+export function ActivityScreen({ onBack, onActivityClick, userId }: ActivityScreenProps) {
+    const cached = getAllWalletActivityCache()
+    const [activities, setActivities] = useState<ActivityType[]>(cached.loaded ? cached.activities : [])
+    const [isLoading, setIsLoading] = useState(!cached.loaded)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
-    const [hasMore, setHasMore] = useState(false)
-    const [currentPage, setCurrentPage] = useState(1)
+    const [hasMore, setHasMore] = useState(cached.loaded ? cached.hasMore : false)
+    const [currentPage, setCurrentPage] = useState(cached.loaded ? cached.currentPage : 1)
 
     const fetchActivities = async (page: number = 1, append: boolean = false) => {
         if (append) {
             setIsLoadingMore(true)
-        } else {
+        } else if (!getAllWalletActivityCache().loaded) {
             setIsLoading(true)
         }
 
@@ -39,10 +51,21 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
             if (response.ok) {
                 const data = await response.json()
                 if (data.success) {
+                    const nextActivities = data.activities || []
                     if (append) {
-                        setActivities(prev => [...prev, ...(data.activities || [])])
+                        setActivities((prev) => {
+                            const merged = [...prev, ...nextActivities]
+                            const cache = getAllWalletActivityCache()
+                            cache.activities = merged
+                            cache.hasMore = data.has_more || false
+                            cache.currentPage = page
+                            cache.loaded = true
+
+                            return merged
+                        })
                     } else {
-                        setActivities(data.activities || [])
+                        setActivities(nextActivities)
+                        setAllWalletActivityCache(nextActivities, data.has_more || false, page)
                     }
                     setHasMore(data.has_more || false)
                     setCurrentPage(page)
@@ -56,18 +79,40 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
         }
     }
 
+    const handleBridgeRealtimeUpdate = useCallback((payload: WalletBridgeUpdatePayload) => {
+        if (payload.refresh_activity === false) {
+            return
+        }
+
+        setActivities((prev) => {
+            const next = patchActivitiesFromBridgeUpdate(prev, payload)
+            patchAllWalletActivityCache(() => next)
+
+            return next
+        })
+    }, [])
+
+    useWalletBridgeRealtime({
+        userId: userId ?? null,
+        enabled: Boolean(userId),
+        onUpdate: handleBridgeRealtimeUpdate,
+    })
+
     useEffect(() => {
-        fetchActivities(1, false)
+        if (getAllWalletActivityCache().loaded) {
+            return
+        }
+
+        void fetchActivities(1, false)
     }, [])
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const target = e.currentTarget
         const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
 
-        // Load more when scrolled near bottom (within 50px) and there are more activities
         if (scrollBottom < 50 && hasMore && !isLoadingMore && !isLoading) {
             const nextPage = currentPage + 1
-            fetchActivities(nextPage, true)
+            void fetchActivities(nextPage, true)
         }
     }
 
@@ -124,7 +169,7 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
             </div>
 
             <div
-                className={`flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${
+                className={`flex-1 wallet-scroll-nested ${
                     hasMore ? 'overflow-y-auto' : 'overflow-hidden'
                 }`}
                 onScroll={hasMore ? handleScroll : undefined}
@@ -143,10 +188,14 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 onClick={() => onActivityClick?.(activity)}
-                                className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors ${
+                                className={`relative w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors ${
                                     onActivityClick ? 'cursor-pointer' : ''
                                 }`}
                             >
+                                <ActivityStatusBadge
+                                    status={resolveActivityBadgeStatus(activity)}
+                                    className="absolute top-2 right-2"
+                                />
                                 <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
                                     <div className={`p-2 rounded-lg flex-shrink-0 ${
                                         isTransferSent 
@@ -168,22 +217,23 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                        <p className="text-sm font-medium break-words sm:truncate">
-                                            {isTransferSent 
-                                                ? `Sent to ${activity.donor_name}`
-                                                : isTransferReceived
-                                                ? `Received from ${activity.donor_name}`
-                                                : isDeposit
-                                                ? `Deposit - ${activity.donor_name}`
-                                                : `Donation from ${activity.donor_name}`
-                                            }
-                                        </p>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <p className="text-sm font-medium break-words sm:truncate">
+                                                {getActivityDisplayLabel(activity)}
+                                            </p>
+                                            {isDeposit && activity.payment_method_label && (
+                                                <DepositPaymentMethodBadge label={activity.payment_method_label} />
+                                            )}
+                                        </div>
                                         <p className="text-xs text-muted-foreground mt-1">
                                             {formatDate(activity.date)}
+                                            {isDeposit && activity.payment_method_label && (
+                                                <span className="sm:hidden"> · {activity.payment_method_label}</span>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right">
+                                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right pr-6 sm:pr-0">
                                     <p className={`text-base sm:text-sm font-semibold ${
                                         isTransferSent 
                                             ? 'text-red-600'
@@ -220,4 +270,3 @@ export function ActivityScreen({ onBack, onActivityClick }: ActivityScreenProps)
         </motion.div>
     )
 }
-

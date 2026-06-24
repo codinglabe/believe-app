@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
-import { ArrowLeft, Calendar, DollarSign, User, FileText, CheckCircle2, Clock, XCircle, AlertCircle, ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Calendar, DollarSign, User, FileText, CheckCircle2, Clock, XCircle, AlertCircle, ArrowUpRight, ArrowDownLeft, Plus, Landmark } from 'lucide-react'
 import { Activity } from './types'
 import { formatDate, formatCurrency } from './utils'
+import { DepositPaymentMethodBadge } from './DepositPaymentMethodBadge'
 import { Button } from '@/components/ui/button'
 
 interface TransactionDetailsProps {
@@ -154,6 +155,25 @@ export function TransactionDetails({ activity, onBack }: TransactionDetailsProps
                     </div>
                     <p className="text-sm">{formatDate(activity.date)}</p>
                 </div>
+
+                {isDeposit && activity.payment_method_label && (
+                    <div className="p-4 rounded-lg border border-border">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Landmark className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">Deposit method</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <DepositPaymentMethodBadge label={activity.payment_method_label} className="text-xs px-2 py-1" />
+                            <p className="text-sm text-muted-foreground">
+                                {activity.payment_method_label === 'ACH'
+                                    ? 'Automated Clearing House transfer'
+                                    : activity.payment_method_label === 'Wire'
+                                    ? 'Bank wire transfer'
+                                    : `${activity.payment_method_label} bank transfer`}
+                            </p>
+                        </div>
+                    </div>
+                )}
 
                 {activity.transaction_id && (
                     <div className="p-4 rounded-lg border border-border">

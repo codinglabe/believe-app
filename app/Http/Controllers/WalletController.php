@@ -5,8 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\BoardMember;
+use App\Models\BridgeIntegration;
 use App\Support\SupporterSubscriptionService;
 use App\Models\Transaction;
+use App\Services\BridgeVirtualAccountDepositService;
+use App\Services\BridgeWalletReadService;
+use App\Services\WalletTransactionNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -124,7 +128,7 @@ class WalletController extends Controller
             
             // Determine entity (user or organization)
             if ($isOrgUser) {
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
                 if (!$organization || !$organization->user) {
                     return response()->json([
                         'success' => true,
@@ -147,56 +151,30 @@ class WalletController extends Controller
                 $entityUser = $user;
             }
 
-            // Try to fetch balance from Bridge first
+            // Bridge wallet: balance comes directly from Bridge API (not local ledger).
             $bridgeBalance = null;
-            $bridgeService = app(\App\Services\BridgeService::class);
-            
-            try {
-                $integration = \App\Models\BridgeIntegration::with('primaryWallet')
-                    ->where('integratable_id', $entity->id)
-                    ->where('integratable_type', $entityType)
-                    ->first();
+            $walletSnapshot = null;
+            $bridgeRead = app(BridgeWalletReadService::class);
+            $integration = BridgeIntegration::resolveForAuthUser($user);
+            $useBridgeWallet = $bridgeRead->usesBridgeWalletAsSourceOfTruth($integration);
 
-                if ($integration && $integration->bridge_customer_id) {
-                    $isSandbox = $bridgeService->isSandbox();
-                    
-                    // Try to get wallet ID (works in both sandbox and production)
-                    $walletId = $integration->bridge_wallet_id ?? 
-                               ($integration->primaryWallet ? $integration->primaryWallet->bridge_wallet_id : null);
-                    
-                    // In sandbox, virtual accounts don't have wallet IDs, so try virtual_account_id
-                    if (!$walletId && $isSandbox && $integration->primaryWallet && $integration->primaryWallet->virtual_account_id) {
-                        // In sandbox, virtual accounts don't hold balances, but we can try to get customer info
-                        // For now, we'll skip Bridge fetch in sandbox since virtual accounts don't have balances
-                        $walletId = null;
-                    }
-                    
-                    // Try to get balance from Bridge wallet (production mode)
-                    if ($walletId && !$isSandbox) {
-                        $walletResult = $bridgeService->getWallet($integration->bridge_customer_id, $walletId);
-                        
-                        if ($walletResult['success'] && isset($walletResult['data'])) {
-                            $walletData = $walletResult['data'];
-                            $bridgeBalance = (float) ($walletData['balance'] ?? $walletData['available_balance'] ?? $walletData['total_balance'] ?? 0);
-                            
-                            // Update local balance to match Bridge balance
-                            if ($bridgeBalance !== null) {
-                                $entityUser->balance = $bridgeBalance;
-                                $entityUser->save();
-                            }
-                        }
-                    }
+            try {
+                if ($useBridgeWallet) {
+                    $walletSnapshot = $bridgeRead->getWalletSnapshot($integration);
+                    $bridgeBalance = $walletSnapshot['balance'] ?? $bridgeRead->getBalance($integration);
                 }
-            } catch (\Exception $bridgeError) {
-                // Log but don't fail - fall back to local balance
-                \Illuminate\Support\Facades\Log::warning('Failed to fetch Bridge balance', [
-                    'error' => $bridgeError->getMessage(),
+            } catch (\Throwable $syncError) {
+                Log::warning('Bridge wallet balance read failed', [
                     'user_id' => $user->id,
+                    'integration_id' => $integration?->id,
+                    'error' => $syncError->getMessage(),
                 ]);
             }
 
-            // Use Bridge balance if available, otherwise use local balance
-            $balance = $bridgeBalance !== null ? $bridgeBalance : (float) ($entityUser->balance ?? 0);
+            $localBalance = round((float) ($entityUser->balance ?? 0), 2);
+            $balance = $useBridgeWallet
+                ? round((float) ($bridgeBalance ?? 0), 2)
+                : $localBalance;
             
             // Check if user has active subscription
             // For regular users: check for WALLET subscription specifically
@@ -212,11 +190,14 @@ class WalletController extends Controller
             $response = [
                 'success' => true,
                 'balance' => $balance,
-                'local_balance' => (float) ($entityUser->balance ?? 0),
-                'bridge_balance' => $bridgeBalance,
+                'local_balance' => $useBridgeWallet ? null : $localBalance,
+                'bridge_balance' => $useBridgeWallet ? $balance : $bridgeBalance,
+                'bridge_customer_id' => $useBridgeWallet ? $integration?->bridge_customer_id : null,
+                'bridge_wallet_id' => $walletSnapshot['wallet_id'] ?? null,
+                'spendable_balance' => $balance,
                 'currency' => 'USD',
                 'connected' => true,
-                'source' => $bridgeBalance !== null ? 'bridge' : ($isOrgUser ? 'organization' : 'user'),
+                'source' => $useBridgeWallet ? 'bridge_wallet' : 'ledger',
                 'has_subscription' => $hasSubscription,
                 'supporter_tier' => SupporterSubscriptionService::currentTierSlug($entityUser),
             ];
@@ -647,15 +628,38 @@ class WalletController extends Controller
             // Check if user is an organization user
             $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
             
-            // For main screen, always limit to 10 activities
+            // For main screen, show recent wallet activity (Bridge API may return more internally)
             $page = 1;
-            $perPage = 10;
+            $perPage = 50;
+
+            $integration = BridgeIntegration::resolveForAuthUser($user);
+            $bridgeRead = app(BridgeWalletReadService::class);
+
+            if ($bridgeRead->usesBridgeWalletAsSourceOfTruth($integration)) {
+                $bridgeActivities = $bridgeRead->getActivity($integration, $perPage);
+
+                return response()->json([
+                    'success' => true,
+                    'activities' => $bridgeActivities,
+                    'source' => 'bridge',
+                    'has_more' => count($bridgeActivities) >= $perPage,
+                    'current_page' => $page,
+                    'total' => count($bridgeActivities),
+                    'pagination' => [
+                        'current_page' => $page,
+                        'per_page' => $perPage,
+                        'total' => count($bridgeActivities),
+                        'last_page' => 1,
+                        'has_more' => false,
+                    ],
+                ]);
+            }
             
             $transactions = collect([]);
 
             if ($isOrgUser) {
                 // For organization users: show only wallet transactions (transfers and deposits)
-                $organization = $user->organization;
+                $organization = Organization::forAuthUser($user);
             
                 if ($organization && $organization->user) {
                     $orgUser = $organization->user;
@@ -663,6 +667,7 @@ class WalletController extends Controller
                     // Get transactions (transfers and deposits) for the organization's user
                     // Include both completed and pending transfers so users can see transfers in progress
                     $transactions = Transaction::where('user_id', $orgUser->id)
+                        ->visibleInWalletActivity()
                         ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                         ->whereIn('status', ['completed', 'pending'])
                         ->orderBy('created_at', 'desc')
@@ -673,6 +678,7 @@ class WalletController extends Controller
                 // Get transactions (transfers and deposits) for the regular user
                 // Include both completed and pending transfers so users can see transfers in progress
                 $transactions = Transaction::where('user_id', $user->id)
+                    ->visibleInWalletActivity()
                     ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                     ->whereIn('status', ['completed', 'pending'])
                     ->orderBy('created_at', 'desc')
@@ -816,11 +822,43 @@ class WalletController extends Controller
             $donations = collect([]);
             $transactions = collect([]);
 
+            $bridgeIntegration = BridgeIntegration::resolveForAuthUser($user);
+            $useBridgeWalletActivity = app(BridgeWalletReadService::class)
+                ->usesBridgeWalletAsSourceOfTruth($bridgeIntegration);
+
+            if ($useBridgeWalletActivity) {
+                $allBridgeActivities = collect(
+                    app(BridgeWalletReadService::class)->getActivity($bridgeIntegration, 500)
+                )->map(function (array $activity) {
+                    $activity['sort_date'] = $activity['date'] ?? now()->toIso8601String();
+
+                    return $activity;
+                })
+                    ->sortByDesc('sort_date')
+                    ->values();
+
+                $total = $allBridgeActivities->count();
+                $paginated = $allBridgeActivities->slice(($page - 1) * $perPage, $perPage)->values();
+
+                return response()->json([
+                    'success' => true,
+                    'activities' => $paginated->map(function (array $activity) {
+                        unset($activity['sort_date']);
+
+                        return $activity;
+                    })->values(),
+                    'has_more' => ($page * $perPage) < $total,
+                    'current_page' => $page,
+                    'total' => $total,
+                    'source' => 'bridge',
+                ]);
+            }
+
             if ($isOrgUser) {
                 // For organization users: show donations received and transactions
-            $organization = $user->organization;
+            $organization = Organization::forAuthUser($user);
             
-                if ($organization && $organization->user) {
+                if ($organization) {
             $orgUser = $organization->user;
             
             // Get donations received by this organization
@@ -846,11 +884,14 @@ class WalletController extends Controller
 
             // Get transactions (transfers and deposits) for the organization's user
                     // Include both completed and pending transfers so users can see transfers in progress
+            if (! $useBridgeWalletActivity) {
             $transactions = Transaction::where('user_id', $orgUser->id)
+                ->visibleInWalletActivity()
                 ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                         ->whereIn('status', ['completed', 'pending'])
                 ->orderBy('created_at', 'desc')
                 ->get();
+            }
                 }
             } else {
                 // For regular users: show donations made and transactions
@@ -878,13 +919,17 @@ class WalletController extends Controller
 
                 // Get transactions (transfers and deposits) for the regular user
                 // Include both completed and pending transfers so users can see transfers in progress
+                if (! $useBridgeWalletActivity) {
                 $transactions = Transaction::where('user_id', $user->id)
+                    ->visibleInWalletActivity()
                     ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                     ->whereIn('status', ['completed', 'pending'])
                     ->orderBy('created_at', 'desc')
                     ->get();
+                }
             }
             
+            if (! $useBridgeWalletActivity) {
             $transactions = $transactions->map(function ($transaction) {
                     $meta = $transaction->meta ?? [];
                     $isOutgoing = $transaction->type === 'transfer_out';
@@ -956,6 +1001,7 @@ class WalletController extends Controller
                         'recipient_type' => $meta['recipient_type'] ?? null,
                     ];
                 });
+            }
 
             // Combine and sort by date (newest first)
             $allActivities = $donations->concat($transactions)
@@ -995,7 +1041,8 @@ class WalletController extends Controller
     }
 
     /**
-     * Search for users and organizations by name or email
+     * Search for wallet-connected users and organizations by name or email.
+     * Only returns recipients that can receive wallet transfers (verified + wallet on file).
      */
     public function searchRecipients(Request $request)
     {
@@ -1014,14 +1061,16 @@ class WalletController extends Controller
             $searchTerm = '%' . trim($search) . '%';
             $results = [];
 
-            // Search users (excluding the current user and only users with 'user' role via Spatie)
-            // Exclude users who have 'admin' or 'organization' roles
+            // Search users with a connected, verified wallet (consumer members only)
             $users = User::where('id', '!=', $user->id)
                 ->whereHas('roles', function ($query) {
                     $query->where('name', 'user');
                 })
                 ->whereDoesntHave('roles', function ($query) {
                     $query->whereIn('name', ['admin', 'organization', 'organization_pending']);
+                })
+                ->whereHas('bridgeIntegration', function ($query) {
+                    $query->eligibleSendRecipient();
                 })
                 ->where(function ($query) use ($searchTerm) {
                     $query->where('name', 'LIKE', $searchTerm)
@@ -1039,17 +1088,26 @@ class WalletController extends Controller
                     'name' => $userResult->name,
                     'email' => $userResult->email,
                     'display_name' => $userResult->name . ($userResult->email ? ' (' . $userResult->email . ')' : ''),
-                    'address' => '0x' . str_pad(dechex($userResult->id), 40, '0', STR_PAD_LEFT), // Generate address from user ID
                 ];
             }
 
-            // Search organizations
-            $organizations = Organization::query()
+            // Search organizations with a connected, verified wallet
+            $organizationsQuery = Organization::query()
                 ->excludingCareAllianceHubs()
+                ->whereHas('bridgeIntegration', function ($query) {
+                    $query->eligibleSendRecipient();
+                })
                 ->where(function ($query) use ($searchTerm) {
                     $query->where('name', 'LIKE', $searchTerm)
                         ->orWhere('email', 'LIKE', $searchTerm);
-                })
+                });
+
+            $senderOrganization = Organization::forAuthUser($user);
+            if ($senderOrganization) {
+                $organizationsQuery->where('id', '!=', $senderOrganization->id);
+            }
+
+            $organizations = $organizationsQuery
                 ->select('id', 'name', 'email')
                 ->limit($limit)
                 ->get();
@@ -1061,7 +1119,6 @@ class WalletController extends Controller
                     'name' => $org->name,
                     'email' => $org->email,
                     'display_name' => $org->name . ($org->email ? ' (' . $org->email . ')' : ''),
-                    'address' => '0x' . str_pad(dechex($org->id), 40, '0', STR_PAD_LEFT), // Generate address from org ID
                 ];
             }
 
@@ -1116,7 +1173,7 @@ class WalletController extends Controller
             }
 
             // Get sender's organization and user
-            $organization = $user->organization;
+            $organization = Organization::forAuthUser($user);
             if (!$organization || !$organization->user) {
                 return response()->json([
                     'success' => false,
@@ -1125,6 +1182,16 @@ class WalletController extends Controller
             }
 
             $senderUser = $organization->user;
+
+            $bridgeIntegration = BridgeIntegration::resolveForAuthUser($user);
+
+            if (app(BridgeWalletReadService::class)->usesBridgeWalletAsSourceOfTruth($bridgeIntegration)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Use Bridge wallet send. Local ledger transfers are disabled for Bridge-connected accounts.',
+                ], 400);
+            }
+
             $senderBalance = (float) ($senderUser->balance ?? 0);
 
             // Check if sender has sufficient balance
@@ -1194,7 +1261,7 @@ class WalletController extends Controller
                 $senderUser->decrement('balance', $amount);
                 
                 // Record sender transaction
-                $senderUser->recordTransaction([
+                $senderTransaction = $senderUser->recordTransaction([
                     'type' => 'transfer_out',
                     'amount' => $amount,
                     'status' => 'completed',
@@ -1212,9 +1279,9 @@ class WalletController extends Controller
 
                 // Add to recipient
                 $recipientUser->increment('balance', $amount);
-                
+
                 // Record recipient transaction
-                $recipientUser->recordTransaction([
+                $recipientTransaction = $recipientUser->recordTransaction([
                     'type' => 'transfer_in',
                     'amount' => $amount,
                     'status' => 'completed',
@@ -1231,6 +1298,9 @@ class WalletController extends Controller
                 ]);
 
                 DB::commit();
+
+                app(WalletTransactionNotifier::class)->notify($senderUser, $senderTransaction);
+                app(WalletTransactionNotifier::class)->notify($recipientUser, $recipientTransaction);
 
                 // Get updated balances
                 $senderUser->refresh();
@@ -1309,7 +1379,7 @@ class WalletController extends Controller
             }
 
             // Get organization and user
-            $organization = $user->organization;
+            $organization = Organization::forAuthUser($user);
             if (!$organization || !$organization->user) {
                 return response()->json([
                     'success' => false,
@@ -1319,6 +1389,23 @@ class WalletController extends Controller
 
             $orgUser = $organization->user;
 
+            $bridgeIntegration = BridgeIntegration::resolveForAuthUser($user);
+            $bridgeRead = app(BridgeWalletReadService::class);
+
+            if ($bridgeRead->usesBridgeWalletAsSourceOfTruth($bridgeIntegration)) {
+                $bridgeBalance = round((float) ($bridgeRead->getBalance($bridgeIntegration) ?? 0), 2);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Deposits are credited by Bridge when your bank transfer settles. Use deposit instructions to add funds.',
+                    'use_deposit_instructions' => true,
+                    'data' => [
+                        'balance' => $bridgeBalance,
+                        'source' => 'bridge',
+                    ],
+                ], 422);
+            }
+
             DB::beginTransaction();
             
             try {
@@ -1326,7 +1413,7 @@ class WalletController extends Controller
                 $orgUser->increment('balance', $amount);
                 
                 // Record deposit transaction
-                $orgUser->recordTransaction([
+                $depositTransaction = $orgUser->recordTransaction([
                     'type' => 'deposit',
                     'amount' => $amount,
                     'status' => 'completed',
@@ -1341,6 +1428,8 @@ class WalletController extends Controller
                 ]);
 
                 DB::commit();
+
+                app(WalletTransactionNotifier::class)->notify($orgUser, $depositTransaction);
 
                 // Get updated balance
                 $orgUser->refresh();

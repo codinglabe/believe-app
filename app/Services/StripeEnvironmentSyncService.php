@@ -572,9 +572,7 @@ class StripeEnvironmentSyncService
                 // Update payment_methods table with the product ID
                 $stripe = PaymentMethod::getConfig('stripe');
                 if ($stripe) {
-                    $updateData = $environment === 'sandbox' || $environment === 'test'
-                        ? ['test_donation_product_id' => $productId]
-                        : ['live_donation_product_id' => $productId];
+                    $updateData = [StripeConfigService::donationProductColumn($environment) => $productId];
                     
                     $stripe->update($updateData);
                     
@@ -607,9 +605,7 @@ class StripeEnvironmentSyncService
                 return null;
             }
 
-            $existingProductId = $environment === 'sandbox' || $environment === 'test'
-                ? $paymentMethodRow->test_donation_product_id
-                : $paymentMethodRow->live_donation_product_id;
+            $existingProductId = StripeConfigService::getStoredDonationProductId($paymentMethodRow, $environment);
 
             $stripe = Cashier::stripe();
             $donationName = 'Donations';

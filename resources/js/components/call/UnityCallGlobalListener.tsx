@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { router } from "@inertiajs/react"
 import { echo } from "@laravel/echo-react"
 import { stopCallRingtone } from "@/lib/callRingtone"
@@ -11,15 +11,13 @@ import {
   isUnityCallIncomingForUser,
   isUnityCallTerminated,
 } from "@/lib/unityCallEvents"
-import { fetchIncomingUnityCall, fetchUnityCallChatRooms, type UnityCallChatRoomChannel } from "@/lib/unityCall"
+import { fetchUnityCallChatRooms, type UnityCallChatRoomChannel } from "@/lib/unityCall"
 import { rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 type Props = {
   authUserId: number | null | undefined
 }
-
-const INCOMING_POLL_MS = 2500
 
 function readAuthUserId(): number | null {
   if (typeof document === "undefined") {
@@ -79,18 +77,32 @@ function normalizeRoomIncomingPayload(
   }
 }
 
+function publishIncomingCall(payload: UnityCallStatusEvent): void {
+  dispatchUnityCallStatus(payload)
+  dispatchUnityCallIncoming(payload)
+}
+
 export default function UnityCallGlobalListener({ authUserId }: Props) {
   const userId = useLiveAuthUserId(authUserId)
-  const pollingRef = useRef(false)
 
-  const handleIncomingPayload = useCallback(
+  const handleDirectIncomingPayload = useCallback(
     (payload: UnityCallStatusEvent) => {
       if (!userId || !isUnityCallIncomingForUser(payload, userId)) {
         return
       }
 
-      dispatchUnityCallStatus(payload)
-      dispatchUnityCallIncoming(normalizeRoomIncomingPayload(payload, userId))
+      publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
+    },
+    [userId],
+  )
+
+  const handleGroupIncomingPayload = useCallback(
+    (payload: UnityCallStatusEvent) => {
+      if (!userId || payload.caller?.id === userId || payload.call.status !== "ringing") {
+        return
+      }
+
+      publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
     },
     [userId],
   )
@@ -104,7 +116,7 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       dispatchUnityCallStatus(payload)
 
       if (isUnityCallIncomingForUser(payload, userId)) {
-        dispatchUnityCallIncoming(normalizeRoomIncomingPayload(payload, userId))
+        publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
         return
       }
 
@@ -116,76 +128,13 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
     [userId],
   )
 
-  const pollIncomingCall = useCallback(async () => {
-    if (!userId || pollingRef.current || document.visibilityState === "hidden") {
-      return
-    }
-
-    pollingRef.current = true
-    try {
-      const payload = await fetchIncomingUnityCall()
-      if (payload) {
-        handleIncomingPayload(payload)
-      }
-    } finally {
-      pollingRef.current = false
-    }
-  }, [handleIncomingPayload, userId])
-
   useEffect(() => {
     if (!userId) {
       return
     }
 
     rehydratePendingIncomingCall()
-    void pollIncomingCall()
-
-    const retryDelays = [400, 1200, 3000]
-    const timers = retryDelays.map((delay) =>
-      window.setTimeout(() => {
-        rehydratePendingIncomingCall()
-        void pollIncomingCall()
-      }, delay),
-    )
-
-    const onPageShow = () => {
-      rehydratePendingIncomingCall()
-      void pollIncomingCall()
-    }
-    const onFocus = () => {
-      rehydratePendingIncomingCall()
-      void pollIncomingCall()
-    }
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        rehydratePendingIncomingCall()
-        void pollIncomingCall()
-      }
-    }
-
-    window.addEventListener("pageshow", onPageShow)
-    window.addEventListener("focus", onFocus)
-    document.addEventListener("visibilitychange", onVisibility)
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer))
-      window.removeEventListener("pageshow", onPageShow)
-      window.removeEventListener("focus", onFocus)
-      document.removeEventListener("visibilitychange", onVisibility)
-    }
-  }, [pollIncomingCall, userId])
-
-  useEffect(() => {
-    if (!userId) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      void pollIncomingCall()
-    }, INCOMING_POLL_MS)
-
-    return () => window.clearInterval(intervalId)
-  }, [pollIncomingCall, userId])
+  }, [userId])
 
   useEffect(() => {
     if (!userId) {
@@ -228,14 +177,8 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
         const channel =
           room.type === "public" ? instance.channel(channelName) : instance.private(channelName)
 
-        const onRoomIncoming = (payload: UnityCallStatusEvent) => {
-          if (payload.caller?.id === userId || payload.call.status !== "ringing") {
-            return
-          }
-          handleIncomingPayload(normalizeRoomIncomingPayload(payload, userId))
-        }
-
-        channel.listen(".call.incoming", onRoomIncoming)
+        channel.listen(".call.incoming", handleGroupIncomingPayload)
+        channel.listen(".call.status", handleStatusPayload)
         channel.error((error: unknown) => {
           if (import.meta.env.DEV) {
             console.error(`[UnityCall] room channel failed (${channelName}):`, error)
@@ -243,7 +186,10 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
         })
 
         roomChannels.push({
-          stop: () => channel.stopListening(".call.incoming"),
+          stop: () => {
+            channel.stopListening(".call.incoming")
+            channel.stopListening(".call.status")
+          },
         })
       }
     }
@@ -263,7 +209,7 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       unsubscribeRouter()
       roomChannels.forEach((entry) => entry.stop())
     }
-  }, [handleIncomingPayload, userId])
+  }, [handleGroupIncomingPayload, handleStatusPayload, userId])
 
   return null
 }

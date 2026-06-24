@@ -71,6 +71,7 @@ import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
 import {
   fetchWalletBalance,
+  pickWalletBalance,
   shouldPollWalletBalance,
   WALLET_BALANCE_POLL_MS,
 } from "@/lib/wallet-balance-fetch"
@@ -358,7 +359,7 @@ export default function Navbar() {
 
     const applyBalanceData = (balanceData: Awaited<ReturnType<typeof fetchWalletBalance>>) => {
       if (balanceData?.success) {
-        setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+        setWalletBalance(pickWalletBalance(balanceData))
         if (balanceData.has_subscription !== undefined) {
           setHasSubscription(balanceData.has_subscription)
         }
@@ -421,7 +422,7 @@ export default function Navbar() {
     try {
       const balanceData = await fetchWalletBalance({ force: true })
       if (balanceData?.success) {
-        setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+        setWalletBalance(pickWalletBalance(balanceData))
         if (balanceData.has_subscription !== undefined) {
           setHasSubscription(balanceData.has_subscription)
         }
