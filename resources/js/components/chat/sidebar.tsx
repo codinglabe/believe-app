@@ -11,7 +11,7 @@ import type { ChatSidebarTab } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { MessageCircle, PlusIcon, SearchIcon, Users } from "lucide-react"
 import { NotificationBell } from "../notification-bell"
-import { Link, usePage } from "@inertiajs/react"
+import { usePage } from "@inertiajs/react"
 import { cn } from "@/lib/utils"
 import { chatAccentText, chatGradientBg, chatGradientBgHover, chatInputFocusRing, chatMobileDivider, chatMobileSurface, chatSegmentTrack } from "./chat-brand"
 import { ChatSidebarHeader } from "./chat-sidebar-header"
@@ -19,13 +19,6 @@ import { ChatSidebarHeader } from "./chat-sidebar-header"
 // Helper function to safely convert to lowercase
 const safeToLower = (str: any): string => {
   return String(str || "").toLowerCase()
-}
-
-/** Coerce so JSON string ids match numeric filter ids. */
-const asPacId = (v: unknown): number | null => {
-  if (v == null) return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
 }
 
 type TabType = ChatSidebarTab
@@ -50,9 +43,8 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
     setSidebarTab: setActiveTab,
   } = useChat()
 
-  const { auth, chatCauseFilter } = usePage<{
+  const { auth } = usePage<{
     auth?: { user?: { id?: number } }
-    chatCauseFilter?: { mode: "my" } | { mode: "pac"; pacId: number } | null
   }>().props
 
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false)
@@ -64,31 +56,8 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
     return []
   }
 
-  const myCauseCategoryIds: number[] = currentUser?.myCauseCategoryIds ?? []
-
-  const getCauseFilteredRooms = (rooms: typeof chatRooms) => {
-    if (!chatCauseFilter) return rooms
-    if (chatCauseFilter.mode === "pac") {
-      const id = Number(chatCauseFilter.pacId)
-      return rooms.filter((room) =>
-        (room.topics ?? []).some((t) => asPacId(t.primary_action_category_id) === id),
-      )
-    }
-    if (chatCauseFilter.mode === "my") {
-      if (myCauseCategoryIds.length === 0) return rooms
-      const set = new Set(myCauseCategoryIds.map((n) => Number(n)))
-      return rooms.filter((room) =>
-        (room.topics ?? []).some((t) => {
-          const tid = asPacId(t.primary_action_category_id)
-          return tid != null && set.has(tid)
-        }),
-      )
-    }
-    return rooms
-  }
-
-  // Safe filtering for rooms
-  const filteredRooms = getCauseFilteredRooms(getFilteredRooms()).filter((room) => {
+  // Safe filtering for rooms — Direct tab shows every 1:1 thread (no cause/topic filtering)
+  const filteredRooms = getFilteredRooms().filter((room) => {
     const query = safeToLower(searchQuery).trim()
     if (!query) return true
 
@@ -183,16 +152,6 @@ export function Sidebar({ mobileList = false }: SidebarProps) {
             </Button>
           )}
         </div>
-        {chatCauseFilter ? (
-          <p className="text-xs text-muted-foreground">
-            {chatCauseFilter.mode === "pac"
-              ? "Showing group chats for this cause."
-              : "Showing group chats for causes on your profile."}{" "}
-            <Link href="/chat?all_groups=1" className="text-primary underline-offset-2 hover:underline">
-              Show all
-            </Link>
-          </p>
-        ) : null}
         <div
           className={cn("flex gap-1 p-1", mobileList ? chatMobileSurface : chatSegmentTrack)}
         >
