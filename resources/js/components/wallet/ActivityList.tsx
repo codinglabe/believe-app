@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight } from 'lucide-react'
 import { Activity as ActivityType } from './types'
-import { formatDate, formatCurrency } from './utils'
+import { formatDate, formatCurrency, getActivityDisplayLabel } from './utils'
 import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatusBadge'
 
 interface ActivityListProps {
@@ -24,20 +24,7 @@ function getActivityMeta(activity: ActivityType) {
     const isDonationOutgoing = isDonation && activity.is_outgoing === true
     const isOutgoing = isTransferSent || isDonationOutgoing || isCardSpend
 
-    let label: string
-    if (isTransferSent) {
-        label = `Sent to ${activity.donor_name}`
-    } else if (isTransferReceived) {
-        label = `Received from ${activity.donor_name}`
-    } else if (isDeposit) {
-        label = `Deposit · ${activity.donor_name}`
-    } else if (isCardSpend) {
-        label = `Card · ${activity.donor_name}`
-    } else if (isDonationOutgoing) {
-        label = `Donation to ${activity.donor_name}`
-    } else {
-        label = `Donation from ${activity.donor_name}`
-    }
+    const label = getActivityDisplayLabel(activity)
 
     let icon: React.ReactNode
     let iconClass: string

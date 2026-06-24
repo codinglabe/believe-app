@@ -341,15 +341,15 @@ class BridgeService
         if ($redirectUri) {
             $data['redirect_uri'] = $redirectUri;
         }
-
+        
         Log::info('Bridge Service: getTosLink called', [
             'email' => $email,
             'redirect_uri' => $redirectUri ?? 'null (not provided)',
             'request_data' => $data,
         ]);
-
+        
         $result = $this->makeRequest('POST', '/customers/tos_links', $data);
-
+        
         // Fallback: append redirect_uri when Bridge omits it from the response URL.
         if ($result['success'] && $redirectUri && isset($result['data']['url'])) {
             $url = $result['data']['url'];
@@ -359,10 +359,10 @@ class BridgeService
                 $result['data']['url'] = $url.$separator.'redirect_uri='.urlencode($redirectUri);
 
                 Log::info('Bridge Service: Appended redirect_uri to TOS URL', [
-                    'url_before' => $urlBefore,
-                    'url_after' => $result['data']['url'],
-                    'redirect_uri' => $redirectUri,
-                ]);
+                'url_before' => $urlBefore,
+                'url_after' => $result['data']['url'],
+                'redirect_uri' => $redirectUri,
+            ]);
             }
         } else {
             Log::info('Bridge Service: TOS link response', [
@@ -372,7 +372,7 @@ class BridgeService
                 'tos_url' => $result['data']['url'] ?? 'N/A',
             ]);
         }
-
+        
         return $result;
     }
 
@@ -510,7 +510,7 @@ class BridgeService
     ): array {
         $query = [];
 
-        if ($endorsement) {
+            if ($endorsement) {
             $query['endorsement'] = $endorsement;
         }
 
@@ -594,9 +594,9 @@ class BridgeService
                 ];
             }
         }
-
-        return [
-            'success' => false,
+            
+            return [
+                'success' => false, 
             'error' => is_array($result) ? ($result['error'] ?? 'Failed to get base KYC link') : 'Failed to get base KYC link',
             'endorsement' => 'base',
         ];
@@ -622,7 +622,7 @@ class BridgeService
             $cardsReady = $this->ensureCardsProductEnabled();
             if (! ($cardsReady['success'] ?? false) && ! ($cardsReady['already_enabled'] ?? false)) {
                 Log::warning('Live Stripe Issuing not ready before cards endorsement KYC link', [
-                    'customer_id' => $customerId,
+                'customer_id' => $customerId,
                     'error' => $cardsReady['error'] ?? null,
                 ]);
             }
@@ -1108,7 +1108,7 @@ class BridgeService
             }
 
             parse_str($parsedUrl['query'], $params);
-
+            
             $iqtToken = $params['fields']['iqt_token'] ?? null;
             $environmentId = $params['environment-id'] ?? null;
             $inquiryTemplateId = $params['inquiry-template-id'] ?? null;
@@ -1124,7 +1124,7 @@ class BridgeService
             }
 
             $environment = $this->isSandbox() ? 'sandbox' : 'production';
-
+            
             $query = [
                 'environment' => $environment,
                 'inquiry-template-id' => $inquiryTemplateId,
@@ -2235,9 +2235,124 @@ class BridgeService
      */
     public function createExternalAccount(string $customerId, array $accountData, ?string $idempotencyKey = null): array
     {
-        // Correct endpoint: /customers/{customerId}/external_accounts
-        // makeRequest automatically adds Idempotency-Key for POST requests, but we can pass a custom one
+        if (isset($accountData['address']) && is_array($accountData['address'])) {
+            $accountData['address'] = $this->sanitizeExternalAccountAddress($accountData['address']);
+        }
+
         return $this->makeRequest('POST', "/customers/{$customerId}/external_accounts", $accountData, true, $idempotencyKey);
+    }
+
+    /**
+     * Bridge external account address limits.
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/external-accounts/create-a-new-external-account
+     *
+     * @param  array<string, mixed>  $address
+     * @return array<string, string>
+     */
+    public function sanitizeExternalAccountAddress(array $address): array
+    {
+        $street1 = trim((string) ($address['street_line_1'] ?? ''));
+        $street2 = trim((string) ($address['street_line_2'] ?? ''));
+
+        if ($street1 !== '') {
+            $street1 = mb_substr($street1, 0, 35);
+            if (mb_strlen($street1) < 4) {
+                $street1 = mb_substr(str_pad($street1, 4, '.'), 0, 35);
+            }
+        }
+
+        if ($street2 !== '') {
+            $street2 = mb_substr($street2, 0, 35);
+        }
+
+        $state = trim((string) ($address['state'] ?? ''));
+        if ($state !== '') {
+            $state = mb_substr($state, 0, 3);
+        }
+
+        $country = strtoupper(trim((string) ($address['country'] ?? 'USA')));
+        if ($country === 'US') {
+            $country = 'USA';
+        }
+        if ($country !== '') {
+            $country = mb_substr($country, 0, 3);
+        }
+
+        $sanitized = [
+            'street_line_1' => $street1,
+            'country' => $country !== '' ? $country : 'USA',
+            'city' => trim((string) ($address['city'] ?? '')),
+        ];
+
+        if ($street2 !== '') {
+            $sanitized['street_line_2'] = $street2;
+        }
+
+        if ($state !== '') {
+            $sanitized['state'] = $state;
+        }
+
+        $postal = trim((string) ($address['postal_code'] ?? ''));
+        if ($postal !== '') {
+            $sanitized['postal_code'] = $postal;
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $updates
+     */
+    public function updateExternalAccount(string $customerId, string $externalAccountId, array $updates): array
+    {
+        if (isset($updates['address']) && is_array($updates['address'])) {
+            $updates['address'] = $this->sanitizeExternalAccountAddress($updates['address']);
+        }
+
+        return $this->makeRequest(
+            'PUT',
+            "/customers/{$customerId}/external_accounts/{$externalAccountId}",
+            $updates,
+        );
+    }
+
+    /**
+     * Fix external account address fields that exceed Bridge limits before off-ramp transfers.
+     */
+    public function ensureExternalAccountAddressValid(string $customerId, string $externalAccountId): array
+    {
+        $result = $this->getExternalAccount($customerId, $externalAccountId);
+        if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
+            return $result;
+        }
+
+        $address = is_array($result['data']['address'] ?? null) ? $result['data']['address'] : [];
+        if ($address === []) {
+            return $result;
+        }
+
+        $sanitized = $this->sanitizeExternalAccountAddress($address);
+        $needsUpdate = $sanitized !== $address;
+
+        if (! $needsUpdate) {
+            foreach (['street_line_1', 'street_line_2', 'state', 'country'] as $field) {
+                $original = trim((string) ($address[$field] ?? ''));
+                $fixed = trim((string) ($sanitized[$field] ?? ''));
+                if ($original !== $fixed) {
+                    $needsUpdate = true;
+                    break;
+                }
+            }
+        }
+
+        if (! $needsUpdate) {
+            return $result;
+        }
+
+        return $this->updateExternalAccount($customerId, $externalAccountId, [
+            'address' => $sanitized,
+        ]);
     }
 
     /**
@@ -2548,7 +2663,7 @@ class BridgeService
 
     /**
      * Create a transfer between two Bridge wallets
-     *
+     * 
      * @see https://apidocs.bridge.xyz/platform/wallets/move-money
      * @see https://apidocs.bridge.xyz/get-started/guides/common-use-cases/payroll
      * 
@@ -2617,61 +2732,61 @@ class BridgeService
             ];
         }
 
-        if (empty($fromWalletId) && empty($fromAddress)) {
-            return [
-                'success' => false,
+            if (empty($fromWalletId) && empty($fromAddress)) {
+                return [
+                    'success' => false,
                 'error' => 'Source Bridge wallet or virtual account is required for transfers.',
-                'error_code' => 'MISSING_SOURCE_WALLET_ID',
-            ];
-        }
+                    'error_code' => 'MISSING_SOURCE_WALLET_ID',
+                ];
+            }
 
-        $sourceAddress = $fromAddress;
+            $sourceAddress = $fromAddress;
         if (empty($sourceAddress) && ! empty($fromWalletId)) {
-            $virtualAccountResult = $this->getVirtualAccount($fromCustomerId, $fromWalletId);
-            if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
-                $sourceAddress = $virtualAccountResult['data']['destination']['address'];
-            } else {
-                return [
-                    'success' => false,
+                $virtualAccountResult = $this->getVirtualAccount($fromCustomerId, $fromWalletId);
+                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
+                    $sourceAddress = $virtualAccountResult['data']['destination']['address'];
+                } else {
+                    return [
+                        'success' => false,
                     'error' => 'Could not retrieve source address from virtual account.',
-                    'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
-                ];
+                        'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
+                    ];
+                }
             }
-        }
 
-        $destinationAddress = $toAddress;
+            $destinationAddress = $toAddress;
         if (empty($destinationAddress) && ! empty($toWalletId)) {
-            $virtualAccountResult = $this->getVirtualAccount($toCustomerId, $toWalletId);
-            if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
-                $destinationAddress = $virtualAccountResult['data']['destination']['address'];
-            } else {
-                return [
-                    'success' => false,
+                $virtualAccountResult = $this->getVirtualAccount($toCustomerId, $toWalletId);
+                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
+                    $destinationAddress = $virtualAccountResult['data']['destination']['address'];
+                } else {
+                    return [
+                        'success' => false,
                     'error' => 'Could not retrieve destination address from virtual account.',
-                    'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
-                ];
+                        'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
+                    ];
+                }
             }
-        }
 
         if (empty($sourceAddress) || empty($destinationAddress)) {
-            return [
-                'success' => false,
+                return [
+                    'success' => false,
                 'error' => 'Source and destination addresses are required for sandbox transfers.',
                 'error_code' => 'MISSING_ADDRESSES',
-            ];
-        }
+                ];
+            }
 
         return $this->createTransfer([
             'amount' => number_format($amount, 2, '.', ''),
             'on_behalf_of' => $fromCustomerId,
-            'source' => [
+                'source' => [
                 'payment_rail' => 'ethereum',
                 'currency' => 'usdc',
                 'from_address' => $sourceAddress,
-            ],
-            'destination' => [
+                ],
+                'destination' => [
                 'payment_rail' => 'ethereum',
-                'currency' => 'usdc',
+                    'currency' => 'usdc',
                 'to_address' => $destinationAddress,
             ],
         ]);
@@ -2758,7 +2873,7 @@ class BridgeService
     ): array {
         // Per Bridge USD integration guide: offramp source uses bridge_wallet + usdc
         $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdc' : strtolower($currency);
-
+        
         $paymentRail = strtolower($paymentRail);
         $validPaymentRails = ['ach', 'wire', 'ach_same_day'];
         if (! in_array($paymentRail, $validPaymentRails, true)) {
@@ -2818,9 +2933,9 @@ class BridgeService
 
     /**
      * Create a virtual account for USD deposits to Bridge wallet
-     *
+     * 
      * Per Bridge API: production destination uses chain name as payment_rail + bridge_wallet_id.
-     *
+     * 
      * @param string $customerId Bridge customer ID
      * @param string $walletId Bridge wallet ID
      * @param string $currency Currency (default: USD)
@@ -2840,7 +2955,7 @@ class BridgeService
         if ($this->isSandbox()) {
             $destination = [
                 'payment_rail' => 'ethereum',
-                'currency' => 'usdc',
+            'currency' => 'usdc',
                 'address' => $this->generateEthereumAddress(),
             ];
         } else {
@@ -2971,23 +3086,23 @@ class BridgeService
 
     /**
      * Event categories Bridge should deliver to our webhook endpoint.
-     *
+     * 
      * @return list<string>
      */
     public static function webhookEventCategories(): array
     {
         return [
-            'customer',
-            'kyc_link',
-            'liquidation_address.drain',
-            'static_memo.activity',
-            'transfer',
-            'virtual_account.activity',
+                'customer',
+                'kyc_link',
+                'liquidation_address.drain',
+                'static_memo.activity',
+                'transfer',
+                'virtual_account.activity',
             'bridge_wallet.activity',
-            'card_account',
-            'card_transaction',
-            'posted_card_account_transaction',
-            'card_withdrawal',
+                'card_account',
+                'card_transaction',
+                'posted_card_account_transaction',
+                'card_withdrawal',
         ];
     }
 

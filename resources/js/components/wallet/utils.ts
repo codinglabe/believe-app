@@ -1,6 +1,7 @@
 // Utility functions for wallet components
 
 import { getCsrfToken, syncCsrfMetaFromCookie } from '@/lib/csrf'
+import type { Activity } from './types'
 
 export { getCsrfToken, syncCsrfMetaFromCookie }
 
@@ -301,6 +302,39 @@ export const formatDate = (dateString: string): string => {
         })
     } catch (e) {
         return dateString
+    }
+}
+
+/** Prefer Bridge-computed display_label, then message, then legacy donor_name patterns. */
+export function getActivityDisplayLabel(activity: Activity): string {
+    const displayLabel = activity.display_label?.trim()
+    if (displayLabel) {
+        return displayLabel
+    }
+
+    const message = activity.message?.trim()
+    if (message) {
+        return message
+    }
+
+    const name = activity.donor_name?.trim() || 'Unknown'
+
+    switch (activity.type) {
+        case 'transfer_sent':
+            return `Sent to ${name}`
+        case 'transfer_received':
+            return `Received from ${name}`
+        case 'deposit':
+            if (activity.payment_method_label) {
+                return `${activity.payment_method_label} deposit${name && !['Bank deposit', 'Deposit'].includes(name) ? ` · ${name}` : ''}`
+            }
+            return `Deposit · ${name}`
+        case 'card_spend':
+            return `Card · ${name}`
+        case 'donation':
+            return activity.is_outgoing ? `Donation to ${name}` : `Donation from ${name}`
+        default:
+            return name
     }
 }
 

@@ -593,8 +593,8 @@ class BridgeWalletReadService
             $counterpartyName = $this->resolveWalletHistoryCounterpartyName($event, $customerId, $isDeposit, $vaContext);
 
             if ($isDeposit) {
-                $donorName = $counterpartyName
-                    ?? ($this->isVirtualAccountOnRamp($paymentRoute) ? 'ACH / wire deposit' : 'Bank deposit');
+                $depositSourceLabel = $this->resolveDepositSourceLabel($event, $paymentRoute);
+                $donorName = $counterpartyName ?? $depositSourceLabel;
                 $depositMessage = $this->resolveVirtualAccountDepositMessage($event, $paymentRoute, $vaContext, $donorName);
             } elseif ($isFailedReturn) {
                 $donorName = $counterpartyName ?? 'Bank';
@@ -627,6 +627,11 @@ class BridgeWalletReadService
 
             $historyStatus = $isFailedReturn ? 'failed' : 'completed';
             $paymentMethod = $isDeposit ? $this->resolveDepositPaymentMethod($event) : null;
+            $displayLabel = $this->buildActivityDisplayLabel(
+                $activityType,
+                $donorName,
+                $paymentMethod['label'] ?? null,
+            );
             $recipientType = null;
             if ($activityType === 'transfer_sent' && $transferId !== null && $transferId !== '') {
                 $transferDetails = $this->fetchTransferDetails($transferId);
@@ -649,16 +654,11 @@ class BridgeWalletReadService
                 'bridge_event_type' => $type,
                 'donor_name' => $donorName,
                 'donor_email' => null,
+                'display_label' => $displayLabel,
                 'payment_method' => $paymentMethod['method'] ?? null,
                 'payment_method_label' => $paymentMethod['label'] ?? null,
                 'frequency' => 'one-time',
-                'message' => $isDeposit || $activityType === 'transfer_received' || $activityType === 'transfer_sent'
-                    ? ($activityType === 'transfer_sent'
-                        ? 'Sent to '.$donorName
-                        : ($activityType === 'transfer_received'
-                            ? 'Received from '.$donorName
-                            : $depositMessage))
-                    : ucfirst(str_replace('_', ' ', $type)),
+                'message' => $displayLabel,
                 'transaction_id' => $id,
                 'is_outgoing' => $activityOutgoing,
                 'recipient_type' => $recipientType,
@@ -714,8 +714,14 @@ class BridgeWalletReadService
             $date = $this->parseBridgeTimestamp($event['created_at'] ?? $event['updated_at'] ?? null);
             $vaSenderName = $this->formatVirtualAccountDepositLabel($event);
             $paymentMethod = $this->resolveDepositPaymentMethod($event);
-            $donorName = $vaSenderName ?? 'Bank deposit';
+            $depositSourceLabel = $this->resolveDepositSourceLabel($event, []);
+            $donorName = $vaSenderName ?? $depositSourceLabel;
             $stateLabel = $this->formatBridgeStateLabel($activityType);
+            $displayLabel = $this->buildActivityDisplayLabel(
+                'deposit',
+                $donorName,
+                $paymentMethod['label'] ?? null,
+            );
 
             $activities[] = [
                 'id' => 'bridge_va_'.$depositId,
@@ -731,12 +737,13 @@ class BridgeWalletReadService
                 'bridge_va_state' => $activityType,
                 'donor_name' => $donorName,
                 'donor_email' => null,
+                'display_label' => $displayLabel,
                 'payment_method' => $paymentMethod['method'] ?? null,
                 'payment_method_label' => $paymentMethod['label'] ?? null,
                 'frequency' => 'one-time',
                 'message' => $status === 'pending'
                     ? $stateLabel.' — '.$donorName
-                    : $this->buildVirtualAccountDepositMessage($event, $donorName, $status),
+                    : $displayLabel,
                 'transaction_id' => $id,
                 'is_outgoing' => false,
                 'recipient_type' => null,
@@ -853,13 +860,15 @@ class BridgeWalletReadService
 
             $counterparty = $counterpartyMeta['name'];
             $statusSuffix = $status === 'pending' ? ' ('.$stateLabel.')' : '';
+            $transferType = $isOutgoing ? 'transfer_sent' : 'transfer_received';
+            $displayLabel = $this->buildActivityDisplayLabel($transferType, $counterparty);
 
             $activities[] = [
                 'id' => 'bridge_transfer_'.$transferId,
                 'dedupe_key' => 'transfer:'.$transferId,
                 'deposit_id' => null,
                 'bridge_transfer_id' => $transferId,
-                'type' => $isOutgoing ? 'transfer_sent' : 'transfer_received',
+                'type' => $transferType,
                 'amount' => $amount,
                 'date' => $date,
                 'status' => $status,
@@ -867,8 +876,9 @@ class BridgeWalletReadService
                 'bridge_transfer_state' => $state,
                 'donor_name' => $counterparty,
                 'donor_email' => null,
+                'display_label' => $displayLabel,
                 'frequency' => 'one-time',
-                'message' => ($isOutgoing ? 'Sent to ' : 'Received from ').$counterparty.$statusSuffix,
+                'message' => $displayLabel.$statusSuffix,
                 'transaction_id' => $transferId,
                 'is_outgoing' => $isOutgoing,
                 'recipient_type' => $isOutgoing ? $counterpartyMeta['recipient_type'] : null,
@@ -1234,10 +1244,16 @@ class BridgeWalletReadService
 
             if (($activity['type'] ?? '') === 'deposit') {
                 $status = (string) ($activity['status'] ?? 'completed');
+                $donorName = (string) ($activity['donor_name'] ?? $this->resolveDepositSourceLabel($vaEvent, []));
                 $activity['message'] = $this->buildVirtualAccountDepositMessage(
                     $vaEvent,
-                    (string) ($activity['donor_name'] ?? 'Bank deposit'),
+                    $donorName,
                     $status,
+                );
+                $activity['display_label'] = $this->buildActivityDisplayLabel(
+                    'deposit',
+                    $donorName,
+                    $activity['payment_method_label'] ?? null,
                 );
             }
 
@@ -1297,6 +1313,13 @@ class BridgeWalletReadService
         $rail = strtolower(trim((string) ($source['payment_rail'] ?? $event['payment_rail'] ?? '')));
 
         if ($rail !== '') {
+            if ($this->isCryptoPaymentRail($rail)) {
+                return [
+                    'method' => $this->normalizeDepositPaymentMethod($rail),
+                    'label' => $this->formatPaymentRailLabel($rail),
+                ];
+            }
+
             return [
                 'method' => $this->normalizeDepositPaymentMethod($rail),
                 'label' => $this->formatDepositPaymentMethodLabel($rail),
@@ -1335,6 +1358,120 @@ class BridgeWalletReadService
             'spei' => 'SPEI',
             default => strtoupper(str_replace('_', ' ', $rail)),
         };
+    }
+
+    /**
+     * Human-readable deposit source from Bridge wallet history / VA events.
+     *
+     * @param  array<string, mixed>  $event
+     * @param  array<string, mixed>  $paymentRoute
+     */
+    private function resolveDepositSourceLabel(array $event, array $paymentRoute = []): string
+    {
+        $type = strtolower((string) ($event['type'] ?? ''));
+        $routeType = strtolower((string) ($paymentRoute['type'] ?? ''));
+        $source = is_array($event['source'] ?? null) ? $event['source'] : [];
+        $rail = strtolower(trim((string) ($source['payment_rail'] ?? $event['payment_rail'] ?? '')));
+        $currency = strtoupper(trim((string) ($event['currency'] ?? $source['currency'] ?? '')));
+
+        if ($type === 'direct_deposit' || $this->isCryptoPaymentRail($rail)) {
+            $railLabel = $this->formatPaymentRailLabel($rail);
+            $currencyLabel = $currency !== '' ? $currency : 'Crypto';
+
+            return $railLabel !== ''
+                ? "{$currencyLabel} on {$railLabel}"
+                : 'Crypto deposit';
+        }
+
+        if (in_array($routeType, ['liquidation_address', 'drain'], true)) {
+            return 'Crypto liquidation deposit';
+        }
+
+        if ($routeType === 'static_memo') {
+            return 'Bank transfer (memo)';
+        }
+
+        $method = $this->resolveDepositPaymentMethod($event);
+        if ($method !== null) {
+            return $method['label'].' deposit';
+        }
+
+        if ($rail !== '') {
+            return $this->formatDepositPaymentMethodLabel($rail).' deposit';
+        }
+
+        return match ($type) {
+            'card_refund' => 'Card refund',
+            'deposit' => 'Deposit',
+            default => ucfirst(str_replace('_', ' ', $type)),
+        };
+    }
+
+    private function isCryptoPaymentRail(string $rail): bool
+    {
+        return in_array($rail, [
+            'ethereum', 'eth', 'solana', 'bitcoin', 'btc', 'polygon', 'matic',
+            'base', 'arbitrum', 'optimism', 'avalanche', 'avax', 'tron', 'stellar',
+            'bridge_wallet', 'crypto',
+        ], true);
+    }
+
+    private function formatPaymentRailLabel(string $rail): string
+    {
+        return match (strtolower($rail)) {
+            'ethereum', 'eth' => 'Ethereum',
+            'solana' => 'Solana',
+            'bitcoin', 'btc' => 'Bitcoin',
+            'polygon', 'matic' => 'Polygon',
+            'base' => 'Base',
+            'arbitrum' => 'Arbitrum',
+            'optimism' => 'Optimism',
+            'avalanche', 'avax' => 'Avalanche',
+            'tron' => 'Tron',
+            'stellar' => 'Stellar',
+            'bridge_wallet' => 'Bridge Wallet',
+            default => $rail !== '' ? ucfirst(str_replace('_', ' ', $rail)) : '',
+        };
+    }
+
+    private function buildActivityDisplayLabel(
+        string $activityType,
+        string $subject,
+        ?string $paymentMethodLabel = null,
+    ): string {
+        return match ($activityType) {
+            'transfer_sent' => 'Sent to '.$subject,
+            'transfer_received' => 'Received from '.$subject,
+            'card_spend' => 'Card · '.$subject,
+            'deposit' => $this->buildDepositDisplayLabel($subject, $paymentMethodLabel),
+            default => $subject,
+        };
+    }
+
+    private function buildDepositDisplayLabel(string $subject, ?string $paymentMethodLabel = null): string
+    {
+        $subject = trim($subject);
+        $method = trim((string) ($paymentMethodLabel ?? ''));
+
+        if ($method !== '' && ! str_contains(strtolower($subject), strtolower($method))) {
+            if (str_ends_with(strtolower($subject), 'deposit')) {
+                return $subject;
+            }
+
+            if ($subject === '' || in_array(strtolower($subject), ['bank deposit', 'deposit'], true)) {
+                return $method.' deposit';
+            }
+
+            return $method.' · '.$subject;
+        }
+
+        if (str_contains(strtolower($subject), 'deposit')
+            || str_contains(strtolower($subject), ' on ')
+            || str_contains(strtolower($subject), 'crypto')) {
+            return $subject;
+        }
+
+        return 'Deposit · '.$subject;
     }
 
     /**
