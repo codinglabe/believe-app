@@ -1336,6 +1336,72 @@ class BridgeService
     }
 
     /**
+     * Resolve a platform prefunded account ID from stored config and/or Bridge account name.
+     *
+     * Bridge returns all prefunded accounts on GET /prefunded_accounts — filter by the `name`
+     * field to identify your platform reserve account from onboarding.
+     */
+    public function resolvePrefundedAccountId(?string $storedAccountId = null, ?string $nameFilter = null): ?string
+    {
+        $storedAccountId = trim((string) ($storedAccountId ?? ''));
+        $nameFilter = trim((string) ($nameFilter ?? ''));
+
+        if ($storedAccountId !== '') {
+            $detail = $this->getPrefundedAccount($storedAccountId);
+            if (($detail['success'] ?? false) && is_array($detail['data'] ?? null)) {
+                return $storedAccountId;
+            }
+        }
+
+        if ($nameFilter === '') {
+            return null;
+        }
+
+        $result = $this->getPrefundedAccounts();
+        if (! ($result['success'] ?? false)) {
+            return null;
+        }
+
+        $needle = strtolower($nameFilter);
+        $partialMatch = null;
+
+        foreach ($this->normalizeBridgeListData($result) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $accountId = trim((string) ($row['id'] ?? ''));
+            $name = strtolower(trim((string) ($row['name'] ?? '')));
+            if ($accountId === '' || $name === '') {
+                continue;
+            }
+
+            if ($name === $needle) {
+                return $accountId;
+            }
+
+            if ($partialMatch === null && str_contains($name, $needle)) {
+                $partialMatch = $accountId;
+            }
+        }
+
+        return $partialMatch;
+    }
+
+    public function prefundedAccountNameMatches(string $accountName, string $nameFilter): bool
+    {
+        $nameFilter = trim($nameFilter);
+        if ($nameFilter === '') {
+            return false;
+        }
+
+        $accountName = strtolower(trim($accountName));
+        $needle = strtolower($nameFilter);
+
+        return $accountName === $needle || str_contains($accountName, $needle);
+    }
+
+    /**
      * Extract a Bridge wallet ID from a prefunded account or wallet payload.
      *
      * @param  array<string, mixed>  $payload
@@ -1571,11 +1637,21 @@ class BridgeService
         string $walletId,
         ?string $prefundedAccountId = null,
         ?string $excludeWalletId = null,
+        ?string $prefundedAccountName = null,
     ): ?array {
         $customerId = trim($customerId);
         $walletId = trim($walletId);
         $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
         $excludeWalletId = trim((string) ($excludeWalletId ?? ''));
+        $prefundedAccountName = trim((string) ($prefundedAccountName ?? ''));
+
+        $resolvedAccountId = $this->resolvePrefundedAccountId(
+            $prefundedAccountId !== '' ? $prefundedAccountId : null,
+            $prefundedAccountName !== '' ? $prefundedAccountName : null,
+        );
+        if ($resolvedAccountId !== null) {
+            $prefundedAccountId = $resolvedAccountId;
+        }
 
         if ($walletId !== ''
             && $this->isBridgeWalletId($walletId)
@@ -3655,12 +3731,14 @@ class BridgeService
         float $amount,
         ?string $idempotencyKey = null,
         ?string $prefundedAccountId = null,
+        ?string $prefundedAccountName = null,
     ): array {
         $resolved = $this->resolvePlatformPrefundedWallet(
             $prefundedCustomerId,
             $prefundedWalletId,
             $prefundedAccountId,
             $recipientWalletId,
+            $prefundedAccountName,
         );
 
         if ($resolved === null) {
@@ -3677,6 +3755,9 @@ class BridgeService
         $recipientCustomerId = trim($recipientCustomerId);
         $recipientWalletId = trim($recipientWalletId);
         $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
+        if ($prefundedAccountId === '' && $prefundedAccountName !== null) {
+            $prefundedAccountId = trim((string) ($this->resolvePrefundedAccountId(null, $prefundedAccountName) ?? ''));
+        }
 
         if ($recipientCustomerId === '' || $recipientWalletId === '') {
             return [

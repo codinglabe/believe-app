@@ -70,9 +70,11 @@ class BridgeSettingsController extends Controller
             'sandbox_prefunded_customer_id' => $additionalConfig['sandbox_prefunded_customer_id'] ?? null,
             'sandbox_prefunded_wallet_id' => $additionalConfig['sandbox_prefunded_wallet_id'] ?? null,
             'sandbox_prefunded_account_id' => $additionalConfig['sandbox_prefunded_account_id'] ?? null,
+            'sandbox_prefunded_account_name' => $additionalConfig['sandbox_prefunded_account_name'] ?? null,
             'live_prefunded_customer_id' => $additionalConfig['live_prefunded_customer_id'] ?? null,
             'live_prefunded_wallet_id' => $additionalConfig['live_prefunded_wallet_id'] ?? null,
             'live_prefunded_account_id' => $additionalConfig['live_prefunded_account_id'] ?? null,
+            'live_prefunded_account_name' => $additionalConfig['live_prefunded_account_name'] ?? null,
 
             'app_url' => config('app.url'),
             'integration_overview' => app(BridgeIntegrationOverviewService::class)->build($bridge, $additionalConfig),
@@ -82,9 +84,13 @@ class BridgeSettingsController extends Controller
         if ($request->filled('prefunded_environment')) {
             $validated = $request->validate([
                 'prefunded_environment' => ['required', 'string', 'in:sandbox,live'],
+                'prefunded_account_name' => ['nullable', 'string', 'max:255'],
             ]);
             $prefundedLiquidityOptions = app(BridgePrefundedLiquidityService::class)
-                ->listForEnvironment($validated['prefunded_environment']);
+                ->listForEnvironment(
+                    $validated['prefunded_environment'],
+                    $validated['prefunded_account_name'] ?? null,
+                );
         }
 
         $livePrefundedBalance = null;
@@ -134,9 +140,11 @@ class BridgeSettingsController extends Controller
             'sandbox_prefunded_customer_id' => ['nullable', 'string', 'max:255'],
             'sandbox_prefunded_wallet_id' => ['nullable', 'string', 'max:255'],
             'sandbox_prefunded_account_id' => ['nullable', 'string', 'max:255'],
+            'sandbox_prefunded_account_name' => ['nullable', 'string', 'max:255'],
             'live_prefunded_customer_id' => ['nullable', 'string', 'max:255'],
             'live_prefunded_wallet_id' => ['nullable', 'string', 'max:255'],
             'live_prefunded_account_id' => ['nullable', 'string', 'max:255'],
+            'live_prefunded_account_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $existingBridge = PaymentMethod::getConfig('bridge');
@@ -156,9 +164,11 @@ class BridgeSettingsController extends Controller
         $additionalConfig['sandbox_prefunded_customer_id'] = $request->sandbox_prefunded_customer_id ?: null;
         $additionalConfig['sandbox_prefunded_wallet_id'] = $request->sandbox_prefunded_wallet_id ?: null;
         $additionalConfig['sandbox_prefunded_account_id'] = $request->sandbox_prefunded_account_id ?: null;
+        $additionalConfig['sandbox_prefunded_account_name'] = $request->sandbox_prefunded_account_name ?: null;
         $additionalConfig['live_prefunded_customer_id'] = $request->live_prefunded_customer_id ?: null;
         $additionalConfig['live_prefunded_wallet_id'] = $request->live_prefunded_wallet_id ?: null;
         $additionalConfig['live_prefunded_account_id'] = $request->live_prefunded_account_id ?: null;
+        $additionalConfig['live_prefunded_account_name'] = $request->live_prefunded_account_name ?: null;
 
         if (! empty($request->bridge_sandbox_api_key)) {
             $sandboxService = new BridgeService($request->bridge_sandbox_api_key, 'sandbox');

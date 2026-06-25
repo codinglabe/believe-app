@@ -19,12 +19,14 @@ export type PrefundedLiquidityAccount = {
   chain: string
   address: string
   is_recommended?: boolean
+  matches_name_filter?: boolean
 }
 
 export type PrefundedLiquidityOptions = {
   environment: "sandbox" | "live"
   success: boolean
   error: string | null
+  preferred_account_name?: string | null
   accounts: PrefundedLiquidityAccount[]
 }
 
@@ -52,9 +54,11 @@ export function PrefundedLiquidityPicker({
   customerId,
   walletId,
   accountId,
+  accountName,
   onCustomerIdChange,
   onWalletIdChange,
   onAccountIdChange,
+  onAccountNameChange,
 }: {
   environment: "sandbox" | "live"
   title: string
@@ -62,9 +66,11 @@ export function PrefundedLiquidityPicker({
   customerId: string
   walletId: string
   accountId: string
+  accountName: string
   onCustomerIdChange: (value: string) => void
   onWalletIdChange: (value: string) => void
   onAccountIdChange: (value: string) => void
+  onAccountNameChange: (value: string) => void
 }) {
   const [options, setOptions] = React.useState<PrefundedLiquidityOptions | null>(null)
   const [loading, setLoading] = React.useState(false)
@@ -73,7 +79,10 @@ export function PrefundedLiquidityPicker({
     setLoading(true)
     router.get(
       route("bridge.index"),
-      { prefunded_environment: environment },
+      {
+        prefunded_environment: environment,
+        prefunded_account_name: accountName.trim() || undefined,
+      },
       {
         preserveState: true,
         preserveScroll: true,
@@ -87,7 +96,7 @@ export function PrefundedLiquidityPicker({
         onFinish: () => setLoading(false),
       },
     )
-  }, [environment])
+  }, [environment, accountName])
 
   const selectedValue = React.useMemo(() => {
     if (!options?.accounts?.length) {
@@ -121,6 +130,7 @@ export function PrefundedLiquidityPicker({
     onWalletIdChange(account.bridge_wallet_id)
     onCustomerIdChange(account.customer_id)
     onAccountIdChange(account.source === "prefunded_account" ? account.id : "")
+    onAccountNameChange(account.name)
   }
 
   return (
@@ -129,9 +139,8 @@ export function PrefundedLiquidityPicker({
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Choose your Bridge <span className="font-medium">Prefunded Account</span> only — not member wallets.
-            If no wallet ID is linked, paste the prefunded wallet ID from the Bridge dashboard into{" "}
-            <span className="font-medium">Wallet ID</span> below, then save.
+            Bridge returns all prefunded accounts — enter your platform account <span className="font-medium">name</span>{" "}
+            from onboarding, load the list, then select the matching prefunded account (not a member wallet).
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={loadAccounts}>
@@ -149,6 +158,15 @@ export function PrefundedLiquidityPicker({
         </Button>
       </div>
 
+      <BridgeField
+        id={`${environment}_prefunded_account_name`}
+        label="Platform prefunded account name"
+        value={accountName}
+        onChange={onAccountNameChange}
+        placeholder="e.g. believe_platform_reserve"
+        hint="Exact or partial match against Bridge GET /prefunded_accounts name field. Used when loading and when resolving transfers."
+      />
+
       {options && !options.success && options.error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -160,8 +178,8 @@ export function PrefundedLiquidityPicker({
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            No prefunded accounts or Bridge wallets were returned for {environment}. Create liquidity in the Bridge
-            dashboard first.
+            No prefunded accounts were returned for {environment}. Create platform liquidity in the Bridge dashboard
+            first, or check your API credentials.
           </AlertDescription>
         </Alert>
       )}
@@ -173,10 +191,19 @@ export function PrefundedLiquidityPicker({
               <AlertCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               <AlertDescription className="text-sm text-foreground">
                 <span className="font-medium">Recommended:</span>{" "}
-                {recommendedAccount.name} (
-                {formatBalance(recommendedAccount.available_balance, recommendedAccount.currency)}). This is your
-                Bridge prefunded account — it pays members when they move BP to wallet. Member wallets (even with higher
-                balances) must never be used here.
+                <span className="font-medium">{recommendedAccount.name}</span> (
+                {formatBalance(recommendedAccount.available_balance, recommendedAccount.currency)}). This matches your
+                platform prefunded account name filter.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!recommendedAccount && accountName.trim() !== "" && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                No prefunded account name matches &quot;{accountName}&quot;. Check the name in Bridge dashboard and
+                update the filter above, then load again.
               </AlertDescription>
             </Alert>
           )}
@@ -197,11 +224,11 @@ export function PrefundedLiquidityPicker({
                     <span className="flex flex-col gap-0.5 text-left">
                       <span className="font-medium">
                         {account.is_recommended ? "★ Recommended · " : ""}
+                        {account.matches_name_filter && !account.is_recommended ? "Name match · " : ""}
                         {account.name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatBalance(account.available_balance, account.currency)}
-                        {account.source === "prefunded_account" ? " · Prefunded account" : " · Platform wallet"}
+                        {formatBalance(account.available_balance, account.currency)} · Prefunded account
                         {account.chain ? ` · ${account.chain}` : ""}
                         {account.bridge_wallet_id
                           ? ` · …${account.bridge_wallet_id.slice(-8)}`

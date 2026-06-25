@@ -61,9 +61,11 @@ interface SettingsProps {
   sandbox_prefunded_customer_id?: string | null
   sandbox_prefunded_wallet_id?: string | null
   sandbox_prefunded_account_id?: string | null
+  sandbox_prefunded_account_name?: string | null
   live_prefunded_customer_id?: string | null
   live_prefunded_wallet_id?: string | null
   live_prefunded_account_id?: string | null
+  live_prefunded_account_name?: string | null
   app_url: string
   integration_overview: {
     active_environment: "sandbox" | "live"
@@ -142,9 +144,11 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
     sandbox_prefunded_customer_id: settings.sandbox_prefunded_customer_id || "",
     sandbox_prefunded_wallet_id: settings.sandbox_prefunded_wallet_id || "",
     sandbox_prefunded_account_id: settings.sandbox_prefunded_account_id || "",
+    sandbox_prefunded_account_name: settings.sandbox_prefunded_account_name || "",
     live_prefunded_customer_id: settings.live_prefunded_customer_id || "",
     live_prefunded_wallet_id: settings.live_prefunded_wallet_id || "",
     live_prefunded_account_id: settings.live_prefunded_account_id || "",
+    live_prefunded_account_name: settings.live_prefunded_account_name || "",
   })
 
   const [enablingCards, setEnablingCards] = React.useState(false)
@@ -563,9 +567,11 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
               customerId={data.sandbox_prefunded_customer_id}
               walletId={data.sandbox_prefunded_wallet_id}
               accountId={data.sandbox_prefunded_account_id}
+              accountName={data.sandbox_prefunded_account_name}
               onCustomerIdChange={(value) => setData("sandbox_prefunded_customer_id", value)}
               onWalletIdChange={(value) => setData("sandbox_prefunded_wallet_id", value)}
               onAccountIdChange={(value) => setData("sandbox_prefunded_account_id", value)}
+              onAccountNameChange={(value) => setData("sandbox_prefunded_account_name", value)}
             />
 
             <PrefundedLiquidityPicker
@@ -575,9 +581,11 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
               customerId={data.live_prefunded_customer_id}
               walletId={data.live_prefunded_wallet_id}
               accountId={data.live_prefunded_account_id}
+              accountName={data.live_prefunded_account_name}
               onCustomerIdChange={(value) => setData("live_prefunded_customer_id", value)}
               onWalletIdChange={(value) => setData("live_prefunded_wallet_id", value)}
               onAccountIdChange={(value) => setData("live_prefunded_account_id", value)}
+              onAccountNameChange={(value) => setData("live_prefunded_account_name", value)}
             />
           </div>
 
