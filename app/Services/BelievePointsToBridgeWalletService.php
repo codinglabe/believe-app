@@ -121,6 +121,7 @@ class BelievePointsToBridgeWalletService
             $amount,
             $idempotencyKey,
             $prefundedAccountId !== '' ? $prefundedAccountId : null,
+            $this->settings->prefundedAccountName() !== '' ? $this->settings->prefundedAccountName() : null,
         );
 
         if ($bridgeResult['success'] ?? false) {
@@ -250,6 +251,7 @@ class BelievePointsToBridgeWalletService
             (float) $transfer->amount,
             $transfer->idempotency_key,
             $prefundedAccountId !== '' ? $prefundedAccountId : null,
+            $this->settings->prefundedAccountName() !== '' ? $this->settings->prefundedAccountName() : null,
         );
 
         if ($bridgeResult['success'] ?? false) {

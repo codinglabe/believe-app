@@ -9,19 +9,20 @@ class BridgePrefundedLiquidityService
     /**
      * Load prefunded accounts from Bridge for admin selection.
      *
-     * Only prefunded accounts (platform liquidity) are listed — not member wallets from GET /wallets.
+     * Bridge GET /prefunded_accounts returns all accounts — use the `name` field to
+     * identify your platform reserve account and filter in application logic.
      *
      * @see https://apidocs.bridge.xyz/api-reference/prefunded-accounts/get-a-list-of-all-prefunded-account
-     * @see https://apidocs.bridge.xyz/platform/wallets/prefunded_wallets
      *
      * @return array{
      *     environment: string,
      *     success: bool,
      *     error: string|null,
-     *     accounts: array<int, array<string, mixed>>
+     *     accounts: array<int, array<string, mixed>>,
+     *     preferred_account_name?: string|null
      * }
      */
-    public function listForEnvironment(string $environment): array
+    public function listForEnvironment(string $environment, ?string $preferredNameOverride = null): array
     {
         $environment = strtolower(trim($environment));
         if (! in_array($environment, ['sandbox', 'live'], true)) {
@@ -39,6 +40,12 @@ class BridgePrefundedLiquidityService
                 'Add a '.ucfirst($environment).' Bridge API key and save before loading accounts.',
             );
         }
+
+        $additionalConfig = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+        $nameKey = $environment === 'sandbox' ? 'sandbox_prefunded_account_name' : 'live_prefunded_account_name';
+        $accountIdKey = $environment === 'sandbox' ? 'sandbox_prefunded_account_id' : 'live_prefunded_account_id';
+        $preferredName = trim((string) ($preferredNameOverride ?? $additionalConfig[$nameKey] ?? ''));
+        $preferredAccountId = trim((string) ($additionalConfig[$accountIdKey] ?? ''));
 
         $service = new BridgeService($apiKey, $environment);
         $accounts = [];
@@ -62,6 +69,7 @@ class BridgePrefundedLiquidityService
                 ? $detail['data']
                 : $row;
 
+            $accountName = (string) ($payload['name'] ?? $row['name'] ?? 'Prefunded account');
             $walletId = $service->extractBridgeWalletIdFromPayload($payload);
             if ($walletId !== '' && $service->isMemberCustomerBridgeWallet($walletId)) {
                 $walletId = '';
@@ -84,7 +92,7 @@ class BridgePrefundedLiquidityService
             $accounts[] = [
                 'id' => $accountId,
                 'source' => 'prefunded_account',
-                'name' => (string) ($payload['name'] ?? $row['name'] ?? 'Prefunded account'),
+                'name' => $accountName,
                 'available_balance' => $availableBalance,
                 'currency' => strtolower((string) ($payload['currency'] ?? $row['currency'] ?? 'usd')),
                 'bridge_wallet_id' => $walletId,
@@ -92,23 +100,25 @@ class BridgePrefundedLiquidityService
                 'chain' => is_array($walletSummary) ? (string) ($walletSummary['chain'] ?? '') : '',
                 'address' => is_array($walletSummary) ? (string) ($walletSummary['address'] ?? '') : '',
                 'is_recommended' => false,
-                'is_member_wallet' => false,
+                'matches_name_filter' => $preferredName !== ''
+                    && $service->prefundedAccountNameMatches($accountName, $preferredName),
             ];
         }
 
         if ($accounts === []) {
             return $this->errorPayload(
                 $environment,
-                'No prefunded accounts were returned. Create a Prefunded Account / Prefunded Wallet in the Bridge dashboard first.',
+                'No prefunded accounts were returned. Create a Prefunded Account in the Bridge dashboard first.',
             );
         }
 
-        $accounts = $this->markAndSortLiquidityAccounts($accounts);
+        $accounts = $this->markAndSortLiquidityAccounts($accounts, $preferredAccountId, $preferredName);
 
         return [
             'environment' => $environment,
             'success' => true,
             'error' => null,
+            'preferred_account_name' => $preferredName !== '' ? $preferredName : null,
             'accounts' => $accounts,
         ];
     }
@@ -117,29 +127,33 @@ class BridgePrefundedLiquidityService
      * @param  array<int, array<string, mixed>>  $accounts
      * @return array<int, array<string, mixed>>
      */
-    private function markAndSortLiquidityAccounts(array $accounts): array
-    {
+    private function markAndSortLiquidityAccounts(
+        array $accounts,
+        string $preferredAccountId = '',
+        string $preferredName = '',
+    ): array {
         $recommendedIndex = null;
 
-        foreach ($accounts as $index => $account) {
-            $walletId = trim((string) ($account['bridge_wallet_id'] ?? ''));
-            if ($walletId === '') {
-                continue;
-            }
-
-            if (($account['source'] ?? '') === 'prefunded_account') {
-                $recommendedIndex = $index;
-                break;
-            }
-        }
-
-        if ($recommendedIndex === null) {
+        if ($preferredAccountId !== '') {
             foreach ($accounts as $index => $account) {
-                if (trim((string) ($account['bridge_wallet_id'] ?? '')) !== '') {
+                if ((string) ($account['id'] ?? '') === $preferredAccountId) {
                     $recommendedIndex = $index;
                     break;
                 }
             }
+        }
+
+        if ($recommendedIndex === null && $preferredName !== '') {
+            foreach ($accounts as $index => $account) {
+                if (($account['matches_name_filter'] ?? false) === true) {
+                    $recommendedIndex = $index;
+                    break;
+                }
+            }
+        }
+
+        if ($recommendedIndex === null && count($accounts) === 1) {
+            $recommendedIndex = 0;
         }
 
         foreach ($accounts as $index => $account) {
@@ -151,6 +165,12 @@ class BridgePrefundedLiquidityService
             $bRecommended = (bool) ($b['is_recommended'] ?? false);
             if ($aRecommended !== $bRecommended) {
                 return $bRecommended <=> $aRecommended;
+            }
+
+            $aMatch = (bool) ($a['matches_name_filter'] ?? false);
+            $bMatch = (bool) ($b['matches_name_filter'] ?? false);
+            if ($aMatch !== $bMatch) {
+                return $bMatch <=> $aMatch;
             }
 
             return strcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? ''));

@@ -63,6 +63,16 @@ class BelievePointsWalletTransferSettingsService
             : ($config['live_prefunded_account_id'] ?? '')));
     }
 
+    public function prefundedAccountName(): string
+    {
+        $config = $this->bridgeAdditionalConfig();
+        $isSandbox = app(BridgeService::class)->isSandbox();
+
+        return trim((string) ($isSandbox
+            ? ($config['sandbox_prefunded_account_name'] ?? '')
+            : ($config['live_prefunded_account_name'] ?? '')));
+    }
+
     /**
      * @return array{customer_id: string, wallet_id: string}|null
      */
@@ -72,6 +82,8 @@ class BelievePointsWalletTransferSettingsService
             $this->prefundedCustomerId(),
             $this->prefundedWalletId(),
             $this->prefundedAccountId() !== '' ? $this->prefundedAccountId() : null,
+            null,
+            $this->prefundedAccountName() !== '' ? $this->prefundedAccountName() : null,
         );
 
         if ($resolved === null) {
