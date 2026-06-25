@@ -3582,8 +3582,14 @@ class BridgeService
         float $amount,
         string $currency = 'USD',
         ?string $fromAddress = null,
-        ?string $toAddress = null
+        ?string $toAddress = null,
+        ?string $idempotencyKey = null,
     ): array {
+        $fromCustomerId = trim($fromCustomerId);
+        $fromWalletId = trim($fromWalletId);
+        $toCustomerId = trim($toCustomerId);
+        $toWalletId = trim($toWalletId);
+
         $fromWallet = $this->parseBridgeWalletForTransfer($fromCustomerId, $fromWalletId);
         $toWallet = $this->parseBridgeWalletForTransfer($toCustomerId, $toWalletId);
 
@@ -3592,23 +3598,24 @@ class BridgeService
                 return [
                     'success' => false,
                     'error' => 'Sender wallet requires payment initiation before transfers can be created.',
+                    'error_code' => 'PREFUNDED_WALLET_INITIATION_REQUIRED',
                     'initiation_required' => true,
                 ];
             }
 
-            $transferCurrency = $fromWallet['currency'];
+            $transferCurrency = $this->resolveWalletToWalletTransferCurrency($fromWallet, $toWallet);
             $availableBalance = (float) ($fromWallet['balance'] ?? 0);
 
-            if ($availableBalance < $amount) {
+            if ($availableBalance + 0.000001 < $amount) {
                 return [
                     'success' => false,
-                    'error' => 'Insufficient funds in your Bridge wallet. Available: $'.number_format($availableBalance, 2),
-                    'error_code' => 'INSUFFICIENT_BRIDGE_WALLET_BALANCE',
+                    'error' => 'Platform liquidity is temporarily unavailable. Please try again later.',
+                    'error_code' => 'INSUFFICIENT_PREFUNDED_BALANCE',
                     'bridge_wallet_balance' => $availableBalance,
                 ];
             }
 
-            return $this->createTransfer([
+            $transferData = [
                 'amount' => number_format($amount, 2, '.', ''),
                 'on_behalf_of' => $fromCustomerId,
                 'source' => [
@@ -3621,7 +3628,19 @@ class BridgeService
                     'currency' => $transferCurrency,
                     'bridge_wallet_id' => $toWallet['wallet_id'],
                 ],
+            ];
+
+            Log::info('Creating Bridge wallet-to-wallet transfer', [
+                'amount' => $amount,
+                'on_behalf_of' => $fromCustomerId,
+                'source_customer_id' => $fromCustomerId,
+                'source_wallet_id' => $fromWallet['wallet_id'],
+                'destination_customer_id' => $toCustomerId,
+                'destination_wallet_id' => $toWallet['wallet_id'],
+                'currency' => $transferCurrency,
             ]);
+
+            return $this->createTransfer($transferData, $idempotencyKey);
         }
 
         if (! $this->isSandbox()) {
@@ -3817,8 +3836,12 @@ class BridgeService
     }
 
     /**
-     * Fund a customer's Bridge wallet from the platform prefunded liquidity wallet.
+     * Fund a member Bridge wallet from the platform reserve customer wallet.
      *
+     * Reserve liquidity is a Bridge customer account (cus_…) your client configured during
+     * onboarding — not a Believe member wallet. Transfer is reserve wallet → member wallet.
+     *
+     * @see https://apidocs.bridge.xyz/platform/wallets/move-money
      * @see https://apidocs.bridge.xyz/platform/wallets/prefunded_wallets
      *
      * @return array{success: bool, data?: array<string, mixed>, error?: string, message?: string, error_code?: string, status?: int}
@@ -3926,9 +3949,55 @@ class BridgeService
         if ($prefundedWallet['initiation_required'] ?? false) {
             return [
                 'success' => false,
-                'error' => 'Platform prefunded wallet requires activation before transfers can be created.',
+                'error' => 'Platform reserve wallet requires activation before transfers can be created.',
                 'error_code' => 'PREFUNDED_WALLET_INITIATION_REQUIRED',
             ];
+        }
+
+        if ($prefundedCustomerId === '') {
+            $walletResult = $this->getBridgeWalletById($prefundedWallet['wallet_id']);
+            if (($walletResult['success'] ?? false) && is_array($walletResult['data'] ?? null)) {
+                $prefundedCustomerId = $this->extractCustomerIdFromPayload($walletResult['data']);
+            }
+        }
+
+        // Platform reserve customer account → member wallet (on_behalf_of = reserve customer).
+        if ($prefundedCustomerId !== '') {
+            Log::info('Creating platform reserve to member Bridge wallet transfer', [
+                'amount' => $amount,
+                'reserve_customer_id' => $prefundedCustomerId,
+                'reserve_wallet_id' => $prefundedWallet['wallet_id'],
+                'recipient_customer_id' => $recipientCustomerId,
+                'recipient_wallet_id' => $recipientWallet['wallet_id'],
+            ]);
+
+            $result = $this->createWalletToWalletTransfer(
+                $prefundedCustomerId,
+                $prefundedWallet['wallet_id'],
+                $recipientCustomerId,
+                $recipientWallet['wallet_id'],
+                $amount,
+                'USD',
+                null,
+                null,
+                $idempotencyKey,
+            );
+
+            if (! ($result['success'] ?? false)) {
+                Log::warning('Platform reserve to member Bridge wallet transfer failed', [
+                    'amount' => $amount,
+                    'reserve_customer_id' => $prefundedCustomerId,
+                    'reserve_wallet_id' => $prefundedWallet['wallet_id'],
+                    'recipient_customer_id' => $recipientCustomerId,
+                    'recipient_wallet_id' => $recipientWallet['wallet_id'],
+                    'error' => $result['error'] ?? null,
+                    'error_code' => $result['error_code'] ?? null,
+                    'status' => $result['status'] ?? null,
+                    'bridge_response' => $result['response'] ?? null,
+                ]);
+            }
+
+            return $result;
         }
 
         $transferCurrency = $this->resolveWalletToWalletTransferCurrency($prefundedWallet, $recipientWallet);
@@ -3948,7 +4017,7 @@ class BridgeService
             ],
         ];
 
-        Log::info('Creating prefunded Bridge wallet transfer', [
+        Log::info('Creating prefunded liquidity Bridge wallet transfer', [
             'amount' => $amount,
             'on_behalf_of' => $recipientCustomerId,
             'source_wallet_id' => $prefundedWallet['wallet_id'],

@@ -156,8 +156,13 @@ class BelievePointsToBridgeWalletService
             Log::warning('Believe Points wallet transfer rejected by Bridge', [
                 'user_id' => $user->id,
                 'amount' => $amount,
+                'reserve_customer_id' => $this->settings->prefundedCustomerId(),
+                'reserve_wallet_id' => $this->settings->prefundedWalletId(),
+                'recipient_customer_id' => $integration->bridge_customer_id,
+                'recipient_wallet_id' => $recipientWallet['wallet_id'],
                 'bridge_error' => $bridgeResult['error'] ?? null,
                 'bridge_error_code' => $bridgeResult['error_code'] ?? null,
+                'bridge_response' => $bridgeResult['response'] ?? null,
             ]);
 
             return [
