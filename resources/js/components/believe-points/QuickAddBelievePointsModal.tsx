@@ -34,11 +34,12 @@ export interface BelievePointsFeePreview {
   brp_earned: number
   bp_availability: string
   platform_fee_percent: number
+  processing_fee_percent: number
 }
 
 interface PurchaseSettings {
-  card_brp_rate: number
-  ach_brp_rate: number
+  /** Flat BRP awarded per purchase for the current buyer's membership tier. */
+  brp_award: number
   card_hold_hours: number
 }
 
@@ -128,7 +129,7 @@ export function QuickAddBelievePointsModal({
 
   const isBank = paymentRail === "bank"
   const paymentMethod = isBank ? "stripe_ach" : "stripe_card"
-  const brpRate = isBank ? purchaseSettings.ach_brp_rate : purchaseSettings.card_brp_rate
+  const brpAward = feePreview?.brp_earned ?? purchaseSettings.brp_award
   const holdLabel =
     purchaseSettings.card_hold_hours === 1
       ? "after 1-hour security review"
@@ -307,7 +308,7 @@ export function QuickAddBelievePointsModal({
                   {formatPoints(amountNum)} BP
                 </p>
                 <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                  Earn ~{Math.round(amountNum * brpRate)} BRP · BP available{" "}
+                  Earn {formatPoints(brpAward)} BRP · BP available{" "}
                   {isBank ? "after ACH settlement" : holdLabel}
                 </p>
               </div>
@@ -327,7 +328,7 @@ export function QuickAddBelievePointsModal({
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Includes platform fee ({feePreview.platform_fee_percent}%) and processing fee
+                  Includes platform fee ({feePreview.platform_fee_percent}%) and processing fee ({feePreview.processing_fee_percent}%)
                 </p>
               </div>
             )}

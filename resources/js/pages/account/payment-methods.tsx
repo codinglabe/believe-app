@@ -41,8 +41,7 @@ type PageProps = {
     minPurchaseAmount: number
     maxPurchaseAmount: number
     purchaseSettings: {
-      card_brp_rate: number
-      ach_brp_rate: number
+      brp_award: number
       card_hold_hours: number
     }
     currentBalance: number

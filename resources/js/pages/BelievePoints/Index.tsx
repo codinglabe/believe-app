@@ -89,16 +89,21 @@ interface BelievePointsFeePreview {
   ach_processing_fee_usd: number
   brp_value: number
   platform_fee_percent: number
-  card_brp_rate: number
-  ach_brp_rate: number
+  processing_fee_percent: number
+  free_brp_award: number
+  prime_brp_award: number
+  brp_award: number
   card_hold_hours: number
 }
 
 interface PurchaseSettings {
   brp_value: number
   platform_fee_percent: number
-  card_brp_rate: number
-  ach_brp_rate: number
+  processing_fee_percent: number
+  free_brp_award: number
+  prime_brp_award: number
+  /** Flat BRP awarded per purchase for the current buyer's membership tier. */
+  brp_award: number
   card_hold_hours: number
 }
 
@@ -203,8 +208,10 @@ export default function BelievePointsIndex({
   const purchaseSettings = purchaseSettingsProp ?? {
     brp_value: 0.005,
     platform_fee_percent: 1,
-    card_brp_rate: 2,
-    ach_brp_rate: 1,
+    processing_fee_percent: 1,
+    free_brp_award: 5,
+    prime_brp_award: 10,
+    brp_award: 5,
     card_hold_hours: 24,
   }
   const availableMethods = availableMethodsProp
@@ -329,7 +336,6 @@ export default function BelievePointsIndex({
       if (inRange) {
         q.fee_preview_amount = n
         q.fee_preview_rail = paymentMethod === "stripe_ach" ? "bank" : "card"
-        q.fee_preview_include_stripe = isStripeRail(paymentMethod) ? 1 : 0
       }
       setFeePreviewLoading(true)
       router.get(route("believe-points.index"), q, {
@@ -656,7 +662,7 @@ export default function BelievePointsIndex({
                     </div>
                     <CardDescription className="max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
                       Choose a payment method below. You receive 1 Believe Point (BP) per $1 USD purchased.
-                      Card and ACH checkouts earn BRP at configured rates; purchased BP first goes into Processing BP.
+                      Each purchase earns a flat {formatPoints(purchaseSettings.brp_award)} BRP reward; purchased BP first goes into Processing BP.
                     </CardDescription>
                   </div>
                 </div>
@@ -710,9 +716,9 @@ export default function BelievePointsIndex({
                       <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Payment method</p>
                       <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
                         {isAchPayment
-                          ? `Earn ${purchaseSettings.ach_brp_rate} BRP per $1. BP goes into Processing BP and becomes available after ACH settlement.`
+                          ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per purchase. BP goes into Processing BP and becomes available after ACH settlement.`
                           : isCardPayment
-                            ? `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP goes into Processing BP and becomes available ${cardHoldLabel.toLowerCase()}.`
+                            ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per purchase. BP goes into Processing BP and becomes available ${cardHoldLabel.toLowerCase()}.`
                             : isManualMethod(paymentMethod)
                               ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
                               : "Complete checkout with your selected payment provider."}
@@ -824,7 +830,7 @@ export default function BelievePointsIndex({
                           </span>
                         </li>
                         <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
-                          <span>Processing Fee</span>
+                          <span>Processing Fee ({feePreview.processing_fee_percent}%)</span>
                           <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
                             {formatCurrency(feePreview.processing_fee_usd)}
                           </span>
@@ -906,7 +912,7 @@ export default function BelievePointsIndex({
                       </li>
                       <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
-                        <span>Card: earn {purchaseSettings.card_brp_rate} BRP per $1. ACH: earn {purchaseSettings.ach_brp_rate} BRP per $1. BRP value = {formatCurrency(purchaseSettings.brp_value)} each.</span>
+                        <span>Earn a flat {formatPoints(purchaseSettings.brp_award)} BRP reward per purchase ({formatPoints(purchaseSettings.free_brp_award)} for Free members, {formatPoints(purchaseSettings.prime_brp_award)} for Prime). BRP value = {formatCurrency(purchaseSettings.brp_value)} each.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />

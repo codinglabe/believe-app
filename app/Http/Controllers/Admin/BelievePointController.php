@@ -70,8 +70,9 @@ class BelievePointController extends BaseController
             'max_purchase_amount' => ['required', 'numeric', 'min:1', 'max:100000'],
             'brp_value' => ['required', 'numeric', 'min:0', 'max:100'],
             'platform_fee_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'card_brp_rate' => ['required', 'numeric', 'min:0', 'max:1000'],
-            'ach_brp_rate' => ['required', 'numeric', 'min:0', 'max:1000'],
+            'processing_fee_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'free_brp_award' => ['required', 'numeric', 'min:0', 'max:10000'],
+            'prime_brp_award' => ['required', 'numeric', 'min:0', 'max:10000'],
             'card_hold_hours' => ['required', 'integer', 'min:0', 'max:720'],
             'stripe_card_enabled' => 'sometimes|boolean',
             'stripe_ach_enabled' => 'sometimes|boolean',
@@ -97,8 +98,9 @@ class BelievePointController extends BaseController
         AdminSetting::set('believe_points_max_purchase', $request->input('max_purchase_amount'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_BRP_VALUE, $request->input('brp_value'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PLATFORM_FEE_PERCENT, $request->input('platform_fee_percent'), 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_BRP_RATE, $request->input('card_brp_rate'), 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_BRP_RATE, $request->input('ach_brp_rate'), 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PROCESSING_FEE_PERCENT, $request->input('processing_fee_percent'), 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_AWARD, $request->input('free_brp_award'), 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_AWARD, $request->input('prime_brp_award'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, $request->input('card_hold_hours'), 'integer');
 
         $payload = [
