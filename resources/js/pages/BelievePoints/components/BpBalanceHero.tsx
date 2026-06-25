@@ -55,13 +55,13 @@ export function BpBalanceHero({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">Believe Points</p>
-              <p className="text-xs text-muted-foreground">1 BP = $1 USD</p>
+              <p className="text-xs text-muted-foreground">Available + Processing balances</p>
             </div>
           </div>
           {processingBalance > 0 && (
             <div className="shrink-0 max-w-[140px] rounded-lg border border-amber-200/80 bg-amber-50 px-2.5 py-1.5 text-right dark:border-amber-800/50 dark:bg-amber-950/30">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                On hold
+                Processing
               </p>
               <p className="text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
                 {formatPoints(processingBalance)} BP
@@ -90,7 +90,7 @@ export function BpBalanceHero({
             <span className="text-lg font-semibold text-muted-foreground">BP</span>
           </motion.div>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Face value ≈ {formatCurrency(balance)} for donations and eligible purchases
+            Use for wallet, marketplace, and gift cards. Donations can also use Processing BP.
           </p>
         </div>
       </div>

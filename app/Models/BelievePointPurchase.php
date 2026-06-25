@@ -23,6 +23,12 @@ class BelievePointPurchase extends Model
         'receipt_image',
         'reward_points_awarded',
         'points_available_at',
+        'stripe_funds_available_at',
+        'bridge_reserve_confirmed_at',
+        'bridge_settlement_reference',
+        'settlement_status',
+        'settlement_at',
+        'stripe_settlement_reference',
         'points_released',
         'failure_code',
         'failure_message',
@@ -40,6 +46,9 @@ class BelievePointPurchase extends Model
         'refunded_at' => 'datetime',
         'reward_points_awarded' => 'decimal:2',
         'points_available_at' => 'datetime',
+        'stripe_funds_available_at' => 'datetime',
+        'bridge_reserve_confirmed_at' => 'datetime',
+        'settlement_at' => 'datetime',
         'points_released' => 'boolean',
     ];
 

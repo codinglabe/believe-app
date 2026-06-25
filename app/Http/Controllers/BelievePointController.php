@@ -10,6 +10,7 @@ use App\Models\BelievePointWalletTransfer;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
+use App\Services\BelievePointPurchaseSettlementStatusService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\BelievePointsPurchaseSettingsService;
@@ -56,13 +57,19 @@ class BelievePointController extends Controller
         BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
         $user->refresh();
 
+        app(BelievePointsToBridgeWalletService::class)->reconcileSubmittedTransfers((int) $user->id);
+
         // Get user's current believe points balance
         $currentBalance = $user->currentBelievePoints();
 
         // Get user's purchase history
         $purchases = BelievePointPurchase::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->paginate(10)
+            ->through(static fn (BelievePointPurchase $purchase) => array_merge(
+                $purchase->toArray(),
+                BelievePointPurchaseSettlementStatusService::historyPayload($purchase),
+            ));
 
         $walletTransfers = BelievePointWalletTransfer::query()
             ->where('user_id', $user->id)
@@ -83,28 +90,15 @@ class BelievePointController extends Controller
 
         $feePreview = null;
         if ($request->filled('fee_preview_amount')) {
-            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail', 'fee_preview_include_stripe']), [
+            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail']), [
                 'fee_preview_amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
                 'fee_preview_rail' => ['nullable', 'in:card,bank'],
-                'fee_preview_include_stripe' => ['nullable', 'boolean'],
             ]);
             if (! $validator->fails()) {
                 $base = round((float) $validator->validated()['fee_preview_amount'], 2);
                 $rail = $request->input('fee_preview_rail', 'bank');
                 $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
-                $includeStripe = $request->boolean('fee_preview_include_stripe', true);
-                if ($includeStripe) {
-                    $feePreview = $this->believePointsFeePreviewPayload($base, $rail);
-                } else {
-                    $breakdown = $this->purchaseBreakdownForRail($base, $rail, false);
-                    $feePreview = array_merge(
-                        BelievePointsPurchaseCalculationService::feePreviewPayload($base, $rail),
-                        [
-                            'processing_fee_usd' => 0.0,
-                            'checkout_total_usd' => $breakdown['checkout_total_usd'],
-                        ]
-                    );
-                }
+                $feePreview = $this->believePointsFeePreviewPayload($base, $rail, $user);
             }
         }
 
@@ -117,14 +111,14 @@ class BelievePointController extends Controller
             'purchases' => $purchases,
             'walletTransfers' => $walletTransfers,
             'feePreview' => $feePreview,
-            'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload(),
+            'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload($user),
             'availableMethods' => BelievePointsPaymentMethodResolver::availableMethods(),
             'savedPaymentMethods' => UserStripePaymentMethodService::listForUser($user),
             'paymentMethodsUrl' => $user->hasNonprofitDashboardRole()
                 ? route('settings.saved-payment-methods.index')
                 : route('user.profile.payment-methods.index'),
             'autoReplenish' => $this->autoReplenishPayloadForUser($user),
-            'walletTransfer' => app(BelievePointsWalletTransferSettingsService::class)->frontendPayload(),
+            'walletTransfer' => app(BelievePointsWalletTransferSettingsService::class)->frontendPayload($user),
         ]);
     }
 
@@ -160,25 +154,26 @@ class BelievePointController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function believePointsFeePreviewPayload(float $netPointsUsd, string $rail): array
+    private function believePointsFeePreviewPayload(float $netPointsUsd, string $rail, ?User $user = null): array
     {
         $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
 
         return BelievePointsPurchaseCalculationService::feePreviewPayload(
             round(max(0, $netPointsUsd), 2),
-            $rail
+            $rail,
+            $user
         );
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function purchaseBreakdownForRail(float $netPointsUsd, string $rail, bool $includeStripeProcessing): array
+    private function purchaseBreakdownForRail(float $netPointsUsd, string $rail, ?User $user = null): array
     {
         return BelievePointsPurchaseCalculationService::checkoutBreakdown(
             round(max(0, $netPointsUsd), 2),
             $rail,
-            $includeStripeProcessing
+            $user
         );
     }
 
@@ -246,7 +241,7 @@ class BelievePointController extends Controller
 
         $feeRail = $validated['payment_rail'] === 'bank' ? 'bank' : 'card';
         $points = $netPointsUsd;
-        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, true);
+        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, $user);
         $checkoutTotalUsd = $breakdown['checkout_total_usd'];
         $processingFeeAddon = $breakdown['processing_fee_usd'];
         $platformFee = $breakdown['platform_fee_usd'];
@@ -429,7 +424,7 @@ class BelievePointController extends Controller
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, true);
+        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, $user);
         $checkoutTotalUsd = $breakdown['checkout_total_usd'];
         $processingFeeAddon = $breakdown['processing_fee_usd'];
         $platformFee = $breakdown['platform_fee_usd'];
@@ -683,8 +678,8 @@ class BelievePointController extends Controller
                         $rp = round((float) $purchase->reward_points_awarded, 2);
                         $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
                     }
-                    if (! $purchase->points_released && BelievePointsPurchaseSettingsService::cardHoldHours() > 0) {
-                        $message .= ' Your BP will become available after the configured hold period.';
+                    if (! $purchase->points_released) {
+                        $message .= ' Your BP is in Processing balance until platform settlement completes, then becomes Available for wallet and marketplace use. Donations can use Processing BP now.';
                     }
 
                     return redirect()->route('believe-points.index')->with('success', $message);

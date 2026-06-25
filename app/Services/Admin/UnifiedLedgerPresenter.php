@@ -254,6 +254,7 @@ class UnifiedLedgerPresenter
             'care_alliance_donation' => 'campaign',
             'believe_points_purchase' => 'believe_points',
             'believe_points_wallet_transfer' => 'believe_points',
+            'bp_settlement' => 'believe_points',
             'order' => $base === 'MerchantHubOfferRedemption'
                 ? 'merchant_hub'
                 : ($this->isGiftCardPurchaseContext($t)
@@ -400,6 +401,7 @@ class UnifiedLedgerPresenter
             'merchant_subscription' => 'organization_subscription',
             'believe_points_purchase',
             'believe_points_wallet_transfer',
+            'bp_settlement',
             'believe_points_auto_replenish',
             'believe_points_auto_replenish_setup' => 'believe_points',
             'referral_reward',
@@ -661,6 +663,9 @@ class UnifiedLedgerPresenter
         if (($meta['source'] ?? '') === 'believe_points_wallet_transfer'
             || $t->type === 'believe_points_wallet_transfer') {
             return 'believe_points_wallet_transfer';
+        }
+        if (($meta['source'] ?? '') === 'bp_settlement' || $t->type === 'bp_settlement') {
+            return 'bp_settlement';
         }
 
         return 'believe_points_purchase';
