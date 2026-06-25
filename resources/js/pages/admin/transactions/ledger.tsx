@@ -91,6 +91,7 @@ interface LedgerRow {
 interface LedgerReport {
   date: string
   reference: string
+  stripe_mode?: "live" | "test" | "local" | "unknown"
   source_type: string
   gross_amount: number
   stripe_fee: number
@@ -1246,8 +1247,28 @@ export default function TransactionLedger({
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
                                 {rep ? formatLedgerDate(rep.date) : new Date(row.created_at).toLocaleString()}
                               </td>
-                              <td className="max-w-[11rem] truncate px-4 py-3 font-mono text-sm text-foreground" title={row.transaction_id}>
-                                {row.transaction_id}
+                              <td className="max-w-[11rem] px-4 py-3 font-mono text-sm text-foreground">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="truncate" title={row.transaction_id}>
+                                    {row.transaction_id}
+                                  </span>
+                                  {rep?.stripe_mode && rep.stripe_mode !== "unknown" && (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "shrink-0 text-[10px] uppercase",
+                                        rep.stripe_mode === "live" &&
+                                          "border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300",
+                                        rep.stripe_mode === "test" &&
+                                          "border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-300",
+                                        rep.stripe_mode === "local" &&
+                                          "border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300",
+                                      )}
+                                    >
+                                      {rep.stripe_mode}
+                                    </Badge>
+                                  )}
+                                </div>
                               </td>
                               <td className="whitespace-nowrap px-4 py-3">
                                 <span
