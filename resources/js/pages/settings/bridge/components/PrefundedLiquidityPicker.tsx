@@ -18,6 +18,7 @@ export type PrefundedLiquidityAccount = {
   customer_id: string
   chain: string
   address: string
+  is_recommended?: boolean
 }
 
 export type PrefundedLiquidityOptions = {
@@ -106,6 +107,11 @@ export function PrefundedLiquidityPicker({
     return match ? accountOptionValue(match) : ""
   }, [accountId, options?.accounts, walletId])
 
+  const recommendedAccount = React.useMemo(
+    () => options?.accounts?.find((account) => account.is_recommended && account.bridge_wallet_id) ?? null,
+    [options?.accounts],
+  )
+
   const handleSelect = (value: string) => {
     const account = options?.accounts.find((item) => accountOptionValue(item) === value)
     if (!account || !account.bridge_wallet_id) {
@@ -123,10 +129,9 @@ export function PrefundedLiquidityPicker({
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Load accounts from Bridge{" "}
-            <span className="font-medium capitalize">{environment}</span> using{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-[11px]">GET /prefunded_accounts</code> and{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-[11px]">GET /wallets</code>, then save your selection.
+            For BP → Wallet, choose Believe&apos;s <span className="font-medium">platform liquidity wallet</span> — not
+            a member wallet. Load from Bridge, pick the entry marked{" "}
+            <span className="font-medium text-purple-600 dark:text-purple-400">Recommended</span>, then save.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={loadAccounts}>
@@ -162,33 +167,52 @@ export function PrefundedLiquidityPicker({
       )}
 
       {options?.success && options.accounts.length > 0 && (
-        <div className="space-y-2">
-          <Label htmlFor={`prefunded-select-${environment}`}>Liquidity account</Label>
-          <Select value={selectedValue || undefined} onValueChange={handleSelect}>
-            <SelectTrigger id={`prefunded-select-${environment}`}>
-              <SelectValue placeholder="Select a prefunded account or Bridge wallet" />
-            </SelectTrigger>
-            <SelectContent>
-              {options.accounts.map((account) => (
-                <SelectItem
-                  key={accountOptionValue(account)}
-                  value={accountOptionValue(account)}
-                  disabled={!account.bridge_wallet_id}
-                >
-                  <span className="flex flex-col gap-0.5 text-left">
-                    <span className="font-medium">{account.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatBalance(account.available_balance, account.currency)}
-                      {account.source === "prefunded_account" ? " · Prefunded account" : " · Bridge wallet"}
-                      {account.chain ? ` · ${account.chain}` : ""}
-                      {!account.bridge_wallet_id ? " · No linked Bridge wallet" : ""}
+        <>
+          {recommendedAccount && (
+            <Alert className="border-purple-200/70 bg-purple-50/40 dark:border-purple-900/40 dark:bg-purple-950/20">
+              <AlertCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <AlertDescription className="text-sm text-foreground">
+                <span className="font-medium">Recommended:</span>{" "}
+                {recommendedAccount.name} ({formatBalance(recommendedAccount.available_balance, recommendedAccount.currency)}
+                ). This should be Believe&apos;s prefunded liquidity pool — it pays members when they move BP to wallet.
+                Do not pick a wallet with only a few dollars unless you have confirmed it in the Bridge dashboard.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor={`prefunded-select-${environment}`}>Platform liquidity wallet</Label>
+            <Select value={selectedValue || undefined} onValueChange={handleSelect}>
+              <SelectTrigger id={`prefunded-select-${environment}`}>
+                <SelectValue placeholder="Select platform liquidity wallet" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.accounts.map((account) => (
+                  <SelectItem
+                    key={accountOptionValue(account)}
+                    value={accountOptionValue(account)}
+                    disabled={!account.bridge_wallet_id}
+                  >
+                    <span className="flex flex-col gap-0.5 text-left">
+                      <span className="font-medium">
+                        {account.is_recommended ? "★ Recommended · " : ""}
+                        {account.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatBalance(account.available_balance, account.currency)}
+                        {account.source === "prefunded_account" ? " · Prefunded account" : " · Platform wallet"}
+                        {account.chain ? ` · ${account.chain}` : ""}
+                        {account.bridge_wallet_id
+                          ? ` · …${account.bridge_wallet_id.slice(-8)}`
+                          : " · No linked Bridge wallet"}
+                      </span>
                     </span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -206,7 +230,7 @@ export function PrefundedLiquidityPicker({
           value={walletId}
           onChange={onWalletIdChange}
           placeholder="wallet_…"
-          hint="Required for BP → Wallet transfers."
+          hint="Believe platform liquidity wallet ID — not a member wallet."
         />
       </div>
     </div>

@@ -93,6 +93,7 @@ class BridgePrefundedLiquidityService
                     'customer_id' => $customerId,
                     'chain' => is_array($walletSummary) ? (string) ($walletSummary['chain'] ?? '') : '',
                     'address' => is_array($walletSummary) ? (string) ($walletSummary['address'] ?? '') : '',
+                    'is_recommended' => false,
                 ];
 
                 if ($walletId !== '') {
@@ -137,6 +138,7 @@ class BridgePrefundedLiquidityService
                     'customer_id' => $customerId,
                     'chain' => (string) ($wallet['chain'] ?? ($walletSummary['chain'] ?? '')),
                     'address' => (string) ($wallet['address'] ?? ($walletSummary['address'] ?? '')),
+                    'is_recommended' => false,
                 ];
             }
         }
@@ -148,7 +150,7 @@ class BridgePrefundedLiquidityService
             );
         }
 
-        usort($accounts, fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+        $accounts = $this->markAndSortLiquidityAccounts($accounts);
 
         return [
             'environment' => $environment,
@@ -156,6 +158,56 @@ class BridgePrefundedLiquidityService
             'error' => null,
             'accounts' => $accounts,
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $accounts
+     * @return array<int, array<string, mixed>>
+     */
+    private function markAndSortLiquidityAccounts(array $accounts): array
+    {
+        $recommendedIndex = null;
+        $recommendedScore = -1.0;
+
+        foreach ($accounts as $index => $account) {
+            $walletId = trim((string) ($account['bridge_wallet_id'] ?? ''));
+            if ($walletId === '') {
+                continue;
+            }
+
+            $balance = (float) ($account['available_balance'] ?? 0);
+            $score = $balance;
+            if (($account['source'] ?? '') === 'prefunded_account') {
+                $score += 1_000_000;
+            }
+
+            if ($score > $recommendedScore) {
+                $recommendedScore = $score;
+                $recommendedIndex = $index;
+            }
+        }
+
+        foreach ($accounts as $index => $account) {
+            $accounts[$index]['is_recommended'] = $index === $recommendedIndex;
+        }
+
+        usort($accounts, function (array $a, array $b): int {
+            $aRecommended = (bool) ($a['is_recommended'] ?? false);
+            $bRecommended = (bool) ($b['is_recommended'] ?? false);
+            if ($aRecommended !== $bRecommended) {
+                return $bRecommended <=> $aRecommended;
+            }
+
+            $aPrefunded = ($a['source'] ?? '') === 'prefunded_account';
+            $bPrefunded = ($b['source'] ?? '') === 'prefunded_account';
+            if ($aPrefunded !== $bPrefunded) {
+                return $bPrefunded <=> $aPrefunded;
+            }
+
+            return ((float) ($b['available_balance'] ?? 0)) <=> ((float) ($a['available_balance'] ?? 0));
+        });
+
+        return array_values($accounts);
     }
 
     /**
