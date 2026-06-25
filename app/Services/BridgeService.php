@@ -1547,7 +1547,107 @@ class BridgeService
             return false;
         }
 
+        if ($this->isConfiguredPlatformReserveWallet($walletId)) {
+            return false;
+        }
+
         return isset($this->memberBridgeWalletIds()[$walletId]);
+    }
+
+    /**
+     * @return array{customer_id: string, wallet_id: string}
+     */
+    public static function configuredPlatformReserveIds(string $environment): array
+    {
+        $environment = strtolower(trim($environment));
+        $bridge = PaymentMethod::getConfig('bridge');
+        $config = is_array($bridge?->additional_config) ? $bridge->additional_config : [];
+        $prefix = $environment === 'sandbox' ? 'sandbox' : 'live';
+
+        return [
+            'customer_id' => trim((string) ($config["{$prefix}_prefunded_customer_id"] ?? '')),
+            'wallet_id' => trim((string) ($config["{$prefix}_prefunded_wallet_id"] ?? '')),
+        ];
+    }
+
+    public function isConfiguredPlatformReserveWallet(string $walletId, ?string $environment = null): bool
+    {
+        $walletId = trim($walletId);
+        if ($walletId === '') {
+            return false;
+        }
+
+        $environment = strtolower(trim((string) ($environment ?? ($this->isSandbox() ? 'sandbox' : 'live'))));
+        $configured = self::configuredPlatformReserveIds($environment);
+
+        return $walletId === ($configured['wallet_id'] ?? '');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function extractCustomerDisplayName(array $payload): string
+    {
+        foreach (['business_name', 'business_legal_name', 'name'] as $key) {
+            $value = trim((string) ($payload[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        $firstName = trim((string) ($payload['first_name'] ?? ''));
+        $lastName = trim((string) ($payload['last_name'] ?? ''));
+        $fullName = trim("{$firstName} {$lastName}");
+        if ($fullName !== '') {
+            return $fullName;
+        }
+
+        $email = trim((string) ($payload['email'] ?? ''));
+
+        return $email !== '' ? $email : 'Bridge customer';
+    }
+
+    public function resolveReserveCustomerIdByName(string $nameFilter): ?string
+    {
+        $nameFilter = trim($nameFilter);
+        if ($nameFilter === '') {
+            return null;
+        }
+
+        $result = $this->getCustomers();
+        if (! ($result['success'] ?? false)) {
+            return null;
+        }
+
+        $exactMatch = null;
+        $partialMatch = null;
+
+        foreach ($this->normalizeBridgeListData($result) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $customerId = trim((string) ($row['id'] ?? ''));
+            if ($customerId === '') {
+                continue;
+            }
+
+            $displayName = $this->extractCustomerDisplayName($row);
+            if (! $this->prefundedAccountNameMatches($displayName, $nameFilter)) {
+                continue;
+            }
+
+            if (strtolower($displayName) === strtolower($nameFilter)) {
+                $exactMatch = $customerId;
+                break;
+            }
+
+            if ($partialMatch === null) {
+                $partialMatch = $customerId;
+            }
+        }
+
+        return $exactMatch ?? $partialMatch;
     }
 
     /**
@@ -3780,15 +3880,16 @@ class BridgeService
             ];
         }
 
-        if ($this->isRegisteredCustomerWalletId($prefundedWallet['wallet_id'])) {
-            Log::error('BP wallet transfer blocked: prefunded source is a member wallet', [
+        if ($this->isRegisteredCustomerWalletId($prefundedWallet['wallet_id'])
+            && ! $this->isConfiguredPlatformReserveWallet($prefundedWallet['wallet_id'])) {
+            Log::error('BP wallet transfer blocked: reserve source is a Believe member wallet', [
                 'wallet_id' => $prefundedWallet['wallet_id'],
                 'recipient_customer_id' => $recipientCustomerId,
             ]);
 
             return [
                 'success' => false,
-                'error' => 'Platform liquidity wallet is misconfigured. Admin must set the Believe prefunded wallet, not a member wallet.',
+                'error' => 'Platform reserve wallet is misconfigured. Admin must set the platform reserve customer wallet, not a Believe member wallet.',
                 'error_code' => 'PREFUNDED_WALLET_IS_CUSTOMER_WALLET',
             ];
         }

@@ -10,7 +10,7 @@ import { AlertCircle, Loader2, RefreshCw } from "lucide-react"
 
 export type PrefundedLiquidityAccount = {
   id: string
-  source: "prefunded_account" | "bridge_wallet"
+  source: "prefunded_account" | "bridge_wallet" | "customer_reserve"
   name: string
   available_balance: string
   currency: string
@@ -41,6 +41,18 @@ function formatBalance(amount: string, currency: string): string {
   }
 
   return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ${currency.toUpperCase()}`
+}
+
+function sourceLabel(source: PrefundedLiquidityAccount["source"]): string {
+  if (source === "customer_reserve") {
+    return "Platform reserve customer"
+  }
+
+  if (source === "prefunded_account") {
+    return "Prefunded account"
+  }
+
+  return "Bridge wallet"
 }
 
 function accountOptionValue(account: PrefundedLiquidityAccount): string {
@@ -82,6 +94,7 @@ export function PrefundedLiquidityPicker({
       {
         prefunded_environment: environment,
         prefunded_account_name: accountName.trim() || undefined,
+        prefunded_customer_id: customerId.trim() || undefined,
       },
       {
         preserveState: true,
@@ -96,11 +109,17 @@ export function PrefundedLiquidityPicker({
         onFinish: () => setLoading(false),
       },
     )
-  }, [environment, accountName])
+  }, [environment, accountName, customerId])
 
   const selectedValue = React.useMemo(() => {
     if (!options?.accounts?.length) {
-      return accountId ? `prefunded_account:${accountId}` : walletId ? `bridge_wallet:${walletId}` : ""
+      if (accountId) {
+        return `prefunded_account:${accountId}`
+      }
+      if (walletId) {
+        return `customer_reserve:${walletId}`
+      }
+      return ""
     }
 
     const match = options.accounts.find((account) => {
@@ -130,7 +149,9 @@ export function PrefundedLiquidityPicker({
     onWalletIdChange(account.bridge_wallet_id)
     onCustomerIdChange(account.customer_id)
     onAccountIdChange(account.source === "prefunded_account" ? account.id : "")
-    onAccountNameChange(account.name)
+    if (account.source === "customer_reserve" || account.name.trim() !== "") {
+      onAccountNameChange(account.name)
+    }
   }
 
   return (
@@ -139,8 +160,9 @@ export function PrefundedLiquidityPicker({
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Bridge returns all prefunded accounts — enter your platform account <span className="font-medium">name</span>{" "}
-            from onboarding, load the list, then select the matching prefunded account (not a member wallet).
+            Your platform <span className="font-medium">reserve account</span> is a Bridge customer account (not a
+            Believe member wallet) that your client configured for BP funding. Enter the reserve customer ID and name,
+            load from Bridge, then select the matching wallet.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={loadAccounts}>
@@ -158,13 +180,32 @@ export function PrefundedLiquidityPicker({
         </Button>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <BridgeField
+          id={`${environment}_prefunded_customer_id`}
+          label="Reserve customer ID"
+          value={customerId}
+          onChange={onCustomerIdChange}
+          placeholder="cus_…"
+          hint="Bridge customer ID for your platform reserve account (from onboarding)."
+        />
+        <BridgeField
+          id={`${environment}_prefunded_account_name`}
+          label="Reserve account name"
+          value={accountName}
+          onChange={onAccountNameChange}
+          placeholder="e.g. believe_platform_reserve"
+          hint="Name from Bridge — matches prefunded accounts or reserve customer records."
+        />
+      </div>
+
       <BridgeField
-        id={`${environment}_prefunded_account_name`}
-        label="Platform prefunded account name"
-        value={accountName}
-        onChange={onAccountNameChange}
-        placeholder="e.g. believe_platform_reserve"
-        hint="Exact or partial match against Bridge GET /prefunded_accounts name field. Used when loading and when resolving transfers."
+        id={`${environment}_prefunded_wallet_id`}
+        label="Reserve wallet ID"
+        value={walletId}
+        onChange={onWalletIdChange}
+        placeholder="wallet_…"
+        hint="Wallet ID for the platform reserve customer — never a Believe member wallet."
       />
 
       {options && !options.success && options.error && (
@@ -178,8 +219,8 @@ export function PrefundedLiquidityPicker({
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            No prefunded accounts were returned for {environment}. Create platform liquidity in the Bridge dashboard
-            first, or check your API credentials.
+            No platform reserve accounts were returned for {environment}. Enter your reserve customer ID and name from
+            Bridge onboarding, then load again.
           </AlertDescription>
         </Alert>
       )}
@@ -193,7 +234,7 @@ export function PrefundedLiquidityPicker({
                 <span className="font-medium">Recommended:</span>{" "}
                 <span className="font-medium">{recommendedAccount.name}</span> (
                 {formatBalance(recommendedAccount.available_balance, recommendedAccount.currency)}). This matches your
-                platform prefunded account name filter.
+                platform reserve account name filter.
               </AlertDescription>
             </Alert>
           )}
@@ -202,17 +243,17 @@ export function PrefundedLiquidityPicker({
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-sm">
-                No prefunded account name matches &quot;{accountName}&quot;. Check the name in Bridge dashboard and
-                update the filter above, then load again.
+                No reserve account name matches &quot;{accountName}&quot;. Check the name in Bridge dashboard and update
+                the filter above, then load again.
               </AlertDescription>
             </Alert>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`prefunded-select-${environment}`}>Prefunded account</Label>
+            <Label htmlFor={`prefunded-select-${environment}`}>Reserve account</Label>
             <Select value={selectedValue || undefined} onValueChange={handleSelect}>
               <SelectTrigger id={`prefunded-select-${environment}`}>
-                <SelectValue placeholder="Select prefunded account" />
+                <SelectValue placeholder="Select reserve account" />
               </SelectTrigger>
               <SelectContent>
                 {options.accounts.map((account) => (
@@ -228,7 +269,7 @@ export function PrefundedLiquidityPicker({
                         {account.name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatBalance(account.available_balance, account.currency)} · Prefunded account
+                        {formatBalance(account.available_balance, account.currency)} · {sourceLabel(account.source)}
                         {account.chain ? ` · ${account.chain}` : ""}
                         {account.bridge_wallet_id
                           ? ` · …${account.bridge_wallet_id.slice(-8)}`
@@ -242,25 +283,6 @@ export function PrefundedLiquidityPicker({
           </div>
         </>
       )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <BridgeField
-          id={`${environment}_prefunded_customer_id`}
-          label="Customer ID"
-          value={customerId}
-          onChange={onCustomerIdChange}
-          placeholder="cus_…"
-          hint="Optional when Bridge wallet ID resolves via GET /wallets/{id}."
-        />
-        <BridgeField
-          id={`${environment}_prefunded_wallet_id`}
-          label="Wallet ID"
-          value={walletId}
-          onChange={onWalletIdChange}
-          placeholder="wallet_…"
-          hint="Prefunded wallet ID from Bridge dashboard — never a member wallet."
-        />
-      </div>
     </div>
   )
 }
