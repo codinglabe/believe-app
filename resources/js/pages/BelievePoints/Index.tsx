@@ -113,6 +113,20 @@ interface WalletTransferSettings {
   sandbox_unavailable: boolean
 }
 
+interface WalletTransferActivity {
+  id: number
+  amount: number
+  status: string
+  bridge_transfer_state?: string | null
+  failure_message?: string | null
+  created_at: string
+  completed_at?: string | null
+}
+
+type BelievePointsActivityItem =
+  | { kind: "purchase"; sortAt: string; purchase: Purchase }
+  | { kind: "wallet_transfer"; sortAt: string; transfer: WalletTransferActivity }
+
 interface PageProps {
   currentBalance: number
   processingBalance?: number
@@ -132,6 +146,7 @@ interface PageProps {
   savedPaymentMethods?: SavedPaymentMethod[]
   paymentMethodsUrl?: string
   walletTransfer?: WalletTransferSettings
+  walletTransfers?: WalletTransferActivity[]
   flash?: {
     success?: string
     error?: string
@@ -214,6 +229,7 @@ export default function BelievePointsIndex({
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
     walletTransfer,
+    walletTransfers = [],
   } = page.props
   const purchaseSettings = purchaseSettingsProp ?? {
     brp_value: 0.005,
@@ -321,7 +337,7 @@ export default function BelievePointsIndex({
         }
         setWalletTransferAmount("")
         setWalletTransferOpen(false)
-        router.reload({ only: ["currentBalance", "processingBalance", "processingReleaseAt"] })
+        router.reload({ only: ["currentBalance", "processingBalance", "processingReleaseAt", "purchases", "walletTransfers"] })
       } else {
         showErrorToast(data.message || "Failed to move Believe Points to wallet")
       }
@@ -627,6 +643,50 @@ export default function BelievePointsIndex({
       </Badge>
     )
   }
+
+  const getWalletTransferStatusBadge = (transfer: WalletTransferActivity) => {
+    const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string; label: string }> = {
+      completed: {
+        variant: "default",
+        className: "bg-emerald-600 hover:bg-emerald-600/90 border-0",
+        label: "In wallet",
+      },
+      submitted: { variant: "secondary", label: "Processing" },
+      pending: { variant: "secondary", label: "Pending" },
+      failed: { variant: "destructive", label: "Failed" },
+      refunded: { variant: "outline", label: "Refunded" },
+    }
+
+    const item = config[transfer.status] ?? {
+      variant: "outline" as const,
+      label: transfer.status.replace(/_/g, " "),
+    }
+
+    return (
+      <Badge variant={item.variant} className={cn("capitalize", item.className)}>
+        {item.label}
+      </Badge>
+    )
+  }
+
+  const recentActivity = useMemo<BelievePointsActivityItem[]>(() => {
+    const items: BelievePointsActivityItem[] = [
+      ...purchases.data.map((purchase) => ({
+        kind: "purchase" as const,
+        sortAt: purchase.created_at,
+        purchase,
+      })),
+      ...walletTransfers.map((transfer) => ({
+        kind: "wallet_transfer" as const,
+        sortAt: transfer.created_at,
+        transfer,
+      })),
+    ]
+
+    return items
+      .sort((a, b) => new Date(b.sortAt).getTime() - new Date(a.sortAt).getTime())
+      .slice(0, 12)
+  }, [purchases.data, walletTransfers])
 
   const formatProcessingReleaseHint = (iso: string | null | undefined): string | null => {
     if (!iso) return null
@@ -1363,19 +1423,19 @@ export default function BelievePointsIndex({
               <CardHeader className="border-b bg-muted/30 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <History className="h-5 w-5 text-purple-600" />
-                  Recent purchases
+                  Recent activity
                 </CardTitle>
-                <CardDescription>Your latest Believe Point activity</CardDescription>
+                <CardDescription>Purchases and wallet transfers</CardDescription>
               </CardHeader>
               <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
-                {purchases.data.length === 0 ? (
+                {recentActivity.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/15 to-blue-500/15">
                       <Coins className="h-8 w-8 text-purple-600" />
                     </div>
-                    <p className="text-sm font-semibold">No purchases yet</p>
+                    <p className="text-sm font-semibold">No activity yet</p>
                     <p className="mt-1 max-w-[240px] text-sm text-muted-foreground">
-                      Add Believe Points to see your purchase history here.
+                      Add Believe Points or move them to your wallet to see activity here.
                     </p>
                     <Button type="button" variant="outline" size="sm" className="mt-4" onClick={scrollToAddPoints}>
                       Add Believe Points
@@ -1383,45 +1443,87 @@ export default function BelievePointsIndex({
                   </div>
                 ) : (
                   <ul className="space-y-2">
-                    {purchases.data.map((purchase) => (
-                      <li
-                        key={purchase.id}
-                        className="rounded-xl border bg-card p-3.5 transition-colors hover:bg-muted/40"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/15 to-blue-500/15">
-                              <Coins className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    {recentActivity.map((item) =>
+                      item.kind === "purchase" ? (
+                        <li
+                          key={`purchase-${item.purchase.id}`}
+                          className="rounded-xl border bg-card p-3.5 transition-colors hover:bg-muted/40"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/15 to-blue-500/15">
+                                <Coins className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  +{formatPoints(item.purchase.points)} BP
+                                </span>
+                                <p className="text-xs text-muted-foreground">Purchased</p>
+                              </div>
+                              {item.purchase.source === "auto_replenish" && (
+                                <Badge variant="outline" className="text-xs">
+                                  Auto
+                                </Badge>
+                              )}
                             </div>
-                            <span className="font-semibold tabular-nums text-foreground">
-                              {formatPoints(purchase.points)} BP
-                            </span>
-                            {purchase.source === "auto_replenish" && (
-                              <Badge variant="outline" className="text-xs">
-                                Auto
-                              </Badge>
-                            )}
+                            {getPurchaseStatusBadge(item.purchase)}
                           </div>
-                          {getPurchaseStatusBadge(purchase)}
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
-                          <span className="font-medium tabular-nums text-foreground">{formatCurrency(purchase.amount)}</span>
-                          <span>
-                            {new Date(purchase.created_at).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </span>
-                        </div>
-                        {purchase.status === "failed" && purchase.failure_message && (
-                          <p className="mt-2 text-xs leading-snug text-destructive">
-                            {purchase.failure_message}
-                            {purchase.failure_code ? ` (${purchase.failure_code})` : ""}
-                          </p>
-                        )}
-                      </li>
-                    ))}
+                          <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
+                            <span className="font-medium tabular-nums text-foreground">
+                              {formatCurrency(item.purchase.amount)}
+                            </span>
+                            <span>
+                              {new Date(item.purchase.created_at).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </div>
+                          {item.purchase.status === "failed" && item.purchase.failure_message && (
+                            <p className="mt-2 text-xs leading-snug text-destructive">
+                              {item.purchase.failure_message}
+                              {item.purchase.failure_code ? ` (${item.purchase.failure_code})` : ""}
+                            </p>
+                          )}
+                        </li>
+                      ) : (
+                        <li
+                          key={`wallet-transfer-${item.transfer.id}`}
+                          className="rounded-xl border bg-card p-3.5 transition-colors hover:bg-muted/40"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 dark:bg-purple-950/30">
+                                <Wallet className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  -{formatPoints(String(item.transfer.amount))} BP
+                                </span>
+                                <p className="text-xs text-muted-foreground">Moved to Believe wallet</p>
+                              </div>
+                            </div>
+                            {getWalletTransferStatusBadge(item.transfer)}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
+                            <span className="font-medium tabular-nums text-foreground">
+                              {formatCurrency(item.transfer.amount)}
+                            </span>
+                            <span>
+                              {new Date(item.transfer.created_at).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </div>
+                          {item.transfer.status === "refunded" && item.transfer.failure_message && (
+                            <p className="mt-2 text-xs leading-snug text-muted-foreground">{item.transfer.failure_message}</p>
+                          )}
+                        </li>
+                      ),
+                    )}
                   </ul>
                 )}
               </CardContent>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Exports\LedgerFlatFileExport;
 use App\Http\Controllers\Controller;
 use App\Models\BelievePointPurchase;
+use App\Models\BelievePointWalletTransfer;
 use App\Models\CareAlliance;
 use App\Models\CareAllianceDonation;
 use App\Models\Donation;
@@ -133,6 +134,7 @@ class TransactionLedgerController extends Controller
                 'believe_points_auto_replenish',
                 'believe_points_auto_replenish_setup',
                 'believe_points_purchase',
+                'believe_points_wallet_transfer',
                 'big_boss_override',
                 'cancellation',
                 'commission',
@@ -938,6 +940,12 @@ class TransactionLedgerController extends Controller
 
         if ($rt === BelievePointPurchase::class || str_ends_with($rt, 'BelievePointPurchase')) {
             return 'believe_points_purchase';
+        }
+        if ($rt === BelievePointWalletTransfer::class || str_ends_with($rt, 'BelievePointWalletTransfer')) {
+            return 'believe_points_wallet_transfer';
+        }
+        if (($meta['source'] ?? '') === 'believe_points_wallet_transfer') {
+            return 'believe_points_wallet_transfer';
         }
         if (($meta['source'] ?? '') === 'believe_points_purchase'
             || ($meta['source'] ?? '') === 'believe_points_purchase_refund') {
