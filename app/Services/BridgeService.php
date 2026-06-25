@@ -249,6 +249,7 @@ class BridgeService
                     'success' => false,
                     'error' => $errorMessage,
                     'status' => $statusCode,
+                    'error_code' => (string) ($body['code'] ?? $body['error_code'] ?? 'BRIDGE_API_ERROR'),
                     'response' => $body, // Include full response for debugging
                 ];
             }
@@ -1347,6 +1348,12 @@ class BridgeService
             }
         }
 
+        foreach (['linked_bridge_wallet_id', 'linked_wallet_id'] as $key) {
+            if (! empty($payload[$key]) && is_string($payload[$key])) {
+                return trim($payload[$key]);
+            }
+        }
+
         $bridgeWallet = $payload['bridge_wallet'] ?? null;
         if (is_array($bridgeWallet) && ! empty($bridgeWallet['id'])) {
             return trim((string) $bridgeWallet['id']);
@@ -1435,7 +1442,7 @@ class BridgeService
             $walletId,
         ])));
 
-        $resolvedWalletId = $walletId;
+        $resolvedWalletId = '';
         $resolvedAccountId = $prefundedAccountId;
 
         foreach ($accountCandidates as $accountId) {
@@ -1450,6 +1457,13 @@ class BridgeService
             }
 
             break;
+        }
+
+        if ($resolvedWalletId === '' && $walletId !== '' && ($prefundedAccountId === '' || $walletId !== $prefundedAccountId)) {
+            $parsedDirect = $this->parseBridgeWalletForTransfer($customerId, $walletId);
+            if ($parsedDirect !== null) {
+                $resolvedWalletId = $parsedDirect['wallet_id'];
+            }
         }
 
         if ($resolvedWalletId === '') {
@@ -3524,20 +3538,53 @@ class BridgeService
             ];
         }
 
-        return $this->createTransfer([
+        if ($prefundedWallet['initiation_required'] ?? false) {
+            return [
+                'success' => false,
+                'error' => 'Platform prefunded wallet requires activation before transfers can be created.',
+                'error_code' => 'PREFUNDED_WALLET_INITIATION_REQUIRED',
+            ];
+        }
+
+        $transferCurrency = (string) $prefundedWallet['currency'];
+
+        $transferData = [
             'amount' => number_format($amount, 2, '.', ''),
             'on_behalf_of' => $recipientCustomerId,
             'source' => [
                 'payment_rail' => 'bridge_wallet',
-                'currency' => $prefundedWallet['currency'],
+                'currency' => $transferCurrency,
                 'bridge_wallet_id' => $prefundedWallet['wallet_id'],
             ],
             'destination' => [
                 'payment_rail' => $recipientWallet['chain'],
-                'currency' => $recipientWallet['currency'],
+                'currency' => $transferCurrency,
                 'bridge_wallet_id' => $recipientWallet['wallet_id'],
             ],
-        ], $idempotencyKey);
+        ];
+
+        Log::info('Creating prefunded Bridge wallet transfer', [
+            'amount' => $amount,
+            'on_behalf_of' => $recipientCustomerId,
+            'source_wallet_id' => $prefundedWallet['wallet_id'],
+            'destination_wallet_id' => $recipientWallet['wallet_id'],
+            'currency' => $transferCurrency,
+            'destination_chain' => $recipientWallet['chain'],
+            'prefunded_account_id' => $prefundedAccountId !== '' ? $prefundedAccountId : null,
+        ]);
+
+        $result = $this->createTransfer($transferData, $idempotencyKey);
+
+        if (! ($result['success'] ?? false)) {
+            Log::warning('Prefunded Bridge wallet transfer failed', [
+                'amount' => $amount,
+                'error' => $result['error'] ?? null,
+                'status' => $result['status'] ?? null,
+                'transfer' => $transferData,
+            ]);
+        }
+
+        return $result;
     }
 
     /**
