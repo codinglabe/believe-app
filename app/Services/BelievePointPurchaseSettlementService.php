@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentTransactionType;
 use App\Models\BelievePointPurchase;
 use App\Models\PaymentTransaction;
 use App\Models\Transaction;
-use App\Enums\PaymentTransactionType;
+use App\Support\StripeReferenceMode;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -334,7 +335,7 @@ class BelievePointPurchaseSettlementService
             ? $piId
             : 'believe_points_purchase:'.$purchase->id;
 
-        $meta = [
+        $meta = StripeReferenceMode::withStoredLivemode([
             'source' => 'believe_points_purchase',
             'believe_point_purchase_id' => $purchase->id,
             'believe_point_purchase_status' => $purchase->status,
@@ -352,7 +353,7 @@ class BelievePointPurchaseSettlementService
             'failure_code' => $purchase->failure_code,
             'failure_message' => $purchase->failure_message,
             'description' => self::ledgerPurchaseDescription($purchase),
-        ];
+        ], $purchase->stripe_session_id, $piId !== '' ? $piId : null);
 
         if ($purchase->refunded_at) {
             $meta['refunded_at'] = $purchase->refunded_at->toIso8601String();
