@@ -60,6 +60,12 @@ class BridgePrefundedLiquidityService
                     : $row;
 
                 $walletId = $service->extractBridgeWalletIdFromPayload($payload);
+                if ($walletId === '' && count($service->normalizeBridgeListData($prefundedResult)) === 1) {
+                    $fallback = $service->findDeveloperPrefundedLiquidityWallet();
+                    if ($fallback !== null) {
+                        $walletId = $fallback['wallet_id'];
+                    }
+                }
                 $customerId = $service->extractCustomerIdFromPayload($payload);
                 $walletSummary = $walletId !== ''
                     ? $this->fetchWalletSummary($service, $customerId, $walletId)

@@ -1342,9 +1342,12 @@ class BridgeService
      */
     public function extractBridgeWalletIdFromPayload(array $payload): string
     {
-        foreach (['bridge_wallet_id', 'wallet_id'] as $key) {
+        foreach (['bridge_wallet_id', 'wallet_id', 'prefunded_wallet_id'] as $key) {
             if (! empty($payload[$key]) && is_string($payload[$key])) {
-                return trim($payload[$key]);
+                $candidate = trim($payload[$key]);
+                if ($candidate !== '' && $candidate !== trim((string) ($payload['id'] ?? ''))) {
+                    return $candidate;
+                }
             }
         }
 
@@ -1357,6 +1360,11 @@ class BridgeService
         $bridgeWallet = $payload['bridge_wallet'] ?? null;
         if (is_array($bridgeWallet) && ! empty($bridgeWallet['id'])) {
             return trim((string) $bridgeWallet['id']);
+        }
+
+        $prefundedWallet = $payload['prefunded_wallet'] ?? null;
+        if (is_array($prefundedWallet) && ! empty($prefundedWallet['id'])) {
+            return trim((string) $prefundedWallet['id']);
         }
 
         $source = $payload['source'] ?? null;
@@ -1374,6 +1382,18 @@ class BridgeService
         }
 
         return '';
+    }
+
+    public function isBridgeWalletId(string $walletId): bool
+    {
+        $walletId = trim($walletId);
+        if ($walletId === '') {
+            return false;
+        }
+
+        $result = $this->getBridgeWalletById($walletId);
+
+        return ($result['success'] ?? false) && is_array($result['data'] ?? null);
     }
 
     /**
@@ -1405,6 +1425,10 @@ class BridgeService
             return null;
         }
 
+        if ($this->isBridgeWalletId($prefundedAccountId)) {
+            return $prefundedAccountId;
+        }
+
         $result = $this->getPrefundedAccount($prefundedAccountId);
         if (! ($result['success'] ?? false) || ! is_array($result['data'] ?? null)) {
             return null;
@@ -1416,11 +1440,54 @@ class BridgeService
             return null;
         }
 
-        if ($this->parseBridgeWalletForTransfer('', $walletId) === null) {
+        if (! $this->isBridgeWalletId($walletId)) {
             return null;
         }
 
         return $walletId;
+    }
+
+    /**
+     * Find the developer prefunded liquidity wallet from GET /wallets.
+     *
+     * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}|null
+     */
+    public function findDeveloperPrefundedLiquidityWallet(?string $excludeWalletId = null): ?array
+    {
+        $excludeWalletId = trim((string) ($excludeWalletId ?? ''));
+        $result = $this->listAllBridgeWallets();
+        if (! ($result['success'] ?? false)) {
+            return null;
+        }
+
+        $best = null;
+
+        foreach ($result['data'] ?? [] as $wallet) {
+            if (! is_array($wallet)) {
+                continue;
+            }
+
+            $walletId = trim((string) ($wallet['id'] ?? ''));
+            if ($walletId === '' || ($excludeWalletId !== '' && $walletId === $excludeWalletId)) {
+                continue;
+            }
+
+            $parsed = $this->parseBridgeWalletForTransfer('', $walletId);
+            if ($parsed === null) {
+                continue;
+            }
+
+            $balance = (float) ($parsed['balance'] ?? 0);
+            if ($best === null || $balance > (float) ($best['parsed']['balance'] ?? 0)) {
+                $best = [
+                    'customer_id' => $this->extractCustomerIdFromPayload($wallet),
+                    'wallet_id' => $parsed['wallet_id'],
+                    'parsed' => $parsed,
+                ];
+            }
+        }
+
+        return $best;
     }
 
     /**
@@ -1437,13 +1504,19 @@ class BridgeService
         $walletId = trim($walletId);
         $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
 
+        if ($walletId !== ''
+            && $this->isBridgeWalletId($walletId)
+            && ($prefundedAccountId === '' || $walletId !== $prefundedAccountId)) {
+            $parsedDirect = $this->parseBridgeWalletForTransfer($customerId, $walletId);
+            if ($parsedDirect !== null) {
+                return $this->finalizeResolvedPrefundedWallet($customerId, $parsedDirect);
+            }
+        }
+
         $accountCandidates = array_values(array_unique(array_filter([
             $prefundedAccountId,
-            $walletId,
+            $walletId !== $prefundedAccountId && ! $this->isBridgeWalletId($walletId) ? $walletId : '',
         ])));
-
-        $resolvedWalletId = '';
-        $resolvedAccountId = $prefundedAccountId;
 
         foreach ($accountCandidates as $accountId) {
             $fromAccount = $this->resolveBridgeWalletIdFromPrefundedAccount($accountId);
@@ -1451,37 +1524,28 @@ class BridgeService
                 continue;
             }
 
-            $resolvedWalletId = $fromAccount;
-            if ($resolvedAccountId === '') {
-                $resolvedAccountId = $accountId;
-            }
+            $parsed = $this->parseBridgeWalletForTransfer($customerId, $fromAccount);
+            if ($parsed !== null) {
+                if ($customerId === '' && $accountId !== '') {
+                    $detail = $this->getPrefundedAccount($accountId);
+                    if (($detail['success'] ?? false) && is_array($detail['data'] ?? null)) {
+                        $customerId = $this->extractCustomerIdFromPayload($detail['data']);
+                    }
+                }
 
-            break;
-        }
-
-        if ($resolvedWalletId === '' && $walletId !== '' && ($prefundedAccountId === '' || $walletId !== $prefundedAccountId)) {
-            $parsedDirect = $this->parseBridgeWalletForTransfer($customerId, $walletId);
-            if ($parsedDirect !== null) {
-                $resolvedWalletId = $parsedDirect['wallet_id'];
+                return $this->finalizeResolvedPrefundedWallet($customerId, $parsed);
             }
         }
 
-        if ($resolvedWalletId === '') {
-            return null;
-        }
+        return $this->findDeveloperPrefundedLiquidityWallet();
+    }
 
-        if ($customerId === '' && $resolvedAccountId !== '') {
-            $detail = $this->getPrefundedAccount($resolvedAccountId);
-            if (($detail['success'] ?? false) && is_array($detail['data'] ?? null)) {
-                $customerId = $this->extractCustomerIdFromPayload($detail['data']);
-            }
-        }
-
-        $parsed = $this->parseBridgeWalletForTransfer($customerId, $resolvedWalletId);
-        if ($parsed === null) {
-            return null;
-        }
-
+    /**
+     * @param  array{wallet_id: string, chain: string, currency: string, balance: float, initiation_required: bool}  $parsed
+     * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}
+     */
+    private function finalizeResolvedPrefundedWallet(string $customerId, array $parsed): array
+    {
         if ($customerId === '') {
             $walletResult = $this->getBridgeWalletById($parsed['wallet_id']);
             if (($walletResult['success'] ?? false) && is_array($walletResult['data'] ?? null)) {
@@ -1527,7 +1591,7 @@ class BridgeService
             return $config;
         }
 
-        if ($accountId !== '' && $resolved['wallet_id'] === $accountId) {
+        if ($accountId !== '' && $resolved['wallet_id'] === $accountId && ! $this->isBridgeWalletId($accountId)) {
             return $config;
         }
 
@@ -1535,6 +1599,42 @@ class BridgeService
         $config[$customerKey] = $resolved['customer_id'];
 
         return $config;
+    }
+
+    /**
+     * Pick a stablecoin currency supported by both Bridge wallets for wallet-to-wallet transfers.
+     *
+     * @param  array{wallet_id: string, chain: string, currency: string, balance: float, initiation_required: bool}  $sourceWallet
+     * @param  array{wallet_id: string, chain: string, currency: string, balance: float, initiation_required: bool}  $destinationWallet
+     */
+    public function resolveWalletToWalletTransferCurrency(array $sourceWallet, array $destinationWallet): string
+    {
+        $sourceCurrency = strtolower((string) ($sourceWallet['currency'] ?? 'usdc'));
+        $destinationCurrency = strtolower((string) ($destinationWallet['currency'] ?? 'usdc'));
+
+        if ($sourceCurrency === $destinationCurrency) {
+            return $sourceCurrency;
+        }
+
+        foreach (['usdc', 'usdb'] as $preferred) {
+            if ($sourceCurrency === $preferred || $destinationCurrency === $preferred) {
+                return $preferred;
+            }
+        }
+
+        return $sourceCurrency !== '' ? $sourceCurrency : 'usdc';
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function isInvalidBridgeWalletTransferError(array $result): bool
+    {
+        $error = strtolower((string) ($result['error'] ?? $result['message'] ?? ''));
+
+        return str_contains($error, 'not a valid bridge wallet')
+            || str_contains($error, 'source_id')
+            || str_contains($error, 'bridge_wallet_id');
     }
 
     /**
@@ -3522,13 +3622,16 @@ class BridgeService
             ];
         }
 
-        $availableBalance = (float) ($prefundedWallet['balance'] ?? 0);
+        $walletBalance = (float) ($prefundedWallet['balance'] ?? 0);
+        $accountBalance = 0.0;
         if ($prefundedAccountId !== '') {
             $summary = $this->getPrefundedAccountSummary($prefundedAccountId);
             if ($summary !== null) {
-                $availableBalance = (float) $summary['available_balance'];
+                $accountBalance = (float) $summary['available_balance'];
             }
         }
+
+        $availableBalance = max($walletBalance, $accountBalance);
 
         if ($availableBalance + 0.000001 < $amount) {
             return [
@@ -3546,7 +3649,7 @@ class BridgeService
             ];
         }
 
-        $transferCurrency = (string) $prefundedWallet['currency'];
+        $transferCurrency = $this->resolveWalletToWalletTransferCurrency($prefundedWallet, $recipientWallet);
 
         $transferData = [
             'amount' => number_format($amount, 2, '.', ''),
@@ -3571,9 +3674,33 @@ class BridgeService
             'currency' => $transferCurrency,
             'destination_chain' => $recipientWallet['chain'],
             'prefunded_account_id' => $prefundedAccountId !== '' ? $prefundedAccountId : null,
+            'wallet_balance' => $walletBalance,
+            'account_balance' => $accountBalance,
         ]);
 
         $result = $this->createTransfer($transferData, $idempotencyKey);
+
+        if (! ($result['success'] ?? false) && $this->isInvalidBridgeWalletTransferError($result)) {
+            $fallback = $this->findDeveloperPrefundedLiquidityWallet($prefundedWallet['wallet_id']);
+            if ($fallback !== null && $fallback['wallet_id'] !== $prefundedWallet['wallet_id']) {
+                Log::warning('Retrying prefunded Bridge wallet transfer with resolved developer wallet', [
+                    'previous_wallet_id' => $prefundedWallet['wallet_id'],
+                    'resolved_wallet_id' => $fallback['wallet_id'],
+                ]);
+
+                $prefundedWallet = $fallback['parsed'];
+                $transferCurrency = $this->resolveWalletToWalletTransferCurrency($prefundedWallet, $recipientWallet);
+                $transferData['source']['bridge_wallet_id'] = $prefundedWallet['wallet_id'];
+                $transferData['source']['currency'] = $transferCurrency;
+                $transferData['destination']['currency'] = $transferCurrency;
+
+                $retryKey = $idempotencyKey !== null && $idempotencyKey !== ''
+                    ? $idempotencyKey.'-wallet-retry'
+                    : null;
+
+                $result = $this->createTransfer($transferData, $retryKey);
+            }
+        }
 
         if (! ($result['success'] ?? false)) {
             Log::warning('Prefunded Bridge wallet transfer failed', [
@@ -3581,6 +3708,7 @@ class BridgeService
                 'error' => $result['error'] ?? null,
                 'status' => $result['status'] ?? null,
                 'transfer' => $transferData,
+                'bridge_response' => $result['response'] ?? null,
             ]);
         }
 

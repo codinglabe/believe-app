@@ -535,7 +535,8 @@ class BelievePointsToBridgeWalletService
         return str_contains($error, 'insufficient')
             || str_contains($error, 'liquidity')
             || str_contains($error, 'not enough')
-            || str_contains($error, 'available balance');
+            || str_contains($error, 'available balance')
+            || str_contains($error, 'temporarily unavailable');
     }
 
     private function refundFailedTransfer(BelievePointWalletTransfer $transfer, string $reason): void

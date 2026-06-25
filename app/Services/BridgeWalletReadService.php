@@ -633,6 +633,8 @@ class BridgeWalletReadService
             $bridgeStateLabel = null;
             $paymentMethod = $isDeposit ? $this->resolveDepositPaymentMethod($event) : null;
             $paymentMethodLabel = $paymentMethod['label'] ?? null;
+            $displayLabel = null;
+            $transferDetails = null;
 
             if ($isOutgoing && $transferId !== null && $transferId !== '') {
                 $transferDetails = $this->fetchTransferDetails($transferId);
