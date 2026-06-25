@@ -1,10 +1,9 @@
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
 import { type BreadcrumbItem, PageProps } from '@/types';
-import { type ReactNode, useRef, useEffect } from 'react';
-import { Toaster } from 'react-hot-toast';
+import { type ReactNode, useEffect } from 'react';
 import { usePage } from '@inertiajs/react';
 import { CsrfTokenSync } from '@/components/CsrfTokenSync';
-import { showSuccessToast, showErrorToast } from '@/lib/toast';
+import { showSessionFlashToasts } from '@/lib/flash-toast-once';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 // import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
@@ -55,25 +54,9 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     const error = typeof pageProps.error === 'string' ? pageProps.error : '';
     const info = typeof pageProps.info === 'string' ? pageProps.info : '';
     const warning = typeof pageProps.warning === 'string' ? pageProps.warning : '';
-    const lastFlashRef = useRef({ success: '', error: '', info: '', warning: '' });
 
     useEffect(() => {
-        if (success.trim() !== '' && lastFlashRef.current.success !== success) {
-            lastFlashRef.current.success = success;
-            showSuccessToast(success);
-        }
-        if (error.trim() !== '' && lastFlashRef.current.error !== error) {
-            lastFlashRef.current.error = error;
-            showErrorToast(error);
-        }
-        if (info.trim() !== '' && lastFlashRef.current.info !== info) {
-            lastFlashRef.current.info = info;
-            showSuccessToast(info);
-        }
-        if (warning.trim() !== '' && lastFlashRef.current.warning !== warning) {
-            lastFlashRef.current.warning = warning;
-            showErrorToast(warning);
-        }
+        showSessionFlashToasts({ success, error, info, warning });
     }, [success, error, info, warning]);
 
     return (
@@ -93,40 +76,6 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             )}
             {children}
             <BridgeVerificationGate />
-
-            {/* Toast Container */}
-            <Toaster
-                position="top-right"
-                reverseOrder={false}
-                gutter={8}
-                containerClassName=""
-                containerStyle={{}}
-                toastOptions={{
-                    // Define default options
-                    className: "",
-                    duration: 4000,
-                    style: {
-                        background: "hsl(var(--background))",
-                        color: "hsl(var(--foreground))",
-                        border: "1px solid hsl(var(--border))",
-                    },
-                    // Default options for specific types
-                    success: {
-                        duration: 4000,
-                        iconTheme: {
-                            primary: "hsl(var(--primary))",
-                            secondary: "hsl(var(--primary-foreground))",
-                        },
-                    },
-                    error: {
-                        duration: 5000,
-                        iconTheme: {
-                            primary: "#ef4444",
-                            secondary: "#fff",
-                        },
-                    },
-                }}
-            />
             </AppLayoutTemplate>
          </NotificationProvider>
     );

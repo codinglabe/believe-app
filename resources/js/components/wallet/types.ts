@@ -43,6 +43,10 @@ export interface Activity {
     bridge_state?: string | null
     /** Primary one-line label for activity lists (from Bridge API) */
     display_label?: string | null
+    /** Raw Bridge transfer lifecycle state from GET /transfers/{id} */
+    bridge_transfer_state?: string | null
+    /** Human-readable Bridge state label for UI subtitles */
+    bridge_state_label?: string | null
     deposit_id?: string | null
     bridge_transfer_id?: string | null
     virtual_account_event_id?: string | null

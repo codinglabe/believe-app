@@ -70,13 +70,13 @@ final class PlanFirstMonthWelcomeCredits
                 'currency' => 'USD',
                 'payment_method' => 'included',
                 'transaction_id' => 'WELCOME-'.$sessionId,
-                'meta' => [
+                'meta' => StripeReferenceMode::withStoredLivemode([
                     'description' => 'First month welcome bonus: AI pack + email credits',
                     'stripe_session_id' => $sessionId,
                     'plan_id' => $planId,
                     'ai_tokens_added' => $aiTokens,
                     'emails_added' => $emails,
-                ],
+                ], $sessionId),
                 'related_id' => $planId,
                 'related_type' => \App\Models\Plan::class,
                 'processed_at' => now(),

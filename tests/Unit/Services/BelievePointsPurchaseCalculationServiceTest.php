@@ -38,6 +38,12 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertSame(0.5, BelievePointsPurchaseCalculationService::platformFeeUsd(50));
     }
 
+    public function test_processing_fee_is_percent_of_bp_amount(): void
+    {
+        $this->assertSame(1.0, BelievePointsPurchaseCalculationService::processingFeeUsd(100));
+        $this->assertSame(0.5, BelievePointsPurchaseCalculationService::processingFeeUsd(50));
+    }
+
     public function test_brp_earned_is_flat_free_award_without_a_user(): void
     {
         $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned());
@@ -49,12 +55,6 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertSame(5.0, BelievePointsPurchaseSettingsService::freeBrpAward());
         $this->assertSame(10.0, BelievePointsPurchaseSettingsService::primeBrpAward());
         $this->assertSame(5.0, BelievePointsPurchaseSettingsService::brpAwardForUser(null));
-    }
-
-    public function test_processing_fee_is_percent_of_bp_amount(): void
-    {
-        $this->assertSame(1.0, BelievePointsPurchaseCalculationService::processingFeeUsd(100));
-        $this->assertSame(0.5, BelievePointsPurchaseCalculationService::processingFeeUsd(50));
     }
 
     public function test_card_checkout_breakdown_includes_platform_fee_and_processing_fee(): void
@@ -69,7 +69,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
             $breakdown['checkout_total_usd']
         );
         $this->assertSame(5.0, $breakdown['brp_earned']);
-        $this->assertSame('After 24-Hour Security Review', $breakdown['bp_availability']);
+        $this->assertSame('After 24-hour hold', $breakdown['bp_availability']);
     }
 
     public function test_ach_checkout_breakdown_uses_ach_settlement_availability_label(): void

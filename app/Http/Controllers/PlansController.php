@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\WalletPlan;
 use App\Support\PlanAiMediaStudioSubscriptionCredits;
 use App\Support\PlanFirstMonthWelcomeCredits;
+use App\Support\StripeReferenceMode;
 use App\Support\PlanIntroductorySubscription;
 use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
@@ -682,11 +683,11 @@ class PlansController extends Controller
                         'currency' => 'USD',
                         'payment_method' => 'stripe',
                         'transaction_id' => $session->payment_intent ?? $sessionId,
-                        'meta' => [
+                        'meta' => StripeReferenceMode::withStoredLivemodeFromStripeObject([
                             'stripe_session_id' => $sessionId,
                             'wallet_plan_id' => $walletPlan->id,
                             'description' => 'One-time KYC verification fee',
-                        ],
+                        ], $session),
                         'processed_at' => now(),
                     ]);
                 }
@@ -970,7 +971,7 @@ class PlansController extends Controller
                 'payment_method' => 'stripe',
                 'status' => 'completed',
                 'transaction_id' => $session->payment_intent ?? $sessionId,
-                'meta' => [
+                'meta' => StripeReferenceMode::withStoredLivemodeFromStripeObject([
                     'plan_id' => $plan->id,
                     'plan_name' => $plan->name,
                     'plan_price' => (float) $plan->price,
@@ -983,7 +984,7 @@ class PlansController extends Controller
                     'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
                     'stripe_payment_intent' => $session->payment_intent ?? null,
-                ],
+                ], $session),
                 'related_id' => $plan->id,
                 'related_type' => Plan::class,
             ]);

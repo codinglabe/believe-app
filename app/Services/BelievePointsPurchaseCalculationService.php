@@ -42,9 +42,13 @@ final class BelievePointsPurchaseCalculationService
 
         $hours = BelievePointsPurchaseSettingsService::cardHoldHours();
 
+        if ($hours === 0) {
+            return 'Available immediately';
+        }
+
         return $hours === 1
-            ? 'After 1-Hour Security Review'
-            : "After {$hours}-Hour Security Review";
+            ? 'After 1-hour hold'
+            : "After {$hours}-hour hold";
     }
 
     /**

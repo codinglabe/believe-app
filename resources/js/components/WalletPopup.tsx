@@ -1450,11 +1450,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             return
         }
 
-        if (walletBalance === null || parseFloat(withdrawAmount) > walletBalance) {
-            showErrorToast('Insufficient balance for withdrawal')
-            return
-        }
-
         if (!bankWithdrawalAvailable) {
             showErrorToast(
                 isSandbox

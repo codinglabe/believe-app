@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
-import { RefreshCw, Activity, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight } from 'lucide-react'
+import { RefreshCw, Activity, ChevronRight } from 'lucide-react'
 import { Activity as ActivityType } from './types'
-import { formatDate, formatCurrency, getActivityDisplayLabel } from './utils'
+import { formatDate, formatCurrency, getActivityDisplayLabel, getActivityVisualMeta } from './utils'
 import { ActivityStatusBadge, resolveActivityBadgeStatus } from './ActivityStatusBadge'
+import { ActivityTypeIcon } from './ActivityTypeIcon'
 
 interface ActivityListProps {
     activities: ActivityType[]
@@ -13,38 +14,6 @@ interface ActivityListProps {
     onSeeMore?: () => void
     showSeeMore?: boolean
     onActivityClick?: (activity: ActivityType) => void
-}
-
-function getActivityMeta(activity: ActivityType) {
-    const isTransferSent = activity.type === 'transfer_sent'
-    const isTransferReceived = activity.type === 'transfer_received'
-    const isDonation = activity.type === 'donation'
-    const isDeposit = activity.type === 'deposit'
-    const isCardSpend = activity.type === 'card_spend'
-    const isDonationOutgoing = isDonation && activity.is_outgoing === true
-    const isOutgoing = isTransferSent || isDonationOutgoing || isCardSpend
-
-    const label = getActivityDisplayLabel(activity)
-
-    let icon: React.ReactNode
-    let iconClass: string
-    let amountClass: string
-
-    if (isOutgoing) {
-        icon = <ArrowUpRight className="h-3.5 w-3.5" />
-        iconClass = 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-        amountClass = 'text-purple-600 dark:text-purple-400'
-    } else if (isDeposit) {
-        icon = <Plus className="h-3.5 w-3.5" />
-        iconClass = 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-        amountClass = 'text-blue-600 dark:text-blue-400'
-    } else {
-        icon = <ArrowDownLeft className="h-3.5 w-3.5" />
-        iconClass = 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-        amountClass = 'text-blue-600 dark:text-blue-400'
-    }
-
-    return { label, icon, iconClass, amountClass, isOutgoing }
 }
 
 export function ActivityList({
@@ -118,7 +87,9 @@ export function ActivityList({
                 >
                     <div className="space-y-1.5">
                         {activities.map((activity, index) => {
-                            const { label, icon, iconClass, amountClass, isOutgoing } = getActivityMeta(activity)
+                            const label = getActivityDisplayLabel(activity)
+                            const { amountClass, isOutgoing } = getActivityVisualMeta(activity)
+                            const badgeStatus = resolveActivityBadgeStatus(activity)
 
                             return (
                                 <motion.button
@@ -128,33 +99,37 @@ export function ActivityList({
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.2, delay: Math.min(index * 0.04, 0.2) }}
                                     onClick={() => onActivityClick?.(activity)}
-                                    className={`relative w-full flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 pr-8 text-left hover:border-border hover:bg-muted/40 transition-colors ${
+                                    className={`w-full flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left hover:border-border hover:bg-muted/40 transition-colors ${
                                         onActivityClick ? 'cursor-pointer' : ''
                                     }`}
                                 >
-                                    <ActivityStatusBadge
-                                        status={resolveActivityBadgeStatus(activity)}
-                                        className="absolute top-2 right-2"
-                                    />
-                                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
-                                        {icon}
-                                    </div>
+                                    <ActivityTypeIcon activity={activity} size="sm" />
                                     <div className="min-w-0 flex-1">
                                         <p className="text-sm font-medium truncate">{label}</p>
-                                        <p className="text-[11px] text-muted-foreground">
+                                        <p className="text-[11px] text-muted-foreground truncate">
                                             {formatDate(activity.date)}
-                                            {activity.type === 'transfer_sent' && activity.recipient_type ? (
+                                            {(activity.type === 'transfer_sent' || activity.type === 'withdrawal') &&
+                                            activity.recipient_type ? (
                                                 <span className="capitalize"> · {activity.recipient_type}</span>
                                             ) : null}
                                         </p>
                                     </div>
-                                    <div className="shrink-0 text-right">
+                                    <div className="flex shrink-0 flex-col items-end gap-1.5">
                                         <p className={`text-sm font-semibold tabular-nums ${amountClass}`}>
                                             {isOutgoing ? '−' : '+'}${formatCurrency(activity.amount)}
                                         </p>
-                                        {activity.frequency && activity.frequency !== 'one-time' && activity.type === 'donation' && (
-                                            <p className="text-[10px] text-muted-foreground capitalize">{activity.frequency}</p>
-                                        )}
+                                        <ActivityStatusBadge
+                                            status={badgeStatus}
+                                            stateLabel={activity.bridge_state_label}
+                                            variant="pill"
+                                        />
+                                        {activity.frequency &&
+                                            activity.frequency !== 'one-time' &&
+                                            activity.type === 'donation' && (
+                                                <p className="text-[10px] text-muted-foreground capitalize">
+                                                    {activity.frequency}
+                                                </p>
+                                            )}
                                     </div>
                                 </motion.button>
                             )

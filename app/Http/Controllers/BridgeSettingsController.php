@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\PaymentMethod;
+use App\Services\BridgeIntegrationOverviewService;
+use App\Services\BridgePrefundedLiquidityService;
 use App\Services\BridgeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -22,7 +24,7 @@ class BridgeSettingsController extends Controller
     /**
      * Display the Bridge settings page.
      */
-    public function index()
+    public function index(Request $request)
     {
         // Double check admin authorization
         if (auth()->user()->role !== 'admin') {
@@ -62,11 +64,61 @@ class BridgeSettingsController extends Controller
             'bridge_stripe_app_install_url' => $additionalConfig['stripe_app_install_url']
                 ?? 'https://marketplace.stripe.com/apps/install/link/com.stripe.bridge.cards?redirect_uri=https://dashboard.bridge.xyz/app/cards',
 
+            'believe_points_wallet_transfer_enabled' => (bool) ($additionalConfig['believe_points_wallet_transfer_enabled'] ?? false),
+            'believe_points_wallet_transfer_min' => (float) ($additionalConfig['believe_points_wallet_transfer_min'] ?? 1),
+            'believe_points_wallet_transfer_max' => (float) ($additionalConfig['believe_points_wallet_transfer_max'] ?? 10000),
+            'sandbox_prefunded_customer_id' => $additionalConfig['sandbox_prefunded_customer_id'] ?? null,
+            'sandbox_prefunded_wallet_id' => $additionalConfig['sandbox_prefunded_wallet_id'] ?? null,
+            'sandbox_prefunded_account_id' => $additionalConfig['sandbox_prefunded_account_id'] ?? null,
+            'sandbox_prefunded_account_name' => $additionalConfig['sandbox_prefunded_account_name'] ?? null,
+            'live_prefunded_customer_id' => $additionalConfig['live_prefunded_customer_id'] ?? null,
+            'live_prefunded_wallet_id' => $additionalConfig['live_prefunded_wallet_id'] ?? null,
+            'live_prefunded_account_id' => $additionalConfig['live_prefunded_account_id'] ?? null,
+            'live_prefunded_account_name' => $additionalConfig['live_prefunded_account_name'] ?? null,
+
             'app_url' => config('app.url'),
+            'integration_overview' => app(BridgeIntegrationOverviewService::class)->build($bridge, $additionalConfig),
         ];
+
+        $prefundedLiquidityOptions = null;
+        if ($request->filled('prefunded_environment')) {
+            $validated = $request->validate([
+                'prefunded_environment' => ['required', 'string', 'in:sandbox,live'],
+                'prefunded_account_name' => ['nullable', 'string', 'max:255'],
+                'prefunded_customer_id' => ['nullable', 'string', 'max:255'],
+            ]);
+            $prefundedLiquidityOptions = app(BridgePrefundedLiquidityService::class)
+                ->listForEnvironment(
+                    $validated['prefunded_environment'],
+                    $validated['prefunded_account_name'] ?? null,
+                    $validated['prefunded_customer_id'] ?? null,
+                );
+        }
+
+        $livePrefundedBalance = null;
+        $livePrefundedAccountId = trim((string) ($additionalConfig['live_prefunded_account_id'] ?? ''));
+        $liveReserveWalletId = trim((string) ($additionalConfig['live_prefunded_wallet_id'] ?? ''));
+        if (! empty($bridge->live_api_key)) {
+            $liveService = new BridgeService($bridge->live_api_key, 'live');
+            if ($livePrefundedAccountId !== '') {
+                $livePrefundedBalance = $liveService->getPrefundedAccountSummary($livePrefundedAccountId);
+            } elseif ($liveReserveWalletId !== '') {
+                $liveCustomerId = trim((string) ($additionalConfig['live_prefunded_customer_id'] ?? ''));
+                $parsed = $liveService->parseBridgeWalletForTransfer($liveCustomerId, $liveReserveWalletId);
+                if ($parsed !== null) {
+                    $livePrefundedBalance = [
+                        'name' => trim((string) ($additionalConfig['live_prefunded_account_name'] ?? '')) ?: 'Platform reserve',
+                        'available_balance' => number_format((float) ($parsed['balance'] ?? 0), 2, '.', ''),
+                        'currency' => (string) ($parsed['currency'] ?? 'usdc'),
+                    ];
+                }
+            }
+        }
 
         return Inertia::render('settings/bridge', [
             'settings' => $settings,
+            'prefunded_liquidity_options' => $prefundedLiquidityOptions,
+            'live_prefunded_balance' => $livePrefundedBalance,
         ]);
     }
 
@@ -97,6 +149,17 @@ class BridgeSettingsController extends Controller
             'bridge_live_stripe_account_id' => ['nullable', 'string', 'max:255'],
             'bridge_cards_program_type' => ['nullable', 'string', 'in:consumer,commercial'],
             'bridge_stripe_app_install_url' => ['nullable', 'url', 'max:500'],
+            'believe_points_wallet_transfer_enabled' => ['nullable', 'boolean'],
+            'believe_points_wallet_transfer_min' => ['nullable', 'numeric', 'min:1'],
+            'believe_points_wallet_transfer_max' => ['nullable', 'numeric', 'min:1'],
+            'sandbox_prefunded_customer_id' => ['nullable', 'string', 'max:255'],
+            'sandbox_prefunded_wallet_id' => ['nullable', 'string', 'max:255'],
+            'sandbox_prefunded_account_id' => ['nullable', 'string', 'max:255'],
+            'sandbox_prefunded_account_name' => ['nullable', 'string', 'max:255'],
+            'live_prefunded_customer_id' => ['nullable', 'string', 'max:255'],
+            'live_prefunded_wallet_id' => ['nullable', 'string', 'max:255'],
+            'live_prefunded_account_id' => ['nullable', 'string', 'max:255'],
+            'live_prefunded_account_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $existingBridge = PaymentMethod::getConfig('bridge');
@@ -106,6 +169,43 @@ class BridgeSettingsController extends Controller
         $additionalConfig['live_stripe_account_id'] = $request->bridge_live_stripe_account_id ?: null;
         $additionalConfig['cards_program_type'] = $request->bridge_cards_program_type ?: 'consumer';
         $additionalConfig['stripe_app_install_url'] = $request->bridge_stripe_app_install_url ?: null;
+        $additionalConfig['believe_points_wallet_transfer_enabled'] = $request->boolean('believe_points_wallet_transfer_enabled');
+        $additionalConfig['believe_points_wallet_transfer_min'] = $request->filled('believe_points_wallet_transfer_min')
+            ? (float) $request->believe_points_wallet_transfer_min
+            : 1;
+        $additionalConfig['believe_points_wallet_transfer_max'] = $request->filled('believe_points_wallet_transfer_max')
+            ? (float) $request->believe_points_wallet_transfer_max
+            : 10000;
+        $additionalConfig['sandbox_prefunded_customer_id'] = $request->sandbox_prefunded_customer_id ?: null;
+        $additionalConfig['sandbox_prefunded_wallet_id'] = $request->sandbox_prefunded_wallet_id ?: null;
+        $additionalConfig['sandbox_prefunded_account_id'] = $request->sandbox_prefunded_account_id ?: null;
+        $additionalConfig['sandbox_prefunded_account_name'] = $request->sandbox_prefunded_account_name ?: null;
+        $additionalConfig['live_prefunded_customer_id'] = $request->live_prefunded_customer_id ?: null;
+        $additionalConfig['live_prefunded_wallet_id'] = $request->live_prefunded_wallet_id ?: null;
+        $additionalConfig['live_prefunded_account_id'] = $request->live_prefunded_account_id ?: null;
+        $additionalConfig['live_prefunded_account_name'] = $request->live_prefunded_account_name ?: null;
+
+        if (! empty($request->bridge_sandbox_api_key)) {
+            $sandboxService = new BridgeService($request->bridge_sandbox_api_key, 'sandbox');
+            $sandboxWalletId = trim((string) ($additionalConfig['sandbox_prefunded_wallet_id'] ?? ''));
+            if ($sandboxWalletId !== '' && $sandboxService->isMemberCustomerBridgeWallet($sandboxWalletId)) {
+                return back()->withErrors([
+                    'sandbox_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use your platform reserve customer wallet instead.',
+                ]);
+            }
+            $additionalConfig = $sandboxService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'sandbox');
+        }
+
+        if (! empty($request->bridge_live_api_key)) {
+            $liveService = new BridgeService($request->bridge_live_api_key, 'live');
+            $liveWalletId = trim((string) ($additionalConfig['live_prefunded_wallet_id'] ?? ''));
+            if ($liveWalletId !== '' && $liveService->isMemberCustomerBridgeWallet($liveWalletId)) {
+                return back()->withErrors([
+                    'live_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use your platform reserve customer wallet instead.',
+                ]);
+            }
+            $additionalConfig = $liveService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'live');
+        }
 
         // Prepare Bridge config
         $bridgeConfig = [

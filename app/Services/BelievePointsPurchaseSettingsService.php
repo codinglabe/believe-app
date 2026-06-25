@@ -33,7 +33,7 @@ final class BelievePointsPurchaseSettingsService
 
     public const DEFAULT_PRIME_BRP_AWARD = 10.0;
 
-    public const DEFAULT_CARD_HOLD_HOURS = 24;
+    public const DEFAULT_CARD_HOLD_HOURS = 0;
 
     public static function brpValue(): float
     {

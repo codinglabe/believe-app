@@ -12,6 +12,8 @@ use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\BelievePointsPurchaseSettingsService;
+use App\Services\BelievePointsToBridgeWalletService;
+use App\Services\BelievePointsWalletTransferSettingsService;
 use App\Services\Payments\BelievePointsPaymentMethodResolver;
 use App\Services\Payments\BelievePointsPurchasePaymentService;
 use App\Services\StripeEnvironmentSyncService;
@@ -49,6 +51,10 @@ class BelievePointController extends Controller
         $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
+        // Release any Processing BP whose hold period has ended (also runs on schedule).
+        BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
+        $user->refresh();
+
         // Get user's current believe points balance
         $currentBalance = $user->currentBelievePoints();
 
@@ -74,6 +80,7 @@ class BelievePointController extends Controller
         return Inertia::render('BelievePoints/Index', [
             'currentBalance' => $currentBalance,
             'processingBalance' => $user->currentProcessingBelievePoints(),
+            'processingReleaseAt' => $user->nextProcessingBelievePointsReleaseAt()?->toIso8601String(),
             'minPurchaseAmount' => $minPurchaseAmount,
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
@@ -85,7 +92,35 @@ class BelievePointController extends Controller
                 ? route('settings.saved-payment-methods.index')
                 : route('user.profile.payment-methods.index'),
             'autoReplenish' => $this->autoReplenishPayloadForUser($user),
+            'walletTransfer' => app(BelievePointsWalletTransferSettingsService::class)->frontendPayload(),
         ]);
+    }
+
+    /**
+     * Move purchased Believe Points into the user's verified Bridge wallet (1 BP = $1).
+     */
+    public function transferToWallet(Request $request)
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $settings = app(BelievePointsWalletTransferSettingsService::class);
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:'.$settings->minAmount(), 'max:'.$settings->maxAmount()],
+            'idempotency_key' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $result = app(BelievePointsToBridgeWalletService::class)->transfer(
+            $user,
+            (float) $validated['amount'],
+            $validated['idempotency_key'] ?? null,
+        );
+
+        $status = ($result['success'] ?? false) ? 200 : 422;
+
+        return response()->json($result, $status);
     }
 
     /**
@@ -617,8 +652,8 @@ class BelievePointController extends Controller
                         $rp = round((float) $purchase->reward_points_awarded, 2);
                         $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
                     }
-                    if (! $purchase->points_released) {
-                        $message .= ' Your BP is in Processing and will become available after the security review period.';
+                    if (! $purchase->points_released && BelievePointsPurchaseSettingsService::cardHoldHours() > 0) {
+                        $message .= ' Your BP will become available after the configured hold period.';
                     }
 
                     return redirect()->route('believe-points.index')->with('success', $message);
@@ -649,7 +684,7 @@ class BelievePointController extends Controller
                 return redirect()->route('believe-points.index')
                     ->with('info', $isBankCheckout
                         ? 'Your bank payment is processing. Believe Points go into Processing BP first and become available after ACH settlement. BRP credits when Stripe confirms payment—often 1–3 business days for ACH.'
-                        : 'Your payment is still confirming. Believe Points will be added to Processing BP automatically in a moment.');
+                        : 'Your payment is still confirming. Believe Points will be credited automatically in a moment.');
             }
 
             if (! $paymentIntentId) {
