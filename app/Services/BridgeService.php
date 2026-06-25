@@ -1341,7 +1341,7 @@ class BridgeService
      */
     public function extractBridgeWalletIdFromPayload(array $payload): string
     {
-        foreach (['bridge_wallet_id', 'wallet_id', 'source_id'] as $key) {
+        foreach (['bridge_wallet_id', 'wallet_id'] as $key) {
             if (! empty($payload[$key]) && is_string($payload[$key])) {
                 return trim($payload[$key]);
             }
@@ -1354,10 +1354,15 @@ class BridgeService
 
         $source = $payload['source'] ?? null;
         if (is_array($source)) {
-            foreach (['bridge_wallet_id', 'wallet_id', 'id'] as $key) {
+            foreach (['bridge_wallet_id', 'wallet_id'] as $key) {
                 if (! empty($source[$key]) && is_string($source[$key])) {
                     return trim($source[$key]);
                 }
+            }
+
+            $nestedWallet = $source['bridge_wallet'] ?? null;
+            if (is_array($nestedWallet) && ! empty($nestedWallet['id'])) {
+                return trim((string) $nestedWallet['id']);
             }
         }
 
@@ -1400,7 +1405,15 @@ class BridgeService
 
         $walletId = $this->extractBridgeWalletIdFromPayload($result['data']);
 
-        return $walletId !== '' ? $walletId : null;
+        if ($walletId === '' || $walletId === $prefundedAccountId) {
+            return null;
+        }
+
+        if ($this->parseBridgeWalletForTransfer('', $walletId) === null) {
+            return null;
+        }
+
+        return $walletId;
     }
 
     /**
@@ -1497,6 +1510,10 @@ class BridgeService
         );
 
         if ($resolved === null) {
+            return $config;
+        }
+
+        if ($accountId !== '' && $resolved['wallet_id'] === $accountId) {
             return $config;
         }
 
@@ -3471,6 +3488,7 @@ class BridgeService
         $prefundedWallet = $resolved['parsed'];
         $recipientCustomerId = trim($recipientCustomerId);
         $recipientWalletId = trim($recipientWalletId);
+        $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
 
         if ($recipientCustomerId === '' || $recipientWalletId === '') {
             return [
@@ -3491,6 +3509,13 @@ class BridgeService
         }
 
         $availableBalance = (float) ($prefundedWallet['balance'] ?? 0);
+        if ($prefundedAccountId !== '') {
+            $summary = $this->getPrefundedAccountSummary($prefundedAccountId);
+            if ($summary !== null) {
+                $availableBalance = (float) $summary['available_balance'];
+            }
+        }
+
         if ($availableBalance + 0.000001 < $amount) {
             return [
                 'success' => false,

@@ -289,12 +289,12 @@ class BelievePointsToBridgeWalletService
         );
 
         if (! ($bridgeResult['success'] ?? false)) {
-            $errorCode = (string) ($bridgeResult['error_code'] ?? '');
-
-            if ($errorCode === 'INSUFFICIENT_PREFUNDED_BALANCE') {
+            if ($this->shouldQueueForLiquidityRetry($bridgeResult)) {
                 Log::info('Believe Points wallet transfer awaiting reserve liquidity', [
                     'transfer_id' => $transfer->id,
                     'amount' => $transfer->amount,
+                    'bridge_error' => $bridgeResult['error'] ?? null,
+                    'bridge_error_code' => $bridgeResult['error_code'] ?? null,
                 ]);
 
                 return $this->queueTransferForLiquidity($transfer, $user);
@@ -305,10 +305,17 @@ class BelievePointsToBridgeWalletService
                 (string) ($bridgeResult['error'] ?? $bridgeResult['message'] ?? 'Bridge transfer failed'),
             );
 
+            Log::warning('Believe Points wallet transfer failed and refunded', [
+                'transfer_id' => $transfer->id,
+                'amount' => $transfer->amount,
+                'bridge_error' => $bridgeResult['error'] ?? null,
+                'bridge_error_code' => $bridgeResult['error_code'] ?? null,
+            ]);
+
             return [
                 'success' => false,
                 'message' => 'We could not complete your transfer right now. Your Believe Points were restored.',
-                'error_code' => $errorCode !== '' ? $errorCode : 'BRIDGE_TRANSFER_FAILED',
+                'error_code' => (string) ($bridgeResult['error_code'] ?? 'BRIDGE_TRANSFER_FAILED'),
             ];
         }
 
@@ -386,6 +393,24 @@ class BelievePointsToBridgeWalletService
                 'believe_points_balance' => round((float) $user->fresh()->believe_points, 2),
             ],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $bridgeResult
+     */
+    private function shouldQueueForLiquidityRetry(array $bridgeResult): bool
+    {
+        $errorCode = strtolower((string) ($bridgeResult['error_code'] ?? ''));
+        if ($errorCode === 'insufficient_prefunded_balance') {
+            return true;
+        }
+
+        $error = strtolower((string) ($bridgeResult['error'] ?? $bridgeResult['message'] ?? ''));
+
+        return str_contains($error, 'insufficient')
+            || str_contains($error, 'liquidity')
+            || str_contains($error, 'not enough')
+            || str_contains($error, 'available balance');
     }
 
     private function refundFailedTransfer(BelievePointWalletTransfer $transfer, string $reason): void
