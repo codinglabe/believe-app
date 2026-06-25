@@ -28,6 +28,7 @@ use App\Models\SupporterBrpWallet;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\PlanFirstMonthWelcomeCredits;
+use App\Support\StripeTestReference;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -40,7 +41,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                             {--dry-run : Report counts without deleting}
                             {--force : Confirm deletion (required unless --dry-run)}';
 
-    protected $description = 'Delete all non-subscription transaction history and zero balances except active subscription entitlements';
+    protected $description = 'Delete non-subscription and Stripe test-mode transaction history; zero balances except live active subscription entitlements';
 
     public function handle(): int
     {
@@ -68,20 +69,43 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
             $subscriptionStripeIds,
         );
 
+        $stripeTestLedgerCount = StripeTestReference::applyTransactionScope(Transaction::query())->count();
+
         $totalTransactions = Transaction::query()->count();
-        $protectedTransactions = (clone $protectedQuery)->count();
-        $transactionsToDelete = $totalTransactions - $protectedTransactions;
+        $protectedTransactions = (clone $protectedQuery)
+            ->whereNot(function (Builder $testScope) {
+                StripeTestReference::applyTransactionScope($testScope);
+            })
+            ->count();
+        $transactionsToDelete = Transaction::query()
+            ->where(function (Builder $query) use ($protectedQuery) {
+                $protectedIds = (clone $protectedQuery)->select('transactions.id');
+                $query->whereNotIn('id', $protectedIds)
+                    ->orWhere(function (Builder $testScope) {
+                        StripeTestReference::applyTransactionScope($testScope);
+                    });
+            })
+            ->count();
 
         $balancePreview = $this->previewBalanceResets($activeUserIdSet);
         $activityCounts = $this->activityRecordCounts();
+        $stripeTestCounts = $this->stripeTestRecordCounts();
 
         $this->info('Active subscriptions: '.$activeSubscriptions->count());
         $this->info('Users with active subscription: '.count($activeUserIds));
         $this->info('Merchants with active subscription: '.count($activeMerchantIds));
         $this->newLine();
         $this->info('Ledger transactions total: '.$totalTransactions);
-        $this->info('Protected (subscription-related): '.$protectedTransactions);
+        $this->info('Protected (live subscription-related): '.$protectedTransactions);
+        $this->warn('Stripe test-mode ledger rows (always removed): '.$stripeTestLedgerCount);
         $this->warn('Ledger transactions to delete: '.$transactionsToDelete);
+        $this->newLine();
+        $this->info('Stripe test / local-dev records to delete:');
+        foreach ($stripeTestCounts as $label => $count) {
+            if ($count > 0) {
+                $this->line('  '.$label.': '.$count);
+            }
+        }
         $this->newLine();
         $this->info('Activity / payment records to delete:');
         foreach ($activityCounts as $label => $count) {
@@ -101,7 +125,8 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         $this->info('Also zeroed: org wallet, BRP, Phaze, Bridge cache, Care Alliance pools, reward/BP ledgers');
 
         $activityToDelete = array_sum($activityCounts);
-        if ($transactionsToDelete <= 0 && $activityToDelete <= 0) {
+        $stripeTestToDelete = array_sum($stripeTestCounts);
+        if ($transactionsToDelete <= 0 && $activityToDelete <= 0 && $stripeTestToDelete <= 0) {
             $this->comment('Nothing to change.');
 
             return self::SUCCESS;
@@ -127,9 +152,15 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
             $protectedIds = (clone $protectedQuery)->select('transactions.id');
 
             Transaction::query()
-                ->whereNotIn('id', $protectedIds)
+                ->where(function (Builder $query) use ($protectedIds) {
+                    $query->whereNotIn('id', $protectedIds)
+                        ->orWhere(function (Builder $testScope) {
+                            StripeTestReference::applyTransactionScope($testScope);
+                        });
+                })
                 ->delete();
 
+            $this->purgeStripeTestRecords();
             $this->purgeActivityRecords();
             $this->resetBalances($activeUserIdSet);
             $this->resetAuxiliaryBalances();
@@ -154,7 +185,166 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                     ->orWhere('ends_at', '>', now());
             })
             ->whereNotNull('stripe_id')
-            ->get(['id', 'user_id', 'user_type', 'stripe_id', 'type', 'stripe_status']);
+            ->get(['id', 'user_id', 'user_type', 'stripe_id', 'type', 'stripe_status'])
+            ->filter(fn (Subscription $subscription) => $this->isLiveSubscription($subscription))
+            ->values();
+    }
+
+    private function isLiveSubscription(Subscription $subscription): bool
+    {
+        if (StripeTestReference::isTest($subscription->stripe_id)) {
+            return false;
+        }
+
+        return ! Transaction::query()
+            ->where(function (Builder $query) use ($subscription) {
+                $query->where('meta->subscription_id', (string) $subscription->id)
+                    ->orWhere('meta->stripe_subscription_id', $subscription->stripe_id)
+                    ->orWhere('transaction_id', $subscription->stripe_id);
+            })
+            ->where(function (Builder $testScope) {
+                StripeTestReference::applyTransactionScope($testScope);
+            })
+            ->exists();
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function stripeTestRecordCounts(): array
+    {
+        $counts = [
+            'Stripe test ledger rows' => StripeTestReference::applyTransactionScope(Transaction::query())->count(),
+        ];
+
+        if (Schema::hasTable('subscriptions')) {
+            $counts['Stripe test subscriptions'] = Subscription::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'stripe_id');
+                })
+                ->count();
+        }
+
+        if (Schema::hasTable('believe_point_purchases')) {
+            $counts['Stripe test BP purchases'] = BelievePointPurchase::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'stripe_session_id');
+                    $query->orWhere(function (Builder $intentScope) {
+                        StripeTestReference::applyColumnScope($intentScope, 'stripe_payment_intent_id');
+                    });
+                })
+                ->count();
+        }
+
+        if (Schema::hasTable('donations')) {
+            $counts['Stripe test donations'] = Donation::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'transaction_id');
+                })
+                ->count();
+        }
+
+        return $counts;
+    }
+
+    private function purgeStripeTestRecords(): void
+    {
+        if (Schema::hasTable('subscriptions')) {
+            $testSubscriptionIds = $this->stripeTestSubscriptionIds();
+
+            if (Schema::hasTable('subscription_items') && $testSubscriptionIds !== []) {
+                DB::table('subscription_items')
+                    ->whereIn('subscription_id', $testSubscriptionIds)
+                    ->delete();
+            }
+
+            Subscription::query()
+                ->where(function (Builder $query) use ($testSubscriptionIds) {
+                    StripeTestReference::applyColumnScope($query, 'stripe_id');
+
+                    if ($testSubscriptionIds !== []) {
+                        $query->orWhereIn('id', $testSubscriptionIds);
+                    }
+                })
+                ->delete();
+        }
+
+        if (Schema::hasTable('believe_point_purchases')) {
+            BelievePointPurchase::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'stripe_session_id');
+                    $query->orWhere(function (Builder $intentScope) {
+                        StripeTestReference::applyColumnScope($intentScope, 'stripe_payment_intent_id');
+                    });
+                })
+                ->delete();
+        }
+
+        if (Schema::hasTable('donations')) {
+            Donation::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'transaction_id');
+                })
+                ->delete();
+        }
+
+        if (Schema::hasTable('fundme_donations') && Schema::hasColumn('fundme_donations', 'stripe_payment_intent_id')) {
+            FundMeDonation::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'stripe_payment_intent_id');
+                })
+                ->delete();
+        }
+
+        if (Schema::hasTable('care_alliance_donations') && Schema::hasColumn('care_alliance_donations', 'payment_reference')) {
+            CareAllianceDonation::query()
+                ->where(function (Builder $query) {
+                    StripeTestReference::applyColumnScope($query, 'payment_reference');
+                })
+                ->delete();
+        }
+    }
+
+    /** @return list<int> */
+    private function stripeTestSubscriptionIds(): array
+    {
+        $ids = Subscription::query()
+            ->where(function (Builder $query) {
+                StripeTestReference::applyColumnScope($query, 'stripe_id');
+            })
+            ->pluck('id')
+            ->all();
+
+        $stripeIdsFromTestLedger = Transaction::query()
+            ->where(function (Builder $testScope) {
+                StripeTestReference::applyTransactionScope($testScope);
+            })
+            ->get(['meta'])
+            ->flatMap(function (Transaction $transaction) {
+                $meta = is_array($transaction->meta) ? $transaction->meta : [];
+
+                return array_filter([
+                    isset($meta['subscription_id']) ? (int) $meta['subscription_id'] : null,
+                    $meta['stripe_subscription_id'] ?? null,
+                ]);
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($stripeIdsFromTestLedger !== []) {
+            $linkedIds = Subscription::query()
+                ->where(function (Builder $query) use ($stripeIdsFromTestLedger) {
+                    $query->whereIn('id', array_filter($stripeIdsFromTestLedger, 'is_int'))
+                        ->orWhereIn('stripe_id', array_filter($stripeIdsFromTestLedger, 'is_string'));
+                })
+                ->pluck('id')
+                ->all();
+
+            $ids = array_values(array_unique(array_merge($ids, $linkedIds)));
+        }
+
+        return $ids;
     }
 
     /**
