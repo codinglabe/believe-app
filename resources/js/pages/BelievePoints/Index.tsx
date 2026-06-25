@@ -113,16 +113,6 @@ interface WalletTransferSettings {
   sandbox_unavailable: boolean
 }
 
-interface WalletTransferRecord {
-  id: number
-  amount: number
-  status: string
-  bridge_transfer_state?: string | null
-  created_at: string
-  completed_at?: string | null
-  retry_until?: string | null
-}
-
 interface PageProps {
   currentBalance: number
   processingBalance?: number
@@ -142,7 +132,6 @@ interface PageProps {
   savedPaymentMethods?: SavedPaymentMethod[]
   paymentMethodsUrl?: string
   walletTransfer?: WalletTransferSettings
-  walletTransfers?: WalletTransferRecord[]
   flash?: {
     success?: string
     error?: string
@@ -225,7 +214,6 @@ export default function BelievePointsIndex({
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
     walletTransfer,
-    walletTransfers = [],
   } = page.props
   const purchaseSettings = purchaseSettingsProp ?? {
     brp_value: 0.005,
@@ -333,7 +321,7 @@ export default function BelievePointsIndex({
         }
         setWalletTransferAmount("")
         setWalletTransferOpen(false)
-        router.reload({ only: ["walletTransfers", "currentBalance", "processingBalance", "processingReleaseAt"] })
+        router.reload({ only: ["currentBalance", "processingBalance", "processingReleaseAt"] })
       } else {
         showErrorToast(data.message || "Failed to move Believe Points to wallet")
       }
@@ -711,7 +699,6 @@ export default function BelievePointsIndex({
               amount={walletTransferAmount}
               onAmountChange={setWalletTransferAmount}
               walletTransfer={walletTransfer}
-              walletTransfers={walletTransfers}
               isSubmitting={walletTransferSubmitting}
               onSubmit={handleTransferToWallet}
               formatCurrency={formatCurrency}
