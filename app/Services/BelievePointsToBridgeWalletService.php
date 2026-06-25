@@ -134,35 +134,37 @@ class BelievePointsToBridgeWalletService
             );
         }
 
-        if ($this->shouldQueueForLiquidityRetry($bridgeResult)) {
-            Log::info('Believe Points wallet transfer awaiting reserve liquidity', [
+        if (! ($bridgeResult['success'] ?? false)) {
+            if ($this->shouldQueueForLiquidityRetry($bridgeResult)) {
+                Log::info('Believe Points wallet transfer awaiting reserve liquidity', [
+                    'user_id' => $user->id,
+                    'amount' => $amount,
+                    'bridge_error' => $bridgeResult['error'] ?? null,
+                    'bridge_error_code' => $bridgeResult['error_code'] ?? null,
+                ]);
+
+                return $this->queueNewTransferForLiquidity(
+                    $user,
+                    $integration,
+                    $amount,
+                    $idempotencyKey,
+                    $recipientWallet['wallet_id'],
+                );
+            }
+
+            Log::warning('Believe Points wallet transfer rejected by Bridge', [
                 'user_id' => $user->id,
                 'amount' => $amount,
                 'bridge_error' => $bridgeResult['error'] ?? null,
                 'bridge_error_code' => $bridgeResult['error_code'] ?? null,
             ]);
 
-            return $this->queueNewTransferForLiquidity(
-                $user,
-                $integration,
-                $amount,
-                $idempotencyKey,
-                $recipientWallet['wallet_id'],
-            );
+            return [
+                'success' => false,
+                'message' => 'We could not complete your transfer right now. Please try again later.',
+                'error_code' => (string) ($bridgeResult['error_code'] ?? 'BRIDGE_TRANSFER_FAILED'),
+            ];
         }
-
-        Log::warning('Believe Points wallet transfer rejected by Bridge', [
-            'user_id' => $user->id,
-            'amount' => $amount,
-            'bridge_error' => $bridgeResult['error'] ?? null,
-            'bridge_error_code' => $bridgeResult['error_code'] ?? null,
-        ]);
-
-        return [
-            'success' => false,
-            'message' => 'We could not complete your transfer right now. Please try again later.',
-            'error_code' => (string) ($bridgeResult['error_code'] ?? 'BRIDGE_TRANSFER_FAILED'),
-        ];
     }
 
     /**
