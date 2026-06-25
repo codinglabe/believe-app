@@ -522,7 +522,7 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
         <BridgeSection
           icon={Coins}
           title="Believe Points → Wallet"
-          description="Prefunded Bridge liquidity when users move purchased BP into their verified wallet (1 BP = $1)."
+          description="Platform reserve liquidity when users move purchased BP into their verified wallet."
         >
           <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4">
             <Checkbox
@@ -538,7 +538,7 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
                 Enable BP → Wallet transfers
               </Label>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Requires a live prefunded Bridge wallet in production. Only purchased BP can be moved (not gifted).
+                Requires a live platform reserve customer wallet in production. Only purchased BP can be moved (not gifted).
               </p>
             </div>
           </div>
@@ -563,7 +563,7 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
           <div className="grid gap-4 lg:grid-cols-2">
             <PrefundedLiquidityPicker
               environment="sandbox"
-              title="Sandbox prefunded wallet"
+              title="Sandbox reserve account"
               customerId={data.sandbox_prefunded_customer_id}
               walletId={data.sandbox_prefunded_wallet_id}
               accountId={data.sandbox_prefunded_account_id}
@@ -576,7 +576,7 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
 
             <PrefundedLiquidityPicker
               environment="live"
-              title="Live prefunded wallet"
+              title="Live reserve account"
               className="border-purple-200/60 bg-purple-50/30 dark:border-purple-900/40 dark:bg-purple-950/15"
               customerId={data.live_prefunded_customer_id}
               walletId={data.live_prefunded_wallet_id}
@@ -600,7 +600,7 @@ export default function BridgeSettings({ settings, live_prefunded_balance }: Pro
                     live_prefunded_balance.currency,
                   )}
                 </span>
-                . Checked via <code className="rounded bg-muted px-1 py-0.5 text-[11px]">GET /prefunded_accounts/&#123;id&#125;</code>.
+                . Checked via Bridge reserve wallet balance.
               </AlertDescription>
             </Alert>
           )}

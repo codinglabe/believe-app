@@ -85,19 +85,34 @@ class BridgeSettingsController extends Controller
             $validated = $request->validate([
                 'prefunded_environment' => ['required', 'string', 'in:sandbox,live'],
                 'prefunded_account_name' => ['nullable', 'string', 'max:255'],
+                'prefunded_customer_id' => ['nullable', 'string', 'max:255'],
             ]);
             $prefundedLiquidityOptions = app(BridgePrefundedLiquidityService::class)
                 ->listForEnvironment(
                     $validated['prefunded_environment'],
                     $validated['prefunded_account_name'] ?? null,
+                    $validated['prefunded_customer_id'] ?? null,
                 );
         }
 
         $livePrefundedBalance = null;
         $livePrefundedAccountId = trim((string) ($additionalConfig['live_prefunded_account_id'] ?? ''));
-        if ($livePrefundedAccountId !== '' && ! empty($bridge->live_api_key)) {
-            $livePrefundedBalance = (new BridgeService($bridge->live_api_key, 'live'))
-                ->getPrefundedAccountSummary($livePrefundedAccountId);
+        $liveReserveWalletId = trim((string) ($additionalConfig['live_prefunded_wallet_id'] ?? ''));
+        if (! empty($bridge->live_api_key)) {
+            $liveService = new BridgeService($bridge->live_api_key, 'live');
+            if ($livePrefundedAccountId !== '') {
+                $livePrefundedBalance = $liveService->getPrefundedAccountSummary($livePrefundedAccountId);
+            } elseif ($liveReserveWalletId !== '') {
+                $liveCustomerId = trim((string) ($additionalConfig['live_prefunded_customer_id'] ?? ''));
+                $parsed = $liveService->parseBridgeWalletForTransfer($liveCustomerId, $liveReserveWalletId);
+                if ($parsed !== null) {
+                    $livePrefundedBalance = [
+                        'name' => trim((string) ($additionalConfig['live_prefunded_account_name'] ?? '')) ?: 'Platform reserve',
+                        'available_balance' => number_format((float) ($parsed['balance'] ?? 0), 2, '.', ''),
+                        'currency' => (string) ($parsed['currency'] ?? 'usdc'),
+                    ];
+                }
+            }
         }
 
         return Inertia::render('settings/bridge', [
@@ -175,7 +190,7 @@ class BridgeSettingsController extends Controller
             $sandboxWalletId = trim((string) ($additionalConfig['sandbox_prefunded_wallet_id'] ?? ''));
             if ($sandboxWalletId !== '' && $sandboxService->isMemberCustomerBridgeWallet($sandboxWalletId)) {
                 return back()->withErrors([
-                    'sandbox_prefunded_wallet_id' => 'That wallet belongs to a member. Use your Bridge prefunded account wallet ID instead.',
+                    'sandbox_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use your platform reserve customer wallet instead.',
                 ]);
             }
             $additionalConfig = $sandboxService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'sandbox');
@@ -186,7 +201,7 @@ class BridgeSettingsController extends Controller
             $liveWalletId = trim((string) ($additionalConfig['live_prefunded_wallet_id'] ?? ''));
             if ($liveWalletId !== '' && $liveService->isMemberCustomerBridgeWallet($liveWalletId)) {
                 return back()->withErrors([
-                    'live_prefunded_wallet_id' => 'That wallet belongs to a member. Use your Bridge prefunded account wallet ID instead.',
+                    'live_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use your platform reserve customer wallet instead.',
                 ]);
             }
             $additionalConfig = $liveService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'live');
