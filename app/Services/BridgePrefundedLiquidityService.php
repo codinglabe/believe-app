@@ -7,7 +7,9 @@ use App\Models\PaymentMethod;
 class BridgePrefundedLiquidityService
 {
     /**
-     * Load prefunded accounts and Bridge wallets from Bridge for admin selection.
+     * Load prefunded accounts from Bridge for admin selection.
+     *
+     * Only prefunded accounts (platform liquidity) are listed — not member wallets from GET /wallets.
      *
      * @see https://apidocs.bridge.xyz/api-reference/prefunded-accounts/get-a-list-of-all-prefunded-account
      * @see https://apidocs.bridge.xyz/platform/wallets/prefunded_wallets
@@ -40,113 +42,64 @@ class BridgePrefundedLiquidityService
 
         $service = new BridgeService($apiKey, $environment);
         $accounts = [];
-        $seenWalletIds = [];
-        $prefundedLoaded = false;
-        $walletsLoaded = false;
 
         $prefundedResult = $service->getPrefundedAccounts();
-        if ($prefundedResult['success'] ?? false) {
-            $prefundedLoaded = true;
-
-            foreach ($service->normalizeBridgeListData($prefundedResult) as $row) {
-                $accountId = trim((string) ($row['id'] ?? ''));
-                if ($accountId === '') {
-                    continue;
-                }
-
-                $detail = $service->getPrefundedAccount($accountId);
-                $payload = ($detail['success'] ?? false) && is_array($detail['data'] ?? null)
-                    ? $detail['data']
-                    : $row;
-
-                $walletId = $service->extractBridgeWalletIdFromPayload($payload);
-                if ($walletId !== '' && $service->isRegisteredCustomerWalletId($walletId)) {
-                    $walletId = '';
-                }
-                if ($walletId === '' && count($service->normalizeBridgeListData($prefundedResult)) === 1) {
-                    $fallback = $service->findDeveloperPrefundedLiquidityWallet();
-                    if ($fallback !== null) {
-                        $walletId = $fallback['wallet_id'];
-                    }
-                }
-                $customerId = $service->extractCustomerIdFromPayload($payload);
-                $walletSummary = $walletId !== ''
-                    ? $this->fetchWalletSummary($service, $customerId, $walletId)
-                    : null;
-
-                if ($customerId === '' && is_array($walletSummary)) {
-                    $customerId = (string) ($walletSummary['customer_id'] ?? '');
-                }
-
-                $availableBalance = (string) ($payload['available_balance'] ?? $row['available_balance'] ?? '0');
-                if (is_array($walletSummary) && ($walletSummary['balance'] ?? '') !== '') {
-                    $availableBalance = (string) $walletSummary['balance'];
-                }
-
-                $accounts[] = [
-                    'id' => $accountId,
-                    'source' => 'prefunded_account',
-                    'name' => (string) ($payload['name'] ?? $row['name'] ?? 'Prefunded account'),
-                    'available_balance' => $availableBalance,
-                    'currency' => strtolower((string) ($payload['currency'] ?? $row['currency'] ?? 'usd')),
-                    'bridge_wallet_id' => $walletId,
-                    'customer_id' => $customerId,
-                    'chain' => is_array($walletSummary) ? (string) ($walletSummary['chain'] ?? '') : '',
-                    'address' => is_array($walletSummary) ? (string) ($walletSummary['address'] ?? '') : '',
-                    'is_recommended' => false,
-                ];
-
-                if ($walletId !== '') {
-                    $seenWalletIds[$walletId] = true;
-                }
-            }
-        }
-
-        $walletsResult = $service->listAllBridgeWallets();
-        if ($walletsResult['success'] ?? false) {
-            $walletsLoaded = true;
-            $wallets = is_array($walletsResult['data'] ?? null) ? $walletsResult['data'] : [];
-
-            foreach ($wallets as $wallet) {
-                if (! is_array($wallet)) {
-                    continue;
-                }
-
-                $walletId = trim((string) ($wallet['id'] ?? ''));
-                if ($walletId === '' || isset($seenWalletIds[$walletId])) {
-                    continue;
-                }
-
-                if ($service->isRegisteredCustomerWalletId($walletId)) {
-                    continue;
-                }
-
-                $customerId = $service->extractCustomerIdFromPayload($wallet);
-                $walletSummary = $this->fetchWalletSummary($service, $customerId, $walletId);
-
-                if ($customerId === '' && is_array($walletSummary)) {
-                    $customerId = (string) ($walletSummary['customer_id'] ?? '');
-                }
-
-                $accounts[] = [
-                    'id' => $walletId,
-                    'source' => 'bridge_wallet',
-                    'name' => $this->walletDisplayName($wallet, $walletId),
-                    'available_balance' => is_array($walletSummary) ? (string) ($walletSummary['balance'] ?? '0') : '0',
-                    'currency' => is_array($walletSummary) ? (string) ($walletSummary['currency'] ?? 'usdc') : 'usdc',
-                    'bridge_wallet_id' => $walletId,
-                    'customer_id' => $customerId,
-                    'chain' => (string) ($wallet['chain'] ?? ($walletSummary['chain'] ?? '')),
-                    'address' => (string) ($wallet['address'] ?? ($walletSummary['address'] ?? '')),
-                    'is_recommended' => false,
-                ];
-            }
-        }
-
-        if (! $prefundedLoaded && ! $walletsLoaded) {
+        if (! ($prefundedResult['success'] ?? false)) {
             return $this->errorPayload(
                 $environment,
-                $prefundedResult['error'] ?? $walletsResult['error'] ?? 'Could not load prefunded liquidity from Bridge.',
+                $prefundedResult['error'] ?? 'Could not load prefunded accounts from Bridge.',
+            );
+        }
+
+        foreach ($service->normalizeBridgeListData($prefundedResult) as $row) {
+            $accountId = trim((string) ($row['id'] ?? ''));
+            if ($accountId === '') {
+                continue;
+            }
+
+            $detail = $service->getPrefundedAccount($accountId);
+            $payload = ($detail['success'] ?? false) && is_array($detail['data'] ?? null)
+                ? $detail['data']
+                : $row;
+
+            $walletId = $service->extractBridgeWalletIdFromPayload($payload);
+            if ($walletId !== '' && $service->isMemberCustomerBridgeWallet($walletId)) {
+                $walletId = '';
+            }
+
+            $customerId = $service->extractCustomerIdFromPayload($payload);
+            $walletSummary = $walletId !== ''
+                ? $this->fetchWalletSummary($service, $customerId, $walletId)
+                : null;
+
+            if ($customerId === '' && is_array($walletSummary)) {
+                $customerId = (string) ($walletSummary['customer_id'] ?? '');
+            }
+
+            $availableBalance = (string) ($payload['available_balance'] ?? $row['available_balance'] ?? '0');
+            if (is_array($walletSummary) && ($walletSummary['balance'] ?? '') !== '') {
+                $availableBalance = (string) $walletSummary['balance'];
+            }
+
+            $accounts[] = [
+                'id' => $accountId,
+                'source' => 'prefunded_account',
+                'name' => (string) ($payload['name'] ?? $row['name'] ?? 'Prefunded account'),
+                'available_balance' => $availableBalance,
+                'currency' => strtolower((string) ($payload['currency'] ?? $row['currency'] ?? 'usd')),
+                'bridge_wallet_id' => $walletId,
+                'customer_id' => $customerId,
+                'chain' => is_array($walletSummary) ? (string) ($walletSummary['chain'] ?? '') : '',
+                'address' => is_array($walletSummary) ? (string) ($walletSummary['address'] ?? '') : '',
+                'is_recommended' => false,
+                'is_member_wallet' => false,
+            ];
+        }
+
+        if ($accounts === []) {
+            return $this->errorPayload(
+                $environment,
+                'No prefunded accounts were returned. Create a Prefunded Account / Prefunded Wallet in the Bridge dashboard first.',
             );
         }
 
@@ -167,7 +120,6 @@ class BridgePrefundedLiquidityService
     private function markAndSortLiquidityAccounts(array $accounts): array
     {
         $recommendedIndex = null;
-        $recommendedScore = -1.0;
 
         foreach ($accounts as $index => $account) {
             $walletId = trim((string) ($account['bridge_wallet_id'] ?? ''));
@@ -175,15 +127,18 @@ class BridgePrefundedLiquidityService
                 continue;
             }
 
-            $balance = (float) ($account['available_balance'] ?? 0);
-            $score = $balance;
             if (($account['source'] ?? '') === 'prefunded_account') {
-                $score += 1_000_000;
-            }
-
-            if ($score > $recommendedScore) {
-                $recommendedScore = $score;
                 $recommendedIndex = $index;
+                break;
+            }
+        }
+
+        if ($recommendedIndex === null) {
+            foreach ($accounts as $index => $account) {
+                if (trim((string) ($account['bridge_wallet_id'] ?? '')) !== '') {
+                    $recommendedIndex = $index;
+                    break;
+                }
             }
         }
 
@@ -198,13 +153,7 @@ class BridgePrefundedLiquidityService
                 return $bRecommended <=> $aRecommended;
             }
 
-            $aPrefunded = ($a['source'] ?? '') === 'prefunded_account';
-            $bPrefunded = ($b['source'] ?? '') === 'prefunded_account';
-            if ($aPrefunded !== $bPrefunded) {
-                return $bPrefunded <=> $aPrefunded;
-            }
-
-            return ((float) ($b['available_balance'] ?? 0)) <=> ((float) ($a['available_balance'] ?? 0));
+            return strcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? ''));
         });
 
         return array_values($accounts);
@@ -221,22 +170,6 @@ class BridgePrefundedLiquidityService
             'error' => $message,
             'accounts' => [],
         ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $wallet
-     */
-    private function walletDisplayName(array $wallet, string $walletId): string
-    {
-        $name = trim((string) ($wallet['name'] ?? ''));
-        if ($name !== '') {
-            return $name;
-        }
-
-        $chain = trim((string) ($wallet['chain'] ?? ''));
-        $suffix = strlen($walletId) > 8 ? substr($walletId, -8) : $walletId;
-
-        return $chain !== '' ? ucfirst($chain).' wallet …'.$suffix : 'Bridge wallet …'.$suffix;
     }
 
     /**

@@ -162,11 +162,23 @@ class BridgeSettingsController extends Controller
 
         if (! empty($request->bridge_sandbox_api_key)) {
             $sandboxService = new BridgeService($request->bridge_sandbox_api_key, 'sandbox');
+            $sandboxWalletId = trim((string) ($additionalConfig['sandbox_prefunded_wallet_id'] ?? ''));
+            if ($sandboxWalletId !== '' && $sandboxService->isMemberCustomerBridgeWallet($sandboxWalletId)) {
+                return back()->withErrors([
+                    'sandbox_prefunded_wallet_id' => 'That wallet belongs to a member. Use your Bridge prefunded account wallet ID instead.',
+                ]);
+            }
             $additionalConfig = $sandboxService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'sandbox');
         }
 
         if (! empty($request->bridge_live_api_key)) {
             $liveService = new BridgeService($request->bridge_live_api_key, 'live');
+            $liveWalletId = trim((string) ($additionalConfig['live_prefunded_wallet_id'] ?? ''));
+            if ($liveWalletId !== '' && $liveService->isMemberCustomerBridgeWallet($liveWalletId)) {
+                return back()->withErrors([
+                    'live_prefunded_wallet_id' => 'That wallet belongs to a member. Use your Bridge prefunded account wallet ID instead.',
+                ]);
+            }
             $additionalConfig = $liveService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'live');
         }
 
