@@ -75,14 +75,13 @@ class BelievePointController extends BaseController
             'max_purchase_amount' => ['required', 'numeric', 'min:1', 'max:100000'],
             'brp_value' => ['required', 'numeric', 'min:0', 'max:100'],
             'platform_fee_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'card_brp_rate' => ['required', 'numeric', 'min:0', 'max:1000'],
-            'ach_brp_rate' => ['required', 'numeric', 'min:0', 'max:1000'],
+            'processing_fee_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'free_brp_award' => ['required', 'numeric', 'min:0', 'max:10000'],
+            'prime_brp_award' => ['required', 'numeric', 'min:0', 'max:10000'],
             'card_hold_hours' => ['required', 'integer', 'min:0', 'max:720'],
             'card_settlement_business_days' => ['required', 'integer', 'min:0', 'max:30'],
             'ach_settlement_business_days' => ['required', 'integer', 'min:0', 'max:30'],
             'require_bridge_reserve_confirmation' => ['required', 'boolean'],
-            'free_brp_reward' => ['required', 'numeric', 'min:0', 'max:10000'],
-            'prime_brp_reward' => ['required', 'numeric', 'min:0', 'max:10000'],
             'stripe_card_enabled' => 'sometimes|boolean',
             'stripe_ach_enabled' => 'sometimes|boolean',
             'stripe_venmo_enabled' => 'sometimes|boolean',
@@ -107,14 +106,13 @@ class BelievePointController extends BaseController
         AdminSetting::set('believe_points_max_purchase', $request->input('max_purchase_amount'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_BRP_VALUE, $request->input('brp_value'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PLATFORM_FEE_PERCENT, $request->input('platform_fee_percent'), 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_BRP_RATE, $request->input('card_brp_rate'), 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_BRP_RATE, $request->input('ach_brp_rate'), 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PROCESSING_FEE_PERCENT, $request->input('processing_fee_percent'), 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_AWARD, $request->input('free_brp_award'), 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_AWARD, $request->input('prime_brp_award'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, $request->input('card_hold_hours'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_SETTLEMENT_BUSINESS_DAYS, $request->input('card_settlement_business_days'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_SETTLEMENT_BUSINESS_DAYS, $request->input('ach_settlement_business_days'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_REQUIRE_BRIDGE_RESERVE, $request->boolean('require_bridge_reserve_confirmation'), 'boolean');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_REWARD, $request->input('free_brp_reward'), 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_REWARD, $request->input('prime_brp_reward'), 'float');
 
         $payload = [
             'stripe_card_enabled' => $request->boolean('stripe_card_enabled'),

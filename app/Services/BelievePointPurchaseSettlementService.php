@@ -14,15 +14,7 @@ class BelievePointPurchaseSettlementService
 {
     public static function brpEarnedForPurchase(BelievePointPurchase $purchase): float
     {
-        return BelievePointsPurchaseCalculationService::participationBrpReward($purchase->user);
-    }
-
-    /**
-     * @deprecated Use {@see BelievePointsPurchaseCalculationService::brpEarned()}
-     */
-    public static function bankPurchaseRewardPointsFromAmountUsd(float $amountUsd): float
-    {
-        return BelievePointsPurchaseCalculationService::brpEarned($amountUsd, 'bank');
+        return BelievePointsPurchaseCalculationService::brpEarned($purchase->user);
     }
 
     public static function settleCheckoutPurchase(int $purchaseId, string $paymentIntentId): bool

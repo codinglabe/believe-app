@@ -58,13 +58,13 @@ class BelievePointsPurchasePaymentService
     {
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false, $user);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', $user);
 
         $purchase = BelievePointPurchase::create([
             'user_id' => $user->id,
             'amount' => $netPointsUsd,
             'checkout_total' => $breakdown['checkout_total_usd'],
-            'processing_fee_estimate' => 0,
+            'processing_fee_estimate' => $breakdown['processing_fee_usd'],
             'platform_fee' => $breakdown['platform_fee_usd'],
             'points' => $points,
             'status' => 'pending',
@@ -101,13 +101,13 @@ class BelievePointsPurchasePaymentService
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false, $user);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', $user);
 
         $purchase = BelievePointPurchase::create([
             'user_id' => $user->id,
             'amount' => $netPointsUsd,
             'checkout_total' => $breakdown['checkout_total_usd'],
-            'processing_fee_estimate' => 0,
+            'processing_fee_estimate' => $breakdown['processing_fee_usd'],
             'platform_fee' => $breakdown['platform_fee_usd'],
             'points' => $points,
             'status' => 'pending',
@@ -194,7 +194,7 @@ class BelievePointsPurchasePaymentService
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, $feeRail, true, $user);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, $feeRail, $user);
         $checkoutTotalUsd = $breakdown['checkout_total_usd'];
         $processingFeeAddon = $breakdown['processing_fee_usd'];
         $platformFee = $breakdown['platform_fee_usd'];

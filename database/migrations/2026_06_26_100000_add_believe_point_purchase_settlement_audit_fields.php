@@ -21,8 +21,8 @@ return new class extends Migration
         });
 
         if (class_exists(\App\Models\AdminSetting::class)) {
-            \App\Models\AdminSetting::set('bp_purchase_free_brp_reward', '5', 'float');
-            \App\Models\AdminSetting::set('bp_purchase_prime_brp_reward', '10', 'float');
+            \App\Models\AdminSetting::set('bp_purchase_free_brp_award', '5', 'float');
+            \App\Models\AdminSetting::set('bp_purchase_prime_brp_award', '10', 'float');
         }
     }
 

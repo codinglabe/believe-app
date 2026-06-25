@@ -20,6 +20,7 @@ import type { ProcessingFeeRates } from "@/types"
 import { Switch } from "@/components/frontend/ui/switch"
 import {
   SavedPaymentMethodSelector,
+  labelForMethod,
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
 import {
@@ -31,6 +32,12 @@ import {
   DonationPaymentMethods,
   type DonationPaymentMethodId,
 } from "@/components/frontend/donation-payment-methods"
+import {
+  InstantDonate,
+  type InstantDonateCause,
+  type InstantDonatePayload,
+} from "@/components/frontend/instant-donate"
+import { Zap } from "lucide-react"
 
 /** Matches `DonationController@index` `feePreview` prop (same rules as checkout). */
 type FeePreviewRail = "card" | "bank"
@@ -145,6 +152,8 @@ interface DonatePageProps extends InertiaPageProps {
   orgPaymentMethods?: Record<string, boolean>
   rewardPointsAmount?: number
   defaultPaymentMethods?: Record<string, boolean>
+  /** Supporter's secondary organizations (from profile) for quick selection. */
+  secondaryOrganizations?: DonateCause[]
 }
 
 const amountConfig = [
@@ -182,7 +191,7 @@ const DONATE_DROPDOWN_ITEM =
 const DONATE_SELECTED_ORG =
   "mt-2 flex items-center justify-between p-2.5 rounded-lg border border-purple-200/60 bg-gradient-to-r from-purple-50/90 to-blue-50/50 dark:border-purple-700/40 dark:from-purple-900/35 dark:to-blue-950/25"
 
-type DonationMode = "cash_points" | "non_cash"
+type DonationMode = "instant" | "cash_points" | "non_cash"
 type NonCashType = "goods" | "services" | "stocks_crypto" | "vehicle" | "other"
 
 const NON_CASH_TYPES: { id: NonCashType; label: string; icon: typeof Gift }[] = [
@@ -557,6 +566,70 @@ export default function DonatePage({
     setIsSearchFocused(true) // Show search input again
   }
 
+  /** Quick-pick recipients for Donate Instant: primary, secondaries, and previously supported. */
+  const instantCauses = useMemo<InstantDonateCause[]>(() => {
+    const pool: DonateCause[] = [
+      ...(primaryCauseForDropdown ? [primaryCauseForDropdown] : []),
+      ...((secondaryOrganizations as DonateCause[]) ?? []),
+      ...((donatedCauses as DonateCause[]) ?? []),
+      ...((organizations as DonateCause[]) ?? []),
+    ]
+    const seen = new Set<string>()
+    const result: InstantDonateCause[] = []
+    for (const cause of pool) {
+      if (!cause?.organization_id || seen.has(cause.id)) continue
+      seen.add(cause.id)
+      result.push({
+        id: cause.id,
+        kind: cause.kind,
+        organization_id: cause.organization_id,
+        name: cause.name,
+        description: cause.description,
+        image: cause.image,
+        care_alliance_id: cause.care_alliance_id,
+      })
+    }
+    return result
+  }, [primaryCauseForDropdown, secondaryOrganizations, donatedCauses, organizations])
+
+  const defaultInstantCause = useMemo<InstantDonateCause | undefined>(() => {
+    if (primaryCauseForDropdown?.organization_id) {
+      return instantCauses.find((c) => c.id === primaryCauseForDropdown.id) ?? instantCauses[0]
+    }
+    return instantCauses[0]
+  }, [instantCauses, primaryCauseForDropdown])
+
+  const defaultInstantPaymentLabel = useMemo(() => {
+    const def = savedPaymentMethods.find((m) => m.is_default) ?? savedPaymentMethods[0]
+    return def ? labelForMethod(def) : "New card"
+  }, [savedPaymentMethods])
+
+  const handleInstantDonate = (payload: InstantDonatePayload) => {
+    setSubmissionError(null)
+    setIsSubmitting(true)
+    router.post("/donate", {
+      ...payload,
+      message: "",
+      name,
+      email,
+      phone,
+    }, {
+      onStart: () => setIsSubmitting(true),
+      onFinish: () => setIsSubmitting(false),
+      onError: (errors) => {
+        if (errors.subscription || (flash as any)?.subscription_required) {
+          setShowSubscriptionModal(true)
+          setSubmissionError(null)
+        } else {
+          setSubmissionError(
+            errors.subscription || errors.payment_method || errors.message ||
+            "Failed to process donation. Please try again.",
+          )
+        }
+      },
+    })
+  }
+
   const handleSubmit = async () => {
     setSubmissionError(null)
     setIsSubmitting(true)
@@ -744,39 +817,72 @@ export default function DonatePage({
             </div>
           </motion.header>
 
-          {/* Donation type: Cash/Points vs Non-Cash Asset — pill tabs */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mb-8 flex flex-col sm:flex-row gap-3 p-1 rounded-2xl bg-white border border-gray-200 dark:bg-gray-900/60 dark:border-gray-700 w-full sm:w-auto sm:inline-flex"
-          >
-            <button
-              type="button"
-              onClick={() => setDonationMode("cash_points")}
-              className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
-                donationMode === "cash_points"
-                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
-                  : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-transparent"
-              }`}
+          {/* Donation entry points: Instant / Cash-Points / Non-Cash */}
+          {donationMode !== "instant" && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3"
             >
-              <Coins className="h-5 w-5 shrink-0" />
-              Donate Cash / Points
-            </button>
-            <button
-              type="button"
-              onClick={() => setDonationMode("non_cash")}
-              className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
-                donationMode === "non_cash"
-                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
-                  : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-transparent"
-              }`}
-            >
-              <Gift className="h-5 w-5 shrink-0" />
-              Donate Non-Cash Asset
-            </button>
-          </motion.div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmissionError(null)
+                  setDonationMode("instant")
+                }}
+                className="group flex flex-col items-start gap-1 rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 px-5 py-4 text-left text-white shadow-lg shadow-purple-500/25 transition-all hover:from-purple-700 hover:to-blue-700"
+              >
+                <span className="flex items-center gap-2 text-base font-bold">
+                  <Zap className="h-5 w-5 shrink-0" />
+                  Donate Instant
+                </span>
+                <span className="text-[11px] font-medium text-white/80">
+                  {(defaultInstantCause?.name ?? "Default Organization")} · {defaultInstantPaymentLabel} · Impact Pay: On
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDonationMode("cash_points")}
+                className={`flex items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-semibold transition-all ${
+                  donationMode === "cash_points"
+                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
+                    : "border border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:hover:bg-purple-950/30"
+                }`}
+              >
+                <Coins className="h-5 w-5 shrink-0" />
+                Donate Cash / Points
+              </button>
+              <button
+                type="button"
+                onClick={() => setDonationMode("non_cash")}
+                className={`flex items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-semibold transition-all ${
+                  donationMode === "non_cash"
+                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
+                    : "border border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:hover:bg-purple-950/30"
+                }`}
+              >
+                <Gift className="h-5 w-5 shrink-0" />
+                Donate Non-Cash Asset
+              </button>
+            </motion.div>
+          )}
 
-          {donationMode === "cash_points" ? (
+          {donationMode === "instant" ? (
+            <InstantDonate
+              causes={instantCauses}
+              defaultCause={defaultInstantCause}
+              savedPaymentMethods={savedPaymentMethods}
+              paymentMethodsUrl={paymentMethodsUrl}
+              processingFeeRates={processingFeeRates}
+              isSubmitting={isSubmitting}
+              submissionError={submissionError}
+              onBack={() => {
+                setSubmissionError(null)
+                setDonationMode("cash_points")
+              }}
+              onDonate={handleInstantDonate}
+            />
+          ) : donationMode === "cash_points" ? (
           <>
           {/* Three glass cards — Cash / Points */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
@@ -1475,7 +1581,8 @@ export default function DonatePage({
           </div>
           )}
 
-          {/* Trust footer — both modes */}
+          {/* Trust footer — cash & non-cash modes (instant view has its own) */}
+          {donationMode !== "instant" && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1488,6 +1595,7 @@ export default function DonatePage({
             <span>IRS Compliant</span>
             <span className="flex items-center gap-1 text-slate-600/70 dark:text-white/60">Stripe · card &amp; ACH</span>
           </motion.div>
+          )}
         </div>
 
         {/* Subscription Required Modal - Supporter View */}

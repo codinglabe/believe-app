@@ -49,7 +49,7 @@ class UserPaymentMethodController extends Controller
             'quickAddBelievePoints' => $believePointsEnabled ? [
                 'minPurchaseAmount' => $minPurchaseAmount,
                 'maxPurchaseAmount' => $maxPurchaseAmount,
-                'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload(),
+                'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload($user),
                 'currentBalance' => $user->currentBelievePoints(),
             ] : null,
         ]);

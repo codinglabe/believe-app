@@ -76,14 +76,13 @@ interface PageProps {
     max_purchase_amount: number
     brp_value: number
     platform_fee_percent: number
-    card_brp_rate: number
-    ach_brp_rate: number
+    processing_fee_percent: number
+    free_brp_award: number
+    prime_brp_award: number
     card_hold_hours: number
     card_settlement_business_days: number
     ach_settlement_business_days: number
     require_bridge_reserve_confirmation: boolean
-    free_brp_reward: number
-    prime_brp_reward: number
   }
   statistics: {
     total_purchases: number
@@ -110,14 +109,13 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     max_purchase_amount: settings.max_purchase_amount.toString(),
     brp_value: settings.brp_value.toString(),
     platform_fee_percent: settings.platform_fee_percent.toString(),
-    card_brp_rate: settings.card_brp_rate.toString(),
-    ach_brp_rate: settings.ach_brp_rate.toString(),
+    processing_fee_percent: settings.processing_fee_percent.toString(),
+    free_brp_award: settings.free_brp_award.toString(),
+    prime_brp_award: settings.prime_brp_award.toString(),
     card_hold_hours: settings.card_hold_hours.toString(),
     card_settlement_business_days: (settings.card_settlement_business_days ?? 1).toString(),
     ach_settlement_business_days: (settings.ach_settlement_business_days ?? 3).toString(),
     require_bridge_reserve_confirmation: settings.require_bridge_reserve_confirmation ?? true,
-    free_brp_reward: (settings.free_brp_reward ?? 5).toString(),
-    prime_brp_reward: (settings.prime_brp_reward ?? 10).toString(),
     stripe_card_enabled: paymentSettings.stripe_card_enabled,
     stripe_ach_enabled: paymentSettings.stripe_ach_enabled,
     stripe_venmo_enabled: paymentSettings.stripe_venmo_enabled,
@@ -188,13 +186,17 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     if (!formData.platform_fee_percent || Number.isNaN(platformFee) || platformFee < 0 || platformFee > 100) {
       newErrors.platform_fee_percent = "Platform fee must be between 0 and 100"
     }
-    const cardBrp = parseFloat(formData.card_brp_rate)
-    if (!formData.card_brp_rate || Number.isNaN(cardBrp) || cardBrp < 0) {
-      newErrors.card_brp_rate = "Card BRP rate must be zero or greater"
+    const processingFee = parseFloat(formData.processing_fee_percent)
+    if (!formData.processing_fee_percent || Number.isNaN(processingFee) || processingFee < 0 || processingFee > 100) {
+      newErrors.processing_fee_percent = "Processing fee must be between 0 and 100"
     }
-    const achBrp = parseFloat(formData.ach_brp_rate)
-    if (!formData.ach_brp_rate || Number.isNaN(achBrp) || achBrp < 0) {
-      newErrors.ach_brp_rate = "ACH BRP rate must be zero or greater"
+    const freeBrp = parseFloat(formData.free_brp_award)
+    if (formData.free_brp_award === "" || Number.isNaN(freeBrp) || freeBrp < 0) {
+      newErrors.free_brp_award = "Free member BRP award must be zero or greater"
+    }
+    const primeBrp = parseFloat(formData.prime_brp_award)
+    if (formData.prime_brp_award === "" || Number.isNaN(primeBrp) || primeBrp < 0) {
+      newErrors.prime_brp_award = "Prime member BRP award must be zero or greater"
     }
     const holdHours = parseInt(formData.card_hold_hours, 10)
     if (!formData.card_hold_hours || Number.isNaN(holdHours) || holdHours < 0 || holdHours > 720) {
@@ -207,14 +209,6 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     const achSettlementDays = parseInt(formData.ach_settlement_business_days, 10)
     if (Number.isNaN(achSettlementDays) || achSettlementDays < 0 || achSettlementDays > 30) {
       newErrors.ach_settlement_business_days = "ACH settlement days must be between 0 and 30"
-    }
-    const freeBrp = parseFloat(formData.free_brp_reward)
-    if (Number.isNaN(freeBrp) || freeBrp < 0) {
-      newErrors.free_brp_reward = "Free BRP reward must be zero or greater"
-    }
-    const primeBrp = parseFloat(formData.prime_brp_reward)
-    if (Number.isNaN(primeBrp) || primeBrp < 0) {
-      newErrors.prime_brp_reward = "Prime BRP reward must be zero or greater"
     }
 
     if (formData.venmo_manual_enabled && !formData.venmo_username.trim()) {
@@ -259,14 +253,13 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         max_purchase_amount: parseFloat(formData.max_purchase_amount),
         brp_value: parseFloat(formData.brp_value),
         platform_fee_percent: parseFloat(formData.platform_fee_percent),
-        card_brp_rate: parseFloat(formData.card_brp_rate),
-        ach_brp_rate: parseFloat(formData.ach_brp_rate),
+        processing_fee_percent: parseFloat(formData.processing_fee_percent),
+        free_brp_award: parseFloat(formData.free_brp_award),
+        prime_brp_award: parseFloat(formData.prime_brp_award),
         card_hold_hours: parseInt(formData.card_hold_hours, 10),
         card_settlement_business_days: parseInt(formData.card_settlement_business_days, 10),
         ach_settlement_business_days: parseInt(formData.ach_settlement_business_days, 10),
         require_bridge_reserve_confirmation: formData.require_bridge_reserve_confirmation,
-        free_brp_reward: parseFloat(formData.free_brp_reward),
-        prime_brp_reward: parseFloat(formData.prime_brp_reward),
         stripe_card_enabled: formData.stripe_card_enabled,
         stripe_ach_enabled: formData.stripe_ach_enabled,
         stripe_venmo_enabled: formData.stripe_venmo_enabled,
@@ -486,9 +479,9 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-base font-semibold">Purchase Rates &amp; Fees</h3>
+                  <h3 className="text-base font-semibold">Purchase Rewards &amp; Fees</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Configure BRP value, platform fee, BRP earn rates, and card hold period for the Add Believe Points purchase flow.
+                    Configure BRP value, platform fee, the flat BRP reward per purchase by membership tier, and the card hold period for the Add Believe Points purchase flow.
                   </p>
                 </div>
 
@@ -522,31 +515,45 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="card_brp_rate">Card BRP Rate (legacy per $1)</Label>
+                    <Label htmlFor="processing_fee_percent">Processing Fee (%)</Label>
                     <Input
-                      id="card_brp_rate"
+                      id="processing_fee_percent"
                       type="text"
-                      value={formData.card_brp_rate}
-                      onChange={(e) => handleChange("card_brp_rate", e.target.value)}
-                      className={cn(errors.card_brp_rate && "border-red-500")}
+                      value={formData.processing_fee_percent}
+                      onChange={(e) => handleChange("processing_fee_percent", e.target.value)}
+                      className={cn(errors.processing_fee_percent && "border-red-500")}
                       disabled={isSubmitting}
                     />
-                    {errors.card_brp_rate && <p className="text-sm text-red-600">{errors.card_brp_rate}</p>}
-                    <p className="text-xs text-muted-foreground">Default: 2 BRP per $1</p>
+                    {errors.processing_fee_percent && <p className="text-sm text-red-600">{errors.processing_fee_percent}</p>}
+                    <p className="text-xs text-muted-foreground">Applied to BP purchase amount. Default: 1%</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="ach_brp_rate">ACH BRP Rate (legacy per $1)</Label>
+                    <Label htmlFor="free_brp_award">Free Member BRP Reward</Label>
                     <Input
-                      id="ach_brp_rate"
+                      id="free_brp_award"
                       type="text"
-                      value={formData.ach_brp_rate}
-                      onChange={(e) => handleChange("ach_brp_rate", e.target.value)}
-                      className={cn(errors.ach_brp_rate && "border-red-500")}
+                      value={formData.free_brp_award}
+                      onChange={(e) => handleChange("free_brp_award", e.target.value)}
+                      className={cn(errors.free_brp_award && "border-red-500")}
                       disabled={isSubmitting}
                     />
-                    {errors.ach_brp_rate && <p className="text-sm text-red-600">{errors.ach_brp_rate}</p>}
-                    <p className="text-xs text-muted-foreground">Default: 1 BRP per $1</p>
+                    {errors.free_brp_award && <p className="text-sm text-red-600">{errors.free_brp_award}</p>}
+                    <p className="text-xs text-muted-foreground">Flat BRP per purchase for Free members. Default: 5 BRP</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="prime_brp_award">Prime / Org BRP Reward</Label>
+                    <Input
+                      id="prime_brp_award"
+                      type="text"
+                      value={formData.prime_brp_award}
+                      onChange={(e) => handleChange("prime_brp_award", e.target.value)}
+                      className={cn(errors.prime_brp_award && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.prime_brp_award && <p className="text-sm text-red-600">{errors.prime_brp_award}</p>}
+                    <p className="text-xs text-muted-foreground">Flat BRP per purchase for Prime members. Default: 10 BRP</p>
                   </div>
 
                   <div className="space-y-2 sm:col-span-2">
@@ -561,34 +568,6 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                     />
                     {errors.card_hold_hours && <p className="text-sm text-red-600">{errors.card_hold_hours}</p>}
                     <p className="text-xs text-muted-foreground">Legacy hold field. BP now uses Processing → Available settlement.</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="free_brp_reward">Free Supporter BRP (per purchase)</Label>
-                    <Input
-                      id="free_brp_reward"
-                      type="text"
-                      value={formData.free_brp_reward}
-                      onChange={(e) => handleChange("free_brp_reward", e.target.value)}
-                      className={cn(errors.free_brp_reward && "border-red-500")}
-                      disabled={isSubmitting}
-                    />
-                    {errors.free_brp_reward && <p className="text-sm text-red-600">{errors.free_brp_reward}</p>}
-                    <p className="text-xs text-muted-foreground">Default: 5 BRP participation reward</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="prime_brp_reward">Prime / Org BRP (per purchase)</Label>
-                    <Input
-                      id="prime_brp_reward"
-                      type="text"
-                      value={formData.prime_brp_reward}
-                      onChange={(e) => handleChange("prime_brp_reward", e.target.value)}
-                      className={cn(errors.prime_brp_reward && "border-red-500")}
-                      disabled={isSubmitting}
-                    />
-                    {errors.prime_brp_reward && <p className="text-sm text-red-600">{errors.prime_brp_reward}</p>}
-                    <p className="text-xs text-muted-foreground">Default: 10 BRP participation reward</p>
                   </div>
 
                   <div className="space-y-2">
