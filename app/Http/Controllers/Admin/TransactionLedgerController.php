@@ -27,6 +27,7 @@ use App\Services\DonationProcessingFeeEstimator;
 use App\Services\GiftCardLedgerService;
 use App\Services\MarketplaceOrderLedgerService;
 use App\Services\ServiceOrderLedgerService;
+use App\Support\StripeReferenceMode;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -903,6 +904,7 @@ class TransactionLedgerController extends Controller
         return [
             'date' => $date->toIso8601String(),
             'reference' => (string) ($t->transaction_id ?? ''),
+            'stripe_mode' => StripeReferenceMode::modeForTransaction($t, false),
             'source_type' => $this->resolveLedgerSourceType($t, $donationPayload),
             'gross_amount' => $fin['gross_amount'],
             'stripe_fee' => $fin['stripe_fee'],
@@ -1751,6 +1753,7 @@ class TransactionLedgerController extends Controller
             'created' => isset($cs->created) ? Carbon::createFromTimestamp($cs->created)->toIso8601String() : null,
             'payment_intent_id' => $cs->payment_intent ?? null,
             'customer' => $cs->customer ?? null,
+            'livemode' => $cs->livemode ?? null,
         ];
     }
 

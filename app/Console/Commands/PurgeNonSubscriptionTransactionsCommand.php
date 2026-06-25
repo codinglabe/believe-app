@@ -28,6 +28,7 @@ use App\Models\SupporterBrpWallet;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\PlanFirstMonthWelcomeCredits;
+use App\Support\StripeReferenceMode;
 use App\Support\StripeTestReference;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -69,7 +70,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
             $subscriptionStripeIds,
         );
 
-        $stripeTestLedgerCount = StripeTestReference::applyTransactionScope(Transaction::query())->count();
+        $stripeTestLedgerCount = $this->countStripeTestLedgerRows($protectedQuery);
 
         $totalTransactions = Transaction::query()->count();
         $protectedTransactions = (clone $protectedQuery)
@@ -77,15 +78,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                 StripeTestReference::applyTransactionScope($testScope);
             })
             ->count();
-        $transactionsToDelete = Transaction::query()
-            ->where(function (Builder $query) use ($protectedQuery) {
-                $protectedIds = (clone $protectedQuery)->select('transactions.id');
-                $query->whereNotIn('id', $protectedIds)
-                    ->orWhere(function (Builder $testScope) {
-                        StripeTestReference::applyTransactionScope($testScope);
-                    });
-            })
-            ->count();
+        $transactionsToDelete = $this->countTransactionsToDelete($protectedQuery);
 
         $balancePreview = $this->previewBalanceResets($activeUserIdSet);
         $activityCounts = $this->activityRecordCounts();
@@ -99,6 +92,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         $this->info('Protected (live subscription-related): '.$protectedTransactions);
         $this->warn('Stripe test-mode ledger rows (always removed): '.$stripeTestLedgerCount);
         $this->warn('Ledger transactions to delete: '.$transactionsToDelete);
+        $this->comment('Ambiguous pi_/sub_ rows without stripe_livemode are kept unless Stripe API confirms test mode.');
         $this->newLine();
         $this->info('Stripe test / local-dev records to delete:');
         foreach ($stripeTestCounts as $label => $count) {
@@ -149,17 +143,8 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         }
 
         DB::transaction(function () use ($protectedQuery, $activeUserIdSet) {
-            $protectedIds = (clone $protectedQuery)->select('transactions.id');
-
-            Transaction::query()
-                ->where(function (Builder $query) use ($protectedIds) {
-                    $query->whereNotIn('id', $protectedIds)
-                        ->orWhere(function (Builder $testScope) {
-                            StripeTestReference::applyTransactionScope($testScope);
-                        });
-                })
-                ->delete();
-
+            $this->backfillStripeLivemodeOnLedger();
+            $this->deleteLedgerTransactions($protectedQuery);
             $this->purgeStripeTestRecords();
             $this->purgeActivityRecords();
             $this->resetBalances($activeUserIdSet);
@@ -192,20 +177,123 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
 
     private function isLiveSubscription(Subscription $subscription): bool
     {
-        if (StripeTestReference::isTest($subscription->stripe_id)) {
+        if (StripeReferenceMode::isConfidentlyTest($subscription->stripe_id)) {
             return false;
         }
 
-        return ! Transaction::query()
-            ->where(function (Builder $query) use ($subscription) {
-                $query->where('meta->subscription_id', (string) $subscription->id)
-                    ->orWhere('meta->stripe_subscription_id', $subscription->stripe_id)
-                    ->orWhere('transaction_id', $subscription->stripe_id);
-            })
-            ->where(function (Builder $testScope) {
-                StripeTestReference::applyTransactionScope($testScope);
-            })
+        if (StripeReferenceMode::isConfidentlyLive($subscription->stripe_id)) {
+            return true;
+        }
+
+        $livemode = StripeReferenceMode::resolveLivemode($subscription->stripe_id);
+
+        return $livemode === true;
+    }
+
+    private function countStripeTestLedgerRows(Builder $protectedQuery): int
+    {
+        $count = 0;
+
+        Transaction::query()
+            ->orderBy('id')
+            ->chunkById(200, function ($transactions) use (&$count) {
+                foreach ($transactions as $transaction) {
+                    /** @var Transaction $transaction */
+                    if (StripeReferenceMode::isConfidentlyTestTransaction($transaction)) {
+                        $count++;
+                    }
+                }
+            });
+
+        return $count;
+    }
+
+    private function countTransactionsToDelete(Builder $protectedQuery): int
+    {
+        $count = 0;
+
+        Transaction::query()
+            ->orderBy('id')
+            ->chunkById(200, function ($transactions) use ($protectedQuery, &$count) {
+                foreach ($transactions as $transaction) {
+                    /** @var Transaction $transaction */
+                    if ($this->shouldDeleteLedgerTransaction($transaction, $protectedQuery)) {
+                        $count++;
+                    }
+                }
+            });
+
+        return $count;
+    }
+
+    private function deleteLedgerTransactions(Builder $protectedQuery): void
+    {
+        Transaction::query()
+            ->orderBy('id')
+            ->chunkById(200, function ($transactions) use ($protectedQuery) {
+                $ids = [];
+
+                foreach ($transactions as $transaction) {
+                    /** @var Transaction $transaction */
+                    if ($this->shouldDeleteLedgerTransaction($transaction, $protectedQuery)) {
+                        $ids[] = $transaction->id;
+                    }
+                }
+
+                if ($ids !== []) {
+                    Transaction::query()->whereIn('id', $ids)->delete();
+                }
+            });
+    }
+
+    private function shouldDeleteLedgerTransaction(Transaction $transaction, Builder $protectedQuery): bool
+    {
+        if (StripeReferenceMode::isConfidentlyTestTransaction($transaction)) {
+            return true;
+        }
+
+        $isProtected = (clone $protectedQuery)
+            ->where('transactions.id', $transaction->id)
             ->exists();
+
+        if (StripeReferenceMode::isConfidentlyLiveTransaction($transaction)) {
+            return ! $isProtected;
+        }
+
+        if (StripeReferenceMode::modeForTransaction($transaction) === StripeReferenceMode::MODE_UNKNOWN) {
+            return false;
+        }
+
+        return ! $isProtected;
+    }
+
+    private function backfillStripeLivemodeOnLedger(): void
+    {
+        Transaction::query()
+            ->whereNull('meta->stripe_livemode')
+            ->orderBy('id')
+            ->chunkById(100, function ($transactions) {
+                foreach ($transactions as $transaction) {
+                    /** @var Transaction $transaction */
+                    if (! StripeReferenceMode::hasAmbiguousStripeReference($transaction)) {
+                        continue;
+                    }
+
+                    $meta = is_array($transaction->meta) ? $transaction->meta : [];
+
+                    foreach (StripeReferenceMode::collectReferences($transaction->transaction_id, $meta) as $reference) {
+                        $livemode = StripeReferenceMode::resolveLivemode($reference, $meta);
+                        if ($livemode === null) {
+                            continue;
+                        }
+
+                        $meta['stripe_livemode'] = $livemode;
+                        $transaction->update(['meta' => $meta]);
+
+                        break;
+                    }
+                }
+            });
     }
 
     /**
