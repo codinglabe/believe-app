@@ -62,6 +62,11 @@ interface Purchase {
   points: string
   status: string
   created_at: string
+  bp_status?: string
+  settlement_status?: string
+  settlement_date?: string | null
+  settlement_reference?: string | null
+  current_bp_owner?: { id: number; name: string | null; email: string | null } | null
 }
 
 interface PageProps {
@@ -74,6 +79,11 @@ interface PageProps {
     card_brp_rate: number
     ach_brp_rate: number
     card_hold_hours: number
+    card_settlement_business_days: number
+    ach_settlement_business_days: number
+    require_bridge_reserve_confirmation: boolean
+    free_brp_reward: number
+    prime_brp_reward: number
   }
   statistics: {
     total_purchases: number
@@ -103,6 +113,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     card_brp_rate: settings.card_brp_rate.toString(),
     ach_brp_rate: settings.ach_brp_rate.toString(),
     card_hold_hours: settings.card_hold_hours.toString(),
+    card_settlement_business_days: (settings.card_settlement_business_days ?? 1).toString(),
+    ach_settlement_business_days: (settings.ach_settlement_business_days ?? 3).toString(),
+    require_bridge_reserve_confirmation: settings.require_bridge_reserve_confirmation ?? true,
+    free_brp_reward: (settings.free_brp_reward ?? 5).toString(),
+    prime_brp_reward: (settings.prime_brp_reward ?? 10).toString(),
     stripe_card_enabled: paymentSettings.stripe_card_enabled,
     stripe_ach_enabled: paymentSettings.stripe_ach_enabled,
     stripe_venmo_enabled: paymentSettings.stripe_venmo_enabled,
@@ -185,6 +200,22 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     if (!formData.card_hold_hours || Number.isNaN(holdHours) || holdHours < 0 || holdHours > 720) {
       newErrors.card_hold_hours = "Card hold hours must be between 0 and 720"
     }
+    const cardSettlementDays = parseInt(formData.card_settlement_business_days, 10)
+    if (Number.isNaN(cardSettlementDays) || cardSettlementDays < 0 || cardSettlementDays > 30) {
+      newErrors.card_settlement_business_days = "Card settlement days must be between 0 and 30"
+    }
+    const achSettlementDays = parseInt(formData.ach_settlement_business_days, 10)
+    if (Number.isNaN(achSettlementDays) || achSettlementDays < 0 || achSettlementDays > 30) {
+      newErrors.ach_settlement_business_days = "ACH settlement days must be between 0 and 30"
+    }
+    const freeBrp = parseFloat(formData.free_brp_reward)
+    if (Number.isNaN(freeBrp) || freeBrp < 0) {
+      newErrors.free_brp_reward = "Free BRP reward must be zero or greater"
+    }
+    const primeBrp = parseFloat(formData.prime_brp_reward)
+    if (Number.isNaN(primeBrp) || primeBrp < 0) {
+      newErrors.prime_brp_reward = "Prime BRP reward must be zero or greater"
+    }
 
     if (formData.venmo_manual_enabled && !formData.venmo_username.trim()) {
       newErrors.venmo_username = "Venmo username is required when Venmo (Manual) is enabled"
@@ -231,6 +262,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         card_brp_rate: parseFloat(formData.card_brp_rate),
         ach_brp_rate: parseFloat(formData.ach_brp_rate),
         card_hold_hours: parseInt(formData.card_hold_hours, 10),
+        card_settlement_business_days: parseInt(formData.card_settlement_business_days, 10),
+        ach_settlement_business_days: parseInt(formData.ach_settlement_business_days, 10),
+        require_bridge_reserve_confirmation: formData.require_bridge_reserve_confirmation,
+        free_brp_reward: parseFloat(formData.free_brp_reward),
+        prime_brp_reward: parseFloat(formData.prime_brp_reward),
         stripe_card_enabled: formData.stripe_card_enabled,
         stripe_ach_enabled: formData.stripe_ach_enabled,
         stripe_venmo_enabled: formData.stripe_venmo_enabled,
@@ -486,7 +522,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="card_brp_rate">Card BRP Rate (per $1)</Label>
+                    <Label htmlFor="card_brp_rate">Card BRP Rate (legacy per $1)</Label>
                     <Input
                       id="card_brp_rate"
                       type="text"
@@ -500,7 +536,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="ach_brp_rate">ACH BRP Rate (per $1)</Label>
+                    <Label htmlFor="ach_brp_rate">ACH BRP Rate (legacy per $1)</Label>
                     <Input
                       id="ach_brp_rate"
                       type="text"
@@ -514,7 +550,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   </div>
 
                   <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="card_hold_hours">Card Hold Hours</Label>
+                    <Label htmlFor="card_hold_hours">Card Hold Hours (legacy)</Label>
                     <Input
                       id="card_hold_hours"
                       type="text"
@@ -524,7 +560,84 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.card_hold_hours && <p className="text-sm text-red-600">{errors.card_hold_hours}</p>}
-                    <p className="text-xs text-muted-foreground">Hours before card-purchased BP is held before becoming spendable. Use 0 for instant availability (default).</p>
+                    <p className="text-xs text-muted-foreground">Legacy hold field. BP now uses Processing → Available settlement.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="free_brp_reward">Free Supporter BRP (per purchase)</Label>
+                    <Input
+                      id="free_brp_reward"
+                      type="text"
+                      value={formData.free_brp_reward}
+                      onChange={(e) => handleChange("free_brp_reward", e.target.value)}
+                      className={cn(errors.free_brp_reward && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.free_brp_reward && <p className="text-sm text-red-600">{errors.free_brp_reward}</p>}
+                    <p className="text-xs text-muted-foreground">Default: 5 BRP participation reward</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="prime_brp_reward">Prime / Org BRP (per purchase)</Label>
+                    <Input
+                      id="prime_brp_reward"
+                      type="text"
+                      value={formData.prime_brp_reward}
+                      onChange={(e) => handleChange("prime_brp_reward", e.target.value)}
+                      className={cn(errors.prime_brp_reward && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.prime_brp_reward && <p className="text-sm text-red-600">{errors.prime_brp_reward}</p>}
+                    <p className="text-xs text-muted-foreground">Default: 10 BRP participation reward</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="card_settlement_business_days">Card Settlement Business Days</Label>
+                    <Input
+                      id="card_settlement_business_days"
+                      type="text"
+                      value={formData.card_settlement_business_days}
+                      onChange={(e) => handleChange("card_settlement_business_days", e.target.value.replace(/[^0-9]/g, ""))}
+                      className={cn("max-w-xs", errors.card_settlement_business_days && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.card_settlement_business_days && (
+                      <p className="text-sm text-red-600">{errors.card_settlement_business_days}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="ach_settlement_business_days">ACH Settlement Business Days</Label>
+                    <Input
+                      id="ach_settlement_business_days"
+                      type="text"
+                      value={formData.ach_settlement_business_days}
+                      onChange={(e) => handleChange("ach_settlement_business_days", e.target.value.replace(/[^0-9]/g, ""))}
+                      className={cn("max-w-xs", errors.ach_settlement_business_days && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.ach_settlement_business_days && (
+                      <p className="text-sm text-red-600">{errors.ach_settlement_business_days}</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-lg border p-4 sm:col-span-2">
+                    <div className="space-y-0.5 pr-4">
+                      <Label htmlFor="require_bridge_reserve_confirmation" className="text-base font-semibold">
+                        Require Bridge Reserve Confirmation
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        BP becomes Available only after Stripe funds are ready and BIU reserve confirms the transfer.
+                      </p>
+                    </div>
+                    <Switch
+                      id="require_bridge_reserve_confirmation"
+                      checked={formData.require_bridge_reserve_confirmation}
+                      onCheckedChange={(checked) =>
+                        setFormData((prev) => ({ ...prev, require_bridge_reserve_confirmation: checked }))
+                      }
+                      disabled={isSubmitting}
+                    />
                   </div>
                 </div>
               </div>
@@ -676,7 +789,8 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                 <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
                   <li>1 Believe Point = $1 USD (1:1 ratio)</li>
                   <li>Users can purchase Believe Points through enabled payment methods (Stripe, PayPal, Venmo, Cash App, Zelle)</li>
-                  <li>Points are added to user accounts immediately after successful payment</li>
+                  <li>Points credit as Processing BP after payment; they become Available BP after settlement</li>
+                  <li>Processing BP can be donated; wallet, marketplace, and gift cards use Available BP only</li>
                   <li>Both supporters and organizations can purchase Believe Points</li>
                   <li>Purchase history is tracked for all transactions</li>
                 </ul>
@@ -729,7 +843,9 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                     <TableHead>User</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Points</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>BP Status</TableHead>
+                    <TableHead>Settlement</TableHead>
+                    <TableHead>Owner</TableHead>
                     <TableHead>Date</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -745,15 +861,33 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       <TableCell>{formatCurrency(purchase.amount)}</TableCell>
                       <TableCell>{formatPoints(purchase.points)}</TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            purchase.status === 'completed' ? 'default' :
-                            purchase.status === 'pending' ? 'secondary' :
-                            'destructive'
-                          }
-                        >
-                          {purchase.status}
+                        <Badge variant="outline" className="capitalize">
+                          {purchase.bp_status ?? "processing"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <Badge
+                            variant={
+                              purchase.settlement_status === "available"
+                                ? "default"
+                                : purchase.settlement_status === "failed" || purchase.settlement_status === "reversed"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                            className="capitalize"
+                          >
+                            {purchase.settlement_status ?? purchase.status}
+                          </Badge>
+                          {purchase.settlement_reference && (
+                            <p className="max-w-[140px] truncate text-xs text-muted-foreground" title={purchase.settlement_reference}>
+                              {purchase.settlement_reference}
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {purchase.current_bp_owner?.name ?? "—"}
                       </TableCell>
                       <TableCell>
                         {new Date(purchase.created_at).toLocaleDateString()}

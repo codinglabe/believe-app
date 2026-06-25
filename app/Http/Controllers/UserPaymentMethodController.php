@@ -37,7 +37,7 @@ class UserPaymentMethodController extends Controller
                 $base = round((float) $validator->validated()['fee_preview_amount'], 2);
                 $rail = $request->input('fee_preview_rail', 'bank');
                 $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
-                $feePreview = BelievePointsPurchaseCalculationService::feePreviewPayload($base, $rail);
+                $feePreview = BelievePointsPurchaseCalculationService::feePreviewPayload($base, $rail, $user);
             }
         }
 

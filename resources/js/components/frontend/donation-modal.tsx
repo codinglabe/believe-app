@@ -71,7 +71,8 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
     pageProps.paymentMethodsUrl ?? route("user.profile.payment-methods.index")
 
   // Get user's Believe Points balance
-  const currentBalance = parseFloat(user?.believe_points || '0') || 0
+  const currentBalance =
+    parseFloat(String(user?.donateable_believe_points ?? user?.believe_points ?? "0")) || 0
 
   // Get the correct organization ID - use registered_organization.id if available, otherwise organization.id
   const organizationId = (organization as any).registered_organization?.id || organization.id

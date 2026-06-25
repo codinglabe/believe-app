@@ -62,7 +62,7 @@ class ProcessBelievePointsAutoReplenishJob
                 return;
             }
 
-            $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($amount, 'card', true);
+            $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($amount, 'card', true, $user);
             $checkoutTotal = $breakdown['checkout_total_usd'];
             $feeAddon = $breakdown['processing_fee_usd'];
             $platformFee = $breakdown['platform_fee_usd'];

@@ -58,7 +58,7 @@ class BelievePointsPurchasePaymentService
     {
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false, $user);
 
         $purchase = BelievePointPurchase::create([
             'user_id' => $user->id,
@@ -101,7 +101,7 @@ class BelievePointsPurchasePaymentService
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, 'card', false, $user);
 
         $purchase = BelievePointPurchase::create([
             'user_id' => $user->id,
@@ -194,7 +194,7 @@ class BelievePointsPurchasePaymentService
 
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, $feeRail, true);
+        $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($netPointsUsd, $feeRail, true, $user);
         $checkoutTotalUsd = $breakdown['checkout_total_usd'];
         $processingFeeAddon = $breakdown['processing_fee_usd'];
         $platformFee = $breakdown['platform_fee_usd'];

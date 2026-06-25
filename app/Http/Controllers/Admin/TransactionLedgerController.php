@@ -135,6 +135,7 @@ class TransactionLedgerController extends Controller
                 'believe_points_auto_replenish_setup',
                 'believe_points_purchase',
                 'believe_points_wallet_transfer',
+                'bp_settlement',
                 'big_boss_override',
                 'cancellation',
                 'commission',
@@ -946,6 +947,9 @@ class TransactionLedgerController extends Controller
         }
         if (($meta['source'] ?? '') === 'believe_points_wallet_transfer') {
             return 'believe_points_wallet_transfer';
+        }
+        if (($meta['source'] ?? '') === 'bp_settlement' || $t->type === 'bp_settlement') {
+            return 'bp_settlement';
         }
         if (($meta['source'] ?? '') === 'believe_points_purchase'
             || ($meta['source'] ?? '') === 'believe_points_purchase_refund') {

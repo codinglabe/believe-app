@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\User;
+
 /**
  * Purchase math for the Add Believe Points flow (not donations).
  */
@@ -15,31 +17,37 @@ final class BelievePointsPurchaseCalculationService
         return round($bpAmountUsd * ($percent / 100), 2);
     }
 
-    public static function brpEarned(float $bpAmountUsd, string $rail): float
+    public static function participationBrpReward(?User $user): float
     {
-        $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
-        $rate = in_array($rail, ['bank', 'ach'], true)
-            ? BelievePointsPurchaseSettingsService::achBrpRate()
-            : BelievePointsPurchaseSettingsService::cardBrpRate();
+        if ($user !== null && BelievePointPurchaseSettlementStatusService::userCanTransferToWallet($user)) {
+            return BelievePointsPurchaseSettingsService::primeBrpReward();
+        }
 
-        return round($bpAmountUsd * $rate, 2);
+        return BelievePointsPurchaseSettingsService::freeBrpReward();
+    }
+
+    public static function brpEarned(float $bpAmountUsd, string $rail, ?User $user = null): float
+    {
+        return round(self::participationBrpReward($user), 2);
     }
 
     public static function bpAvailabilityLabel(string $rail): string
     {
         if (in_array($rail, ['bank', 'ach'], true)) {
-            return 'After ACH settlement';
+            $days = BelievePointsPurchaseSettingsService::achSettlementBusinessDays();
+
+            return $days <= 1
+                ? 'Processing BP until ACH settles (~1 business day)'
+                : "Processing BP until ACH settles (~{$days} business days)";
         }
 
-        $hours = BelievePointsPurchaseSettingsService::cardHoldHours();
+        $days = BelievePointsPurchaseSettingsService::cardSettlementBusinessDays();
 
-        if ($hours === 0) {
-            return 'Available immediately';
-        }
-
-        return $hours === 1
-            ? 'After 1-hour hold'
-            : "After {$hours}-hour hold";
+        return $days <= 0
+            ? 'Processing BP until card payout settles'
+            : ($days === 1
+                ? 'Processing BP until card payout settles (~1 business day)'
+                : "Processing BP until card payout settles (~{$days} business days)");
     }
 
     /**
@@ -53,7 +61,7 @@ final class BelievePointsPurchaseCalculationService
      *     rail: string
      * }
      */
-    public static function checkoutBreakdown(float $bpAmountUsd, string $rail, bool $includeStripeProcessing = true): array
+    public static function checkoutBreakdown(float $bpAmountUsd, string $rail, bool $includeStripeProcessing = true, ?User $user = null): array
     {
         $rail = in_array($rail, ['bank', 'ach'], true) ? 'bank' : 'card';
         $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
@@ -76,7 +84,7 @@ final class BelievePointsPurchaseCalculationService
             'platform_fee_usd' => $platformFee,
             'processing_fee_usd' => $processingFee,
             'checkout_total_usd' => $checkoutTotal,
-            'brp_earned' => self::brpEarned($bpAmountUsd, $rail),
+            'brp_earned' => self::brpEarned($bpAmountUsd, $rail, $user),
             'bp_availability' => self::bpAvailabilityLabel($rail),
             'rail' => $rail,
         ];
@@ -101,9 +109,9 @@ final class BelievePointsPurchaseCalculationService
      *     card_hold_hours: int
      * }
      */
-    public static function feePreviewPayload(float $bpAmountUsd, string $rail): array
+    public static function feePreviewPayload(float $bpAmountUsd, string $rail, ?User $user = null): array
     {
-        $breakdown = self::checkoutBreakdown($bpAmountUsd, $rail, true);
+        $breakdown = self::checkoutBreakdown($bpAmountUsd, $rail, true, $user);
         $cardCheckout = round(StripeProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd(
             round($bpAmountUsd + self::platformFeeUsd($bpAmountUsd), 2)
         ), 2);
@@ -127,6 +135,9 @@ final class BelievePointsPurchaseCalculationService
             'card_brp_rate' => BelievePointsPurchaseSettingsService::cardBrpRate(),
             'ach_brp_rate' => BelievePointsPurchaseSettingsService::achBrpRate(),
             'card_hold_hours' => BelievePointsPurchaseSettingsService::cardHoldHours(),
+            'free_brp_reward' => BelievePointsPurchaseSettingsService::freeBrpReward(),
+            'prime_brp_reward' => BelievePointsPurchaseSettingsService::primeBrpReward(),
+            'participation_brp_reward' => self::participationBrpReward($user),
         ];
     }
 }

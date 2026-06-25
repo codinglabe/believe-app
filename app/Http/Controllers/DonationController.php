@@ -702,9 +702,14 @@ class DonationController extends Controller
             $pointsRequired = $validated['amount']; // 1$ = 1 believe point
             $user->refresh(); // Get latest balance
 
-            if ($user->believe_points < $pointsRequired) {
+            $donateable = round(
+                (float) ($user->believe_points ?? 0) + (float) ($user->processing_believe_points ?? 0),
+                2
+            );
+
+            if ($donateable + 0.000001 < $pointsRequired) {
                 return redirect()->back()->withErrors([
-                    'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
+                    'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points (available + processing) but only have {$donateable}.",
                 ]);
             }
         }

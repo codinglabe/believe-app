@@ -47,6 +47,8 @@ export interface DonationPaymentMethodsProps {
   hasOrgSelected?: boolean
   paymentMethodsLoading?: boolean
   currentBalance: number
+  availableBalance?: number
+  processingBalance?: number
   canUseBelievePoints: boolean
   amount: number
   feePreviewRail: FeePreviewRail
@@ -214,6 +216,8 @@ export function DonationPaymentMethods({
   hasOrgSelected = false,
   paymentMethodsLoading = false,
   currentBalance,
+  availableBalance,
+  processingBalance = 0,
   canUseBelievePoints,
   amount,
   feePreviewRail,
@@ -344,9 +348,17 @@ export function DonationPaymentMethods({
               </p>
               <p className="text-xs text-slate-600/80 dark:text-white/55">
                 {canUseBelievePoints
-                  ? "Use your BP balance — no card needed"
+                  ? "Donation-eligible total (Processing + Available)"
                   : "Insufficient balance for this amount"}
               </p>
+              {(availableBalance !== undefined || processingBalance > 0) && (
+                <p className="mt-1 text-[11px] leading-snug text-slate-600/75 dark:text-white/50">
+                  Available: {(availableBalance ?? currentBalance).toLocaleString()} BP
+                  {processingBalance > 0
+                    ? ` · Processing: ${processingBalance.toLocaleString()} BP (donation-eligible)`
+                    : ""}
+                </p>
+              )}
             </div>
             {paymentMethod === "believe_points" && (
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 text-white">

@@ -231,6 +231,11 @@ class HandleInertiaRequests extends Middleware
                         'balance' => $user->balance,
                         'reward_points' => $user->reward_points ?? 0,
                         'believe_points' => $user->believe_points ?? 0,
+                        'processing_believe_points' => $user->processing_believe_points ?? 0,
+                        'donateable_believe_points' => round(
+                            (float) ($user->believe_points ?? 0) + (float) ($user->processing_believe_points ?? 0),
+                            2
+                        ),
                         'gifted_believe_points' => $user->gifted_believe_points ?? 0,
                         'believe_points_total' => $user->totalBelievePointsBalance(),
                         'credits' => $user->credits ?? 0,

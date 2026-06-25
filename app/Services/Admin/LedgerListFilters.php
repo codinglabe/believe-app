@@ -312,9 +312,11 @@ final class LedgerListFilters
                     ->orWhere('related_type', BelievePointWalletTransfer::class)
                     ->orWhere('related_type', 'like', '%BelievePointWalletTransfer')
                     ->orWhere('type', 'believe_points_wallet_transfer')
+                    ->orWhere('type', 'bp_settlement')
                     ->orWhere('meta->source', 'believe_points_purchase')
                     ->orWhere('meta->source', 'believe_points_purchase_refund')
-                    ->orWhere('meta->source', 'believe_points_wallet_transfer');
+                    ->orWhere('meta->source', 'believe_points_wallet_transfer')
+                    ->orWhere('meta->source', 'bp_settlement');
             })
                 ->whereNot(function (Builder $rf) {
                     $rf->where('type', 'refund')

@@ -264,7 +264,7 @@ class DonationLedgerSyncService
             $ledgerTransactionId = $stripeRef;
         }
 
-        if ($incrementBalance) {
+        if ($incrementBalance && $donation->payment_method !== 'believe_points') {
             $recipient->increment('balance', $amountDollars);
         }
 

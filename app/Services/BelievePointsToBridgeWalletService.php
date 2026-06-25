@@ -36,6 +36,14 @@ class BelievePointsToBridgeWalletService
             ];
         }
 
+        if (! $this->settings->userCanTransfer($user)) {
+            return [
+                'success' => false,
+                'message' => 'Moving Believe Points to your wallet is available for Prime Supporters and organization accounts.',
+                'error_code' => 'BP_WALLET_TRANSFER_NOT_ELIGIBLE',
+            ];
+        }
+
         if ($this->bridgeService->isSandbox()) {
             return [
                 'success' => false,
@@ -174,7 +182,7 @@ class BelievePointsToBridgeWalletService
     }
 
     /**
-     * @return array{processed: int, expired: int}
+     * @return array{processed: int, expired: int, reconciled: int}
      */
     public function processDuePendingTransfers(): array
     {
@@ -216,6 +224,7 @@ class BelievePointsToBridgeWalletService
         return [
             'processed' => $processed,
             'expired' => $expired,
+            'reconciled' => $this->reconcileSubmittedTransfers(),
         ];
     }
 
@@ -290,10 +299,68 @@ class BelievePointsToBridgeWalletService
             return;
         }
 
+        $this->applyBridgeTransferState($transfer, $bridgeState);
+    }
+
+    /**
+     * Poll Bridge for submitted transfers that never received a terminal webhook.
+     */
+    public function reconcileSubmittedTransfers(?int $userId = null, int $limit = 50): int
+    {
+        $updated = 0;
+
+        $query = BelievePointWalletTransfer::query()
+            ->where('status', BelievePointWalletTransfer::STATUS_SUBMITTED)
+            ->whereNotNull('bridge_transfer_id');
+
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
+        $query->orderByDesc('updated_at')
+            ->limit(max(1, $limit))
+            ->get()
+            ->each(function (BelievePointWalletTransfer $transfer) use (&$updated) {
+                $bridgeTransferId = trim((string) ($transfer->bridge_transfer_id ?? ''));
+                if ($bridgeTransferId === '') {
+                    return;
+                }
+
+                $result = $this->bridgeService->getTransfer($bridgeTransferId);
+                if (! ($result['success'] ?? false)) {
+                    return;
+                }
+
+                $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+                $state = (string) ($data['state'] ?? $data['status'] ?? '');
+                if ($state === '') {
+                    return;
+                }
+
+                $before = $transfer->status;
+                $this->applyBridgeTransferState($transfer, $state);
+
+                if ($transfer->fresh()->status !== $before) {
+                    $updated++;
+                }
+            });
+
+        return $updated;
+    }
+
+    private function applyBridgeTransferState(BelievePointWalletTransfer $transfer, string $bridgeState): void
+    {
+        if (in_array($transfer->status, [
+            BelievePointWalletTransfer::STATUS_COMPLETED,
+            BelievePointWalletTransfer::STATUS_REFUNDED,
+        ], true)) {
+            return;
+        }
+
         $normalized = strtolower(trim($bridgeState));
         $transfer->bridge_transfer_state = $normalized;
 
-        if (in_array($normalized, ['payment_processed', 'completed', 'settled'], true)) {
+        if ($this->isTerminalSuccessBridgeState($normalized)) {
             $transfer->status = BelievePointWalletTransfer::STATUS_COMPLETED;
             $transfer->completed_at = $transfer->completed_at ?? now();
             $transfer->save();
@@ -301,11 +368,51 @@ class BelievePointsToBridgeWalletService
             return;
         }
 
-        if (in_array($normalized, ['failed', 'cancelled', 'canceled', 'returned', 'refunded'], true)) {
+        if ($this->isTerminalFailureBridgeState($normalized)) {
             $this->refundFailedTransfer($transfer, 'Bridge transfer '.$normalized);
-        } else {
-            $transfer->save();
+
+            return;
         }
+
+        $transfer->save();
+    }
+
+    /**
+     * Prefunded wallet-to-wallet transfers often land in the wallet before payment_processed.
+     *
+     * @return array<int, string>
+     */
+    private function terminalSuccessBridgeStates(): array
+    {
+        return [
+            'payment_processed',
+            'completed',
+            'settled',
+            'funds_received',
+        ];
+    }
+
+    private function isTerminalSuccessBridgeState(string $state): bool
+    {
+        return in_array($state, $this->terminalSuccessBridgeStates(), true);
+    }
+
+    private function isTerminalFailureBridgeState(string $state): bool
+    {
+        return in_array($state, ['failed', 'cancelled', 'canceled', 'returned', 'refunded'], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $bridgeResult
+     */
+    private function applyBridgeTransferStateFromResult(BelievePointWalletTransfer $transfer, array $bridgeResult): void
+    {
+        $state = $this->bridgeStateFromResult($bridgeResult);
+        if ($state === null || $state === '') {
+            return;
+        }
+
+        $this->applyBridgeTransferState($transfer, $state);
     }
 
     /**
@@ -350,6 +457,9 @@ class BelievePointsToBridgeWalletService
 
             return $record;
         });
+
+        $this->applyBridgeTransferStateFromResult($transfer, $bridgeResult);
+        $transfer->refresh();
 
         $bridgeTransferId = (string) ($transfer->bridge_transfer_id ?? '');
         if ($bridgeTransferId !== '') {
@@ -444,6 +554,9 @@ class BelievePointsToBridgeWalletService
             ]),
         ]);
 
+        $this->applyBridgeTransferStateFromResult($transfer->fresh(), $bridgeResult);
+
+        $transfer->refresh();
         $bridgeTransferId = (string) ($transfer->bridge_transfer_id ?? '');
         if ($bridgeTransferId !== '') {
             $this->bridgeWalletNotifier->notifyTransferWebhook(

@@ -270,7 +270,10 @@ export default function DonatePage({
 
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false)
 
-  const currentBalance = parseFloat(authUser?.believe_points || '0') || 0
+  const currentBalance =
+    parseFloat(String(authUser?.donateable_believe_points ?? authUser?.believe_points ?? "0")) || 0
+  const availableBalance = parseFloat(String(authUser?.believe_points ?? "0")) || 0
+  const processingBalance = parseFloat(String(authUser?.processing_believe_points ?? "0")) || 0
   const isStripeRail = paymentMethod === "stripe_card" || paymentMethod === "stripe_ach"
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -1105,6 +1108,8 @@ export default function DonatePage({
                 hasOrgSelected={hasOrgSelected}
                 paymentMethodsLoading={paymentMethodsLoading}
                 currentBalance={currentBalance}
+                availableBalance={availableBalance}
+                processingBalance={processingBalance}
                 canUseBelievePoints={canUseBelievePoints}
                 amount={getCurrentAmount()}
                 feePreviewRail={feePreviewRail}

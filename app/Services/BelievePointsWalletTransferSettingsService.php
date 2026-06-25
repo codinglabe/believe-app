@@ -4,9 +4,15 @@ namespace App\Services;
 
 use App\Models\AdminSetting;
 use App\Models\PaymentMethod;
+use App\Models\User;
 
 class BelievePointsWalletTransferSettingsService
 {
+    public function userCanTransfer(User $user): bool
+    {
+        return BelievePointPurchaseSettlementStatusService::userCanTransferToWallet($user);
+    }
+
     public function isEnabled(): bool
     {
         if (! (bool) AdminSetting::get('believe_points_enabled', true)) {
@@ -120,10 +126,16 @@ class BelievePointsWalletTransferSettingsService
     /**
      * @return array<string, mixed>
      */
-    public function frontendPayload(): array
+    public function frontendPayload(?User $user = null): array
     {
+        $eligible = $user ? $this->userCanTransfer($user) : false;
+
         return [
-            'enabled' => $this->isEnabled(),
+            'enabled' => $this->isEnabled() && $eligible,
+            'eligible' => $eligible,
+            'eligibility_message' => $eligible
+                ? null
+                : 'Available for Prime Supporters and organization accounts with a verified Believe wallet.',
             'min_amount' => $this->minAmount(),
             'max_amount' => $this->maxAmount(),
             'sandbox_unavailable' => app(BridgeService::class)->isSandbox(),

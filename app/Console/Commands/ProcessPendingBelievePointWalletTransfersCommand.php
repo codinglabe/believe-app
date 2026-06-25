@@ -16,9 +16,10 @@ class ProcessPendingBelievePointWalletTransfersCommand extends Command
         $result = $service->processDuePendingTransfers();
 
         $this->info(sprintf(
-            'Processed %d pending transfer(s); %d expired and refunded.',
+            'Processed %d pending transfer(s); %d expired and refunded; %d submitted transfer(s) reconciled.',
             $result['processed'],
             $result['expired'],
+            $result['reconciled'],
         ));
 
         return self::SUCCESS;

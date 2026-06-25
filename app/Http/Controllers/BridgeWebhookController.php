@@ -1054,6 +1054,8 @@ class BridgeWebhookController extends Controller
         if (is_string($transferId) && is_string($state)) {
             app(\App\Services\BelievePointsToBridgeWalletService::class)
                 ->syncFromBridgeTransfer($transferId, $state);
+
+            \App\Services\BelievePointBridgeReserveSettlementService::recordTransferCredit($eventObject, $state);
         }
 
         $integration = $this->findIntegrationByCustomerId($customerId);
@@ -1634,6 +1636,8 @@ class BridgeWebhookController extends Controller
             'payment_route_type' => $paymentRoute['type'] ?? null,
             'customer_id' => $customerId,
         ]);
+
+        \App\Services\BelievePointBridgeReserveSettlementService::recordWalletActivityCredit($eventObject);
 
         $integration = $this->resolveIntegrationForBridgeWalletActivity($customerId, $bridgeWalletId);
         if ($integration === null) {

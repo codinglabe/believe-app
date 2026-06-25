@@ -64,8 +64,15 @@ interface Purchase {
   payment_rail?: string | null
   points_released?: boolean
   points_available_at?: string | null
+  stripe_funds_available_at?: string | null
+  bridge_reserve_confirmed_at?: string | null
   failure_code?: string | null
   failure_message?: string | null
+  bp_status?: string
+  settlement_status?: string
+  settlement_date?: string | null
+  settlement_reference?: string | null
+  current_bp_owner?: { id: number; name: string | null; email: string | null } | null
 }
 
 interface AutoReplenishProps {
@@ -96,6 +103,9 @@ interface BelievePointsFeePreview {
   card_brp_rate: number
   ach_brp_rate: number
   card_hold_hours: number
+  free_brp_reward?: number
+  prime_brp_reward?: number
+  participation_brp_reward?: number
 }
 
 interface PurchaseSettings {
@@ -104,10 +114,17 @@ interface PurchaseSettings {
   card_brp_rate: number
   ach_brp_rate: number
   card_hold_hours: number
+  card_settlement_business_days?: number
+  ach_settlement_business_days?: number
+  require_bridge_reserve_confirmation?: boolean
+  free_brp_reward?: number
+  prime_brp_reward?: number
 }
 
 interface WalletTransferSettings {
   enabled: boolean
+  eligible?: boolean
+  eligibility_message?: string | null
   min_amount: number
   max_amount: number
   sandbox_unavailable: boolean
@@ -246,13 +263,21 @@ export default function BelievePointsIndex({
   const isAchPayment = paymentMethod === "stripe_ach"
   const isCardPayment = paymentMethod === "stripe_card"
   const feePreview = feePreviewProp ?? null
-  const cardHoldLabel =
-    purchaseSettings.card_hold_hours === 0
-      ? "Available immediately"
-      : purchaseSettings.card_hold_hours === 1
-        ? "After 1-hour hold"
-        : `After ${purchaseSettings.card_hold_hours}-hour hold`
-  const cardBpSettlesInstantly = purchaseSettings.card_hold_hours === 0
+  const participationBrp =
+    feePreview?.participation_brp_reward ??
+    feePreview?.brp_earned ??
+    purchaseSettings.free_brp_reward ??
+    5
+  const cardSettlementDays = purchaseSettings.card_settlement_business_days ?? 1
+  const achSettlementDays = purchaseSettings.ach_settlement_business_days ?? 3
+  const cardSettlementLabel =
+    cardSettlementDays <= 1
+      ? "Processing BP until card payout + reserve settlement (~1 business day)"
+      : `Processing BP until card payout + reserve settlement (~${cardSettlementDays} business days)`
+  const achSettlementLabel =
+    achSettlementDays <= 1
+      ? "Processing BP until ACH + reserve settlement (~1 business day)"
+      : `Processing BP until ACH + reserve settlement (~${achSettlementDays} business days)`
   const [formData, setFormData] = useState({
     amount: "",
     policyAccepted: false,
@@ -618,14 +643,30 @@ export default function BelievePointsIndex({
 
   const getPurchaseStatusBadge = (purchase: Purchase) => {
     if (purchase.status === "completed" && purchase.points_released === false) {
-      const releaseAt = purchase.points_available_at ? new Date(purchase.points_available_at) : null
+      const requireBridge = purchaseSettings?.require_bridge_reserve_confirmation !== false
+      const stripeAt = purchase.stripe_funds_available_at ?? purchase.points_available_at
+      const stripeReady = stripeAt ? new Date(stripeAt).getTime() <= Date.now() : false
+      const bridgeReady = Boolean(purchase.bridge_reserve_confirmed_at)
+
+      if (requireBridge && stripeReady && !bridgeReady) {
+        return (
+          <Badge
+            variant="secondary"
+            className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            Processing · Awaiting reserve
+          </Badge>
+        )
+      }
+
+      const releaseAt = stripeAt ? new Date(stripeAt) : null
       const onHold = releaseAt && releaseAt.getTime() > Date.now()
       return (
         <Badge
           variant="secondary"
           className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
         >
-          {onHold ? "Paid · On hold" : "Releasing…"}
+          {onHold ? "Processing · Awaiting settlement" : "Releasing…"}
         </Badge>
       )
     }
@@ -645,6 +686,10 @@ export default function BelievePointsIndex({
   }
 
   const getWalletTransferStatusBadge = (transfer: WalletTransferActivity) => {
+    const bridgeState = (transfer.bridge_transfer_state ?? "").toLowerCase()
+    const bridgeComplete = ["payment_processed", "completed", "settled", "funds_received"].includes(bridgeState)
+    const effectiveStatus = transfer.status === "submitted" && bridgeComplete ? "completed" : transfer.status
+
     const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string; label: string }> = {
       completed: {
         variant: "default",
@@ -657,9 +702,9 @@ export default function BelievePointsIndex({
       refunded: { variant: "outline", label: "Refunded" },
     }
 
-    const item = config[transfer.status] ?? {
+    const item = config[effectiveStatus] ?? {
       variant: "outline" as const,
-      label: transfer.status.replace(/_/g, " "),
+      label: effectiveStatus.replace(/_/g, " "),
     }
 
     return (
@@ -745,7 +790,10 @@ export default function BelievePointsIndex({
               formatCurrency={formatCurrency}
               onRefunds={() => router.visit(route("believe-points.refunds"))}
               onAddPoints={scrollToAddPoints}
-              showWalletAction={Boolean(walletTransfer?.enabled || walletTransfer?.sandbox_unavailable)}
+              showWalletAction={Boolean(
+                walletTransfer?.eligible &&
+                  (walletTransfer?.enabled || walletTransfer?.sandbox_unavailable),
+              )}
               onMoveToWallet={openMoveToWalletPopup}
             />
 
@@ -797,7 +845,7 @@ export default function BelievePointsIndex({
                   <BpSectionHeader
                     icon={DollarSign}
                     title="Add Believe Points"
-                    description="Choose a payment method below. You receive 1 BP per $1 USD. Card and ACH earn BRP."
+                    description="Choose a payment method below. You receive 1 BP per $1 USD. Purchased BP credits as Processing BP until settlement."
                   />
                   <Badge variant="secondary" className="w-fit shrink-0 font-normal">
                     Secure checkout · Stripe
@@ -840,11 +888,9 @@ export default function BelievePointsIndex({
                       title="Payment method"
                       description={
                         isAchPayment
-                          ? `Earn ${purchaseSettings.ach_brp_rate} BRP per $1. BP goes into Processing BP and becomes available after ACH settlement.`
+                          ? `Earn ${participationBrp} BRP per purchase. ${achSettlementLabel}.`
                           : isCardPayment
-                            ? cardBpSettlesInstantly
-                              ? `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP is available immediately after payment.`
-                              : `Earn ${purchaseSettings.card_brp_rate} BRP per $1. BP becomes available ${cardHoldLabel.toLowerCase()}.`
+                            ? `Earn ${participationBrp} BRP per purchase. ${cardSettlementLabel}.`
                             : isManualMethod(paymentMethod)
                               ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
                               : "Complete checkout with your selected payment provider."
@@ -986,11 +1032,7 @@ export default function BelievePointsIndex({
                       </ul>
                       <p className="mt-3 text-xs text-muted-foreground">
                         1 BRP = {formatCurrency(feePreview.brp_value)}.
-                        {isAchPayment
-                          ? " ACH BP is available after settlement."
-                          : cardBpSettlesInstantly
-                            ? " Card BP is available immediately after payment."
-                            : ` Card BP: ${cardHoldLabel.toLowerCase()}.`}
+                        {isAchPayment ? ` ${achSettlementLabel}.` : ` ${cardSettlementLabel}.`}
                       </p>
                       {isStripeRail(paymentMethod) && (
                         <p className="mt-2 text-xs text-muted-foreground">
@@ -1017,12 +1059,7 @@ export default function BelievePointsIndex({
                           {formatPoints(amountNum)} BP
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {isAchPayment
-                            ? "Available after ACH settlement · "
-                            : cardBpSettlesInstantly
-                              ? "Available immediately · "
-                              : `${cardHoldLabel} · `}
-                          {formatCurrency(amountNum)} face value
+                          {isAchPayment ? achSettlementLabel : cardSettlementLabel} · {formatCurrency(amountNum)} face value
                         </p>
                       </div>
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-md">
@@ -1043,13 +1080,14 @@ export default function BelievePointsIndex({
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                        <span>Card: {purchaseSettings.card_brp_rate} BRP/$1 · ACH: {purchaseSettings.ach_brp_rate} BRP/$1 · BRP = {formatCurrency(purchaseSettings.brp_value)} each.</span>
+                        <span>
+                          Participation reward: {participationBrp} BRP per purchase (Free {purchaseSettings.free_brp_reward ?? 5} · Prime/org {purchaseSettings.prime_brp_reward ?? 10}).
+                        </span>
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
                         <span>
-                          Card BP: {cardBpSettlesInstantly ? "available immediately" : cardHoldLabel.toLowerCase()}. ACH
-                          BP: after settlement.
+                          {cardSettlementLabel}. {achSettlementLabel}. Donations can use Processing BP; wallet and marketplace use Available BP only.
                         </span>
                       </li>
                     </ul>
@@ -1485,6 +1523,36 @@ export default function BelievePointsIndex({
                               {item.purchase.failure_message}
                               {item.purchase.failure_code ? ` (${item.purchase.failure_code})` : ""}
                             </p>
+                          )}
+                          {item.purchase.bp_status && (
+                            <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                              <p>
+                                BP: <span className="capitalize font-medium text-foreground">{item.purchase.bp_status}</span>
+                                {" · "}
+                                Settlement:{" "}
+                                <span className="capitalize font-medium text-foreground">
+                                  {item.purchase.settlement_status ?? "processing"}
+                                </span>
+                              </p>
+                              {item.purchase.settlement_date && (
+                                <p>
+                                  Settled:{" "}
+                                  {new Date(item.purchase.settlement_date).toLocaleDateString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+                                </p>
+                              )}
+                              {item.purchase.settlement_reference && (
+                                <p className="truncate" title={item.purchase.settlement_reference}>
+                                  Ref: {item.purchase.settlement_reference}
+                                </p>
+                              )}
+                              {item.purchase.current_bp_owner?.name && (
+                                <p>Owner: {item.purchase.current_bp_owner.name}</p>
+                              )}
+                            </div>
                           )}
                         </li>
                       ) : (
