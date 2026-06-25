@@ -2,18 +2,27 @@
 
 namespace App\Console\Commands;
 
+use App\Models\BelievePointPurchase;
+use App\Models\BelievePointWalletTransfer;
 use App\Models\BelievePointsLedgerEntry;
+use App\Models\BelievePointsRefund;
 use App\Models\BridgeWallet;
 use App\Models\CareAlliance;
+use App\Models\CareAllianceDonation;
+use App\Models\Donation;
+use App\Models\FundMeDonation;
 use App\Models\Merchant;
 use App\Models\MerchantBrpTransaction;
 use App\Models\MerchantBrpWallet;
+use App\Models\NonprofitBarterTransaction;
 use App\Models\Organization;
+use App\Models\PaymentTransaction;
 use App\Models\PhazeBalanceLedgerEntry;
 use App\Models\PhazeBalanceWallet;
 use App\Models\Plan;
 use App\Models\RewardPointLedger;
 use App\Models\Subscription;
+use App\Models\SupporterBelievePointGift;
 use App\Models\SupporterBrpTransaction;
 use App\Models\SupporterBrpWallet;
 use App\Models\Transaction;
@@ -31,7 +40,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                             {--dry-run : Report counts without deleting}
                             {--force : Confirm deletion (required unless --dry-run)}';
 
-    protected $description = 'Delete non-subscription transactions and zero all balances except active subscription entitlements';
+    protected $description = 'Delete all non-subscription transaction history and zero balances except active subscription entitlements';
 
     public function handle(): int
     {
@@ -64,14 +73,20 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         $transactionsToDelete = $totalTransactions - $protectedTransactions;
 
         $balancePreview = $this->previewBalanceResets($activeUserIdSet);
+        $activityCounts = $this->activityRecordCounts();
 
         $this->info('Active subscriptions: '.$activeSubscriptions->count());
         $this->info('Users with active subscription: '.count($activeUserIds));
         $this->info('Merchants with active subscription: '.count($activeMerchantIds));
         $this->newLine();
-        $this->info('Transactions total: '.$totalTransactions);
+        $this->info('Ledger transactions total: '.$totalTransactions);
         $this->info('Protected (subscription-related): '.$protectedTransactions);
-        $this->warn('Transactions to delete: '.$transactionsToDelete);
+        $this->warn('Ledger transactions to delete: '.$transactionsToDelete);
+        $this->newLine();
+        $this->info('Activity / payment records to delete:');
+        foreach ($activityCounts as $label => $count) {
+            $this->line('  '.$label.': '.$count);
+        }
         $this->newLine();
         $this->info('Users to reset balances: '.$balancePreview['users_total']);
         $this->info('Users keeping subscription entitlements: '.$balancePreview['users_with_entitlements']);
@@ -83,9 +98,10 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
             $balancePreview['total_emails'],
         ));
         $this->newLine();
-        $this->info('Other balances zeroed: org wallet, BRP, Phaze, Bridge cache, Care Alliance pools, reward/BP ledgers');
+        $this->info('Also zeroed: org wallet, BRP, Phaze, Bridge cache, Care Alliance pools, reward/BP ledgers');
 
-        if ($transactionsToDelete <= 0 && $balancePreview['users_total'] === 0) {
+        $activityToDelete = array_sum($activityCounts);
+        if ($transactionsToDelete <= 0 && $activityToDelete <= 0) {
             $this->comment('Nothing to change.');
 
             return self::SUCCESS;
@@ -99,7 +115,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         }
 
         if (! $this->confirm(
-            'Delete '.$transactionsToDelete.' transaction(s) and reset all non-subscription balances? This cannot be undone.',
+            'Delete '.$transactionsToDelete.' ledger row(s), '.$activityToDelete.' activity/payment record(s), and reset all non-subscription balances? This cannot be undone.',
             false,
         )) {
             $this->comment('Cancelled.');
@@ -114,13 +130,15 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                 ->whereNotIn('id', $protectedIds)
                 ->delete();
 
+            $this->purgeActivityRecords();
             $this->resetBalances($activeUserIdSet);
             $this->resetAuxiliaryBalances();
             $this->purgeBalanceLedgers();
         });
 
-        $this->info('Deleted '.max(0, $transactionsToDelete).' non-subscription transaction(s).');
-        $this->info('Remaining transactions: '.Transaction::query()->count());
+        $this->info('Deleted '.max(0, $transactionsToDelete).' non-subscription ledger row(s).');
+        $this->info('Remaining ledger rows: '.Transaction::query()->count());
+        $this->info('Believe Point purchases remaining: '.BelievePointPurchase::query()->count());
         $this->info('Balance reset complete.');
 
         return self::SUCCESS;
@@ -256,6 +274,91 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
 
         if (Schema::hasTable('care_alliances')) {
             CareAlliance::query()->update(['balance_cents' => 0]);
+        }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function activityRecordCounts(): array
+    {
+        $counts = [];
+
+        if (Schema::hasTable('believe_point_purchases')) {
+            $counts['Believe Point purchases'] = BelievePointPurchase::query()->count();
+        }
+
+        if (Schema::hasTable('believe_point_wallet_transfers')) {
+            $counts['BP wallet transfers'] = BelievePointWalletTransfer::query()->count();
+        }
+
+        if (Schema::hasTable('payment_transactions')) {
+            $counts['Payment transactions'] = PaymentTransaction::query()->count();
+        }
+
+        if (Schema::hasTable('donations')) {
+            $counts['Donations'] = Donation::query()->count();
+        }
+
+        if (Schema::hasTable('fundme_donations')) {
+            $counts['FundMe donations'] = FundMeDonation::query()->count();
+        }
+
+        if (Schema::hasTable('care_alliance_donations')) {
+            $counts['Care Alliance donations'] = CareAllianceDonation::query()->count();
+        }
+
+        if (Schema::hasTable('supporter_believe_point_gifts')) {
+            $counts['Supporter BP gifts'] = SupporterBelievePointGift::query()->count();
+        }
+
+        if (Schema::hasTable('believe_points_refunds')) {
+            $counts['Believe Points refunds'] = BelievePointsRefund::query()->count();
+        }
+
+        if (Schema::hasTable('nonprofit_barter_transactions')) {
+            $counts['Nonprofit barter transactions'] = NonprofitBarterTransaction::query()->count();
+        }
+
+        return $counts;
+    }
+
+    private function purgeActivityRecords(): void
+    {
+        if (Schema::hasTable('payment_transactions')) {
+            PaymentTransaction::query()->delete();
+        }
+
+        if (Schema::hasTable('believe_points_refunds')) {
+            BelievePointsRefund::query()->delete();
+        }
+
+        if (Schema::hasTable('believe_point_wallet_transfers')) {
+            BelievePointWalletTransfer::query()->delete();
+        }
+
+        if (Schema::hasTable('believe_point_purchases')) {
+            BelievePointPurchase::query()->delete();
+        }
+
+        if (Schema::hasTable('supporter_believe_point_gifts')) {
+            SupporterBelievePointGift::query()->delete();
+        }
+
+        if (Schema::hasTable('care_alliance_donations')) {
+            CareAllianceDonation::query()->delete();
+        }
+
+        if (Schema::hasTable('fundme_donations')) {
+            FundMeDonation::query()->delete();
+        }
+
+        if (Schema::hasTable('donations')) {
+            Donation::query()->delete();
+        }
+
+        if (Schema::hasTable('nonprofit_barter_transactions')) {
+            NonprofitBarterTransaction::query()->delete();
         }
     }
 
