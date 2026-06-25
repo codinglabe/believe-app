@@ -84,6 +84,11 @@ final class BelievePointPurchaseSettlementStatusService
             return $stripe;
         }
 
+        $payout = trim((string) ($purchase->stripe_payout_id ?? ''));
+        if ($payout !== '') {
+            return $payout;
+        }
+
         $pi = trim((string) ($purchase->stripe_payment_intent_id ?? ''));
 
         return $pi !== '' ? $pi : null;
@@ -153,6 +158,8 @@ final class BelievePointPurchaseSettlementStatusService
             'settlement_status' => self::settlementStatus($purchase),
             'settlement_date' => self::settlementDate($purchase)?->toIso8601String(),
             'settlement_reference' => self::settlementReference($purchase),
+            'stripe_payout_id' => $purchase->stripe_payout_id,
+            'stripe_balance_transaction_id' => $purchase->stripe_balance_transaction_id,
             'current_bp_owner' => $primaryOwner,
             'current_bp_owners' => $owners,
         ];

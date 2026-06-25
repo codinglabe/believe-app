@@ -424,6 +424,7 @@ class BelievePointPurchaseSettlementService
                 'status' => 'failed',
                 'failure_message' => 'Credits reversed: payment did not complete or was voided.',
                 'reward_points_awarded' => null,
+                'settlement_status' => BelievePointPurchaseSettlementStatusService::SETTLEMENT_REVERSED,
             ]);
 
             Log::info('Believe Points purchase credits reversed', [

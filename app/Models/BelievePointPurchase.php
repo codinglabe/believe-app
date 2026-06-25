@@ -29,6 +29,8 @@ class BelievePointPurchase extends Model
         'settlement_status',
         'settlement_at',
         'stripe_settlement_reference',
+        'stripe_balance_transaction_id',
+        'stripe_payout_id',
         'points_released',
         'failure_code',
         'failure_message',

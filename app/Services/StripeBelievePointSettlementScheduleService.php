@@ -64,6 +64,61 @@ final class StripeBelievePointSettlementScheduleService
         return $paymentIntentId;
     }
 
+    /**
+     * @param  array<string, mixed>  $balanceTransaction
+     */
+    public static function parseAvailableOnFromBalanceTransactionPayload(array $balanceTransaction): ?Carbon
+    {
+        $availableOn = $balanceTransaction['available_on'] ?? null;
+        if ($availableOn !== null && is_numeric($availableOn)) {
+            return Carbon::createFromTimestamp((int) $availableOn);
+        }
+
+        return null;
+    }
+
+    /**
+     * Refresh Stripe fund availability from a balance_transaction webhook/API payload.
+     *
+     * @param  array<string, mixed>  $balanceTransaction
+     */
+    public static function syncPurchaseFromBalanceTransactionPayload(
+        BelievePointPurchase $purchase,
+        array $balanceTransaction,
+    ): bool {
+        $availableOn = self::parseAvailableOnFromBalanceTransactionPayload($balanceTransaction);
+        if ($availableOn === null) {
+            return false;
+        }
+
+        $txnId = trim((string) ($balanceTransaction['id'] ?? ''));
+        $updates = [];
+
+        if ($txnId !== '') {
+            $updates['stripe_settlement_reference'] = $txnId;
+            $updates['stripe_balance_transaction_id'] = $txnId;
+        }
+
+        $currentAt = $purchase->stripe_funds_available_at;
+        $hadStripeTxn = trim((string) ($purchase->stripe_balance_transaction_id ?? '')) !== '';
+        $shouldUpdateTime = $currentAt === null
+            || ! $hadStripeTxn
+            || ! $currentAt->equalTo($availableOn);
+
+        if ($shouldUpdateTime) {
+            $updates['stripe_funds_available_at'] = $availableOn;
+        }
+
+        if ($updates === []) {
+            return false;
+        }
+
+        $purchase->update($updates);
+        BelievePointBridgeReserveSettlementService::syncPurchaseReleaseSchedule($purchase->fresh());
+
+        return true;
+    }
+
     private static function availableOnFromPaymentIntent(?string $paymentIntentId): ?Carbon
     {
         $paymentIntentId = trim((string) ($paymentIntentId ?? ''));

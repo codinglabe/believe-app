@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Listeners\AwardInviteRewardPoints;
 use App\Listeners\CompleteBelievePointPurchaseFromStripeWebhook;
 use App\Listeners\GrantAiMediaStudioCreditsOnPlanSubscriptionRenewal;
+use App\Listeners\SyncBelievePointSettlementFromStripeWebhook;
 use App\Listeners\SyncLedgerTransactionStripeFees;
 use App\Listeners\SyncMainDonationFromStripeWebhook;
 use App\Models\BelievePointPurchase;
@@ -89,6 +90,7 @@ class AppServiceProvider extends ServiceProvider
         // Cashier Stripe webhooks: sync ledger fees from PaymentIntent metadata; Believe Points settlement
         Event::listen(WebhookReceived::class, SyncLedgerTransactionStripeFees::class);
         Event::listen(WebhookReceived::class, CompleteBelievePointPurchaseFromStripeWebhook::class);
+        Event::listen(WebhookReceived::class, SyncBelievePointSettlementFromStripeWebhook::class);
         Event::listen(WebhookReceived::class, SyncMainDonationFromStripeWebhook::class);
         Event::listen(WebhookReceived::class, GrantAiMediaStudioCreditsOnPlanSubscriptionRenewal::class);
 
