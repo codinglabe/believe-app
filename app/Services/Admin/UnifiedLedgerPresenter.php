@@ -253,6 +253,7 @@ class UnifiedLedgerPresenter
             'fundme_donation' => 'fundme',
             'care_alliance_donation' => 'campaign',
             'believe_points_purchase' => 'believe_points',
+            'believe_points_wallet_transfer' => 'believe_points',
             'order' => $base === 'MerchantHubOfferRedemption'
                 ? 'merchant_hub'
                 : ($this->isGiftCardPurchaseContext($t)
@@ -398,6 +399,7 @@ class UnifiedLedgerPresenter
             'kyc_fee' => 'supporter_subscription',
             'merchant_subscription' => 'organization_subscription',
             'believe_points_purchase',
+            'believe_points_wallet_transfer',
             'believe_points_auto_replenish',
             'believe_points_auto_replenish_setup' => 'believe_points',
             'referral_reward',
@@ -462,6 +464,9 @@ class UnifiedLedgerPresenter
         // When source_type is "ledger_unclassified", related_type usually tells the real module.
         if ($rt !== '') {
             if (str_ends_with($rt, 'BelievePointPurchase')) {
+                return 'believe_points';
+            }
+            if (str_ends_with($rt, 'BelievePointWalletTransfer')) {
                 return 'believe_points';
             }
             if (str_contains($rt, 'CareAllianceDonation')) {
@@ -633,7 +638,7 @@ class UnifiedLedgerPresenter
             'donation' => $this->donationTransactionType($t, $donationPerspective),
             'fundme' => 'fundme_contribution',
             'campaign' => 'campaign_contribution',
-            'believe_points' => 'believe_points_purchase',
+            'believe_points' => $this->believePointsTransactionType($t),
             'gift_card' => 'gift_card_purchase',
             'marketplace' => 'marketplace_sale',
             'servicehub' => 'service_payment',
@@ -648,6 +653,17 @@ class UnifiedLedgerPresenter
             'adjustment' => 'adjustment',
             default => $sourceType !== 'ledger_unclassified' ? str_replace('-', '_', $sourceType) : str_replace('-', '_', (string) ($t->type ?? 'ledger')),
         };
+    }
+
+    private function believePointsTransactionType(Transaction $t): string
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        if (($meta['source'] ?? '') === 'believe_points_wallet_transfer'
+            || $t->type === 'believe_points_wallet_transfer') {
+            return 'believe_points_wallet_transfer';
+        }
+
+        return 'believe_points_purchase';
     }
 
     private function donationTransactionType(Transaction $t, ?string $donationPerspective): string
@@ -839,18 +855,29 @@ class UnifiedLedgerPresenter
         }
 
         if ($module === 'believe_points' && $walletUser) {
+            $rowMeta = is_array($t->meta) ? $t->meta : [];
+            $isWalletTransfer = ($rowMeta['source'] ?? '') === 'believe_points_wallet_transfer'
+                || $t->type === 'believe_points_wallet_transfer';
+
             $defaultFrom = [
                 'from_type' => 'buyer',
                 'from_name' => $walletUser->name,
                 'from_email' => $walletUser->email,
                 'from_id' => (int) $walletUser->id,
             ];
-            $defaultTo = [
-                'to_type' => '',
-                'to_name' => null,
-                'to_email' => null,
-                'to_id' => null,
-            ];
+            $defaultTo = $isWalletTransfer
+                ? [
+                    'to_type' => 'wallet',
+                    'to_name' => 'Believe Bridge wallet',
+                    'to_email' => $walletUser->email,
+                    'to_id' => (int) $walletUser->id,
+                ]
+                : [
+                    'to_type' => '',
+                    'to_name' => null,
+                    'to_email' => null,
+                    'to_id' => null,
+                ];
         }
 
         $rowMeta = is_array($t->meta) ? $t->meta : [];
@@ -867,6 +894,21 @@ class UnifiedLedgerPresenter
                 'to_name' => $party['from_name'],
                 'to_email' => $party['from_email'],
                 'to_id' => $party['from_id'],
+            ];
+        }
+
+        if ($module === 'refund' && $walletUser && ($rowMeta['source'] ?? '') === 'believe_points_wallet_transfer') {
+            $defaultFrom = [
+                'from_type' => 'platform',
+                'from_name' => 'BIU Platform',
+                'from_email' => null,
+                'from_id' => null,
+            ];
+            $defaultTo = [
+                'to_type' => 'buyer',
+                'to_name' => $walletUser->name,
+                'to_email' => $walletUser->email,
+                'to_id' => (int) $walletUser->id,
             ];
         }
 
@@ -1063,6 +1105,11 @@ class UnifiedLedgerPresenter
             return $t->type === 'refund'
                 ? 'Believe Points refund #'.$t->related_id
                 : 'Believe Points purchase #'.$t->related_id;
+        }
+        if ($sourceType === 'believe_points_wallet_transfer' && $t->related_id) {
+            return $t->status === Transaction::STATUS_REFUND
+                ? 'Believe Points wallet transfer refund #'.$t->related_id
+                : 'Believe Points wallet transfer #'.$t->related_id;
         }
 
         $label = trim((string) ($related['related_label'] ?? ''));

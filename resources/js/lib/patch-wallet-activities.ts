@@ -38,6 +38,16 @@ function buildTransferMessage(
               ? ' (processing)'
               : ''
 
+    if (activity.type === 'believe_points_wallet') {
+        const pendingSuffix =
+            uiStatus === 'pending'
+                ? bridgeTransferState !== '' && !PENDING_BRIDGE_STATES.has(bridgeTransferState)
+                    ? ` (${formatTransferStateLabel(bridgeTransferState)})`
+                    : ' (processing)'
+                : ''
+        return `Believe Points to wallet${pendingSuffix}`
+    }
+
     if (isOutgoing) {
         return `Sent to ${counterparty}${pendingSuffix}`
     }
