@@ -6,6 +6,7 @@ use App\Jobs\ProcessBelievePointsAutoReplenishJob;
 use App\Jobs\RetryBelievePointPurchaseSettlementJob;
 use App\Models\AdminSetting;
 use App\Models\BelievePointPurchase;
+use App\Models\BelievePointWalletTransfer;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
@@ -63,6 +64,23 @@ class BelievePointController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(10);
 
+        $walletTransfers = BelievePointWalletTransfer::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get()
+            ->map(static fn (BelievePointWalletTransfer $transfer) => [
+                'id' => $transfer->id,
+                'amount' => round((float) $transfer->amount, 2),
+                'status' => $transfer->status,
+                'bridge_transfer_state' => $transfer->bridge_transfer_state,
+                'failure_message' => $transfer->failure_message,
+                'created_at' => $transfer->created_at?->toIso8601String(),
+                'completed_at' => $transfer->completed_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
         $feePreview = null;
         if ($request->filled('fee_preview_amount')) {
             $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail']), [
@@ -84,6 +102,7 @@ class BelievePointController extends Controller
             'minPurchaseAmount' => $minPurchaseAmount,
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
+            'walletTransfers' => $walletTransfers,
             'feePreview' => $feePreview,
             'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload($user),
             'availableMethods' => BelievePointsPaymentMethodResolver::availableMethods(),

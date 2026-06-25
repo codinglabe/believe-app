@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\BelievePointPurchase;
+use App\Models\BelievePointWalletTransfer;
 use App\Models\CareAllianceDonation;
 use App\Models\Donation;
 use App\Models\Enrollment;
@@ -308,8 +309,12 @@ final class LedgerListFilters
             $q->where(function (Builder $bp) {
                 $bp->where('related_type', BelievePointPurchase::class)
                     ->orWhere('related_type', 'like', '%BelievePointPurchase')
+                    ->orWhere('related_type', BelievePointWalletTransfer::class)
+                    ->orWhere('related_type', 'like', '%BelievePointWalletTransfer')
+                    ->orWhere('type', 'believe_points_wallet_transfer')
                     ->orWhere('meta->source', 'believe_points_purchase')
-                    ->orWhere('meta->source', 'believe_points_purchase_refund');
+                    ->orWhere('meta->source', 'believe_points_purchase_refund')
+                    ->orWhere('meta->source', 'believe_points_wallet_transfer');
             })
                 ->whereNot(function (Builder $rf) {
                     $rf->where('type', 'refund')

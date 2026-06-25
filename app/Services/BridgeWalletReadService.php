@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BelievePointWalletTransfer;
 use App\Models\BridgeIntegration;
 use App\Models\BridgeWallet;
 use App\Models\Organization;
@@ -28,6 +29,9 @@ class BridgeWalletReadService
 
     /** @var array<string, string> */
     private array $externalAccountLabels = [];
+
+    /** @var array<string, BelievePointWalletTransfer|null> */
+    private array $believePointWalletTransferByBridgeId = [];
 
     private bool $platformWalletIndexBuilt = false;
 
@@ -673,7 +677,7 @@ class BridgeWalletReadService
                 }
             }
 
-            $activities[] = [
+            $activities[] = $this->applyBelievePointsWalletTransferPresentation([
                 'id' => 'bridge_wallet_'.$id,
                 'dedupe_key' => $dedupeKey,
                 'deposit_id' => ($depositId !== null && $depositId !== '') ? $depositId : null,
@@ -701,7 +705,7 @@ class BridgeWalletReadService
                 'recipient_type' => $recipientType,
                 'source' => 'bridge_wallet_history',
                 'sort_date' => $date,
-            ];
+            ], $transferId);
         }
 
         return $activities;
@@ -811,10 +815,12 @@ class BridgeWalletReadService
         );
 
         $counterpartyWalletIds = [];
+        $transferIds = [];
         foreach ($transfers as $transfer) {
             if (! is_array($transfer)) {
                 continue;
             }
+            $transferIds[] = (string) ($transfer['id'] ?? '');
             $sourceWalletId = (string) ($transfer['source']['bridge_wallet_id'] ?? '');
             $destWalletId = (string) ($transfer['destination']['bridge_wallet_id'] ?? '');
             if ($sourceWalletId !== '') {
@@ -824,6 +830,7 @@ class BridgeWalletReadService
                 $counterpartyWalletIds[] = $destWalletId;
             }
         }
+        $this->warmBelievePointWalletTransfers($transferIds);
         $this->warmWalletOwnerNames($counterpartyWalletIds);
 
         $viewerWalletIdSet = array_fill_keys($viewerWalletIds, true);
@@ -910,7 +917,7 @@ class BridgeWalletReadService
                 $displayLabel = $this->buildActivityDisplayLabel($transferType, $counterparty);
             }
 
-            $activities[] = [
+            $activity = [
                 'id' => 'bridge_transfer_'.$transferId,
                 'dedupe_key' => 'transfer:'.$transferId,
                 'deposit_id' => null,
@@ -934,6 +941,8 @@ class BridgeWalletReadService
                 'source' => 'bridge_transfer',
                 'sort_date' => $date,
             ];
+
+            $activities[] = $this->applyBelievePointsWalletTransferPresentation($activity, $transferId);
         }
 
         return $activities;
@@ -1489,6 +1498,7 @@ class BridgeWalletReadService
         ?string $paymentMethodLabel = null,
     ): string {
         return match ($activityType) {
+            'believe_points_wallet' => 'Believe Points to wallet',
             'transfer_sent' => 'Sent to '.$subject,
             'transfer_received' => 'Received from '.$subject,
             'withdrawal' => 'Withdrawal to '.$subject,
@@ -1496,6 +1506,85 @@ class BridgeWalletReadService
             'deposit' => $this->buildDepositDisplayLabel($subject, $paymentMethodLabel),
             default => $subject,
         };
+    }
+
+    /**
+     * @param  array<int, string>  $bridgeTransferIds
+     */
+    private function warmBelievePointWalletTransfers(array $bridgeTransferIds): void
+    {
+        $missing = [];
+        foreach ($bridgeTransferIds as $bridgeTransferId) {
+            $bridgeTransferId = trim($bridgeTransferId);
+            if ($bridgeTransferId === '' || array_key_exists($bridgeTransferId, $this->believePointWalletTransferByBridgeId)) {
+                continue;
+            }
+            $missing[] = $bridgeTransferId;
+        }
+
+        if ($missing === []) {
+            return;
+        }
+
+        BelievePointWalletTransfer::query()
+            ->whereIn('bridge_transfer_id', $missing)
+            ->get()
+            ->each(function (BelievePointWalletTransfer $transfer): void {
+                $bridgeTransferId = trim((string) ($transfer->bridge_transfer_id ?? ''));
+                if ($bridgeTransferId !== '') {
+                    $this->believePointWalletTransferByBridgeId[$bridgeTransferId] = $transfer;
+                }
+            });
+
+        foreach ($missing as $bridgeTransferId) {
+            if (! array_key_exists($bridgeTransferId, $this->believePointWalletTransferByBridgeId)) {
+                $this->believePointWalletTransferByBridgeId[$bridgeTransferId] = null;
+            }
+        }
+    }
+
+    private function findBelievePointWalletTransfer(?string $bridgeTransferId): ?BelievePointWalletTransfer
+    {
+        $bridgeTransferId = trim((string) ($bridgeTransferId ?? ''));
+        if ($bridgeTransferId === '') {
+            return null;
+        }
+
+        if (! array_key_exists($bridgeTransferId, $this->believePointWalletTransferByBridgeId)) {
+            $this->warmBelievePointWalletTransfers([$bridgeTransferId]);
+        }
+
+        return $this->believePointWalletTransferByBridgeId[$bridgeTransferId] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $activity
+     * @return array<string, mixed>
+     */
+    private function applyBelievePointsWalletTransferPresentation(array $activity, ?string $bridgeTransferId): array
+    {
+        $transfer = $this->findBelievePointWalletTransfer($bridgeTransferId);
+        if ($transfer === null) {
+            return $activity;
+        }
+
+        $label = 'Believe Points to wallet';
+        $activity['type'] = 'believe_points_wallet';
+        $activity['display_label'] = $label;
+        $activity['donor_name'] = 'Believe Points';
+        $activity['payment_method_label'] = 'Believe Points';
+        $activity['is_outgoing'] = false;
+        $activity['recipient_type'] = null;
+        $activity['message'] = $label;
+
+        if (($activity['status'] ?? '') === 'pending') {
+            $stateLabel = trim((string) ($activity['bridge_state_label'] ?? ''));
+            $activity['message'] = $stateLabel !== ''
+                ? $label.' ('.$stateLabel.')'
+                : $label.' (processing)';
+        }
+
+        return $activity;
     }
 
     /**

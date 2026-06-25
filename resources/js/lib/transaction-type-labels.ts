@@ -35,6 +35,7 @@ export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   administrative_fee: "Administrative fee",
   // Believe Points
   believe_points_purchase: "Believe Points purchase",
+  believe_points_wallet_transfer: "Believe Points to wallet",
   believe_points_auto_replenish: "Believe Points auto-replenish",
   believe_points_auto_replenish_setup: "Believe Points auto-replenish setup",
   // Campaigns & fundraising (Support a project → Give / FundMe)
@@ -72,6 +73,7 @@ export const TRANSACTION_TYPE_FILTER_ORDER: string[] = [
   "believe_points_auto_replenish",
   "believe_points_auto_replenish_setup",
   "believe_points_purchase",
+  "believe_points_wallet_transfer",
   "big_boss_override",
   "cancellation",
   "commission",

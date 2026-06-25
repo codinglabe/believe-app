@@ -320,6 +320,8 @@ export function getActivityDisplayLabel(activity: Activity): string {
     const name = activity.donor_name?.trim() || 'Unknown'
 
     switch (activity.type) {
+        case 'believe_points_wallet':
+            return 'Believe Points to wallet'
         case 'transfer_sent':
             return `Sent to ${name}`
         case 'withdrawal':
@@ -342,7 +344,7 @@ export function getActivityDisplayLabel(activity: Activity): string {
     }
 }
 
-export type ActivityIconKind = 'outgoing' | 'incoming' | 'deposit' | 'incoming-default'
+export type ActivityIconKind = 'outgoing' | 'incoming' | 'deposit' | 'incoming-default' | 'believe-points'
 
 /** Shared icon + amount colors for recent activity and full activity list. */
 export function getActivityVisualMeta(activity: Activity): {
@@ -360,6 +362,7 @@ export function getActivityVisualMeta(activity: Activity): {
 } {
     const isTransferSent = activity.type === 'transfer_sent'
     const isTransferReceived = activity.type === 'transfer_received'
+    const isBelievePointsWallet = activity.type === 'believe_points_wallet'
     const isWithdrawal = activity.type === 'withdrawal'
     const isDonation = activity.type === 'donation'
     const isDeposit = activity.type === 'deposit'
@@ -380,6 +383,22 @@ export function getActivityVisualMeta(activity: Activity): {
             iconContainerClass: 'bg-red-500/10',
             iconClass: 'text-red-500',
             amountClass: 'text-red-600 dark:text-red-400',
+        }
+    }
+
+    if (isBelievePointsWallet) {
+        return {
+            isOutgoing: false,
+            isTransferSent,
+            isTransferReceived,
+            isWithdrawal,
+            isDeposit,
+            isDonation,
+            isCardSpend,
+            iconKind: 'believe-points',
+            iconContainerClass: 'bg-purple-500/10 dark:bg-purple-950/30',
+            iconClass: 'text-purple-600 dark:text-purple-400',
+            amountClass: 'text-green-600 dark:text-green-400',
         }
     }
 

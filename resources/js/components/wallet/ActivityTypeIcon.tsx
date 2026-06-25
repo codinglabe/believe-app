@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Coins, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Activity } from './types'
 import { getActivityVisualMeta } from './utils'
@@ -15,7 +15,9 @@ export function ActivityTypeIcon({ activity, size = 'md', className }: ActivityT
     const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
 
     const icon =
-        iconKind === 'outgoing' ? (
+        iconKind === 'believe-points' ? (
+            <Coins className={cn(iconSize, iconClass)} />
+        ) : iconKind === 'outgoing' ? (
             <ArrowUpRight className={cn(iconSize, iconClass)} />
         ) : iconKind === 'deposit' ? (
             <Plus className={cn(iconSize, iconClass)} />
