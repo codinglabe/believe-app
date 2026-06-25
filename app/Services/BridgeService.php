@@ -1397,6 +1397,20 @@ class BridgeService
     }
 
     /**
+     * True when this Bridge wallet ID belongs to a member/customer integration — not platform liquidity.
+     */
+    public function isRegisteredCustomerWalletId(string $walletId): bool
+    {
+        $walletId = trim($walletId);
+        if ($walletId === '') {
+            return false;
+        }
+
+        return BridgeWallet::query()->where('bridge_wallet_id', $walletId)->exists()
+            || BridgeIntegration::query()->where('bridge_wallet_id', $walletId)->exists();
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     public function extractCustomerIdFromPayload(array $payload): string
@@ -1448,13 +1462,14 @@ class BridgeService
     }
 
     /**
-     * Find the developer prefunded liquidity wallet from GET /wallets.
+     * Find a developer-owned prefunded liquidity wallet from GET /wallets (admin picker only).
      *
+     * @param  array<int, string>  $excludeWalletIds
      * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}|null
      */
-    public function findDeveloperPrefundedLiquidityWallet(?string $excludeWalletId = null): ?array
+    public function findDeveloperPrefundedLiquidityWallet(array $excludeWalletIds = []): ?array
     {
-        $excludeWalletId = trim((string) ($excludeWalletId ?? ''));
+        $exclude = array_fill_keys(array_values(array_filter(array_map('trim', $excludeWalletIds))), true);
         $result = $this->listAllBridgeWallets();
         if (! ($result['success'] ?? false)) {
             return null;
@@ -1468,7 +1483,11 @@ class BridgeService
             }
 
             $walletId = trim((string) ($wallet['id'] ?? ''));
-            if ($walletId === '' || ($excludeWalletId !== '' && $walletId === $excludeWalletId)) {
+            if ($walletId === '' || isset($exclude[$walletId])) {
+                continue;
+            }
+
+            if ($this->isRegisteredCustomerWalletId($walletId)) {
                 continue;
             }
 
@@ -1491,6 +1510,28 @@ class BridgeService
     }
 
     /**
+     * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}|null
+     */
+    private function finalizePlatformPrefundedWalletCandidate(
+        string $customerId,
+        array $parsed,
+        string $excludeWalletId,
+    ): ?array {
+        $walletId = trim((string) ($parsed['wallet_id'] ?? ''));
+        $excludeWalletId = trim($excludeWalletId);
+
+        if ($walletId === '' || ($excludeWalletId !== '' && $walletId === $excludeWalletId)) {
+            return null;
+        }
+
+        if ($this->isRegisteredCustomerWalletId($walletId)) {
+            return null;
+        }
+
+        return $this->finalizeResolvedPrefundedWallet($customerId, $parsed);
+    }
+
+    /**
      * Resolve platform liquidity IDs to a valid Bridge wallet for transfers.
      *
      * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}|null
@@ -1499,17 +1540,22 @@ class BridgeService
         string $customerId,
         string $walletId,
         ?string $prefundedAccountId = null,
+        ?string $excludeWalletId = null,
     ): ?array {
         $customerId = trim($customerId);
         $walletId = trim($walletId);
         $prefundedAccountId = trim((string) ($prefundedAccountId ?? ''));
+        $excludeWalletId = trim((string) ($excludeWalletId ?? ''));
 
         if ($walletId !== ''
             && $this->isBridgeWalletId($walletId)
             && ($prefundedAccountId === '' || $walletId !== $prefundedAccountId)) {
             $parsedDirect = $this->parseBridgeWalletForTransfer($customerId, $walletId);
             if ($parsedDirect !== null) {
-                return $this->finalizeResolvedPrefundedWallet($customerId, $parsedDirect);
+                $resolved = $this->finalizePlatformPrefundedWalletCandidate($customerId, $parsedDirect, $excludeWalletId);
+                if ($resolved !== null) {
+                    return $resolved;
+                }
             }
         }
 
@@ -1525,19 +1571,24 @@ class BridgeService
             }
 
             $parsed = $this->parseBridgeWalletForTransfer($customerId, $fromAccount);
-            if ($parsed !== null) {
-                if ($customerId === '' && $accountId !== '') {
-                    $detail = $this->getPrefundedAccount($accountId);
-                    if (($detail['success'] ?? false) && is_array($detail['data'] ?? null)) {
-                        $customerId = $this->extractCustomerIdFromPayload($detail['data']);
-                    }
-                }
+            if ($parsed === null) {
+                continue;
+            }
 
-                return $this->finalizeResolvedPrefundedWallet($customerId, $parsed);
+            if ($customerId === '' && $accountId !== '') {
+                $detail = $this->getPrefundedAccount($accountId);
+                if (($detail['success'] ?? false) && is_array($detail['data'] ?? null)) {
+                    $customerId = $this->extractCustomerIdFromPayload($detail['data']);
+                }
+            }
+
+            $resolved = $this->finalizePlatformPrefundedWalletCandidate($customerId, $parsed, $excludeWalletId);
+            if ($resolved !== null) {
+                return $resolved;
             }
         }
 
-        return $this->findDeveloperPrefundedLiquidityWallet();
+        return null;
     }
 
     /**
@@ -1591,6 +1642,10 @@ class BridgeService
             return $config;
         }
 
+        if ($this->isRegisteredCustomerWalletId($resolved['wallet_id'])) {
+            return $config;
+        }
+
         if ($accountId !== '' && $resolved['wallet_id'] === $accountId && ! $this->isBridgeWalletId($accountId)) {
             return $config;
         }
@@ -1623,18 +1678,6 @@ class BridgeService
         }
 
         return $sourceCurrency !== '' ? $sourceCurrency : 'usdc';
-    }
-
-    /**
-     * @param  array<string, mixed>  $result
-     */
-    private function isInvalidBridgeWalletTransferError(array $result): bool
-    {
-        $error = strtolower((string) ($result['error'] ?? $result['message'] ?? ''));
-
-        return str_contains($error, 'not a valid bridge wallet')
-            || str_contains($error, 'source_id')
-            || str_contains($error, 'bridge_wallet_id');
     }
 
     /**
@@ -3587,12 +3630,13 @@ class BridgeService
             $prefundedCustomerId,
             $prefundedWalletId,
             $prefundedAccountId,
+            $recipientWalletId,
         );
 
         if ($resolved === null) {
             return [
                 'success' => false,
-                'error' => 'Platform prefunded wallet is not configured correctly. In Bridge settings, load your live prefunded account and save the linked Bridge wallet ID.',
+                'error' => 'Platform prefunded wallet is not configured correctly. In Bridge settings, select your live prefunded liquidity wallet (not a member wallet) and save.',
                 'error_code' => 'PREFUNDED_WALLET_NOT_CONFIGURED',
             ];
         }
@@ -3609,6 +3653,32 @@ class BridgeService
                 'success' => false,
                 'error' => 'Recipient Bridge wallet is not configured.',
                 'error_code' => 'RECIPIENT_WALLET_REQUIRED',
+            ];
+        }
+
+        if ($prefundedWallet['wallet_id'] === $recipientWalletId) {
+            Log::error('BP wallet transfer blocked: prefunded source matches recipient wallet', [
+                'wallet_id' => $prefundedWallet['wallet_id'],
+                'recipient_customer_id' => $recipientCustomerId,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Platform liquidity wallet is misconfigured. Admin must set a prefunded wallet that is not a member wallet.',
+                'error_code' => 'PREFUNDED_WALLET_IS_RECIPIENT',
+            ];
+        }
+
+        if ($this->isRegisteredCustomerWalletId($prefundedWallet['wallet_id'])) {
+            Log::error('BP wallet transfer blocked: prefunded source is a member wallet', [
+                'wallet_id' => $prefundedWallet['wallet_id'],
+                'recipient_customer_id' => $recipientCustomerId,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Platform liquidity wallet is misconfigured. Admin must set the Believe prefunded wallet, not a member wallet.',
+                'error_code' => 'PREFUNDED_WALLET_IS_CUSTOMER_WALLET',
             ];
         }
 
@@ -3679,28 +3749,6 @@ class BridgeService
         ]);
 
         $result = $this->createTransfer($transferData, $idempotencyKey);
-
-        if (! ($result['success'] ?? false) && $this->isInvalidBridgeWalletTransferError($result)) {
-            $fallback = $this->findDeveloperPrefundedLiquidityWallet($prefundedWallet['wallet_id']);
-            if ($fallback !== null && $fallback['wallet_id'] !== $prefundedWallet['wallet_id']) {
-                Log::warning('Retrying prefunded Bridge wallet transfer with resolved developer wallet', [
-                    'previous_wallet_id' => $prefundedWallet['wallet_id'],
-                    'resolved_wallet_id' => $fallback['wallet_id'],
-                ]);
-
-                $prefundedWallet = $fallback['parsed'];
-                $transferCurrency = $this->resolveWalletToWalletTransferCurrency($prefundedWallet, $recipientWallet);
-                $transferData['source']['bridge_wallet_id'] = $prefundedWallet['wallet_id'];
-                $transferData['source']['currency'] = $transferCurrency;
-                $transferData['destination']['currency'] = $transferCurrency;
-
-                $retryKey = $idempotencyKey !== null && $idempotencyKey !== ''
-                    ? $idempotencyKey.'-wallet-retry'
-                    : null;
-
-                $result = $this->createTransfer($transferData, $retryKey);
-            }
-        }
 
         if (! ($result['success'] ?? false)) {
             Log::warning('Prefunded Bridge wallet transfer failed', [

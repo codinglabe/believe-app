@@ -60,6 +60,9 @@ class BridgePrefundedLiquidityService
                     : $row;
 
                 $walletId = $service->extractBridgeWalletIdFromPayload($payload);
+                if ($walletId !== '' && $service->isRegisteredCustomerWalletId($walletId)) {
+                    $walletId = '';
+                }
                 if ($walletId === '' && count($service->normalizeBridgeListData($prefundedResult)) === 1) {
                     $fallback = $service->findDeveloperPrefundedLiquidityWallet();
                     if ($fallback !== null) {
@@ -110,6 +113,10 @@ class BridgePrefundedLiquidityService
 
                 $walletId = trim((string) ($wallet['id'] ?? ''));
                 if ($walletId === '' || isset($seenWalletIds[$walletId])) {
+                    continue;
+                }
+
+                if ($service->isRegisteredCustomerWalletId($walletId)) {
                     continue;
                 }
 
