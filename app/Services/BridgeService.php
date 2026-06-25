@@ -1397,17 +1397,91 @@ class BridgeService
     }
 
     /**
-     * True when this Bridge wallet ID belongs to a member/customer integration — not platform liquidity.
+     * True when this Bridge wallet ID belongs to a Believe member — not platform prefunded liquidity.
      */
     public function isRegisteredCustomerWalletId(string $walletId): bool
+    {
+        return $this->isMemberCustomerBridgeWallet($walletId);
+    }
+
+    /**
+     * @var array<string, true>|null
+     */
+    private ?array $memberBridgeWalletIdCache = null;
+
+    /**
+     * @return array<string, true>
+     */
+    public function memberBridgeWalletIds(): array
+    {
+        if ($this->memberBridgeWalletIdCache !== null) {
+            return $this->memberBridgeWalletIdCache;
+        }
+
+        $ids = [];
+
+        BridgeWallet::query()
+            ->whereNotNull('bridge_wallet_id')
+            ->where('bridge_wallet_id', '!=', '')
+            ->pluck('bridge_wallet_id')
+            ->each(function ($id) use (&$ids) {
+                $id = trim((string) $id);
+                if ($id !== '') {
+                    $ids[$id] = true;
+                }
+            });
+
+        BridgeIntegration::query()
+            ->whereNotNull('bridge_wallet_id')
+            ->where('bridge_wallet_id', '!=', '')
+            ->pluck('bridge_wallet_id')
+            ->each(function ($id) use (&$ids) {
+                $id = trim((string) $id);
+                if ($id !== '') {
+                    $ids[$id] = true;
+                }
+            });
+
+        foreach (BridgeIntegration::query()
+            ->whereNotNull('bridge_customer_id')
+            ->where('bridge_customer_id', '!=', '')
+            ->pluck('bridge_customer_id')
+            ->unique() as $customerId) {
+            $customerId = trim((string) $customerId);
+            if ($customerId === '') {
+                continue;
+            }
+
+            $result = $this->getWallets($customerId);
+            if (! ($result['success'] ?? false)) {
+                continue;
+            }
+
+            foreach ($this->normalizeBridgeListData($result) as $wallet) {
+                if (! is_array($wallet)) {
+                    continue;
+                }
+
+                $walletId = trim((string) ($wallet['id'] ?? ''));
+                if ($walletId !== '') {
+                    $ids[$walletId] = true;
+                }
+            }
+        }
+
+        $this->memberBridgeWalletIdCache = $ids;
+
+        return $ids;
+    }
+
+    public function isMemberCustomerBridgeWallet(string $walletId): bool
     {
         $walletId = trim($walletId);
         if ($walletId === '') {
             return false;
         }
 
-        return BridgeWallet::query()->where('bridge_wallet_id', $walletId)->exists()
-            || BridgeIntegration::query()->where('bridge_wallet_id', $walletId)->exists();
+        return isset($this->memberBridgeWalletIds()[$walletId]);
     }
 
     /**
@@ -1458,55 +1532,11 @@ class BridgeService
             return null;
         }
 
-        return $walletId;
-    }
-
-    /**
-     * Find a developer-owned prefunded liquidity wallet from GET /wallets (admin picker only).
-     *
-     * @param  array<int, string>  $excludeWalletIds
-     * @return array{customer_id: string, wallet_id: string, parsed: array<string, mixed>}|null
-     */
-    public function findDeveloperPrefundedLiquidityWallet(array $excludeWalletIds = []): ?array
-    {
-        $exclude = array_fill_keys(array_values(array_filter(array_map('trim', $excludeWalletIds))), true);
-        $result = $this->listAllBridgeWallets();
-        if (! ($result['success'] ?? false)) {
+        if ($this->isMemberCustomerBridgeWallet($walletId)) {
             return null;
         }
 
-        $best = null;
-
-        foreach ($result['data'] ?? [] as $wallet) {
-            if (! is_array($wallet)) {
-                continue;
-            }
-
-            $walletId = trim((string) ($wallet['id'] ?? ''));
-            if ($walletId === '' || isset($exclude[$walletId])) {
-                continue;
-            }
-
-            if ($this->isRegisteredCustomerWalletId($walletId)) {
-                continue;
-            }
-
-            $parsed = $this->parseBridgeWalletForTransfer('', $walletId);
-            if ($parsed === null) {
-                continue;
-            }
-
-            $balance = (float) ($parsed['balance'] ?? 0);
-            if ($best === null || $balance > (float) ($best['parsed']['balance'] ?? 0)) {
-                $best = [
-                    'customer_id' => $this->extractCustomerIdFromPayload($wallet),
-                    'wallet_id' => $parsed['wallet_id'],
-                    'parsed' => $parsed,
-                ];
-            }
-        }
-
-        return $best;
+        return $walletId;
     }
 
     /**
@@ -1524,7 +1554,7 @@ class BridgeService
             return null;
         }
 
-        if ($this->isRegisteredCustomerWalletId($walletId)) {
+        if ($this->isMemberCustomerBridgeWallet($walletId)) {
             return null;
         }
 

@@ -129,9 +129,9 @@ export function PrefundedLiquidityPicker({
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            For BP → Wallet, choose Believe&apos;s <span className="font-medium">platform liquidity wallet</span> — not
-            a member wallet. Load from Bridge, pick the entry marked{" "}
-            <span className="font-medium text-purple-600 dark:text-purple-400">Recommended</span>, then save.
+            Choose your Bridge <span className="font-medium">Prefunded Account</span> only — not member wallets.
+            If no wallet ID is linked, paste the prefunded wallet ID from the Bridge dashboard into{" "}
+            <span className="font-medium">Wallet ID</span> below, then save.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={loadAccounts}>
@@ -173,18 +173,19 @@ export function PrefundedLiquidityPicker({
               <AlertCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               <AlertDescription className="text-sm text-foreground">
                 <span className="font-medium">Recommended:</span>{" "}
-                {recommendedAccount.name} ({formatBalance(recommendedAccount.available_balance, recommendedAccount.currency)}
-                ). This should be Believe&apos;s prefunded liquidity pool — it pays members when they move BP to wallet.
-                Do not pick a wallet with only a few dollars unless you have confirmed it in the Bridge dashboard.
+                {recommendedAccount.name} (
+                {formatBalance(recommendedAccount.available_balance, recommendedAccount.currency)}). This is your
+                Bridge prefunded account — it pays members when they move BP to wallet. Member wallets (even with higher
+                balances) must never be used here.
               </AlertDescription>
             </Alert>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`prefunded-select-${environment}`}>Platform liquidity wallet</Label>
+            <Label htmlFor={`prefunded-select-${environment}`}>Prefunded account</Label>
             <Select value={selectedValue || undefined} onValueChange={handleSelect}>
               <SelectTrigger id={`prefunded-select-${environment}`}>
-                <SelectValue placeholder="Select platform liquidity wallet" />
+                <SelectValue placeholder="Select prefunded account" />
               </SelectTrigger>
               <SelectContent>
                 {options.accounts.map((account) => (
@@ -204,7 +205,7 @@ export function PrefundedLiquidityPicker({
                         {account.chain ? ` · ${account.chain}` : ""}
                         {account.bridge_wallet_id
                           ? ` · …${account.bridge_wallet_id.slice(-8)}`
-                          : " · No linked Bridge wallet"}
+                          : " · Paste wallet ID from Bridge dashboard below"}
                       </span>
                     </span>
                   </SelectItem>
@@ -230,7 +231,7 @@ export function PrefundedLiquidityPicker({
           value={walletId}
           onChange={onWalletIdChange}
           placeholder="wallet_…"
-          hint="Believe platform liquidity wallet ID — not a member wallet."
+          hint="Prefunded wallet ID from Bridge dashboard — never a member wallet."
         />
       </div>
     </div>
