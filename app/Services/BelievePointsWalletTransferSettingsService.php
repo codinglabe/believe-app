@@ -78,9 +78,30 @@ class BelievePointsWalletTransferSettingsService
      */
     public function resolvedPrefundedWallet(): ?array
     {
-        $resolved = app(BridgeService::class)->resolvePlatformPrefundedWallet(
-            $this->prefundedCustomerId(),
-            $this->prefundedWalletId(),
+        $service = app(BridgeService::class);
+        $walletId = $this->prefundedWalletId();
+        $customerId = $this->prefundedCustomerId();
+
+        if ($walletId !== '') {
+            $parsed = $service->parseBridgeWalletForTransfer($customerId, $walletId);
+            if ($parsed !== null) {
+                if ($customerId === '') {
+                    $walletResult = $service->getBridgeWalletById($walletId);
+                    if (($walletResult['success'] ?? false) && is_array($walletResult['data'] ?? null)) {
+                        $customerId = $service->extractCustomerIdFromPayload($walletResult['data']);
+                    }
+                }
+
+                return [
+                    'customer_id' => $customerId,
+                    'wallet_id' => $walletId,
+                ];
+            }
+        }
+
+        $resolved = $service->resolvePlatformPrefundedWallet(
+            $customerId,
+            $walletId,
             $this->prefundedAccountId() !== '' ? $this->prefundedAccountId() : null,
             null,
             $this->prefundedAccountName() !== '' ? $this->prefundedAccountName() : null,
