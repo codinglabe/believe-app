@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 
@@ -25,44 +24,6 @@ interface WalletTransferSettings {
   sandbox_unavailable: boolean
 }
 
-interface WalletTransferRecord {
-  id: number
-  amount: number
-  status: string
-  created_at: string
-  retry_until?: string | null
-}
-
-function walletTransferStatusLabel(status: string): string {
-  switch (status) {
-    case "pending":
-      return "Pending"
-    case "submitted":
-      return "Processing"
-    case "completed":
-      return "Complete"
-    case "refunded":
-      return "Canceled"
-    case "failed":
-      return "Failed"
-    default:
-      return status.replace(/_/g, " ")
-  }
-}
-
-function walletTransferStatusClass(status: string): string {
-  switch (status) {
-    case "pending":
-      return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200"
-    case "submitted":
-      return "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-200"
-    case "completed":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-200"
-    default:
-      return ""
-  }
-}
-
 type BpMoveToWalletPopupProps = {
   isOpen: boolean
   onClose: () => void
@@ -70,7 +31,6 @@ type BpMoveToWalletPopupProps = {
   amount: string
   onAmountChange: (value: string) => void
   walletTransfer?: WalletTransferSettings
-  walletTransfers?: WalletTransferRecord[]
   isSubmitting: boolean
   onSubmit: () => void
   formatCurrency: (value: number | string) => string
@@ -84,7 +44,6 @@ export function BpMoveToWalletPopup({
   amount,
   onAmountChange,
   walletTransfer,
-  walletTransfers = [],
   isSubmitting,
   onSubmit,
   formatCurrency,
@@ -276,35 +235,6 @@ export function BpMoveToWalletPopup({
                           Between {formatCurrency(min)} and {formatCurrency(Math.min(max, balance))}
                         </p>
                       </div>
-
-                      {walletTransfers.length > 0 && (
-                        <div className="space-y-2 border-t border-border pt-4">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Recent moves
-                          </p>
-                          <ul className="space-y-2">
-                            {walletTransfers.slice(0, 4).map((transfer) => (
-                              <li
-                                key={transfer.id}
-                                className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2.5 text-sm"
-                              >
-                                <div>
-                                  <p className="font-semibold tabular-nums">{formatCurrency(transfer.amount)}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {new Date(transfer.created_at).toLocaleDateString(undefined, {
-                                      month: "short",
-                                      day: "numeric",
-                                    })}
-                                  </p>
-                                </div>
-                                <Badge variant="outline" className={cn("capitalize", walletTransferStatusClass(transfer.status))}>
-                                  {walletTransferStatusLabel(transfer.status)}
-                                </Badge>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
                     </>
                   )}
                 </div>

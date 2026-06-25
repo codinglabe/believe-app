@@ -12,7 +12,6 @@ use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\BelievePointsPurchaseSettingsService;
-use App\Models\BelievePointWalletTransfer;
 use App\Services\BelievePointsToBridgeWalletService;
 use App\Services\BelievePointsWalletTransferSettingsService;
 use App\Services\Payments\BelievePointsPaymentMethodResolver;
@@ -107,20 +106,6 @@ class BelievePointController extends Controller
                 : route('user.profile.payment-methods.index'),
             'autoReplenish' => $this->autoReplenishPayloadForUser($user),
             'walletTransfer' => app(BelievePointsWalletTransferSettingsService::class)->frontendPayload(),
-            'walletTransfers' => BelievePointWalletTransfer::query()
-                ->where('user_id', $user->id)
-                ->orderByDesc('created_at')
-                ->limit(10)
-                ->get()
-                ->map(fn (BelievePointWalletTransfer $transfer) => [
-                    'id' => $transfer->id,
-                    'amount' => (float) $transfer->amount,
-                    'status' => $transfer->status,
-                    'bridge_transfer_state' => $transfer->bridge_transfer_state,
-                    'created_at' => $transfer->created_at?->toIso8601String(),
-                    'completed_at' => $transfer->completed_at?->toIso8601String(),
-                    'retry_until' => $transfer->retry_until?->toIso8601String(),
-                ]),
         ]);
     }
 
