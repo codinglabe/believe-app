@@ -9,8 +9,33 @@ use Stripe\Stripe;
 use Stripe\StripeClient;
 use Stripe\WebhookEndpoint;
 
-class StripeAdminProvisioningService
+final class StripeAdminProvisioningService
 {
+    /**
+     * Stripe webhook events registered on the app's /stripe/webhook endpoint.
+     *
+     * @return list<string>
+     */
+    public static function requiredWebhookEvents(): array
+    {
+        return [
+            'payment_intent.succeeded',
+            'payment_intent.payment_failed',
+            'checkout.session.completed',
+            'balance.available',
+            'balance_transaction.created',
+            'balance_transaction.updated',
+            'payout.paid',
+            'charge.refunded',
+            'charge.dispute.created',
+            'customer.subscription.created',
+            'customer.subscription.updated',
+            'customer.subscription.deleted',
+            'invoice.payment_succeeded',
+            'invoice.payment_failed',
+        ];
+    }
+
     /**
      * Fetch or create webhook endpoint and get its signing secret.
      */
@@ -20,6 +45,7 @@ class StripeAdminProvisioningService
             Stripe::setApiKey($secretKey);
 
             $webhookUrl = config('app.url').'/stripe/webhook';
+            $requiredEvents = self::requiredWebhookEvents();
 
             $webhooks = WebhookEndpoint::all(['limit' => 100]);
 
@@ -32,6 +58,8 @@ class StripeAdminProvisioningService
             }
 
             if ($existingWebhook) {
+                $this->syncWebhookEvents($existingWebhook, $requiredEvents, $environment);
+
                 Log::info("Webhook endpoint already exists for {$environment} mode", [
                     'webhook_id' => $existingWebhook->id,
                     'url' => $existingWebhook->url,
@@ -44,15 +72,7 @@ class StripeAdminProvisioningService
             try {
                 $webhook = WebhookEndpoint::create([
                     'url' => $webhookUrl,
-                    'enabled_events' => [
-                        'payment_intent.succeeded',
-                        'payment_intent.payment_failed',
-                        'customer.subscription.created',
-                        'customer.subscription.updated',
-                        'customer.subscription.deleted',
-                        'invoice.payment_succeeded',
-                        'invoice.payment_failed',
-                    ],
+                    'enabled_events' => $requiredEvents,
                 ]);
 
                 $webhookSecret = $webhook->secret ?? $webhook->signing_secret ?? null;
@@ -92,6 +112,44 @@ class StripeAdminProvisioningService
             ]);
 
             return null;
+        }
+    }
+
+    /**
+     * @param  list<string>  $requiredEvents
+     */
+    private function syncWebhookEvents(object $webhook, array $requiredEvents, string $environment): void
+    {
+        $webhookId = (string) ($webhook->id ?? '');
+        if ($webhookId === '') {
+            return;
+        }
+
+        $currentEvents = is_array($webhook->enabled_events ?? null) ? $webhook->enabled_events : [];
+        $missingEvents = array_values(array_diff($requiredEvents, $currentEvents));
+
+        if ($missingEvents === []) {
+            return;
+        }
+
+        $mergedEvents = array_values(array_unique(array_merge($currentEvents, $requiredEvents)));
+        sort($mergedEvents);
+
+        try {
+            WebhookEndpoint::update($webhookId, [
+                'enabled_events' => $mergedEvents,
+            ]);
+
+            Log::info("Updated Stripe webhook enabled_events for {$environment} mode", [
+                'webhook_id' => $webhookId,
+                'added_events' => $missingEvents,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning("Failed to update Stripe webhook enabled_events for {$environment} mode", [
+                'webhook_id' => $webhookId,
+                'added_events' => $missingEvents,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
