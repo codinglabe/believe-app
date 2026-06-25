@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { pickWalletBalance } from "@/lib/wallet-balance-fetch"
 import { Head, router } from "@inertiajs/react"
 import SettingsLayout from "@/layouts/settings/layout"
