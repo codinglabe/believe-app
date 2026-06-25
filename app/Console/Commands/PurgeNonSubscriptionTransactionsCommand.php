@@ -27,6 +27,7 @@ use App\Models\SupporterBrpTransaction;
 use App\Models\SupporterBrpWallet;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\LiveBelievePointPurchaseScope;
 use App\Support\PlanFirstMonthWelcomeCredits;
 use App\Support\StripeReferenceMode;
 use App\Support\StripeTestReference;
@@ -42,7 +43,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                             {--dry-run : Report counts without deleting}
                             {--force : Confirm deletion (required unless --dry-run)}';
 
-    protected $description = 'Delete non-subscription and Stripe test-mode transaction history; zero balances except live active subscription entitlements';
+    protected $description = 'Delete non-subscription and Stripe test-mode transaction history; zero balances except live subscriptions and live Believe Point purchases';
 
     public function handle(): int
     {
@@ -117,6 +118,7 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         ));
         $this->newLine();
         $this->info('Also zeroed: org wallet, BRP, Phaze, Bridge cache, Care Alliance pools, reward/BP ledgers');
+        $this->comment('Live Stripe Believe Point purchases, balances, and ledger rows are always kept.');
 
         $activityToDelete = array_sum($activityCounts);
         $stripeTestToDelete = array_sum($stripeTestCounts);
@@ -248,6 +250,10 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
 
     private function shouldDeleteLedgerTransaction(Transaction $transaction, Builder $protectedQuery): bool
     {
+        if (LiveBelievePointPurchaseScope::isLiveLedgerTransaction($transaction)) {
+            return false;
+        }
+
         if (StripeReferenceMode::isConfidentlyTestTransaction($transaction)) {
             return true;
         }
@@ -257,10 +263,14 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
             ->exists();
 
         if (StripeReferenceMode::isConfidentlyLiveTransaction($transaction)) {
+            if (LiveBelievePointPurchaseScope::isProtectedBelievePointsLedgerTransaction($transaction)) {
+                return false;
+            }
+
             return ! $isProtected;
         }
 
-        if (StripeReferenceMode::modeForTransaction($transaction) === StripeReferenceMode::MODE_UNKNOWN) {
+        if (StripeReferenceMode::modeForTransaction($transaction, true) === StripeReferenceMode::MODE_UNKNOWN) {
             return false;
         }
 
@@ -475,20 +485,24 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
             ->select([
                 'id',
                 'current_plan_details',
+                'believe_points',
+                'processing_believe_points',
             ])
             ->orderBy('id')
             ->chunkById(200, function ($users) use ($activeUserIdSet, &$summary) {
                 foreach ($users as $user) {
                     /** @var User $user */
                     $summary['users_total']++;
-                    $allowances = $this->subscriptionBalanceAllowances(
+                    $allowances = $this->balanceAllowancesForUser(
                         $user,
                         isset($activeUserIdSet[$user->id]),
                     );
 
                     $hasEntitlements = $allowances['ai_media_studio_credits'] > 0
                         || $allowances['ai_tokens_included'] > 0
-                        || $allowances['emails_included'] > 0;
+                        || $allowances['emails_included'] > 0
+                        || $allowances['believe_points'] > 0
+                        || $allowances['processing_believe_points'] > 0;
 
                     if ($hasEntitlements) {
                         $summary['users_with_entitlements']++;
@@ -511,12 +525,17 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
     private function resetBalances(array $activeUserIdSet): void
     {
         User::query()
-            ->select(['id', 'current_plan_details'])
+            ->select([
+                'id',
+                'current_plan_details',
+                'believe_points',
+                'processing_believe_points',
+            ])
             ->orderBy('id')
             ->chunkById(200, function ($users) use ($activeUserIdSet) {
                 foreach ($users as $user) {
                     /** @var User $user */
-                    $allowances = $this->subscriptionBalanceAllowances(
+                    $allowances = $this->balanceAllowancesForUser(
                         $user,
                         isset($activeUserIdSet[$user->id]),
                     );
@@ -524,6 +543,21 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
                     User::query()->whereKey($user->id)->update($allowances);
                 }
             });
+    }
+
+    /**
+     * @return array<string, int|float>
+     */
+    private function balanceAllowancesForUser(User $user, bool $hasActiveSubscription): array
+    {
+        $allowances = $this->subscriptionBalanceAllowances($user, $hasActiveSubscription);
+
+        if (LiveBelievePointPurchaseScope::userHasLivePurchase((int) $user->id)) {
+            $allowances['believe_points'] = round((float) ($user->believe_points ?? 0), 2);
+            $allowances['processing_believe_points'] = round((float) ($user->processing_believe_points ?? 0), 2);
+        }
+
+        return $allowances;
     }
 
     private function resetAuxiliaryBalances(): void
@@ -563,7 +597,14 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         $counts = [];
 
         if (Schema::hasTable('believe_point_purchases')) {
-            $counts['Believe Point purchases'] = BelievePointPurchase::query()->count();
+            $counts['Believe Point purchases'] = BelievePointPurchase::query()
+                ->get()
+                ->filter(fn (BelievePointPurchase $purchase) => ! LiveBelievePointPurchaseScope::isLivePurchase($purchase))
+                ->count();
+            $counts['Live Believe Point purchases (kept)'] = BelievePointPurchase::query()
+                ->get()
+                ->filter(fn (BelievePointPurchase $purchase) => LiveBelievePointPurchaseScope::isLivePurchase($purchase))
+                ->count();
         }
 
         if (Schema::hasTable('believe_point_wallet_transfers')) {
@@ -604,7 +645,26 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
     private function purgeActivityRecords(): void
     {
         if (Schema::hasTable('payment_transactions')) {
-            PaymentTransaction::query()->delete();
+            PaymentTransaction::query()
+                ->orderBy('id')
+                ->chunkById(200, function ($rows) {
+                    $deleteIds = [];
+
+                    foreach ($rows as $row) {
+                        /** @var PaymentTransaction $row */
+                        if ($row->transaction_type === 'believe_points_purchase'
+                            && $row->payable_type === BelievePointPurchase::class
+                            && LiveBelievePointPurchaseScope::isLivePurchaseId((int) $row->payable_id)) {
+                            continue;
+                        }
+
+                        $deleteIds[] = $row->id;
+                    }
+
+                    if ($deleteIds !== []) {
+                        PaymentTransaction::query()->whereIn('id', $deleteIds)->delete();
+                    }
+                });
         }
 
         if (Schema::hasTable('believe_points_refunds')) {
@@ -616,7 +676,24 @@ class PurgeNonSubscriptionTransactionsCommand extends Command
         }
 
         if (Schema::hasTable('believe_point_purchases')) {
-            BelievePointPurchase::query()->delete();
+            BelievePointPurchase::query()
+                ->orderBy('id')
+                ->chunkById(200, function ($purchases) {
+                    $deleteIds = [];
+
+                    foreach ($purchases as $purchase) {
+                        /** @var BelievePointPurchase $purchase */
+                        if (LiveBelievePointPurchaseScope::isLivePurchase($purchase)) {
+                            continue;
+                        }
+
+                        $deleteIds[] = $purchase->id;
+                    }
+
+                    if ($deleteIds !== []) {
+                        BelievePointPurchase::query()->whereIn('id', $deleteIds)->delete();
+                    }
+                });
         }
 
         if (Schema::hasTable('supporter_believe_point_gifts')) {
