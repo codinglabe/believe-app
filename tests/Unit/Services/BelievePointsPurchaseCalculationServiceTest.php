@@ -34,6 +34,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_HOLD_HOURS, 0, 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PROCESSING_FEE, '1', 'boolean');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PLATFORM_FEE, '1', 'boolean');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_SETTLEMENT_BUSINESS_DAYS, 1, 'integer');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_SETTLEMENT_BUSINESS_DAYS, 3, 'integer');
 
         StripeProcessingFeeEstimator::forgetRatesCache();
     }
@@ -100,7 +102,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
             $breakdown['checkout_total_usd']
         );
         $this->assertSame(500.0, $breakdown['brp_earned']);
-        $this->assertSame('After 24-hour hold', $breakdown['bp_availability']);
+        $this->assertStringContainsString('Processing BP', $breakdown['bp_availability']);
+        $this->assertStringContainsString('24-hour security hold', $breakdown['bp_availability']);
     }
 
     public function test_trusted_card_checkout_breakdown_is_available_immediately(): void
@@ -115,7 +118,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown(100, 'bank');
 
         $this->assertSame(500.0, $breakdown['brp_earned']);
-        $this->assertSame('After ACH settlement', $breakdown['bp_availability']);
+        $this->assertStringContainsString('Processing BP', $breakdown['bp_availability']);
+        $this->assertStringContainsString('3 business days', $breakdown['bp_availability']);
     }
 
     public function test_ach_checkout_breakdown_includes_configured_ach_hold(): void
@@ -124,7 +128,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
 
         $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown(100, 'bank');
 
-        $this->assertSame('After ACH settlement (plus 48-hour hold)', $breakdown['bp_availability']);
+        $this->assertStringContainsString('48-hour hold', $breakdown['bp_availability']);
     }
 
     public function test_fee_preview_payload_exposes_configured_settings(): void
@@ -141,6 +145,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertSame(0, $preview['ach_hold_hours']);
         $this->assertTrue($preview['supporter_pays_processing_fee']);
         $this->assertTrue($preview['supporter_pays_platform_fee']);
+        $this->assertSame(1, $preview['card_settlement_business_days']);
+        $this->assertSame(3, $preview['ach_settlement_business_days']);
         $this->assertSame(500.0, $preview['brp_earned']);
     }
 }

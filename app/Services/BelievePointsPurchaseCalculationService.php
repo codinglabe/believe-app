@@ -63,30 +63,38 @@ final class BelievePointsPurchaseCalculationService
     public static function bpAvailabilityLabel(string $rail, bool $isTrustedCard = false): string
     {
         if (in_array($rail, ['bank', 'ach'], true)) {
-            $hours = BelievePointsPurchaseSettingsService::achHoldHours();
-
-            if ($hours === 0) {
-                return 'After ACH settlement';
+            $days = BelievePointsPurchaseSettingsService::achSettlementBusinessDays();
+            $label = $days <= 1
+                ? 'Processing BP until ACH settles (~1 business day)'
+                : "Processing BP until ACH settles (~{$days} business days)";
+            $extraHours = BelievePointsPurchaseSettingsService::achHoldHours();
+            if ($extraHours > 0) {
+                $label .= $extraHours === 1
+                    ? ' (plus 1-hour hold)'
+                    : " (plus {$extraHours}-hour hold)";
             }
 
-            return $hours === 1
-                ? 'After ACH settlement (plus 1-hour hold)'
-                : "After ACH settlement (plus {$hours}-hour hold)";
+            return $label;
         }
 
         if ($isTrustedCard) {
             return 'Available immediately';
         }
 
+        $days = BelievePointsPurchaseSettingsService::cardSettlementBusinessDays();
+        $label = $days <= 0
+            ? 'Processing BP until card payout settles'
+            : ($days === 1
+                ? 'Processing BP until card payout settles (~1 business day)'
+                : "Processing BP until card payout settles (~{$days} business days)");
         $hours = BelievePointsPurchaseSettingsService::newCardHoldHours();
-
-        if ($hours === 0) {
-            return 'Available immediately';
+        if ($hours > 0) {
+            $label .= $hours === 1
+                ? ' (plus 1-hour security hold)'
+                : " (plus {$hours}-hour security hold)";
         }
 
-        return $hours === 1
-            ? 'After 1-hour hold'
-            : "After {$hours}-hour hold";
+        return $label;
     }
 
     /**
@@ -121,29 +129,7 @@ final class BelievePointsPurchaseCalculationService
     }
 
     /**
-     * @return array{
-     *     mode: string,
-     *     rail: string,
-     *     bp_amount_usd: float,
-     *     platform_fee_usd: float,
-     *     processing_fee_usd: float,
-     *     checkout_total_usd: float,
-     *     brp_earned: float,
-     *     bp_availability: string,
-     *     card_processing_fee_usd: float,
-     *     ach_processing_fee_usd: float,
-     *     brp_value: float,
-     *     platform_fee_percent: float,
-     *     processing_fee_percent: float,
-     *     free_brp_award: float,
-     *     prime_brp_award: float,
-     *     brp_award: float,
-     *     card_hold_hours: int,
-     *     new_card_hold_hours: int,
-     *     ach_hold_hours: int,
-     *     supporter_pays_processing_fee: bool,
-     *     supporter_pays_platform_fee: bool
-     * }
+     * @return array<string, mixed>
      */
     public static function feePreviewPayload(float $bpAmountUsd, string $rail, ?User $user = null, bool $isTrustedCard = false): array
     {
@@ -172,6 +158,8 @@ final class BelievePointsPurchaseCalculationService
             'ach_hold_hours' => BelievePointsPurchaseSettingsService::achHoldHours(),
             'supporter_pays_processing_fee' => BelievePointsPurchaseSettingsService::supporterPaysProcessingFee(),
             'supporter_pays_platform_fee' => BelievePointsPurchaseSettingsService::supporterPaysPlatformFee(),
+            'card_settlement_business_days' => BelievePointsPurchaseSettingsService::cardSettlementBusinessDays(),
+            'ach_settlement_business_days' => BelievePointsPurchaseSettingsService::achSettlementBusinessDays(),
         ];
     }
 }

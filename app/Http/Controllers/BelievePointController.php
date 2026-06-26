@@ -10,6 +10,7 @@ use App\Models\BelievePointWalletTransfer;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BelievePointPurchaseSettlementService;
+use App\Services\BelievePointPurchaseSettlementStatusService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\BelievePointsPurchaseSettingsService;
@@ -56,13 +57,19 @@ class BelievePointController extends Controller
         BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
         $user->refresh();
 
+        app(BelievePointsToBridgeWalletService::class)->reconcileSubmittedTransfers((int) $user->id);
+
         // Get user's current believe points balance
         $currentBalance = $user->currentBelievePoints();
 
         // Get user's purchase history
         $purchases = BelievePointPurchase::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->paginate(10)
+            ->through(static fn (BelievePointPurchase $purchase) => array_merge(
+                $purchase->toArray(),
+                BelievePointPurchaseSettlementStatusService::historyPayload($purchase),
+            ));
 
         $walletTransfers = BelievePointWalletTransfer::query()
             ->where('user_id', $user->id)
@@ -111,7 +118,7 @@ class BelievePointController extends Controller
                 ? route('settings.saved-payment-methods.index')
                 : route('user.profile.payment-methods.index'),
             'autoReplenish' => $this->autoReplenishPayloadForUser($user),
-            'walletTransfer' => app(BelievePointsWalletTransferSettingsService::class)->frontendPayload(),
+            'walletTransfer' => app(BelievePointsWalletTransferSettingsService::class)->frontendPayload($user),
         ]);
     }
 
@@ -679,7 +686,7 @@ class BelievePointController extends Controller
                         $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
                     }
                     if (! $purchase->points_released) {
-                        $message .= ' Your BP will become available after the configured hold period.';
+                        $message .= ' Your BP is in Processing balance until platform settlement completes, then becomes Available for wallet and marketplace use. Donations can use Processing BP now.';
                     }
 
                     return redirect()->route('believe-points.index')->with('success', $message);

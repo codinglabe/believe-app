@@ -24,7 +24,7 @@ final class BelievePointsPurchaseSettingsService
     /** Hold period (hours) applied to BP bought with a NEW (untrusted) card. */
     public const KEY_CARD_HOLD_HOURS = 'bp_purchase_card_hold_hours';
 
-    /** Hold period (hours) applied to ACH/bank BP after Stripe confirms settlement. */
+    /** Extra hold (hours) after ACH settlement before BP becomes Available. */
     public const KEY_ACH_HOLD_HOURS = 'bp_purchase_ach_hold_hours';
 
     /** Whether the supporter is charged the Stripe processing fee on top of their BP. */
@@ -32,6 +32,12 @@ final class BelievePointsPurchaseSettingsService
 
     /** Whether the supporter is charged the BIU platform fee on top of their BP. */
     public const KEY_SUPPORTER_PAYS_PLATFORM_FEE = 'bp_purchase_supporter_pays_platform_fee';
+
+    public const KEY_CARD_SETTLEMENT_BUSINESS_DAYS = 'bp_purchase_card_settlement_business_days';
+
+    public const KEY_ACH_SETTLEMENT_BUSINESS_DAYS = 'bp_purchase_ach_settlement_business_days';
+
+    public const KEY_REQUIRE_BRIDGE_RESERVE = 'bp_purchase_require_bridge_reserve_confirmation';
 
     public const DEFAULT_BRP_VALUE = 0.005;
 
@@ -52,6 +58,12 @@ final class BelievePointsPurchaseSettingsService
     public const DEFAULT_SUPPORTER_PAYS_PROCESSING_FEE = true;
 
     public const DEFAULT_SUPPORTER_PAYS_PLATFORM_FEE = true;
+
+    public const DEFAULT_CARD_SETTLEMENT_BUSINESS_DAYS = 1;
+
+    public const DEFAULT_ACH_SETTLEMENT_BUSINESS_DAYS = 3;
+
+    public const DEFAULT_REQUIRE_BRIDGE_RESERVE = true;
 
     public static function brpValue(): float
     {
@@ -94,6 +106,10 @@ final class BelievePointsPurchaseSettingsService
             return self::freeBrpAward();
         }
 
+        if ($user->hasNonprofitDashboardRole()) {
+            return self::primeBrpAward();
+        }
+
         return SupporterSubscriptionService::currentTierSlug($user) === SupporterSubscriptionService::SLUG_PRIME
             ? self::primeBrpAward()
             : self::freeBrpAward();
@@ -107,6 +123,21 @@ final class BelievePointsPurchaseSettingsService
         return max(0, (int) AdminSetting::get(self::KEY_CARD_HOLD_HOURS, self::DEFAULT_CARD_HOLD_HOURS));
     }
 
+    public static function cardSettlementBusinessDays(): int
+    {
+        return max(0, (int) AdminSetting::get(self::KEY_CARD_SETTLEMENT_BUSINESS_DAYS, self::DEFAULT_CARD_SETTLEMENT_BUSINESS_DAYS));
+    }
+
+    public static function achSettlementBusinessDays(): int
+    {
+        return max(0, (int) AdminSetting::get(self::KEY_ACH_SETTLEMENT_BUSINESS_DAYS, self::DEFAULT_ACH_SETTLEMENT_BUSINESS_DAYS));
+    }
+
+    public static function requireBridgeReserveConfirmation(): bool
+    {
+        return (bool) AdminSetting::get(self::KEY_REQUIRE_BRIDGE_RESERVE, self::DEFAULT_REQUIRE_BRIDGE_RESERVE);
+    }
+
     /**
      * Alias for {@see cardHoldHours()} — the new-card security hold period.
      */
@@ -116,7 +147,7 @@ final class BelievePointsPurchaseSettingsService
     }
 
     /**
-     * Hold period (hours) applied to ACH/bank BP after Stripe confirms settlement.
+     * Extra hold (hours) applied after ACH settlement before BP becomes Available.
      */
     public static function achHoldHours(): int
     {
@@ -134,19 +165,7 @@ final class BelievePointsPurchaseSettingsService
     }
 
     /**
-     * @return array{
-     *     brp_value: float,
-     *     platform_fee_percent: float,
-     *     processing_fee_percent: float,
-     *     free_brp_award: float,
-     *     prime_brp_award: float,
-     *     brp_award: float,
-     *     card_hold_hours: int,
-     *     new_card_hold_hours: int,
-     *     ach_hold_hours: int,
-     *     supporter_pays_processing_fee: bool,
-     *     supporter_pays_platform_fee: bool
-     * }
+     * @return array<string, mixed>
      */
     public static function frontendPayload(?User $user = null): array
     {
@@ -162,23 +181,14 @@ final class BelievePointsPurchaseSettingsService
             'ach_hold_hours' => self::achHoldHours(),
             'supporter_pays_processing_fee' => self::supporterPaysProcessingFee(),
             'supporter_pays_platform_fee' => self::supporterPaysPlatformFee(),
+            'card_settlement_business_days' => self::cardSettlementBusinessDays(),
+            'ach_settlement_business_days' => self::achSettlementBusinessDays(),
+            'require_bridge_reserve_confirmation' => self::requireBridgeReserveConfirmation(),
         ];
     }
 
     /**
-     * @return array{
-     *     brp_value: float,
-     *     platform_fee_percent: float,
-     *     processing_fee_percent: float,
-     *     free_brp_award: float,
-     *     prime_brp_award: float,
-     *     brp_award: float,
-     *     card_hold_hours: int,
-     *     new_card_hold_hours: int,
-     *     ach_hold_hours: int,
-     *     supporter_pays_processing_fee: bool,
-     *     supporter_pays_platform_fee: bool
-     * }
+     * @return array<string, mixed>
      */
     public static function adminPayload(): array
     {

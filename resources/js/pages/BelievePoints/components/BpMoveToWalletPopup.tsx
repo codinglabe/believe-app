@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils"
 
 interface WalletTransferSettings {
   enabled: boolean
+  eligible?: boolean
+  eligibility_message?: string | null
   min_amount: number
   max_amount: number
   sandbox_unavailable: boolean
@@ -156,6 +158,14 @@ export function BpMoveToWalletPopup({
                       <AlertCircle className="h-4 w-4 text-amber-600" />
                       <AlertDescription>
                         Wallet funding from Believe Points is only available in production Bridge mode.
+                      </AlertDescription>
+                    </Alert>
+                  ) : !walletTransfer?.eligible ? (
+                    <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/25">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      <AlertDescription>
+                        {walletTransfer?.eligibility_message ??
+                          "Moving Believe Points to your wallet is available for Prime Supporters and organization accounts."}
                       </AlertDescription>
                     </Alert>
                   ) : !walletTransfer?.enabled ? (

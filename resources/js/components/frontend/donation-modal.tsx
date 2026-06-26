@@ -115,7 +115,12 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const paymentMethodsUrl =
     pageProps.paymentMethodsUrl ?? route("user.profile.payment-methods.index")
 
-  // Use the registered organization id (the one that can actually receive donations).
+  // Registered organization id (the one that can actually receive donations).
+  const currentBalance =
+    parseFloat(String(authUser?.donateable_believe_points ?? authUser?.believe_points ?? "0")) || 0
+  const availableBalance = parseFloat(String(authUser?.believe_points ?? "0")) || 0
+  const processingBalance = parseFloat(String(authUser?.processing_believe_points ?? "0")) || 0
+
   const organizationId = (organization as any).registered_organization?.id || organization.id
 
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
@@ -142,6 +147,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const getCurrentAmount = () => selectedAmount || Number.parseFloat(customAmount) || 0
   const amount = getCurrentAmount()
   const isStripeRail = paymentMethod === "stripe_card" || paymentMethod === "stripe_ach"
+  const canUseBelievePoints = authUser ? currentBalance >= amount : false
 
   const handleAmountSelect = (value: number) => {
     setSelectedAmount(value)
@@ -446,6 +452,10 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
               availableMethods={availableMethods ?? {}}
               hasOrgSelected={true}
               paymentMethodsLoading={methodsLoading || !availableMethods}
+              currentBalance={currentBalance}
+              availableBalance={availableBalance}
+              processingBalance={processingBalance}
+              canUseBelievePoints={canUseBelievePoints}
               amount={amount}
               feePreviewRail={feePreviewRail}
               onFeePreviewRailChange={setFeePreviewRail}

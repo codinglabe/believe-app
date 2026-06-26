@@ -40,20 +40,9 @@ class BelievePointPurchaseSettlementService
         $rail = ($purchase->payment_rail ?? 'card') === 'bank' ? 'bank' : 'card';
         $points = (float) $purchase->points;
         $isBank = $rail === 'bank';
-        $isTrustedCard = (bool) $purchase->is_trusted_instrument;
-        $newCardHoldHours = BelievePointsPurchaseSettingsService::newCardHoldHours();
-        $achHoldHours = BelievePointsPurchaseSettingsService::achHoldHours();
 
-        // Trusted cards are available immediately. New cards are held for the configured
-        // security period. ACH BP is held for the configured ACH hold period after settlement.
-        $holdHours = $isBank ? $achHoldHours : ($isTrustedCard ? 0 : $newCardHoldHours);
-        $instant = $holdHours === 0;
-
-        if ($instant) {
-            $user->addBelievePoints($points);
-        } else {
-            $user->addProcessingBelievePoints($points);
-        }
+        $user->addProcessingBelievePoints($points);
+        BelievePointProcessingLotService::createLotForPurchase($purchase, $user, $points);
 
         $rewardAwarded = null;
         $rp = self::brpEarnedForPurchase($purchase);
@@ -70,18 +59,28 @@ class BelievePointPurchaseSettlementService
             $rewardAwarded = $rp;
         }
 
-        $availableAt = $instant ? now() : now()->addHours($holdHours);
+        $availableAt = StripeBelievePointSettlementScheduleService::resolvePointsAvailableAt(
+            $purchase,
+            $paymentIntentId
+        );
+        $stripeReference = StripeBelievePointSettlementScheduleService::stripeSettlementReference($paymentIntentId);
 
         $updates = [
             'status' => 'completed',
             'reward_points_awarded' => $rewardAwarded,
-            'points_available_at' => $availableAt,
-            'points_released' => $instant,
+            'stripe_funds_available_at' => $availableAt,
+            'stripe_settlement_reference' => $stripeReference,
+            'settlement_status' => BelievePointPurchaseSettlementStatusService::SETTLEMENT_PROCESSING,
+            'points_available_at' => null,
+            'points_released' => false,
         ];
         if ($paymentIntentId) {
             $updates['stripe_payment_intent_id'] = $paymentIntentId;
         }
         $purchase->update($updates);
+
+        BelievePointBridgeReserveSettlementService::autoConfirmIfBridgeNotRequired($purchase->fresh());
+        BelievePointBridgeReserveSettlementService::syncPurchaseReleaseSchedule($purchase->fresh());
 
         Log::info('Believe Points checkout purchase settled', [
             'purchase_id' => $purchase->id,
@@ -113,10 +112,14 @@ class BelievePointPurchaseSettlementService
         BelievePointPurchase::query()
             ->where('status', 'completed')
             ->where('points_released', false)
-            ->whereNotNull('points_available_at')
-            ->where('points_available_at', '<=', now())
+            ->whereNotNull('stripe_funds_available_at')
+            ->where('stripe_funds_available_at', '<=', now())
             ->orderBy('id')
             ->each(function (BelievePointPurchase $purchase) use (&$count) {
+                if (! BelievePointBridgeReserveSettlementService::purchaseReadyForRelease($purchase)) {
+                    return;
+                }
+
                 if (self::releasePurchasePoints($purchase)) {
                     $count++;
                 }
@@ -127,49 +130,7 @@ class BelievePointPurchaseSettlementService
 
     public static function releasePurchasePoints(BelievePointPurchase $purchase): bool
     {
-        return (bool) DB::transaction(function () use ($purchase) {
-            /** @var BelievePointPurchase|null $locked */
-            $locked = BelievePointPurchase::lockForUpdate()->find($purchase->id);
-            if (! $locked || $locked->status !== 'completed' || $locked->points_released) {
-                return false;
-            }
-
-            if ($locked->points_available_at && $locked->points_available_at->isFuture()) {
-                return false;
-            }
-
-            $user = $locked->user;
-            if (! $user) {
-                return false;
-            }
-
-            $points = (float) $locked->points;
-            if ($points <= 0) {
-                $locked->update(['points_released' => true]);
-
-                return true;
-            }
-
-            if (! $user->releaseProcessingBelievePoints($points)) {
-                Log::warning('Believe Points release: insufficient processing balance', [
-                    'purchase_id' => $locked->id,
-                    'user_id' => $user->id,
-                    'points' => $points,
-                ]);
-
-                return false;
-            }
-
-            $locked->update(['points_released' => true]);
-
-            Log::info('Believe Points released from processing to available', [
-                'purchase_id' => $locked->id,
-                'user_id' => $user->id,
-                'points' => $points,
-            ]);
-
-            return true;
-        });
+        return BelievePointProcessingLotService::releaseLotsForPurchase($purchase);
     }
 
     public static function settleManualPurchase(
@@ -470,6 +431,7 @@ class BelievePointPurchaseSettlementService
                 'status' => 'failed',
                 'failure_message' => 'Credits reversed: payment did not complete or was voided.',
                 'reward_points_awarded' => null,
+                'settlement_status' => BelievePointPurchaseSettlementStatusService::SETTLEMENT_REVERSED,
             ]);
 
             Log::info('Believe Points purchase credits reversed', [

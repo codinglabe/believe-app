@@ -51,6 +51,12 @@ return [
             'payment_intent.succeeded',
             'payment_intent.payment_failed',
             'checkout.session.completed',
+            'balance.available',
+            'balance_transaction.created',
+            'balance_transaction.updated',
+            'payout.paid',
+            'charge.refunded',
+            'charge.dispute.created',
         ]),
     ],
 
