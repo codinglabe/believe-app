@@ -62,7 +62,8 @@ class ProcessBelievePointsAutoReplenishJob
                 return;
             }
 
-            $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($amount, 'card', $user);
+            // Auto top-up always charges a saved card on file (a trusted instrument).
+            $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown($amount, 'card', $user, true);
             $checkoutTotal = $breakdown['checkout_total_usd'];
             $feeAddon = $breakdown['processing_fee_usd'];
             $platformFee = $breakdown['platform_fee_usd'];
@@ -77,6 +78,7 @@ class ProcessBelievePointsAutoReplenishJob
                 'status' => 'pending',
                 'source' => 'auto_replenish',
                 'payment_rail' => 'card',
+                'is_trusted_instrument' => true,
             ]);
 
             $stripe = Cashier::stripe();

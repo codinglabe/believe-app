@@ -161,12 +161,13 @@ class BelievePointController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function purchaseBreakdownForRail(float $netPointsUsd, string $rail, ?User $user = null): array
+    private function purchaseBreakdownForRail(float $netPointsUsd, string $rail, ?User $user = null, bool $isTrustedCard = false): array
     {
         return BelievePointsPurchaseCalculationService::checkoutBreakdown(
             round(max(0, $netPointsUsd), 2),
             $rail,
-            $user
+            $user,
+            $isTrustedCard
         );
     }
 
@@ -258,6 +259,7 @@ class BelievePointController extends Controller
                 'source' => 'manual',
                 'payment_rail' => $feeRail,
                 'payment_method' => $paymentMethod,
+                'is_trusted_instrument' => false,
             ]);
 
             $amountInCents = (int) round($checkoutTotalUsd * 100);
@@ -415,9 +417,13 @@ class BelievePointController extends Controller
                 ->with('error', 'Invalid saved payment method.');
         }
 
+        // A saved card already on file is a trusted instrument (immediate availability).
+        // Bank/ACH always follows ACH settlement rules regardless.
+        $isTrustedCard = $feeRail === 'card';
+
         $netPointsUsd = round((float) $validated['amount'], 2);
         $points = $netPointsUsd;
-        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, $user);
+        $breakdown = $this->purchaseBreakdownForRail($netPointsUsd, $feeRail, $user, $isTrustedCard);
         $checkoutTotalUsd = $breakdown['checkout_total_usd'];
         $processingFeeAddon = $breakdown['processing_fee_usd'];
         $platformFee = $breakdown['platform_fee_usd'];
@@ -443,6 +449,7 @@ class BelievePointController extends Controller
                 'source' => 'manual',
                 'payment_rail' => $feeRail,
                 'payment_method' => $paymentMethod,
+                'is_trusted_instrument' => $isTrustedCard,
             ]);
 
             $amountInCents = (int) round($checkoutTotalUsd * 100);
@@ -671,7 +678,7 @@ class BelievePointController extends Controller
                         $rp = round((float) $purchase->reward_points_awarded, 2);
                         $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
                     }
-                    if (! $purchase->points_released && BelievePointsPurchaseSettingsService::cardHoldHours() > 0) {
+                    if (! $purchase->points_released) {
                         $message .= ' Your BP will become available after the configured hold period.';
                     }
 

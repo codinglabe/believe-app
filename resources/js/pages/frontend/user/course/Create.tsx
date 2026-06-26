@@ -33,6 +33,11 @@ import type { ConnectionHubListingLockType } from "@/lib/connection-hub-hero-hre
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
+import {
+  defaultEventTypeIdForHub,
+  defaultHubTypeForCreate,
+  eventTypeCatalogForHub,
+} from "@/lib/event-type-catalog"
 
 interface EventType {
   id: number
@@ -54,16 +59,6 @@ interface AdminCoursesCreateProps extends InertiaPageProps {
 
 type CourseCreatePageProps = AdminCoursesCreateProps & { auth: { user: User } }
 
-function defaultEventTypeIdForHub(
-  hub: ConnectionHubType,
-  companionEventTypes: EventType[],
-  eventTypes: EventType[],
-): string {
-  const catalog = hub === "companion" ? companionEventTypes : eventTypes
-  const first = catalog[0]?.id ?? eventTypes[0]?.id ?? companionEventTypes[0]?.id
-  return first != null ? String(first) : ""
-}
-
 export default function NonprofitCoursesCreate() {
   const {
     eventTypes,
@@ -77,7 +72,7 @@ export default function NonprofitCoursesCreate() {
   } = usePage<CourseCreatePageProps>().props
 
   const hubTypeLocked = lockedHubListingType ?? null
-  const initialHubType = (hubTypeLocked ?? "companion") as ConnectionHubType
+  const initialHubType = defaultHubTypeForCreate(hubTypeLocked, companionEventTypes)
 
   const [currentTab, setCurrentTab] = useState("basics")
   const [tabErrors, setTabErrors] = useState<Record<string, boolean>>({})
@@ -120,10 +115,10 @@ export default function NonprofitCoursesCreate() {
     tax_ack_auto_calculate: false,
   })
 
-  const topicCatalog = useMemo(() => {
-    if (data.type === "companion") return companionEventTypes
-    return eventTypes
-  }, [data.type, companionEventTypes, eventTypes])
+  const topicCatalog = useMemo(
+    () => eventTypeCatalogForHub(data.type, companionEventTypes, eventTypes),
+    [data.type, companionEventTypes, eventTypes],
+  )
 
   useEffect(() => {
     const ids = new Set(topicCatalog.map((t) => t.id.toString()))
@@ -407,6 +402,7 @@ export default function NonprofitCoursesCreate() {
                     </div>
 
                     <EventTypeTopicFields
+                      key={data.type}
                       eventTypes={topicCatalog}
                       eventTypeId={data.event_type_id}
                       onEventTypeIdChange={(value) => setData("event_type_id", value)}

@@ -74,6 +74,9 @@ class BelievePointController extends BaseController
             'free_brp_award' => ['required', 'numeric', 'min:0', 'max:10000'],
             'prime_brp_award' => ['required', 'numeric', 'min:0', 'max:10000'],
             'card_hold_hours' => ['required', 'integer', 'min:0', 'max:720'],
+            'ach_hold_hours' => ['required', 'integer', 'min:0', 'max:720'],
+            'supporter_pays_processing_fee' => ['sometimes', 'boolean'],
+            'supporter_pays_platform_fee' => ['sometimes', 'boolean'],
             'stripe_card_enabled' => 'sometimes|boolean',
             'stripe_ach_enabled' => 'sometimes|boolean',
             'stripe_venmo_enabled' => 'sometimes|boolean',
@@ -102,6 +105,9 @@ class BelievePointController extends BaseController
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_AWARD, $request->input('free_brp_award'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_AWARD, $request->input('prime_brp_award'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, $request->input('card_hold_hours'), 'integer');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_HOLD_HOURS, $request->input('ach_hold_hours'), 'integer');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PROCESSING_FEE, $request->boolean('supporter_pays_processing_fee'), 'boolean');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PLATFORM_FEE, $request->boolean('supporter_pays_platform_fee'), 'boolean');
 
         $payload = [
             'stripe_card_enabled' => $request->boolean('stripe_card_enabled'),

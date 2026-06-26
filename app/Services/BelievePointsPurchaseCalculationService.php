@@ -9,38 +9,76 @@ use App\Models\User;
  */
 final class BelievePointsPurchaseCalculationService
 {
+    /**
+     * BIU platform fee. Charged to the supporter only when the
+     * "Supporter Pays Platform Fee" admin toggle is enabled.
+     */
     public static function platformFeeUsd(float $bpAmountUsd): float
     {
+        if (! BelievePointsPurchaseSettingsService::supporterPaysPlatformFee()) {
+            return 0.0;
+        }
+
         $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
         $percent = BelievePointsPurchaseSettingsService::platformFeePercent();
 
         return round($bpAmountUsd * ($percent / 100), 2);
     }
 
-    public static function processingFeeUsd(float $bpAmountUsd): float
+    /**
+     * Stripe payment processing fee, computed as a gross-up over the amount BIU must
+     * net ($bp + platform fee) so the full BP value is funded in the Master Reserve.
+     * Charged to the supporter only when "Supporter Pays Processing Fee" is enabled.
+     */
+    public static function processingFeeUsd(float $netToFundUsd, string $rail = 'card'): float
     {
-        $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
-        $percent = BelievePointsPurchaseSettingsService::processingFeePercent();
+        if (! BelievePointsPurchaseSettingsService::supporterPaysProcessingFee()) {
+            return 0.0;
+        }
 
-        return round($bpAmountUsd * ($percent / 100), 2);
+        $net = round(max(0, $netToFundUsd), 2);
+        if ($net <= 0) {
+            return 0.0;
+        }
+
+        $gross = in_array($rail, ['bank', 'ach'], true)
+            ? StripeProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($net)
+            : StripeProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($net);
+
+        return round(max(0, $gross - $net), 2);
     }
 
     /**
-     * Flat Believe Reward Points awarded per purchase, based on the buyer's
-     * supporter membership tier (Free vs Prime) — independent of amount or rail.
+     * Believe Reward Points earned for the purchase: per-$1 rate (based on the buyer's
+     * Free/Prime membership tier) multiplied by the BP dollar amount.
      */
-    public static function brpEarned(?User $user = null): float
+    public static function brpEarned(float $bpAmountUsd, ?User $user = null): float
     {
-        return round(BelievePointsPurchaseSettingsService::brpAwardForUser($user), 2);
+        $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
+        $perDollar = BelievePointsPurchaseSettingsService::brpAwardForUser($user);
+
+        return round($bpAmountUsd * $perDollar, 2);
     }
 
-    public static function bpAvailabilityLabel(string $rail): string
+    public static function bpAvailabilityLabel(string $rail, bool $isTrustedCard = false): string
     {
         if (in_array($rail, ['bank', 'ach'], true)) {
-            return 'After ACH settlement';
+            $hours = BelievePointsPurchaseSettingsService::achHoldHours();
+
+            if ($hours === 0) {
+                return 'After ACH settlement';
+            }
+
+            return $hours === 1
+                ? 'After ACH settlement (plus 1-hour hold)'
+                : "After ACH settlement (plus {$hours}-hour hold)";
         }
 
-        $hours = BelievePointsPurchaseSettingsService::cardHoldHours();
+        if ($isTrustedCard) {
+            return 'Available immediately';
+        }
+
+        $hours = BelievePointsPurchaseSettingsService::newCardHoldHours();
 
         if ($hours === 0) {
             return 'Available immediately';
@@ -62,12 +100,13 @@ final class BelievePointsPurchaseCalculationService
      *     rail: string
      * }
      */
-    public static function checkoutBreakdown(float $bpAmountUsd, string $rail, ?User $user = null): array
+    public static function checkoutBreakdown(float $bpAmountUsd, string $rail, ?User $user = null, bool $isTrustedCard = false): array
     {
         $rail = in_array($rail, ['bank', 'ach'], true) ? 'bank' : 'card';
         $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
         $platformFee = self::platformFeeUsd($bpAmountUsd);
-        $processingFee = self::processingFeeUsd($bpAmountUsd);
+        $netToFund = round($bpAmountUsd + $platformFee, 2);
+        $processingFee = self::processingFeeUsd($netToFund, $rail);
         $checkoutTotal = round($bpAmountUsd + $platformFee + $processingFee, 2);
 
         return [
@@ -75,8 +114,8 @@ final class BelievePointsPurchaseCalculationService
             'platform_fee_usd' => $platformFee,
             'processing_fee_usd' => $processingFee,
             'checkout_total_usd' => $checkoutTotal,
-            'brp_earned' => self::brpEarned($user),
-            'bp_availability' => self::bpAvailabilityLabel($rail),
+            'brp_earned' => self::brpEarned($bpAmountUsd, $user),
+            'bp_availability' => self::bpAvailabilityLabel($rail, $isTrustedCard),
             'rail' => $rail,
         ];
     }
@@ -99,12 +138,16 @@ final class BelievePointsPurchaseCalculationService
      *     free_brp_award: float,
      *     prime_brp_award: float,
      *     brp_award: float,
-     *     card_hold_hours: int
+     *     card_hold_hours: int,
+     *     new_card_hold_hours: int,
+     *     ach_hold_hours: int,
+     *     supporter_pays_processing_fee: bool,
+     *     supporter_pays_platform_fee: bool
      * }
      */
-    public static function feePreviewPayload(float $bpAmountUsd, string $rail, ?User $user = null): array
+    public static function feePreviewPayload(float $bpAmountUsd, string $rail, ?User $user = null, bool $isTrustedCard = false): array
     {
-        $breakdown = self::checkoutBreakdown($bpAmountUsd, $rail, $user);
+        $breakdown = self::checkoutBreakdown($bpAmountUsd, $rail, $user, $isTrustedCard);
         $checkoutTotal = $breakdown['checkout_total_usd'];
 
         return [
@@ -125,6 +168,10 @@ final class BelievePointsPurchaseCalculationService
             'prime_brp_award' => BelievePointsPurchaseSettingsService::primeBrpAward(),
             'brp_award' => BelievePointsPurchaseSettingsService::brpAwardForUser($user),
             'card_hold_hours' => BelievePointsPurchaseSettingsService::cardHoldHours(),
+            'new_card_hold_hours' => BelievePointsPurchaseSettingsService::newCardHoldHours(),
+            'ach_hold_hours' => BelievePointsPurchaseSettingsService::achHoldHours(),
+            'supporter_pays_processing_fee' => BelievePointsPurchaseSettingsService::supporterPaysProcessingFee(),
+            'supporter_pays_platform_fee' => BelievePointsPurchaseSettingsService::supporterPaysPlatformFee(),
         ];
     }
 }

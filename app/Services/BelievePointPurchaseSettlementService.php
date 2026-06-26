@@ -14,7 +14,7 @@ class BelievePointPurchaseSettlementService
 {
     public static function brpEarnedForPurchase(BelievePointPurchase $purchase): float
     {
-        return BelievePointsPurchaseCalculationService::brpEarned($purchase->user);
+        return BelievePointsPurchaseCalculationService::brpEarned((float) $purchase->amount, $purchase->user);
     }
 
     public static function settleCheckoutPurchase(int $purchaseId, string $paymentIntentId): bool
@@ -40,10 +40,16 @@ class BelievePointPurchaseSettlementService
         $rail = ($purchase->payment_rail ?? 'card') === 'bank' ? 'bank' : 'card';
         $points = (float) $purchase->points;
         $isBank = $rail === 'bank';
-        $cardHoldHours = BelievePointsPurchaseSettingsService::cardHoldHours();
-        $instantCard = ! $isBank && $cardHoldHours === 0;
+        $isTrustedCard = (bool) $purchase->is_trusted_instrument;
+        $newCardHoldHours = BelievePointsPurchaseSettingsService::newCardHoldHours();
+        $achHoldHours = BelievePointsPurchaseSettingsService::achHoldHours();
 
-        if ($instantCard) {
+        // Trusted cards are available immediately. New cards are held for the configured
+        // security period. ACH BP is held for the configured ACH hold period after settlement.
+        $holdHours = $isBank ? $achHoldHours : ($isTrustedCard ? 0 : $newCardHoldHours);
+        $instant = $holdHours === 0;
+
+        if ($instant) {
             $user->addBelievePoints($points);
         } else {
             $user->addProcessingBelievePoints($points);
@@ -64,24 +70,18 @@ class BelievePointPurchaseSettlementService
             $rewardAwarded = $rp;
         }
 
-        $availableAt = $isBank
-            ? now()
-            : ($instantCard ? now() : now()->addHours($cardHoldHours));
+        $availableAt = $instant ? now() : now()->addHours($holdHours);
 
         $updates = [
             'status' => 'completed',
             'reward_points_awarded' => $rewardAwarded,
             'points_available_at' => $availableAt,
-            'points_released' => $instantCard,
+            'points_released' => $instant,
         ];
         if ($paymentIntentId) {
             $updates['stripe_payment_intent_id'] = $paymentIntentId;
         }
         $purchase->update($updates);
-
-        if ($isBank) {
-            self::releasePurchasePoints($purchase->fresh());
-        }
 
         Log::info('Believe Points checkout purchase settled', [
             'purchase_id' => $purchase->id,
@@ -333,6 +333,13 @@ class BelievePointPurchaseSettlementService
             'stripe_session_id' => $purchase->stripe_session_id,
             'intended_points' => (float) $purchase->points,
             'points_credited' => $purchase->status === 'completed' ? (float) $purchase->points : null,
+            'bp_status' => $purchase->status === 'completed'
+                ? ($purchase->points_released ? 'available' : 'processing')
+                : null,
+            'brp_awarded' => $purchase->reward_points_awarded !== null
+                ? round((float) $purchase->reward_points_awarded, 2)
+                : null,
+            'is_trusted_instrument' => (bool) $purchase->is_trusted_instrument,
             'base_points_usd' => (float) $purchase->amount,
             'checkout_total_usd' => $purchase->checkout_total !== null ? (float) $purchase->checkout_total : null,
             'processing_fee_estimate' => $feeEst > 0 ? round($feeEst, 2) : null,

@@ -24,6 +24,7 @@ import { usesUnityMeet } from "@/hooks/useCourseUnityMeetPrepare"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
+import { eventTypeCatalogForHub } from "@/lib/event-type-catalog"
 
 interface Topic {
   id: number
@@ -194,10 +195,10 @@ export default function AdminCoursesEdit() {
     tax_ack_auto_calculate: Boolean(course.tax_ack_auto_calculate),
   })
 
-  const topicCatalog = useMemo(() => {
-    if (data.type === "companion") return companionEventTypes
-    return eventTypes
-  }, [data.type, companionEventTypes, eventTypes])
+  const topicCatalog = useMemo(
+    () => eventTypeCatalogForHub(data.type, companionEventTypes, eventTypes),
+    [data.type, companionEventTypes, eventTypes],
+  )
 
   useEffect(() => {
     const ids = new Set(topicCatalog.map((t) => t.id.toString()))
@@ -505,6 +506,7 @@ export default function AdminCoursesEdit() {
                     </div>
 
                     <EventTypeTopicFields
+                      key={data.type}
                       eventTypes={topicCatalog}
                       eventTypeId={data.event_type_id}
                       onEventTypeIdChange={(value) => setData("event_type_id", value)}

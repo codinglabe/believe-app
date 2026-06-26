@@ -549,6 +549,8 @@ Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nod
 Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
+Route::get('/donate/organization-context', [DonationController::class, 'organizationDonationContext'])
+    ->name('donations.organization-context');
 Route::redirect('/donation', '/donate', 302);
 
 Route::get('/explore-by-cause', [ExploreByCauseController::class, 'index'])->name('explore-by-cause.index');

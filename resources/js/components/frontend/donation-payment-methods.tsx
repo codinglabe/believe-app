@@ -2,7 +2,6 @@
 
 import {
   CreditCard,
-  Coins,
   Landmark,
   Lock,
   Smartphone,
@@ -27,7 +26,6 @@ export type DonationPaymentMethodId =
   | "cash_app_pay"
   | "cashapp"
   | "zelle"
-  | "believe_points"
 
 type FeePreviewRail = "card" | "bank"
 
@@ -46,8 +44,6 @@ export interface DonationPaymentMethodsProps {
   availableMethods: Record<string, boolean>
   hasOrgSelected?: boolean
   paymentMethodsLoading?: boolean
-  currentBalance: number
-  canUseBelievePoints: boolean
   amount: number
   feePreviewRail: FeePreviewRail
   onFeePreviewRailChange: (rail: FeePreviewRail) => void
@@ -213,8 +209,6 @@ export function DonationPaymentMethods({
   availableMethods,
   hasOrgSelected = false,
   paymentMethodsLoading = false,
-  currentBalance,
-  canUseBelievePoints,
   amount,
   feePreviewRail,
   onFeePreviewRailChange,
@@ -241,13 +235,10 @@ export function DonationPaymentMethods({
   )
   const selectedConfig = METHOD_CONFIG.find((m) => m.id === paymentMethod)
   const SelectedIcon = selectedConfig?.icon
-  const showBelievePoints =
-    hasOrgSelected && !paymentMethodsLoading && availableMethods.believe_points !== false
   const noMethodsAvailable =
     hasOrgSelected &&
     !paymentMethodsLoading &&
-    visibleMethods.length === 0 &&
-    !showBelievePoints
+    visibleMethods.length === 0
 
   return (
     <div className="space-y-4 p-4 sm:p-5">
@@ -317,47 +308,7 @@ export function DonationPaymentMethods({
         </div>
       )}
 
-      {showBelievePoints && (
-        <section className="space-y-2">
-          <p className="px-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/50">
-            Platform balance
-          </p>
-          <button
-            type="button"
-            onClick={() => canUseBelievePoints && selectMethod("believe_points")}
-            disabled={!canUseBelievePoints}
-            aria-pressed={paymentMethod === "believe_points"}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all sm:px-4 sm:py-3",
-              paymentMethod === "believe_points"
-                ? "border-purple-600 bg-purple-50 text-purple-900 shadow-sm ring-2 ring-purple-600/20 dark:border-purple-500 dark:bg-purple-950/50 dark:text-white"
-                : "border-purple-100/80 bg-white/70 hover:border-purple-300 dark:border-purple-800/30 dark:bg-white/[0.04] dark:text-white",
-              !canUseBelievePoints && "cursor-not-allowed opacity-60",
-            )}
-          >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-600 to-blue-600">
-              <Coins className="h-4 w-4 text-white" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">
-                {currentBalance.toLocaleString()} Believe Points
-              </p>
-              <p className="text-xs text-slate-600/80 dark:text-white/55">
-                {canUseBelievePoints
-                  ? "Use your BP balance — no card needed"
-                  : "Insufficient balance for this amount"}
-              </p>
-            </div>
-            {paymentMethod === "believe_points" && (
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 text-white">
-                <Check className="h-3 w-3" strokeWidth={3} />
-              </span>
-            )}
-          </button>
-        </section>
-      )}
-
-      {hasOrgSelected && !paymentMethodsLoading && selectedConfig && SelectedIcon && paymentMethod !== "believe_points" && (
+      {hasOrgSelected && !paymentMethodsLoading && selectedConfig && SelectedIcon && (
         <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 dark:border-white/10 dark:bg-white/[0.03] sm:p-4">
           <div className="flex items-start gap-2.5">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-white/10">
