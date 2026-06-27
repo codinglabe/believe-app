@@ -178,6 +178,18 @@ export async function ensurePeerAudioTransceiver(
   }
 
   if (negotiated) {
+    const idleSender = pc.getSenders().find((sender) => sender.track === null)
+    if (idleSender) {
+      await idleSender.replaceTrack(track)
+      return true
+    }
+
+    const firstTransceiver = pc.getTransceivers()[0]
+    if (firstTransceiver) {
+      await firstTransceiver.sender.replaceTrack(track)
+      return true
+    }
+
     return false
   }
 

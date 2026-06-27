@@ -29,6 +29,10 @@ class WebRtcIceService
 
             if ($this->turnEntryCount($merged) === 0) {
                 Log::warning('WebRTC ICE has no TURN servers — cross-NAT audio may fail. Set WEBRTC_TURN_URL on the server.');
+                $merged = array_values(array_filter(
+                    array_merge($merged, $this->turnOpenRelayStaticFallback()),
+                    fn ($entry) => is_array($entry) && ! empty($entry['urls']),
+                ));
             }
 
             return $merged;
