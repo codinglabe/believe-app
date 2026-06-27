@@ -26,6 +26,7 @@ import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnity
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
+import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 import { useStableCallback } from "@/hooks/useStableCallback"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
@@ -475,18 +476,34 @@ export default function UnityCallShow({
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
       if (payload.reason === "accepted") {
+        registerSession({
+          call: payload.call,
+          caller: payload.caller,
+          participants: payload.participants,
+          isCaller,
+          isGroupCall,
+          participantStatus:
+            payload.participants.find((participant) => participant.userId === authUserId)?.status ??
+            participantStatus,
+          iceServers,
+          authUserId,
+        })
         updateSession({
           call: payload.call,
           participants: payload.participants,
         })
+        dispatchUnityCallStatus(payload)
         unlockRemotePlayback()
-        if (payload.call.answeredAt) {
-          setCall((current) => ({ ...current, answeredAt: payload.call.answeredAt }))
-        }
         return
       }
 
       if (payload.reason === "callee_ringing") {
+        dispatchUnityCallStatus(payload)
+        return
+      }
+
+      if (payload.reason === "ringing") {
+        dispatchUnityCallStatus(payload)
         return
       }
 
@@ -513,10 +530,23 @@ export default function UnityCallShow({
         }
       }
     },
-    [authUserId, call.id, exitCallScreen, isCaller, unlockRemotePlayback, updateSession],
+    [authUserId, call.id, exitCallScreen, iceServers, isCaller, isGroupCall, participantStatus, registerSession, unlockRemotePlayback, updateSession],
   )
 
   const onStatus = useStableCallback(handleCallTerminated)
+
+  const shouldSyncCallStatus =
+    isCaller &&
+    !ending &&
+    !isTerminalCallStatus &&
+    (activeCall.status === "ringing" ||
+      (activeCall.status === "accepted" && acceptedCallees.length === 0))
+
+  useUnityCallStatusSync({
+    callId: call.id,
+    enabled: shouldSyncCallStatus,
+    onStatus: onStatus,
+  })
 
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId], "private")
 
