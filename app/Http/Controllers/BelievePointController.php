@@ -50,7 +50,7 @@ class BelievePointController extends Controller
             return redirect()->route('dashboard')->with('error', 'Believe Points purchases are currently disabled.');
         }
 
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         // Release any Processing BP whose hold period has ended (also runs on schedule).
@@ -195,7 +195,7 @@ class BelievePointController extends Controller
             return response()->json(['error' => 'Believe Points purchases are currently disabled.'], 400);
         }
 
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         $validated = $request->validate([
@@ -230,7 +230,7 @@ class BelievePointController extends Controller
      */
     private function purchaseWithStripeCheckout(User $user, array $validated, string $paymentMethod): RedirectResponse|\Symfony\Component\HttpFoundation\Response
     {
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         BelievePointsPaymentMethodResolver::assertMethodAllowed($paymentMethod);
@@ -402,7 +402,7 @@ class BelievePointController extends Controller
      */
     private function purchaseWithSavedPaymentMethod(User $user, array $validated): RedirectResponse|\Symfony\Component\HttpFoundation\Response
     {
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         $pmId = (string) $validated['saved_payment_method_id'];
@@ -1152,7 +1152,7 @@ class BelievePointController extends Controller
                 ->with('error', 'Believe Points purchases are currently disabled.');
         }
 
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         $enabled = $request->boolean('enabled');

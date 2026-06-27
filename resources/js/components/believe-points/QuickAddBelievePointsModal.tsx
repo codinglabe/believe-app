@@ -38,7 +38,7 @@ export interface BelievePointsFeePreview {
 }
 
 interface PurchaseSettings {
-  /** BRP earned per $1 of BP for the current buyer's membership tier. */
+  /** BRP earned per qualifying BP purchase for the current buyer's membership tier. */
   brp_award: number
   card_hold_hours: number
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AdminSetting;
 use App\Models\User;
 
 /**
@@ -49,15 +50,19 @@ final class BelievePointsPurchaseCalculationService
     }
 
     /**
-     * Believe Reward Points earned for the purchase: per-$1 rate (based on the buyer's
-     * Free/Prime membership tier) multiplied by the BP dollar amount.
+     * Believe Reward Points earned for a qualifying purchase: a flat per-transaction
+     * award based on the buyer's Free/Prime membership tier (minimum purchase applies).
      */
     public static function brpEarned(float $bpAmountUsd, ?User $user = null): float
     {
         $bpAmountUsd = round(max(0, $bpAmountUsd), 2);
-        $perDollar = BelievePointsPurchaseSettingsService::brpAwardForUser($user);
+        $minPurchase = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
 
-        return round($bpAmountUsd * $perDollar, 2);
+        if ($bpAmountUsd < $minPurchase) {
+            return 0.0;
+        }
+
+        return round(BelievePointsPurchaseSettingsService::brpAwardForUser($user), 2);
     }
 
     public static function bpAvailabilityLabel(string $rail, bool $isTrustedCard = false): string

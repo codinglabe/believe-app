@@ -442,7 +442,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                         "h-12 text-lg pl-10",
                         errors.min_purchase_amount && "border-red-500 focus-visible:ring-red-500"
                       )}
-                      placeholder="1.00"
+                      placeholder="10.00"
                       disabled={isSubmitting}
                     />
                   </div>
@@ -494,7 +494,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                 <div>
                   <h3 className="text-base font-semibold">Purchase Rewards &amp; Fees</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Configure BRP value, platform fee, the BRP reward per $1 of BP by membership tier, who pays the fees, and the card/ACH hold periods for the Add Believe Points purchase flow.
+                    Configure BRP value, platform fee, the flat BRP reward per purchase by membership tier, who pays the fees, and the card/ACH hold periods for the Add Believe Points purchase flow.
                   </p>
                 </div>
 
@@ -568,7 +568,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="free_brp_award">Free Member BRP per $1</Label>
+                    <Label htmlFor="free_brp_award">Free Member BRP per Transaction</Label>
                     <Input
                       id="free_brp_award"
                       type="text"
@@ -578,11 +578,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.free_brp_award && <p className="text-sm text-red-600">{errors.free_brp_award}</p>}
-                    <p className="text-xs text-muted-foreground">BRP earned per $1 of BP for Free (non-Prime) supporters. Default: 5 BRP per $1.</p>
+                    <p className="text-xs text-muted-foreground">BRP earned per qualifying BP purchase for Free (non-Prime) supporters. Default: 5 BRP per transaction.</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="prime_brp_award">Prime / Org BRP per $1</Label>
+                    <Label htmlFor="prime_brp_award">Prime / Org BRP per Transaction</Label>
                     <Input
                       id="prime_brp_award"
                       type="text"
@@ -592,7 +592,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.prime_brp_award && <p className="text-sm text-red-600">{errors.prime_brp_award}</p>}
-                    <p className="text-xs text-muted-foreground">BRP earned per $1 of BP for Prime supporters. Default: 10 BRP per $1.</p>
+                    <p className="text-xs text-muted-foreground">BRP earned per qualifying BP purchase for Prime supporters. Default: 10 BRP per transaction.</p>
                   </div>
 
                   <div className="space-y-2 sm:col-span-2">

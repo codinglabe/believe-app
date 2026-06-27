@@ -36,6 +36,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PLATFORM_FEE, '1', 'boolean');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_SETTLEMENT_BUSINESS_DAYS, 1, 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_SETTLEMENT_BUSINESS_DAYS, 3, 'integer');
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
 
         StripeProcessingFeeEstimator::forgetRatesCache();
     }
@@ -71,14 +72,18 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::processingFeeUsd(101, 'card'));
     }
 
-    public function test_brp_earned_scales_per_dollar_for_free_supporters(): void
+    public function test_brp_earned_is_flat_per_transaction_for_free_supporters(): void
     {
-        $this->assertSame(500.0, BelievePointsPurchaseCalculationService::brpEarned(100));
-        $this->assertSame(250.0, BelievePointsPurchaseCalculationService::brpEarned(50, null));
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+
+        $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned(10));
+        $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned(100));
+        $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned(50, null));
+        $this->assertSame(0.0, BelievePointsPurchaseCalculationService::brpEarned(9.99));
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::brpEarned(0));
     }
 
-    public function test_brp_award_settings_expose_free_and_prime_per_dollar_rates(): void
+    public function test_brp_award_settings_expose_free_and_prime_per_transaction_amounts(): void
     {
         $this->assertSame(5.0, BelievePointsPurchaseSettingsService::freeBrpAward());
         $this->assertSame(10.0, BelievePointsPurchaseSettingsService::primeBrpAward());
@@ -87,6 +92,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
 
     public function test_card_checkout_breakdown_includes_platform_fee_and_processing_gross_up(): void
     {
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+
         $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown(100, 'card');
 
         $expectedProcessing = round(
@@ -101,7 +108,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
             round($breakdown['bp_amount_usd'] + $breakdown['platform_fee_usd'] + $breakdown['processing_fee_usd'], 2),
             $breakdown['checkout_total_usd']
         );
-        $this->assertSame(500.0, $breakdown['brp_earned']);
+        $this->assertSame(5.0, $breakdown['brp_earned']);
         $this->assertStringContainsString('Processing BP', $breakdown['bp_availability']);
         $this->assertStringContainsString('24-hour security hold', $breakdown['bp_availability']);
     }
@@ -117,7 +124,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
     {
         $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown(100, 'bank');
 
-        $this->assertSame(500.0, $breakdown['brp_earned']);
+        $this->assertSame(5.0, $breakdown['brp_earned']);
         $this->assertStringContainsString('Processing BP', $breakdown['bp_availability']);
         $this->assertStringContainsString('3 business days', $breakdown['bp_availability']);
     }
@@ -133,6 +140,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
 
     public function test_fee_preview_payload_exposes_configured_settings(): void
     {
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+
         $preview = BelievePointsPurchaseCalculationService::feePreviewPayload(100, 'card');
 
         $this->assertSame(0.005, $preview['brp_value']);
@@ -147,6 +156,6 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertTrue($preview['supporter_pays_platform_fee']);
         $this->assertSame(1, $preview['card_settlement_business_days']);
         $this->assertSame(3, $preview['ach_settlement_business_days']);
-        $this->assertSame(500.0, $preview['brp_earned']);
+        $this->assertSame(5.0, $preview['brp_earned']);
     }
 }

@@ -23,7 +23,7 @@ class BelievePointController extends BaseController
         $this->authorizeRole($request, 'admin');
 
         $isEnabled = (bool) AdminSetting::get('believe_points_enabled', true);
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         $totalPurchases = BelievePointPurchase::where('status', 'completed')->count();
