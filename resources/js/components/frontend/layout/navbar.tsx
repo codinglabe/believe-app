@@ -69,6 +69,7 @@ import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
 import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
+import { PointsBalanceSummary } from "@/components/frontend/layout/points-balance-summary"
 import {
   fetchWalletBalance,
   pickWalletBalance,
@@ -97,6 +98,10 @@ interface SharedData extends Record<string, unknown> {
       balance?: string // Added wallet_balance
       reward_points?: number // Added reward_points
       believe_points?: number // Added believe_points
+      /** Believe points still settling (funding in progress). */
+      processing_believe_points?: number
+      /** Total believe points (available + processing). */
+      believe_points_total?: number
       /** Gifted bucket (retail gift cards, etc.); purchased balance is `believe_points`. */
       gifted_believe_points?: number
       role?: string // Ensure role is also present
@@ -566,62 +571,9 @@ export default function Navbar() {
                                               <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                           </Button>
                                       </DropdownMenuTrigger>
-                                      <DropdownMenuContent className="w-64" align="end" forceMount>
-                                          <div className="p-3 space-y-3">
-                                              {/* Reward Points */}
-                                              {auth?.user?.reward_points !== undefined && (
-                                                  <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
-                                                      <div className="flex items-center gap-2 min-w-0">
-                                                          <div className="h-8 w-8 shrink-0 rounded-full bg-blue-500 flex items-center justify-center">
-                                                              <Gift className="h-4 w-4 text-white" />
-                                                          </div>
-                                                          <div className="min-w-0">
-                                                              <p className="text-xs text-muted-foreground">Reward Points</p>
-                                                              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                                                                  {(auth.user.reward_points || 0).toLocaleString()}
-                                                              </p>
-                                                          </div>
-                                                      </div>
-                                                      <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
-                                                          Earned
-                                                      </span>
-                                                  </div>
-                                              )}
-
-                                              {/* Believe Points — tap to buy / manage */}
-                                              {auth?.user?.believe_points !== undefined && (
-                                                  <Link
-                                                      href={route("believe-points.index")}
-                                                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600 hover:shadow-sm transition-all"
-                                                  >
-                                                      <div className="flex items-center gap-2 min-w-0">
-                                                          <div className="h-8 w-8 shrink-0 rounded-full bg-purple-500 flex items-center justify-center">
-                                                              <Sparkles className="h-4 w-4 text-white" />
-                                                          </div>
-                                                          <div className="min-w-0">
-                                                              <p className="text-xs text-muted-foreground">Believe Points</p>
-                                                              <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-                                                                  {(auth.user.believe_points || 0).toLocaleString(undefined, {
-                                                                      minimumFractionDigits: 2,
-                                                                      maximumFractionDigits: 2,
-                                                                  })}
-                                                              </p>
-                                                              <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                                                                  <Gift className="h-3 w-3 shrink-0" aria-hidden />
-                                                                  {(Number(auth.user.gifted_believe_points) || 0).toLocaleString(undefined, {
-                                                                      minimumFractionDigits: 2,
-                                                                      maximumFractionDigits: 2,
-                                                                  })}{" "}
-                                                                  Gifted
-                                                              </p>
-                                                          </div>
-                                                      </div>
-                                                      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
-                                                          Buy
-                                                          <ChevronRight className="h-4 w-4" />
-                                                      </span>
-                                                  </Link>
-                                              )}
+                                      <DropdownMenuContent className="w-[22rem] max-w-[92vw]" align="end" forceMount>
+                                          <div className="p-3">
+                                              <PointsBalanceSummary user={auth.user} />
                                           </div>
                                       </DropdownMenuContent>
                                   </DropdownMenu>
@@ -778,49 +730,9 @@ export default function Navbar() {
                                         <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                       </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent className="w-64" align="end" forceMount>
-                                      <div className="space-y-3 p-3">
-                                        {auth?.user?.reward_points !== undefined && (
-                                          <div className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-2 dark:border-blue-800 dark:from-blue-950/20 dark:to-indigo-950/20">
-                                            <div className="flex min-w-0 items-center gap-2">
-                                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500">
-                                                <Gift className="h-4 w-4 text-white" />
-                                              </div>
-                                              <div className="min-w-0">
-                                                <p className="text-muted-foreground text-xs">Reward Points</p>
-                                                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                                                  {(auth.user.reward_points || 0).toLocaleString()}
-                                                </p>
-                                              </div>
-                                            </div>
-                                            <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">Earned</span>
-                                          </div>
-                                        )}
-                                        {auth?.user?.believe_points !== undefined && (
-                                          <Link
-                                            href={route("believe-points.index")}
-                                            className="flex items-center justify-between gap-2 rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 p-2 transition-all hover:border-purple-400 hover:shadow-sm dark:border-purple-800 dark:from-purple-950/20 dark:to-pink-950/20 dark:hover:border-purple-600"
-                                          >
-                                            <div className="flex min-w-0 items-center gap-2">
-                                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-500">
-                                                <Sparkles className="h-4 w-4 text-white" />
-                                              </div>
-                                              <div className="min-w-0">
-                                                <p className="text-muted-foreground text-xs">Believe Points</p>
-                                                <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-                                                  {(auth.user.believe_points || 0).toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                  })}
-                                                </p>
-                                              </div>
-                                            </div>
-                                            <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
-                                              Buy
-                                              <ChevronRight className="h-4 w-4" />
-                                            </span>
-                                          </Link>
-                                        )}
+                                    <DropdownMenuContent className="w-[22rem] max-w-[92vw]" align="end" forceMount>
+                                      <div className="p-3">
+                                        <PointsBalanceSummary user={auth.user} />
                                       </div>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
@@ -1086,61 +998,8 @@ export default function Navbar() {
 
                                           {/* Points Display for Mobile - Shows Reward Points and Believe Points (hidden for admin) */}
                                           {auth?.user?.role !== 'admin' && (auth?.user?.reward_points !== undefined || auth?.user?.believe_points !== undefined) && (
-                                              <div className="px-3 py-2 space-y-2">
-                                                  {/* Reward Points */}
-                                                  {auth?.user?.reward_points !== undefined && (
-                                                      <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
-                                                          <div className="flex items-center gap-2 min-w-0">
-                                                              <div className="h-8 w-8 shrink-0 rounded-full bg-blue-500 flex items-center justify-center">
-                                                                  <Gift className="h-4 w-4 text-white" />
-                                                              </div>
-                                                              <div className="min-w-0">
-                                                                  <p className="text-xs text-muted-foreground">Reward Points</p>
-                                                                  <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                                                                      {(auth.user.reward_points || 0).toLocaleString()}
-                                                                  </p>
-                                                              </div>
-                                                          </div>
-                                                          <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
-                                                              Earned
-                                                          </span>
-                                                      </div>
-                                                  )}
-
-                                                  {/* Believe Points — tap to buy / manage */}
-                                                  {auth?.user?.believe_points !== undefined && (
-                                                      <Link
-                                                          href={route("believe-points.index")}
-                                                          className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600"
-                                                      >
-                                                          <div className="flex items-center gap-2 min-w-0">
-                                                              <div className="h-8 w-8 shrink-0 rounded-full bg-purple-500 flex items-center justify-center">
-                                                                  <Sparkles className="h-4 w-4 text-white" />
-                                                              </div>
-                                                              <div className="min-w-0">
-                                                                  <p className="text-xs text-muted-foreground">Believe Points</p>
-                                                                  <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-                                                                      {(auth.user.believe_points || 0).toLocaleString(undefined, {
-                                                                          minimumFractionDigits: 2,
-                                                                          maximumFractionDigits: 2,
-                                                                      })}
-                                                                  </p>
-                                                                  <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                                                                      <Gift className="h-3 w-3 shrink-0" aria-hidden />
-                                                                      {(Number(auth.user.gifted_believe_points) || 0).toLocaleString(undefined, {
-                                                                          minimumFractionDigits: 2,
-                                                                          maximumFractionDigits: 2,
-                                                                      })}{" "}
-                                                                      Gifted
-                                                                  </p>
-                                                              </div>
-                                                          </div>
-                                                          <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
-                                                              Buy
-                                                              <ChevronRight className="h-4 w-4" />
-                                                          </span>
-                                                      </Link>
-                                                  )}
+                                              <div className="px-3 py-2">
+                                                  <PointsBalanceSummary user={auth.user} />
                                               </div>
                                           )}
 
