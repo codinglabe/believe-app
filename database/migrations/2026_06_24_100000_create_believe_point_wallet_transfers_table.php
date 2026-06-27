@@ -20,6 +20,7 @@ return new class extends Migration
             $table->text('failure_message')->nullable();
             $table->json('metadata')->nullable();
             $table->timestamp('completed_at')->nullable();
+            $table->timestamp('retry_until')->nullable();
             $table->timestamps();
 
             $table->index(['user_id', 'status']);

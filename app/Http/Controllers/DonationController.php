@@ -449,6 +449,58 @@ class DonationController extends Controller
     }
 
     /**
+     * JSON context for the organization profile donation popup:
+     * enabled payment methods for the org plus an optional fee preview.
+     * Mirrors the /donate page so the embedded modal stays in sync.
+     */
+    public function organizationDonationContext(Request $request)
+    {
+        $validated = $request->validate([
+            'organization_id' => 'required|integer',
+            'fee_preview_amount' => 'nullable|numeric|min:0.01',
+            'fee_preview_donor_covers' => 'sometimes|boolean',
+            'fee_preview_rail' => 'nullable|in:card,bank',
+        ]);
+
+        $organization = Organization::query()
+            ->where('id', (int) $validated['organization_id'])
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (! $organization) {
+            return response()->json([
+                'methods' => null,
+                'feePreview' => null,
+                'feePreviewCheckoutTotalsByRail' => null,
+            ], 404);
+        }
+
+        $methods = OrganizationPaymentMethodResolver::availableMethodsForOrganization($organization);
+
+        $feePreview = null;
+        $feePreviewCheckoutTotalsByRail = null;
+        if ($request->filled('fee_preview_amount')) {
+            $base = round((float) $validated['fee_preview_amount'], 2);
+            $donorCovers = $request->boolean('fee_preview_donor_covers');
+            $rail = $validated['fee_preview_rail'] ?? 'card';
+            $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
+            $feePreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $donorCovers, $rail);
+            $cardPreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $donorCovers, 'card');
+            $bankPreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $donorCovers, 'bank');
+            $feePreviewCheckoutTotalsByRail = [
+                'card' => $cardPreview['checkout_total_usd'],
+                'bank' => $bankPreview['checkout_total_usd'],
+            ];
+        }
+
+        return response()->json([
+            'methods' => $methods,
+            'feePreview' => $feePreview,
+            'feePreviewCheckoutTotalsByRail' => $feePreviewCheckoutTotalsByRail,
+        ]);
+    }
+
+    /**
      * Payment methods available on /donate for the selected organization.
      *
      * @return array<string, bool>|null

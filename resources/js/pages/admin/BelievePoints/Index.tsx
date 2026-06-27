@@ -80,6 +80,9 @@ interface PageProps {
     free_brp_award: number
     prime_brp_award: number
     card_hold_hours: number
+    ach_hold_hours: number
+    supporter_pays_processing_fee: boolean
+    supporter_pays_platform_fee: boolean
     card_settlement_business_days: number
     ach_settlement_business_days: number
     require_bridge_reserve_confirmation: boolean
@@ -113,6 +116,9 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     free_brp_award: settings.free_brp_award.toString(),
     prime_brp_award: settings.prime_brp_award.toString(),
     card_hold_hours: settings.card_hold_hours.toString(),
+    ach_hold_hours: settings.ach_hold_hours.toString(),
+    supporter_pays_processing_fee: settings.supporter_pays_processing_fee,
+    supporter_pays_platform_fee: settings.supporter_pays_platform_fee,
     card_settlement_business_days: (settings.card_settlement_business_days ?? 1).toString(),
     ach_settlement_business_days: (settings.ach_settlement_business_days ?? 3).toString(),
     require_bridge_reserve_confirmation: settings.require_bridge_reserve_confirmation ?? true,
@@ -199,8 +205,12 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
       newErrors.prime_brp_award = "Prime member BRP award must be zero or greater"
     }
     const holdHours = parseInt(formData.card_hold_hours, 10)
-    if (!formData.card_hold_hours || Number.isNaN(holdHours) || holdHours < 0 || holdHours > 720) {
-      newErrors.card_hold_hours = "Card hold hours must be between 0 and 720"
+    if (formData.card_hold_hours === "" || Number.isNaN(holdHours) || holdHours < 0 || holdHours > 720) {
+      newErrors.card_hold_hours = "New card hold hours must be between 0 and 720"
+    }
+    const achHoldHours = parseInt(formData.ach_hold_hours, 10)
+    if (formData.ach_hold_hours === "" || Number.isNaN(achHoldHours) || achHoldHours < 0 || achHoldHours > 720) {
+      newErrors.ach_hold_hours = "ACH hold hours must be between 0 and 720"
     }
     const cardSettlementDays = parseInt(formData.card_settlement_business_days, 10)
     if (Number.isNaN(cardSettlementDays) || cardSettlementDays < 0 || cardSettlementDays > 30) {
@@ -257,6 +267,9 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         free_brp_award: parseFloat(formData.free_brp_award),
         prime_brp_award: parseFloat(formData.prime_brp_award),
         card_hold_hours: parseInt(formData.card_hold_hours, 10),
+        ach_hold_hours: parseInt(formData.ach_hold_hours, 10),
+        supporter_pays_processing_fee: formData.supporter_pays_processing_fee,
+        supporter_pays_platform_fee: formData.supporter_pays_platform_fee,
         card_settlement_business_days: parseInt(formData.card_settlement_business_days, 10),
         ach_settlement_business_days: parseInt(formData.ach_settlement_business_days, 10),
         require_bridge_reserve_confirmation: formData.require_bridge_reserve_confirmation,
@@ -481,11 +494,37 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                 <div>
                   <h3 className="text-base font-semibold">Purchase Rewards &amp; Fees</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Configure BRP value, platform fee, the flat BRP reward per purchase by membership tier, and the card hold period for the Add Believe Points purchase flow.
+                    Configure BRP value, platform fee, the BRP reward per $1 of BP by membership tier, who pays the fees, and the card/ACH hold periods for the Add Believe Points purchase flow.
                   </p>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center justify-between p-3 border rounded-lg sm:col-span-2">
+                    <div className="min-w-0 pr-4">
+                      <Label htmlFor="supporter_pays_platform_fee" className="text-sm font-medium">Supporter Pays Platform Fee</Label>
+                      <p className="text-xs text-muted-foreground mt-1">When on, the BIU platform fee is added on top of the supporter's BP amount. When off, BIU absorbs it.</p>
+                    </div>
+                    <Switch
+                      id="supporter_pays_platform_fee"
+                      checked={formData.supporter_pays_platform_fee}
+                      disabled={isSubmitting}
+                      onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, supporter_pays_platform_fee: checked }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg sm:col-span-2">
+                    <div className="min-w-0 pr-4">
+                      <Label htmlFor="supporter_pays_processing_fee" className="text-sm font-medium">Supporter Pays Processing Fee</Label>
+                      <p className="text-xs text-muted-foreground mt-1">When on, the Stripe payment processing fee is added on top so BIU receives the full BP value. When off, BIU absorbs it.</p>
+                    </div>
+                    <Switch
+                      id="supporter_pays_processing_fee"
+                      checked={formData.supporter_pays_processing_fee}
+                      disabled={isSubmitting}
+                      onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, supporter_pays_processing_fee: checked }))}
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="brp_value">BRP Value (USD)</Label>
                     <Input
@@ -525,11 +564,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.processing_fee_percent && <p className="text-sm text-red-600">{errors.processing_fee_percent}</p>}
-                    <p className="text-xs text-muted-foreground">Applied to BP purchase amount. Default: 1%</p>
+                    <p className="text-xs text-muted-foreground">Legacy estimate only. The processing fee charged to supporters is now derived from actual Stripe rates so BIU nets the full BP value.</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="free_brp_award">Free Member BRP Reward</Label>
+                    <Label htmlFor="free_brp_award">Free Member BRP per $1</Label>
                     <Input
                       id="free_brp_award"
                       type="text"
@@ -539,11 +578,11 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.free_brp_award && <p className="text-sm text-red-600">{errors.free_brp_award}</p>}
-                    <p className="text-xs text-muted-foreground">Flat BRP per purchase for Free members. Default: 5 BRP</p>
+                    <p className="text-xs text-muted-foreground">BRP earned per $1 of BP for Free (non-Prime) supporters. Default: 5 BRP per $1.</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="prime_brp_award">Prime / Org BRP Reward</Label>
+                    <Label htmlFor="prime_brp_award">Prime / Org BRP per $1</Label>
                     <Input
                       id="prime_brp_award"
                       type="text"
@@ -553,21 +592,39 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.prime_brp_award && <p className="text-sm text-red-600">{errors.prime_brp_award}</p>}
-                    <p className="text-xs text-muted-foreground">Flat BRP per purchase for Prime members. Default: 10 BRP</p>
+                    <p className="text-xs text-muted-foreground">BRP earned per $1 of BP for Prime supporters. Default: 10 BRP per $1.</p>
                   </div>
 
                   <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="card_hold_hours">Card Hold Hours (legacy)</Label>
+                    <Label htmlFor="card_hold_hours">New Card Security Hold (hours)</Label>
                     <Input
                       id="card_hold_hours"
                       type="text"
                       value={formData.card_hold_hours}
                       onChange={(e) => handleChange("card_hold_hours", e.target.value.replace(/[^0-9]/g, ""))}
-                      className={cn("max-w-xs", errors.card_hold_hours && "border-red-500")}
+                      className={cn(errors.card_hold_hours && "border-red-500")}
                       disabled={isSubmitting}
                     />
                     {errors.card_hold_hours && <p className="text-sm text-red-600">{errors.card_hold_hours}</p>}
-                    <p className="text-xs text-muted-foreground">Legacy hold field. BP now uses Processing → Available settlement.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Extra security hold for BP bought with a new card, on top of Stripe settlement. Use 0 for none.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="ach_hold_hours">ACH Extra Hold (hours)</Label>
+                    <Input
+                      id="ach_hold_hours"
+                      type="text"
+                      value={formData.ach_hold_hours}
+                      onChange={(e) => handleChange("ach_hold_hours", e.target.value.replace(/[^0-9]/g, ""))}
+                      className={cn(errors.ach_hold_hours && "border-red-500")}
+                      disabled={isSubmitting}
+                    />
+                    {errors.ach_hold_hours && <p className="text-sm text-red-600">{errors.ach_hold_hours}</p>}
+                    <p className="text-xs text-muted-foreground">
+                      Extra hold after ACH settlement before BP becomes Available. Use 0 to release on settlement.
+                    </p>
                   </div>
 
                   <div className="space-y-2">

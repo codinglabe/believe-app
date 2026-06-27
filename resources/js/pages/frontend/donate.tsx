@@ -20,7 +20,6 @@ import type { ProcessingFeeRates } from "@/types"
 import { Switch } from "@/components/frontend/ui/switch"
 import {
   SavedPaymentMethodSelector,
-  labelForMethod,
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
 import {
@@ -355,9 +354,10 @@ export default function DonatePage({
     return selectedAmount || Number.parseFloat(customAmount) || 0
   }
 
-  const pointsRequired = getCurrentAmount() // 1$ = 1 believe point
+  const pointsRequired = getCurrentAmount()
   const hasEnoughPoints = currentBalance >= pointsRequired
   const canUseBelievePoints = hasEnoughPoints
+
   const givingProgress = givingGoal > 0 ? Math.min(100, (thisYearDonated / givingGoal) * 100) : 0
 
   const selectedCause = useMemo(() => {
@@ -400,7 +400,7 @@ export default function DonatePage({
     if (!methods) return
     if (methods[paymentMethod] === false) {
       const fallback = (
-        ["stripe_card", "stripe_ach", "paypal", "venmo", "venmo_manual", "cash_app_pay", "cashapp", "zelle", "believe_points"] as const
+        ["stripe_card", "stripe_ach", "paypal", "venmo", "venmo_manual", "cash_app_pay", "cashapp", "zelle"] as const
       ).find((m) => methods[m])
       if (fallback) {
         setPaymentMethod(fallback)
@@ -598,11 +598,6 @@ export default function DonatePage({
     }
     return instantCauses[0]
   }, [instantCauses, primaryCauseForDropdown])
-
-  const defaultInstantPaymentLabel = useMemo(() => {
-    const def = savedPaymentMethods.find((m) => m.is_default) ?? savedPaymentMethods[0]
-    return def ? labelForMethod(def) : "New card"
-  }, [savedPaymentMethods])
 
   const handleInstantDonate = (payload: InstantDonatePayload) => {
     setSubmissionError(null)
@@ -822,47 +817,66 @@ export default function DonatePage({
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3"
+              className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 lg:grid-cols-3"
             >
+              {/* Donate Instant — green 3D */}
               <button
                 type="button"
                 onClick={() => {
                   setSubmissionError(null)
                   setDonationMode("instant")
                 }}
-                className="group flex flex-col items-start gap-1 rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600 px-5 py-4 text-left text-white shadow-lg shadow-purple-500/25 transition-all hover:from-purple-700 hover:to-blue-700"
+                className="group relative flex h-full w-full items-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-green-600 to-green-800 px-5 py-5 text-left text-white shadow-xl shadow-emerald-700/40 ring-1 ring-white/15 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-700/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               >
-                <span className="flex items-center gap-2 text-base font-bold">
-                  <Zap className="h-5 w-5 shrink-0" />
-                  Donate Instant
+                <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
+                <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 shadow-inner ring-1 ring-white/40">
+                  <Zap className="h-6 w-6 drop-shadow-sm" />
                 </span>
-                <span className="text-[11px] font-medium text-white/80">
-                  {(defaultInstantCause?.name ?? "Default Organization")} · {defaultInstantPaymentLabel} · Impact Pay: On
+                <span className="relative min-w-0 flex-1">
+                  <span className="block text-base font-bold sm:text-lg">Donate Instant</span>
+                  <span className="mt-0.5 block text-xs text-white/90 sm:text-sm">Quick impact. One click. Make a difference now.</span>
                 </span>
+                <ChevronRight className="relative h-6 w-6 shrink-0 text-white/85 transition-transform group-hover:translate-x-0.5" />
               </button>
+
+              {/* Donate Cash / Points — purple → blue 3D */}
               <button
                 type="button"
                 onClick={() => setDonationMode("cash_points")}
-                className={`flex items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-semibold transition-all ${
-                  donationMode === "cash_points"
-                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
-                    : "border border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:hover:bg-purple-950/30"
-                }`}
+                className={cn(
+                  "group relative flex h-full w-full items-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-purple-600 via-purple-700 to-blue-800 px-5 py-5 text-left text-white shadow-xl shadow-purple-700/40 ring-1 ring-white/15 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-purple-700/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+                  donationMode === "cash_points" && "ring-2 ring-white/70",
+                )}
               >
-                <Coins className="h-5 w-5 shrink-0" />
-                Donate Cash / Points
+                <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
+                <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 shadow-inner ring-1 ring-white/40">
+                  <Coins className="h-6 w-6 drop-shadow-sm" />
+                </span>
+                <span className="relative min-w-0 flex-1">
+                  <span className="block text-base font-bold sm:text-lg">Donate Cash / Points</span>
+                  <span className="mt-0.5 block text-xs text-white/90 sm:text-sm">Give using cash, ACH, or Believe Points (BP).</span>
+                </span>
+                <ChevronRight className="relative h-6 w-6 shrink-0 text-white/85 transition-transform group-hover:translate-x-0.5" />
               </button>
+
+              {/* Donate Non-Cash Asset — dark slate 3D */}
               <button
                 type="button"
                 onClick={() => setDonationMode("non_cash")}
-                className={`flex items-center justify-center gap-2 rounded-2xl px-5 py-4 text-base font-semibold transition-all ${
-                  donationMode === "non_cash"
-                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shadow-purple-500/20"
-                    : "border border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-200 dark:hover:bg-purple-950/30"
-                }`}
+                className={cn(
+                  "group relative flex h-full w-full items-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 via-slate-900 to-black px-5 py-5 text-left text-white shadow-xl shadow-black/50 ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80 md:col-span-2 lg:col-span-1",
+                  donationMode === "non_cash" && "ring-2 ring-purple-400/70",
+                )}
               >
-                <Gift className="h-5 w-5 shrink-0" />
-                Donate Non-Cash Asset
+                <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
+                <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/10 shadow-inner ring-1 ring-white/20">
+                  <Gift className="h-6 w-6 drop-shadow-sm" />
+                </span>
+                <span className="relative min-w-0 flex-1">
+                  <span className="block text-base font-bold sm:text-lg">Donate Non-Cash Asset</span>
+                  <span className="mt-0.5 block text-xs text-white/75 sm:text-sm">Donate stocks, crypto, or other assets.</span>
+                </span>
+                <ChevronRight className="relative h-6 w-6 shrink-0 text-white/75 transition-transform group-hover:translate-x-0.5" />
               </button>
             </motion.div>
           )}
@@ -1232,20 +1246,6 @@ export default function DonatePage({
                 paymentMethodsUrl={paymentMethodsUrl}
                 authUser={Boolean(authUser)}
               />
-              <div className="px-5 pb-5">
-                <Link
-                  href="/believe-points"
-                  className="flex items-center justify-between gap-3 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50/50 text-left text-gray-800 dark:border-gray-600 dark:bg-gray-800/50 dark:hover:bg-blue-950/20 dark:text-white font-medium text-sm transition-all"
-                >
-                  <span className="flex items-center gap-3 min-w-0">
-                    <span className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shrink-0">
-                      <Coins className="h-5 w-5 text-white" />
-                    </span>
-                    <span className="font-semibold">Add Believe Points</span>
-                  </span>
-                  <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/70" />
-                </Link>
-              </div>
             </motion.div>
 
             {/* Card 3: Your Year-to-Date Giving */}
@@ -1325,7 +1325,7 @@ export default function DonatePage({
               size="lg"
               className="w-full max-w-2xl mx-auto flex h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg shadow-blue-500/20 rounded-xl border-0"
               onClick={handleSubmit}
-              disabled={getCurrentAmount() === 0 || !selectedCauseId || isSubmitting || (paymentMethod === 'believe_points' && !hasEnoughPoints)}
+              disabled={getCurrentAmount() === 0 || !selectedCauseId || isSubmitting}
             >
               {isSubmitting ? (
                 <>

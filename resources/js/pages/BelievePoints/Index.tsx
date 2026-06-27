@@ -105,25 +105,33 @@ interface BelievePointsFeePreview {
   prime_brp_award: number
   brp_award: number
   card_hold_hours: number
-  free_brp_reward?: number
-  prime_brp_reward?: number
-  participation_brp_reward?: number
+  new_card_hold_hours?: number
+  ach_hold_hours?: number
+  supporter_pays_processing_fee?: boolean
+  supporter_pays_platform_fee?: boolean
+  card_settlement_business_days?: number
+  ach_settlement_business_days?: number
+  require_bridge_reserve_confirmation?: boolean
 }
 
 interface PurchaseSettings {
   brp_value: number
   platform_fee_percent: number
   processing_fee_percent: number
+  /** BRP earned per $1 of BP for Free (non-Prime) supporters. */
   free_brp_award: number
+  /** BRP earned per $1 of BP for Prime supporters. */
   prime_brp_award: number
-  /** Flat BRP awarded per purchase for the current buyer's membership tier. */
+  /** BRP earned per $1 of BP for the current buyer's membership tier. */
   brp_award: number
   card_hold_hours: number
+  new_card_hold_hours?: number
+  ach_hold_hours?: number
+  supporter_pays_processing_fee?: boolean
+  supporter_pays_platform_fee?: boolean
   card_settlement_business_days?: number
   ach_settlement_business_days?: number
   require_bridge_reserve_confirmation?: boolean
-  free_brp_reward?: number
-  prime_brp_reward?: number
 }
 
 interface WalletTransferSettings {
@@ -294,6 +302,9 @@ export default function BelievePointsIndex({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
+  // Supporter must explicitly approve the displayed total before paying. Reset whenever
+  // the amount, method, or computed total changes so they re-approve the new total.
+  const [totalApproved, setTotalApproved] = useState(false)
   const [arState, setArState] = useState({
     enabled: autoReplenish.enabled,
     threshold:
@@ -513,6 +524,10 @@ export default function BelievePointsIndex({
     amountNum >= minPurchaseAmount &&
     amountNum <= maxPurchaseAmount
 
+  useEffect(() => {
+    setTotalApproved(false)
+  }, [formData.amount, paymentMethod, savedPaymentMethodId, feePreview?.checkout_total_usd])
+
   const handleChange = (value: string) => {
     // Allow only numbers and one decimal point
     const numericValue = value.replace(/[^0-9.]/g, '')
@@ -542,6 +557,9 @@ export default function BelievePointsIndex({
     }
     if (!formData.policyAccepted) {
       newErrors.policyAccepted = 'You must accept the Points Policy to proceed'
+    }
+    if (!totalApproved) {
+      newErrors.totalApproved = 'Please approve the total amount before submitting payment'
     }
 
     setErrors(newErrors)
@@ -851,7 +869,7 @@ export default function BelievePointsIndex({
                   <BpSectionHeader
                     icon={DollarSign}
                     title="Add Believe Points"
-                    description={`Choose a payment method below. You receive 1 BP per $1 USD. Purchased BP credits as Processing BP until settlement. Each purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP.`}
+                    description={`Choose a payment method below. You receive 1 BP per $1 USD. Purchased BP credits as Processing BP until settlement. Each purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP purchased.`}
                   />
                   <Badge variant="secondary" className="w-fit shrink-0 font-normal">
                     Secure checkout · Stripe
@@ -894,9 +912,9 @@ export default function BelievePointsIndex({
                       title="Payment method"
                       description={
                         isAchPayment
-                          ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per purchase. ${achSettlementLabel}.`
+                          ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP. ${achSettlementLabel}.`
                           : isCardPayment
-                            ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per purchase. ${cardSettlementLabel}.`
+                            ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP. ${cardSettlementLabel}.`
                             : isManualMethod(paymentMethod)
                               ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
                               : "Complete checkout with your selected payment provider."
@@ -1000,31 +1018,35 @@ export default function BelievePointsIndex({
                       </div>
                       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                         <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
-                          <span>BP Amount</span>
+                          <span>Believe Points Purchased</span>
                           <span className="font-semibold tabular-nums text-foreground">
                             {formatCurrency(feePreview.bp_amount_usd)}
                           </span>
                         </li>
+                        {(feePreview.supporter_pays_processing_fee ?? feePreview.processing_fee_usd > 0) && (
+                          <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
+                            <span>Processing Fee</span>
+                            <span className="font-semibold tabular-nums text-foreground">
+                              {formatCurrency(feePreview.processing_fee_usd)}
+                            </span>
+                          </li>
+                        )}
+                        {(feePreview.supporter_pays_platform_fee ?? feePreview.platform_fee_usd > 0) && (
+                          <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
+                            <span>Platform Fee ({feePreview.platform_fee_percent}%)</span>
+                            <span className="font-semibold tabular-nums text-foreground">
+                              {formatCurrency(feePreview.platform_fee_usd)}
+                            </span>
+                          </li>
+                        )}
                         <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
-                          <span>Processing Fee ({feePreview.processing_fee_percent}%)</span>
-                          <span className="font-semibold tabular-nums text-foreground">
-                            {formatCurrency(feePreview.processing_fee_usd)}
-                          </span>
-                        </li>
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
-                          <span>Platform Fee ({feePreview.platform_fee_percent}%)</span>
-                          <span className="font-semibold tabular-nums text-foreground">
-                            {formatCurrency(feePreview.platform_fee_usd)}
-                          </span>
-                        </li>
-                        <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
-                          <span className="font-medium text-foreground">Total Charged</span>
+                          <span className="font-medium text-foreground">Total Amount Charged</span>
                           <span className="text-lg font-bold tabular-nums text-foreground">
                             {formatCurrency(feePreview.checkout_total_usd)}
                           </span>
                         </li>
                         <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
-                          <span>BRP Earned</span>
+                          <span>Believe Reward Points (BRP) Earned</span>
                           <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-300">
                             {Math.round(feePreview.brp_earned).toLocaleString("en-US")} BRP
                           </span>
@@ -1050,6 +1072,28 @@ export default function BelievePointsIndex({
                                 : feePreview.card_processing_fee_usd,
                             )}
                           </span>
+                        </p>
+                      )}
+                      <div className="mt-4 flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                        <Checkbox
+                          id="total-approve"
+                          checked={totalApproved}
+                          onCheckedChange={(checked) => {
+                            setTotalApproved(checked === true)
+                            if (errors.totalApproved) {
+                              setErrors({ ...errors, totalApproved: '' })
+                            }
+                          }}
+                          className="mt-0.5 size-5 min-h-5 min-w-5"
+                        />
+                        <Label htmlFor="total-approve" className="cursor-pointer text-sm font-medium text-foreground">
+                          I approve the total of {formatCurrency(feePreview.checkout_total_usd)} charged to my payment method for {formatPoints(feePreview.bp_amount_usd)} BP.
+                        </Label>
+                      </div>
+                      {errors.totalApproved && (
+                        <p className="mt-2 flex items-center gap-1 text-sm text-red-600 dark:text-red-400">
+                          <AlertCircle className="h-4 w-4" />
+                          {errors.totalApproved}
                         </p>
                       )}
                     </div>
@@ -1086,9 +1130,7 @@ export default function BelievePointsIndex({
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                        <span>
-                          Flat {formatPoints(purchaseSettings.brp_award)} BRP reward per purchase ({formatPoints(purchaseSettings.free_brp_award)} Free · {formatPoints(purchaseSettings.prime_brp_award)} Prime/org) · BRP = {formatCurrency(purchaseSettings.brp_value)} each.
-                        </span>
+                        <span>Earn {formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP ({formatPoints(purchaseSettings.free_brp_award)}/$1 Free · {formatPoints(purchaseSettings.prime_brp_award)}/$1 Prime) · BRP = {formatCurrency(purchaseSettings.brp_value)} each.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
@@ -1315,7 +1357,7 @@ export default function BelievePointsIndex({
 
                   <Button
                     type="submit"
-                    disabled={isSubmitting || !formData.amount || !!errors.amount || !formData.policyAccepted}
+                    disabled={isSubmitting || !formData.amount || !!errors.amount || !formData.policyAccepted || (validPurchaseAmount && !totalApproved)}
                     className="h-12 w-full rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-base font-semibold text-white shadow-md hover:from-purple-700 hover:to-blue-700 disabled:opacity-50"
                     size="lg"
                   >

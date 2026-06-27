@@ -2,23 +2,22 @@
 
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { Heart, CreditCard, DollarSign, Info, Check, Coins, Shield, AlertCircle } from "lucide-react"
+import { Heart, CreditCard, DollarSign, Info, Check, Shield, Loader2 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/frontend/ui/radio-group"
-import { Textarea } from "@/components/frontend/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/frontend/ui/dialog"
-import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
 import { router, usePage } from "@inertiajs/react"
 import { useNotification } from "./notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 import {
-  SavedPaymentMethodSelector,
-  type SavedPaymentMethod,
-} from "@/components/account/saved-payment-method-selector"
+  DonationPaymentMethods,
+  type DonationPaymentMethodId,
+} from "@/components/frontend/donation-payment-methods"
+import type { SavedPaymentMethod } from "@/components/account/saved-payment-method-selector"
+import type { ProcessingFeeRates } from "@/types"
 
 interface DonationModalProps {
   isOpen: boolean
@@ -46,50 +45,112 @@ interface DonationModalProps {
   }
 }
 
+type FeePreviewRail = "card" | "bank"
+
+interface FeePreviewFromServer {
+  mode: "donor_covers" | "org_covers"
+  rail?: FeePreviewRail
+  base_gift_usd: number
+  checkout_total_usd: number
+  processing_fee_estimate: number
+  estimated_net_to_org_usd: number
+}
+
 const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
-const DEFAULT_PROCESSING_FEE_RATES = {
+const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
   card_percent: 0.029,
   card_fixed_usd: 0.3,
   ach_percent: 0.008,
   ach_fee_cap_usd: 5,
-} as const
+}
+
+const FALLBACK_METHODS: Record<string, boolean> = {
+  stripe_card: false,
+  stripe_ach: false,
+  venmo: false,
+  venmo_manual: false,
+  cash_app_pay: false,
+  paypal: false,
+  cashapp: false,
+  zelle: false,
+}
+
+/** Normalize a stored image path into a browser-resolvable URL. */
+function resolveImageSrc(src?: string | null): string | undefined {
+  if (!src || typeof src !== "string" || src.trim() === "") return undefined
+  const value = src.trim()
+  if (
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("blob:") ||
+    value.startsWith("data:") ||
+    value.startsWith("/storage/") ||
+    value.startsWith("/")
+  ) {
+    return value
+  }
+  return `/storage/${value}`
+}
+
+const METHOD_ORDER: DonationPaymentMethodId[] = [
+  "stripe_card",
+  "stripe_ach",
+  "paypal",
+  "venmo",
+  "venmo_manual",
+  "cash_app_pay",
+  "cashapp",
+  "zelle",
+]
 
 export default function DonationModal({ isOpen, onClose, organization }: DonationModalProps) {
   const pageProps = usePage().props as any
-  const processingFeeRates = pageProps.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
-  const user = pageProps.auth?.user || null
+  const processingFeeRates: ProcessingFeeRates = pageProps.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
+  const authUser = pageProps.auth?.user || null
   const flash = usePage().props
   const { showNotification } = useNotification()
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
-  const [customAmount, setCustomAmount] = useState("")
-  const [donationType, setDonationType] = useState("one-time")
-  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
-  const [savedPaymentMethodId, setSavedPaymentMethodId] = useState<string | null>(null)
+
   const savedPaymentMethods = (pageProps.savedPaymentMethods ?? []) as SavedPaymentMethod[]
   const paymentMethodsUrl =
     pageProps.paymentMethodsUrl ?? route("user.profile.payment-methods.index")
 
-  // Get user's Believe Points balance
+  // Registered organization id (the one that can actually receive donations).
   const currentBalance =
-    parseFloat(String(user?.donateable_believe_points ?? user?.believe_points ?? "0")) || 0
+    parseFloat(String(authUser?.donateable_believe_points ?? authUser?.believe_points ?? "0")) || 0
+  const availableBalance = parseFloat(String(authUser?.believe_points ?? "0")) || 0
+  const processingBalance = parseFloat(String(authUser?.processing_believe_points ?? "0")) || 0
 
-  // Get the correct organization ID - use registered_organization.id if available, otherwise organization.id
   const organizationId = (organization as any).registered_organization?.id || organization.id
 
-  const [donorInfo, setDonorInfo] = useState({
-    organization_id: organizationId,
-    name: user?.name || "",
-    email: user?.email || "",
-    phone: user?.phone || "",
-    message: "",
-  })
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
+  const [customAmount, setCustomAmount] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState<DonationPaymentMethodId>("stripe_card")
+  const [savedPaymentMethodId, setSavedPaymentMethodId] = useState<string | null>(null)
+  const [donorCoversProcessingFees, setDonorCoversProcessingFees] = useState(true)
+  const [feePreviewRail, setFeePreviewRail] = useState<FeePreviewRail>("card")
+  const [donorMessage, setDonorMessage] = useState("")
+
+  const [availableMethods, setAvailableMethods] = useState<Record<string, boolean> | null>(null)
+  const [methodsLoading, setMethodsLoading] = useState(false)
+  const [feePreview, setFeePreview] = useState<FeePreviewFromServer | null>(null)
+  const [feePreviewCheckoutTotalsByRail, setFeePreviewCheckoutTotalsByRail] = useState<{
+    card: number
+    bank: number
+  } | null>(null)
+  const [feePreviewLoading, setFeePreviewLoading] = useState(false)
+
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
-  const handleAmountSelect = (amount: number) => {
-    setSelectedAmount(amount)
+  const getCurrentAmount = () => selectedAmount || Number.parseFloat(customAmount) || 0
+  const amount = getCurrentAmount()
+  const isStripeRail = paymentMethod === "stripe_card" || paymentMethod === "stripe_ach"
+  const canUseBelievePoints = authUser ? currentBalance >= amount : false
+
+  const handleAmountSelect = (value: number) => {
+    setSelectedAmount(value)
     setCustomAmount("")
   }
 
@@ -98,140 +159,190 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
     setSelectedAmount(null)
   }
 
-  const getCurrentAmount = () => {
-    return selectedAmount || Number.parseFloat(customAmount) || 0
-  }
-
-  const pointsRequired = getCurrentAmount() // 1$ = 1 believe point
-  const hasEnoughPoints = currentBalance >= pointsRequired
-
-  // Believe Points only available for one-time donations
-  const canUseBelievePoints = donationType === 'one-time' && hasEnoughPoints
-
+  // Subscription-required + warning flash handling.
   useEffect(() => {
-    if (flash?.warning) {
-      // Show warning notification
+    if ((flash as any)?.warning) {
       showNotification({
         type: "warning",
-        message: typeof flash?.warning === "string" ? flash.warning : "Warning",
+        message: typeof (flash as any)?.warning === "string" ? (flash as any).warning : "Warning",
       })
     }
-    // Check for subscription required flash message
     if ((flash as any)?.subscription_required || (flash as any)?.errors?.subscription) {
       setShowSubscriptionModal(true)
     }
   }, [flash, showNotification])
 
+  // Load the organization's enabled payment methods when the modal opens.
+  useEffect(() => {
+    if (!isOpen || !organizationId) return
+    let cancelled = false
+    setMethodsLoading(true)
+    fetch(`/donate/organization-context?organization_id=${organizationId}`, {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (cancelled) return
+        setAvailableMethods(data?.methods ?? FALLBACK_METHODS)
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableMethods(FALLBACK_METHODS)
+      })
+      .finally(() => {
+        if (!cancelled) setMethodsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, organizationId])
+
+  // Keep the selected method valid for this organization.
+  useEffect(() => {
+    if (!availableMethods) return
+    if (availableMethods[paymentMethod] === false) {
+      const fallback = METHOD_ORDER.find((m) => availableMethods[m])
+      if (fallback) setPaymentMethod(fallback)
+    }
+  }, [availableMethods, paymentMethod])
+
+  // Debounced fee preview when amount / rail / fee-coverage changes (Stripe rails only).
+  useEffect(() => {
+    if (!isOpen || !organizationId) return
+    if (!isStripeRail || amount <= 0) {
+      setFeePreview(null)
+      setFeePreviewCheckoutTotalsByRail(null)
+      return
+    }
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      setFeePreviewLoading(true)
+      const params = new URLSearchParams({
+        organization_id: String(organizationId),
+        fee_preview_amount: String(amount),
+        fee_preview_donor_covers: donorCoversProcessingFees ? "1" : "0",
+        fee_preview_rail: feePreviewRail,
+      })
+      fetch(`/donate/organization-context?${params.toString()}`, {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      })
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((data) => {
+          if (cancelled) return
+          setFeePreview(data?.feePreview ?? null)
+          setFeePreviewCheckoutTotalsByRail(data?.feePreviewCheckoutTotalsByRail ?? null)
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setFeePreview(null)
+            setFeePreviewCheckoutTotalsByRail(null)
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setFeePreviewLoading(false)
+        })
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [isOpen, organizationId, amount, isStripeRail, feePreviewRail, donorCoversProcessingFees])
+
+  const resetForm = () => {
+    setSelectedAmount(null)
+    setCustomAmount("")
+    setDonorMessage("")
+    setSavedPaymentMethodId(null)
+    setFeePreview(null)
+    setFeePreviewCheckoutTotalsByRail(null)
+  }
+
   const handleDonate = () => {
     setIsProcessing(true)
-    // Get the correct organization ID
     const orgId = (organization as any).registered_organization?.id || organization.id
-    // Simulate API call
-    router.post(route("donations.store"), {
-      organization_id: orgId,
-      amount: getCurrentAmount(),
-      frequency: donationType,
-      message: donorInfo.message,
-      payment_method: paymentMethod,
-      ...(paymentMethod === "stripe" && donationType === "one-time"
-        ? {
-            donation_fee_rail: "card",
-            ...(savedPaymentMethodId ? { saved_payment_method_id: savedPaymentMethodId } : {}),
-          }
-        : {}),
-    }, {
-      onSuccess: () => {
-        setIsProcessing(false)
-        setIsSuccess(false)
-        onClose()
-        // Reset form
-        setSelectedAmount(null)
-        setCustomAmount("")
-        setDonationType("one-time")
-        const orgId = (organization as any).registered_organization?.id || organization.id
-        setDonorInfo({
-          organization_id: orgId,
-          name: "",
-          email: "",
-          phone: "",
-          message: "",
-        })
+    router.post(
+      route("donations.store"),
+      {
+        organization_id: orgId,
+        amount: getCurrentAmount(),
+        frequency: "one-time",
+        message: donorMessage,
+        payment_method: paymentMethod,
+        donor_covers_processing_fees: isStripeRail ? donorCoversProcessingFees : false,
+        donation_fee_rail: isStripeRail ? feePreviewRail : undefined,
+        ...(isStripeRail && savedPaymentMethodId ? { saved_payment_method_id: savedPaymentMethodId } : {}),
+        name: authUser?.name || "",
+        email: authUser?.email || "",
+        phone: authUser?.phone || "",
       },
-      onError: (errors) => {
-        setIsProcessing(false)
-        // Check if subscription is required
-        if (errors.subscription || (flash as any)?.subscription_required) {
-          setShowSubscriptionModal(true)
-        } else {
-          // Handle other errors (e.g., show notification)
-          showNotification({
-            type: "error",
-            title: "Donation Failed",
-            message: errors.message || "Failed to process donation. Please try again.",
-          })
-        }
-      }
-    })
-
+      {
+        onSuccess: () => {
+          setIsProcessing(false)
+          setIsSuccess(false)
+          onClose()
+          resetForm()
+        },
+        onError: (errors) => {
+          setIsProcessing(false)
+          if (errors.subscription || (flash as any)?.subscription_required) {
+            setShowSubscriptionModal(true)
+          } else {
+            showNotification({
+              type: "error",
+              title: "Donation Failed",
+              message:
+                errors.payment_method ||
+                errors.message ||
+                errors.organization_id ||
+                "Failed to process donation. Please try again.",
+            })
+          }
+        },
+      },
+    )
   }
 
-  const getFrequencyText = () => {
-    switch (donationType) {
-      case "weekly":
-        return "/week"
-      case "monthly":
-        return "/month"
-      default:
-        return ""
-    }
-  }
-
-  const getImpactText = (amount: number) => {
-    if (amount >= 1000) return "Fund a major project initiative"
-    if (amount >= 500) return "Support 50+ families for a month"
-    if (amount >= 250) return "Provide resources for 25 families"
-    if (amount >= 100) return "Help 10 families in need"
-    if (amount >= 50) return "Support 5 families"
-    if (amount >= 25) return "Help 2-3 families"
+  const getImpactText = (value: number) => {
+    if (value >= 1000) return "Fund a major project initiative"
+    if (value >= 500) return "Support 50+ families for a month"
+    if (value >= 250) return "Provide resources for 25 families"
+    if (value >= 100) return "Help 10 families in need"
+    if (value >= 50) return "Support 5 families"
+    if (value >= 25) return "Help 2-3 families"
     return "Every dollar makes a difference"
   }
 
-  const amount = getCurrentAmount()
-  const stripeFee =
-    paymentMethod === "stripe" && amount > 0
-      ? amount * processingFeeRates.card_percent + processingFeeRates.card_fixed_usd
-      : 0
-  const total = amount + stripeFee
-
-  const orgAvatar =
-    (organization as any)?.registered_organization?.user?.image ||
-    organization?.user?.image ||
-    null
+  const orgAvatar = resolveImageSrc(
+    (organization as any)?.registered_organization?.user?.image || organization?.user?.image || null,
+  )
 
   const orgDescription =
     (organization?.description && organization.description.trim() !== ""
       ? organization.description
       : organization?.mission) || ""
 
+  const hasMethodsReady = Boolean(availableMethods) && !methodsLoading
+  const submitDisabled = amount <= 0 || isProcessing || !hasMethodsReady
+
   if (isSuccess) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-[#1e0a2e]/95 text-white border border-white/10 shadow-2xl rounded-2xl max-w-md backdrop-blur-xl">
+        <DialogContent className="max-w-md rounded-2xl border border-purple-200/60 bg-gradient-to-br from-slate-50 via-purple-50/80 to-blue-50/60 text-gray-900 shadow-2xl backdrop-blur-xl dark:border-purple-700/40 dark:from-gray-950 dark:via-purple-950/50 dark:to-blue-950/40 dark:text-white">
           <div className="text-center py-8 px-2">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ duration: 0.5 }}
-              className="w-16 h-16 bg-emerald-500/15 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4"
+              className="w-16 h-16 bg-emerald-500/15 border border-emerald-500/30 rounded-full flex items-center justify-center mx-auto mb-4"
             >
-              <Check className="h-8 w-8 text-emerald-400" />
+              <Check className="h-8 w-8 text-emerald-500 dark:text-emerald-400" />
             </motion.div>
             <h3 className="text-xl font-bold mb-2">Thank You!</h3>
-            <p className="text-white/80 mb-4">
-              Your ${amount} {donationType !== "one-time" ? `${donationType} ` : ""}donation to{" "}
-              {organization.name} has been processed successfully.
+            <p className="text-gray-600 dark:text-white/80 mb-4">
+              Your ${amount} donation to {organization.name} has been processed successfully.
             </p>
-            <p className="text-sm text-white/60">You'll receive a confirmation email shortly.</p>
+            <p className="text-sm text-gray-500 dark:text-white/60">You'll receive a confirmation email shortly.</p>
           </div>
         </DialogContent>
       </Dialog>
@@ -240,19 +351,21 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#1e0a2e]/95 text-white border border-white/10 shadow-2xl rounded-2xl max-w-2xl max-h-[90vh] overflow-y-auto p-0 backdrop-blur-xl">
-        <div className="p-6 border-b border-white/10 bg-gradient-to-r from-purple-600/20 via-purple-500/10 to-transparent">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-purple-200/60 bg-gradient-to-br from-slate-50 via-purple-50/80 to-blue-50/60 p-0 text-gray-900 shadow-2xl backdrop-blur-xl dark:border-purple-700/40 dark:from-gray-950 dark:via-purple-950/50 dark:to-blue-950/40 dark:text-white">
+        <div className="border-b border-purple-100/80 bg-gradient-to-r from-purple-50/90 via-white/50 to-blue-50/80 p-6 dark:border-purple-800/30 dark:from-purple-900/40 dark:via-purple-950/20 dark:to-blue-950/35">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
-              <span className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center">
-                <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80" />
+              <span className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-400/30 flex items-center justify-center dark:bg-purple-500/20">
+                <Heart className="h-5 w-5 text-purple-600 fill-purple-500/40 dark:text-purple-300 dark:fill-purple-400/80" />
               </span>
               <span className="leading-tight">
-                <span className="block text-sm text-white/70">Donate</span>
-                <span className="block text-xl font-semibold tracking-tight">{organization.name}</span>
+                <span className="block text-sm text-gray-500 dark:text-white/70">Donate</span>
+                <span className="block text-xl font-semibold tracking-tight bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent dark:from-purple-300 dark:to-blue-300">
+                  {organization.name}
+                </span>
               </span>
             </DialogTitle>
-            <DialogDescription className="text-white/70">
+            <DialogDescription className="text-gray-500 dark:text-white/70">
               Support this organization and make a real impact.
             </DialogDescription>
           </DialogHeader>
@@ -260,352 +373,141 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
         <div className="space-y-6 p-6">
           {/* Organization Info */}
-          <Card className="bg-white/5 border border-white/10 rounded-xl">
+          <Card className="rounded-xl border border-purple-200/60 bg-white/80 dark:border-purple-700/40 dark:bg-white/[0.04]">
             <CardContent className="pt-4">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                <div className="w-14 h-14 rounded-2xl bg-purple-50 border border-purple-200/60 overflow-hidden flex items-center justify-center flex-shrink-0 dark:bg-white/10 dark:border-white/10">
                   {orgAvatar ? (
                     <img
-                      src={String(orgAvatar).startsWith("/") ? String(orgAvatar) : `/${orgAvatar}`}
+                      src={orgAvatar}
                       alt={organization.name}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        ;(e.currentTarget as HTMLImageElement).style.display = "none"
+                      }}
                     />
                   ) : (
-                    <span className="text-lg font-semibold text-white/80">
+                    <span className="text-lg font-semibold text-purple-700 dark:text-white/80">
                       {organization?.name?.[0]?.toUpperCase?.() ?? "O"}
                     </span>
                   )}
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-semibold">{organization.name}</h4>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">{organization.name}</h4>
                   {orgDescription ? (
-                    <p className="text-sm text-white/70 mt-1 line-clamp-2">{orgDescription}</p>
+                    <p className="text-sm text-gray-600 mt-1 line-clamp-2 dark:text-white/70">{orgDescription}</p>
                   ) : (
-                    <p className="text-sm text-white/60 mt-1">Support their mission with a donation.</p>
+                    <p className="text-sm text-gray-500 mt-1 dark:text-white/60">Support their mission with a donation.</p>
                   )}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Payment Method Selection */}
-          <div>
-            <Label className="text-base font-semibold mb-3 block text-white">Payment Method</Label>
-            <div className="space-y-3">
-              {/* Stripe Payment */}
-              <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
-                paymentMethod === 'stripe'
-                  ? 'border-purple-400/50 bg-purple-500/20 ring-1 ring-purple-400/20'
-                  : 'border-white/10 bg-white/5 hover:border-purple-400/30'
-              }`}>
-                <input
-                  type="radio"
-                  name="payment_method"
-                  value="stripe"
-                  checked={paymentMethod === 'stripe'}
-                  onChange={(e) => {
-                    setPaymentMethod(e.target.value as 'stripe' | 'believe_points')
-                    if (e.target.value === 'believe_points') {
-                      setSavedPaymentMethodId(null)
-                    }
-                  }}
-                  className="w-4 h-4 text-purple-500"
-                />
-                <div className="w-10 h-10 rounded-xl bg-white/20 border border-white/10 flex items-center justify-center">
-                  <CreditCard className="h-5 w-5 text-white" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold">Pay with Credit/Debit (Square)</div>
-                  <div className="text-sm text-white/60 flex items-center gap-1.5">100% Secure Donation</div>
-                </div>
-              </label>
-
-              {/* Believe Points Payment - Only for one-time donations */}
-              <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
-                paymentMethod === 'believe_points'
-                  ? 'border-purple-400/50 bg-purple-500/20 ring-1 ring-purple-400/20'
-                  : 'border-white/10 bg-white/5 hover:border-purple-400/30'
-              } ${!canUseBelievePoints ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <input
-                  type="radio"
-                  name="payment_method"
-                  value="believe_points"
-                  checked={paymentMethod === 'believe_points'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                  disabled={!canUseBelievePoints}
-                  className="w-4 h-4 text-purple-500"
-                />
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/10 flex items-center justify-center">
-                  <Coins className="h-5 w-5 text-white" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold flex items-center gap-2">
-                    Pay with Believe Points
-                    {donationType !== 'one-time' && (
-                      <Badge variant="secondary" className="text-xs">
-                        One-time only
-                      </Badge>
-                    )}
-                    {donationType === 'one-time' && !hasEnoughPoints && (
-                      <Badge variant="destructive" className="text-xs">
-                        Insufficient
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-sm text-white/60">
-                    {donationType !== 'one-time' ? (
-                      'Available only for one-time donations'
-                    ) : (
-                      <>
-                        Your balance: {currentBalance.toFixed(2)} points
-                        {hasEnoughPoints && (
-                          <span className="text-emerald-300 ml-2">
-                            (You'll have {(currentBalance - pointsRequired).toFixed(2)} points remaining)
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </label>
-            </div>
-
-            {paymentMethod === 'believe_points' && donationType !== 'one-time' && (
-              <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
-                <div className="flex items-center gap-2 text-yellow-200">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm">
-                    Believe Points can only be used for one-time donations. Please select "One-time" frequency to use Believe Points.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {paymentMethod === 'believe_points' && donationType === 'one-time' && !hasEnoughPoints && (
-              <div className="mt-3 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-                <div className="flex items-center gap-2 text-rose-200">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm">
-                    You need {pointsRequired.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {paymentMethod === "stripe" && donationType === "one-time" && user && (
-              <div className="mt-3 space-y-1.5">
-                <p className="text-xs font-medium text-white/80">Saved card</p>
-                <SavedPaymentMethodSelector
-                  methods={savedPaymentMethods}
-                  rail="card"
-                  value={savedPaymentMethodId}
-                  onChange={setSavedPaymentMethodId}
-                  manageHref={paymentMethodsUrl}
-                />
-              </div>
-            )}
-
-            {paymentMethod === 'stripe' && (
-              <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                <div className="flex items-center gap-2 text-blue-200">
-                  <Shield className="h-4 w-4" />
-                  <span className="text-sm">
-                    {savedPaymentMethodId
-                      ? "Your saved card will be charged directly."
-                      : "Your payment information is secure and encrypted. We use Stripe for payment processing."}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Donation Type */}
-          <div>
-            <Label className="text-base font-semibold mb-3 block">Donation Frequency</Label>
-            <RadioGroup
-              value={donationType}
-              onValueChange={(value) => {
-                setDonationType(value)
-                // Reset to Stripe if switching to recurring (Believe Points only for one-time)
-                if (value !== 'one-time') {
-                  setSavedPaymentMethodId(null)
-                  if (paymentMethod === 'believe_points') {
-                    setPaymentMethod('stripe')
-                  }
-                }
-              }}
-              className="grid grid-cols-3 gap-4"
-            >
-              <div className="flex items-center space-x-2 border border-white/10 rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors">
-                <RadioGroupItem value="one-time" id="one-time" />
-                <Label htmlFor="one-time" className="cursor-pointer flex-1">
-                  <div className="font-medium">One-time</div>
-                  <div className="text-xs text-white/60">Single donation</div>
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2 border border-white/10 rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors">
-                <RadioGroupItem value="weekly" id="weekly" />
-                <Label htmlFor="weekly" className="cursor-pointer flex-1">
-                  <div className="font-medium">Weekly</div>
-                  <div className="text-xs text-white/60">Every week</div>
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2 border border-white/10 rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors">
-                <RadioGroupItem value="monthly" id="monthly" />
-                <Label htmlFor="monthly" className="cursor-pointer flex-1">
-                  <div className="font-medium">Monthly</div>
-                  <div className="text-xs text-white/60">Every month</div>
-                </Label>
-              </div>
-            </RadioGroup>
-          </div>
-
           {/* Amount Selection */}
           <div>
-            <Label className="text-base font-semibold mb-3 block">Select Amount</Label>
+            <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">Select Amount</Label>
             <div className="grid grid-cols-3 gap-3 mb-4">
-              {donationAmounts.map((amount) => (
+              {donationAmounts.map((value) => (
                 <Button
-                  key={amount}
-                  variant={selectedAmount === amount ? "default" : "outline"}
-                  onClick={() => handleAmountSelect(amount)}
+                  key={value}
+                  variant={selectedAmount === value ? "default" : "outline"}
+                  onClick={() => handleAmountSelect(value)}
                   className={
-                    selectedAmount === amount
-                      ? "h-12 text-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 border-0"
-                      : "h-12 text-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white"
+                    selectedAmount === value
+                      ? "h-12 text-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 border-0 text-white"
+                      : "h-12 text-lg border-2 border-purple-100/80 bg-white/80 text-gray-800 hover:border-purple-400 hover:bg-purple-50/60 dark:border-purple-800/30 dark:bg-white/[0.04] dark:text-white dark:hover:bg-purple-950/25"
                   }
                 >
-                  ${amount}
+                  ${value}
                 </Button>
               ))}
             </div>
             <div>
-              <Label htmlFor="custom-amount" className="text-sm text-white/70 mb-2 block">
+              <Label htmlFor="custom-amount" className="text-sm text-gray-500 mb-2 block dark:text-white/70">
                 Or enter custom amount
               </Label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/50 h-4 w-4" />
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 dark:text-white/50" />
                 <Input
                   id="custom-amount"
                   type="number"
                   placeholder="0.00"
                   value={customAmount}
                   onChange={(e) => handleCustomAmountChange(e.target.value)}
-                  className="pl-10 h-12 text-lg bg-white/5 border-white/10 focus-visible:ring-purple-500/30 focus-visible:border-purple-400/50"
+                  className="pl-10 h-12 text-lg border-purple-200/60 bg-white/90 text-gray-900 placeholder:text-gray-400 focus-visible:ring-purple-600/30 focus-visible:border-purple-600 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                 />
               </div>
             </div>
           </div>
 
+          {/* Payment Method Selection — enabled methods from the organization */}
+          <div className="rounded-xl border border-purple-200/60 bg-white/70 overflow-hidden dark:border-purple-700/40 dark:bg-white/[0.03]">
+            <div className="px-5 pt-4 pb-1">
+              <Label className="text-base font-semibold text-gray-900 dark:text-white">Choose Payment Method</Label>
+            </div>
+            <DonationPaymentMethods
+              paymentMethod={paymentMethod}
+              onPaymentMethodChange={setPaymentMethod}
+              availableMethods={availableMethods ?? {}}
+              hasOrgSelected={true}
+              paymentMethodsLoading={methodsLoading || !availableMethods}
+              currentBalance={currentBalance}
+              availableBalance={availableBalance}
+              processingBalance={processingBalance}
+              canUseBelievePoints={canUseBelievePoints}
+              amount={amount}
+              feePreviewRail={feePreviewRail}
+              onFeePreviewRailChange={setFeePreviewRail}
+              donorCoversProcessingFees={donorCoversProcessingFees}
+              onDonorCoversChange={setDonorCoversProcessingFees}
+              feePreview={feePreview}
+              feePreviewLoading={feePreviewLoading}
+              feePreviewCheckoutTotalsByRail={feePreviewCheckoutTotalsByRail}
+              processingFeeRates={processingFeeRates}
+              savedPaymentMethods={savedPaymentMethods}
+              savedPaymentMethodId={savedPaymentMethodId}
+              onSavedPaymentMethodChange={setSavedPaymentMethodId}
+              paymentMethodsUrl={paymentMethodsUrl}
+              authUser={Boolean(authUser)}
+            />
+          </div>
+
           {/* Impact Preview */}
-          {getCurrentAmount() > 0 && (
-            <Card className="bg-blue-500/10 border-blue-500/20">
+          {amount > 0 && (
+            <Card className="border-blue-200/60 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10">
               <CardContent className="pt-4">
                 <div className="flex items-start gap-3">
-                  <Info className="h-5 w-5 text-blue-200 mt-0.5" />
+                  <Info className="h-5 w-5 text-blue-600 mt-0.5 dark:text-blue-200" />
                   <div>
-                    <h4 className="font-medium text-blue-100 mb-1">Your Impact</h4>
-                    <p className="text-blue-100/80 text-sm">{getImpactText(getCurrentAmount())}</p>
-                    {donationType !== "one-time" && (
-                      <p className="text-blue-100/70 text-xs mt-1">
-                        That's ${(getCurrentAmount() * (donationType === "weekly" ? 52 : 12)).toLocaleString()} per
-                        year!
-                      </p>
-                    )}
+                    <h4 className="font-medium text-blue-900 mb-1 dark:text-blue-100">Your Impact</h4>
+                    <p className="text-blue-800/80 text-sm dark:text-blue-100/80">{getImpactText(amount)}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Donor Information */}
-          <div className="space-y-4">
-            <Label className="text-base font-semibold">Donor Information</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="firstName">Name *</Label>
-                <Input
-                  id="firstName"
-                  placeholder="John"
-                  value={donorInfo.name}
-                  onChange={(e) => setDonorInfo({ ...donorInfo, name: e.target.value })}
-                  className="bg-white/5 border-white/10 focus-visible:ring-purple-500/30 focus-visible:border-purple-400/50"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="john@example.com"
-                  value={donorInfo.email}
-                  onChange={(e) => setDonorInfo({ ...donorInfo, email: e.target.value })}
-                  className="bg-white/5 border-white/10 focus-visible:ring-purple-500/30 focus-visible:border-purple-400/50"
-                  required
-                />
-              </div>
-
-            </div>
-            <div>
-              <Label htmlFor="phone">Phone (Optional)</Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+1 (555) 123-4567"
-                value={donorInfo.phone}
-                onChange={(e) => setDonorInfo({ ...donorInfo, phone: e.target.value })}
-                className="bg-white/5 border-white/10 focus-visible:ring-purple-500/30 focus-visible:border-purple-400/50"
-              />
-            </div>
-          </div>
-
           {/* Message */}
           <div>
-            <Label htmlFor="message">Message (Optional)</Label>
-            <Textarea
+            <Label htmlFor="message" className="text-gray-900 dark:text-white">Message (Optional)</Label>
+            <Input
               id="message"
               placeholder="Share why you're supporting this cause..."
-              value={donorInfo.message}
-              onChange={(e) => setDonorInfo({ ...donorInfo, message: e.target.value })}
-              className="min-h-[80px] bg-white/5 border-white/10 focus-visible:ring-purple-500/30 focus-visible:border-purple-400/50"
+              value={donorMessage}
+              onChange={(e) => setDonorMessage(e.target.value)}
+              className="border-purple-200/60 bg-white/90 text-gray-900 placeholder:text-gray-400 focus-visible:ring-purple-600/30 focus-visible:border-purple-600 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
             />
           </div>
 
-          <Separator />
-
-          {/* Donation Summary */}
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <h4 className="font-semibold mb-3">Donation Summary</h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-white/70">Amount:</span>
-                <span className="font-medium">
-                  ${amount.toFixed(2)}
-                  {getFrequencyText()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/70">Processing Fee:</span>
-                <span className="font-medium">${stripeFee.toFixed(2)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between font-semibold">
-                <span>Total:</span>
-                <span>
-                  ${total.toFixed(2)}
-                  {getFrequencyText()}
-                </span>
-              </div>
-            </div>
-          </div>
+          <Separator className="bg-purple-100/80 dark:bg-white/10" />
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3 pt-2">
             <Button
               variant="outline"
               onClick={onClose}
-              className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-white"
+              className="flex-1 border border-purple-200/60 bg-white/80 text-gray-800 hover:bg-purple-50/60 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
               disabled={isProcessing}
             >
               Cancel
@@ -613,42 +515,26 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
             <Button
               onClick={handleDonate}
               className="flex-1 bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 hover:from-purple-600 hover:via-purple-700 hover:to-pink-600 border-0 shadow-lg shadow-purple-500/20"
-              disabled={
-                getCurrentAmount() === 0 ||
-                !donorInfo.name ||
-                !donorInfo.email ||
-                isProcessing ||
-                (paymentMethod === 'believe_points' && !hasEnoughPoints)
-              }
+              disabled={submitDisabled}
             >
               {isProcessing ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   Processing...
                 </div>
               ) : (
                 <>
-                  {paymentMethod === 'believe_points' ? (
-                    <>
-                      <Coins className="mr-2 h-4 w-4" />
-                      Donate {pointsRequired.toFixed(2)} Points
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Donate ${amount.toFixed(2)}
-                      {getFrequencyText()}
-                    </>
-                  )}
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Donate ${amount.toFixed(2)}
                 </>
               )}
             </Button>
           </div>
 
           {/* Security Notice */}
-          <div className="text-center text-xs text-white/60 flex items-center justify-center gap-2">
-            <Shield className="h-3.5 w-3.5 text-green-400" />
-            <span>100% Secure Donations · secure by stripe</span>
+          <div className="text-center text-xs text-gray-500 flex items-center justify-center gap-2 dark:text-white/60">
+            <Shield className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+            <span>100% Secure Donations · secured by Stripe</span>
           </div>
         </div>
       </DialogContent>

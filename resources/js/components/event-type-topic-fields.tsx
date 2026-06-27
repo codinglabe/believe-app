@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -8,6 +8,7 @@ import {
   categoryForEventTypeId,
   defaultEventTypeIdForCategory,
   eventTypeCategories,
+  eventTypeIdInCatalog,
   subTopicsForCategory,
   type EventTypeOption,
 } from "@/lib/event-type-catalog"
@@ -41,6 +42,17 @@ export function EventTypeTopicFields({
 }: Props) {
   const categories = useMemo(() => eventTypeCategories(eventTypes), [eventTypes])
 
+  useEffect(() => {
+    if (!eventTypes.length) {
+      if (eventTypeId) onEventTypeIdChange("")
+      return
+    }
+    if (!eventTypeIdInCatalog(eventTypes, eventTypeId)) {
+      const next = defaultEventTypeIdForCategory(eventTypes, categories[0] ?? "")
+      if (next !== eventTypeId) onEventTypeIdChange(next)
+    }
+  }, [eventTypes, eventTypeId, categories, onEventTypeIdChange])
+
   const selectedCategory = useMemo(() => {
     const fromId = categoryForEventTypeId(eventTypes, eventTypeId)
     if (fromId) return fromId
@@ -52,11 +64,28 @@ export function EventTypeTopicFields({
     [eventTypes, selectedCategory],
   )
 
+  const subTopicValue = useMemo(() => {
+    if (eventTypeIdInCatalog(eventTypes, eventTypeId)) {
+      const inCurrentCategory = subTopics.some((t) => t.id.toString() === eventTypeId)
+      if (inCurrentCategory) return eventTypeId
+    }
+    return subTopics[0]?.id?.toString() ?? ""
+  }, [eventTypes, eventTypeId, subTopics])
+
   const handleTopicChange = (category: string) => {
     onEventTypeIdChange(defaultEventTypeIdForCategory(eventTypes, category))
   }
 
   const hasError = !!error
+
+  if (!eventTypes.length) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No topics are available for this listing type yet. Choose another type or ask an admin to
+        configure topics.
+      </p>
+    )
+  }
 
   return (
     <>
@@ -86,7 +115,7 @@ export function EventTypeTopicFields({
           {subTopicLabel} *
         </Label>
         <Select
-          value={eventTypeId || undefined}
+          value={subTopicValue || undefined}
           onValueChange={onEventTypeIdChange}
           disabled={!selectedCategory || subTopics.length === 0}
         >

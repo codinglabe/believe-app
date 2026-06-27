@@ -14,7 +14,7 @@ class BelievePointPurchaseSettlementService
 {
     public static function brpEarnedForPurchase(BelievePointPurchase $purchase): float
     {
-        return BelievePointsPurchaseCalculationService::brpEarned($purchase->user);
+        return BelievePointsPurchaseCalculationService::brpEarned((float) $purchase->amount, $purchase->user);
     }
 
     public static function settleCheckoutPurchase(int $purchaseId, string $paymentIntentId): bool
@@ -294,6 +294,13 @@ class BelievePointPurchaseSettlementService
             'stripe_session_id' => $purchase->stripe_session_id,
             'intended_points' => (float) $purchase->points,
             'points_credited' => $purchase->status === 'completed' ? (float) $purchase->points : null,
+            'bp_status' => $purchase->status === 'completed'
+                ? ($purchase->points_released ? 'available' : 'processing')
+                : null,
+            'brp_awarded' => $purchase->reward_points_awarded !== null
+                ? round((float) $purchase->reward_points_awarded, 2)
+                : null,
+            'is_trusted_instrument' => (bool) $purchase->is_trusted_instrument,
             'base_points_usd' => (float) $purchase->amount,
             'checkout_total_usd' => $purchase->checkout_total !== null ? (float) $purchase->checkout_total : null,
             'processing_fee_estimate' => $feeEst > 0 ? round($feeEst, 2) : null,

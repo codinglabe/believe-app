@@ -20,6 +20,7 @@ class BelievePointPurchase extends Model
         'source',
         'payment_rail',
         'payment_method',
+        'is_trusted_instrument',
         'receipt_image',
         'reward_points_awarded',
         'points_available_at',
@@ -52,6 +53,7 @@ class BelievePointPurchase extends Model
         'bridge_reserve_confirmed_at' => 'datetime',
         'settlement_at' => 'datetime',
         'points_released' => 'boolean',
+        'is_trusted_instrument' => 'boolean',
     ];
 
     /**

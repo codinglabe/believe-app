@@ -1,7 +1,45 @@
+import type { ConnectionHubListingLockType } from "@/lib/connection-hub-hero-hrefs"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
+
 export type EventTypeOption = {
   id: number
   name: string
   category: string
+}
+
+export function eventTypeCatalogForHub(
+  hub: ConnectionHubType,
+  companionEventTypes: EventTypeOption[],
+  eventTypes: EventTypeOption[],
+): EventTypeOption[] {
+  return hub === "companion" ? companionEventTypes : eventTypes
+}
+
+export function defaultHubTypeForCreate(
+  lockedHubListingType: ConnectionHubListingLockType | null | undefined,
+  companionEventTypes: EventTypeOption[],
+): ConnectionHubType {
+  if (lockedHubListingType) return lockedHubListingType
+  if (companionEventTypes.length > 0) return "companion"
+  return "learning"
+}
+
+export function defaultEventTypeIdForHub(
+  hub: ConnectionHubType,
+  companionEventTypes: EventTypeOption[],
+  eventTypes: EventTypeOption[],
+): string {
+  const catalog = eventTypeCatalogForHub(hub, companionEventTypes, eventTypes)
+  const first = catalog[0]?.id
+  return first != null ? String(first) : ""
+}
+
+export function eventTypeIdInCatalog(
+  eventTypes: EventTypeOption[],
+  eventTypeId: string,
+): boolean {
+  if (!eventTypeId) return false
+  return eventTypes.some((t) => t.id.toString() === eventTypeId)
 }
 
 export function groupEventTypesByCategory(
