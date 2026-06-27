@@ -17,6 +17,10 @@ class UnityCallController extends Controller
 {
     public function store(Request $request, UnityCallService $calls): JsonResponse
     {
+        if (! config('unity_call.enabled')) {
+            abort(403, 'Unity Call is not available.');
+        }
+
         $validated = $request->validate([
             'chat_room_id' => ['required', 'integer', 'exists:chat_rooms,id'],
         ]);
@@ -48,7 +52,10 @@ class UnityCallController extends Controller
 
         $session['iceServers'] = $webrtcIce->iceServers();
 
-        return response()->json(['active' => $session]);
+        return response()->json([
+            'active' => $session,
+            'serverNow' => now()->toIso8601String(),
+        ]);
     }
 
     public function chatRooms(Request $request, UnityCallService $calls): JsonResponse
@@ -392,6 +399,7 @@ class UnityCallController extends Controller
             'call_id' => $call->id,
             'status' => $call->status,
             'join_url' => $this->callJoinPath($call),
+            'serverNow' => now()->toIso8601String(),
             'call' => [
                 'id' => $call->id,
                 'status' => $call->status,

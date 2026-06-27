@@ -20,9 +20,16 @@ export function isProductionAppEnv(pageProps?: { appEnv?: string }): boolean {
   return resolveAppEnv(pageProps) === "production"
 }
 
-/** Outbound Unity Call start button — hidden on production until feature is ready. */
-export function isUnityCallStartUiEnabled(pageProps?: { appEnv?: string }): boolean {
-  return !isProductionAppEnv(pageProps)
+/** Outbound Unity Call start button — controlled by UNITY_CALL_ENABLED (default: on). */
+export function isUnityCallStartUiEnabled(pageProps?: {
+  appEnv?: string
+  unityCallEnabled?: boolean
+}): boolean {
+  if (typeof pageProps?.unityCallEnabled === "boolean") {
+    return pageProps.unityCallEnabled
+  }
+
+  return true
 }
 
 export function useAppEnv(): string {
@@ -31,6 +38,6 @@ export function useAppEnv(): string {
 }
 
 export function useUnityCallStartUiEnabled(): boolean {
-  const { appEnv } = usePage<{ appEnv?: string }>().props
-  return isUnityCallStartUiEnabled({ appEnv })
+  const { appEnv, unityCallEnabled } = usePage<{ appEnv?: string; unityCallEnabled?: boolean }>().props
+  return isUnityCallStartUiEnabled({ appEnv, unityCallEnabled })
 }

@@ -13,6 +13,8 @@ export type UnityCallBackgroundKeepAliveOptions = {
 export type UnityCallBackgroundKeepAliveHandle = {
   release: () => void
   resumePlayback: () => void
+  updateStreams: (localStream?: MediaStream | null, remoteStream?: MediaStream | null) => void
+  setSpeakerOn: (speakerOn: boolean) => void
 }
 
 function getAudioContextCtor(): typeof AudioContext | null {
@@ -69,7 +71,8 @@ export function startUnityCallBackgroundKeepAlive(
   let localGain: GainNode | null = null
   let hiddenIntervalId = 0
   let remoteTrackListeners: (() => void) | null = null
-  const preferWebAudioRemote = options.preferWebAudioRemote === true
+  let preferWebAudioRemote = options.preferWebAudioRemote === true
+  let speakerOn = options.speakerOn !== false
 
   const ensureAudioContext = (): AudioContext | null => {
     const AudioContextCtor = getAudioContextCtor()
@@ -95,7 +98,7 @@ export function startUnityCallBackgroundKeepAlive(
       return
     }
 
-    const level = options.speakerOn === false ? 0.55 : 1
+    const level = speakerOn === false ? 0.55 : 1
     remoteGain.gain.value = level
 
     if (preferWebAudioRemote || document.visibilityState === "hidden") {
@@ -139,6 +142,9 @@ export function startUnityCallBackgroundKeepAlive(
 
     const context = ensureAudioContext()
     if (!context) {
+      if (!preferWebAudioRemote) {
+        resumeUnityCallRemotePlayback()
+      }
       return
     }
 
@@ -150,7 +156,9 @@ export function startUnityCallBackgroundKeepAlive(
       remoteGain.connect(context.destination)
       watchRemoteStreamTracks(stream)
     } catch {
-      // Fall back to HTMLAudioElement playback only.
+      if (!preferWebAudioRemote) {
+        resumeUnityCallRemotePlayback()
+      }
     }
   }
 
@@ -307,6 +315,19 @@ export function startUnityCallBackgroundKeepAlive(
 
   return {
     resumePlayback: resumeAll,
+    updateStreams: (local?: MediaStream | null, remote?: MediaStream | null) => {
+      if (local !== undefined) {
+        attachLocalStream(local)
+      }
+      if (remote !== undefined) {
+        attachRemoteStream(remote)
+      }
+      resumeAll()
+    },
+    setSpeakerOn: (nextSpeakerOn: boolean) => {
+      speakerOn = nextSpeakerOn
+      applyRemoteGain()
+    },
     release: () => {
       if (released) {
         return

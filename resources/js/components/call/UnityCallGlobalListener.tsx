@@ -5,14 +5,20 @@ import { router } from "@inertiajs/react"
 import { echo } from "@laravel/echo-react"
 import { stopCallRingtone } from "@/lib/callRingtone"
 import {
+  getUnityCallLiveCallMeta,
+  refreshUnityCallStatusFromServer,
+  type UnityCallLiveMeta,
+} from "@/lib/unityCall"
+import {
   dispatchUnityCallIncoming,
   dispatchUnityCallStatus,
   dispatchUnityCallTerminated,
   isUnityCallIncomingForUser,
   isUnityCallTerminated,
+  peekUnityCallStatus,
 } from "@/lib/unityCallEvents"
-import { fetchUnityCallChatRooms, type UnityCallChatRoomChannel } from "@/lib/unityCall"
 import { rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 type Props = {
@@ -44,68 +50,41 @@ function useLiveAuthUserId(initial?: number | null | undefined): number | null {
   return userId
 }
 
-function chatRoomChannelName(room: UnityCallChatRoomChannel): string {
-  if (room.type === "public") {
-    return `public-chat.${room.id}`
-  }
-  if (room.type === "private") {
-    return `private-chat.${room.id}`
-  }
-  return `direct-chat.${room.id}`
-}
-
-function normalizeRoomIncomingPayload(
-  payload: UnityCallStatusEvent,
-  userId: number,
-): UnityCallStatusEvent {
-  const hasSelf = payload.participants.some((participant) => participant.userId === userId)
-  if (hasSelf) {
-    return payload
-  }
-
-  return {
-    ...payload,
-    participants: [
-      ...payload.participants,
-      {
-        userId,
-        name: "You",
-        role: "callee",
-        status: "ringing",
-      },
-    ],
-  }
-}
-
 function publishIncomingCall(payload: UnityCallStatusEvent): void {
   dispatchUnityCallStatus(payload)
   dispatchUnityCallIncoming(payload)
 }
 
+function useLiveCallMeta(): UnityCallLiveMeta | null {
+  const [meta, setMeta] = useState<UnityCallLiveMeta | null>(() => getUnityCallLiveCallMeta())
+
+  useEffect(() => {
+    const sync = () => setMeta(getUnityCallLiveCallMeta())
+    sync()
+
+    const onMeta = (event: Event) => {
+      setMeta((event as CustomEvent<UnityCallLiveMeta | null>).detail ?? null)
+    }
+
+    window.addEventListener("unity-call-live-meta", onMeta)
+    return () => window.removeEventListener("unity-call-live-meta", onMeta)
+  }, [])
+
+  return meta
+}
+
 export default function UnityCallGlobalListener({ authUserId }: Props) {
   const userId = useLiveAuthUserId(authUserId)
+  const liveMeta = useLiveCallMeta()
 
-  const handleDirectIncomingPayload = useCallback(
-    (payload: UnityCallStatusEvent) => {
-      if (!userId || !isUnityCallIncomingForUser(payload, userId)) {
-        return
-      }
+  const syncAcceptedFromServer = useCallback((callId: number) => {
+    const cached = peekUnityCallStatus(callId)
+    if (cached?.reason === "accepted" && cached.call.status === "accepted") {
+      return
+    }
 
-      publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
-    },
-    [userId],
-  )
-
-  const handleGroupIncomingPayload = useCallback(
-    (payload: UnityCallStatusEvent) => {
-      if (!userId || payload.caller?.id === userId || payload.call.status !== "ringing") {
-        return
-      }
-
-      publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
-    },
-    [userId],
-  )
+    void refreshUnityCallStatusFromServer(callId)
+  }, [])
 
   const handleStatusPayload = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -116,7 +95,7 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       dispatchUnityCallStatus(payload)
 
       if (isUnityCallIncomingForUser(payload, userId)) {
-        publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
+        publishIncomingCall(payload)
         return
       }
 
@@ -141,6 +120,8 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       return
     }
 
+    refreshEchoAuthHeaders()
+
     const instance = echo()
     const userChannel = instance.private(`user.${userId}`)
 
@@ -151,65 +132,59 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       }
     })
 
+    const connection = instance.connector?.pusher?.connection
+    const onReconnected = () => {
+      refreshEchoAuthHeaders()
+      const callId = getUnityCallLiveCallMeta()?.callId
+      if (callId) {
+        syncAcceptedFromServer(callId)
+      }
+    }
+    connection?.bind("connected", onReconnected)
+
     return () => {
+      connection?.unbind("connected", onReconnected)
       userChannel.stopListening(".call.status")
     }
-  }, [handleStatusPayload, userId])
+  }, [handleStatusPayload, syncAcceptedFromServer, userId])
 
   useEffect(() => {
-    if (!userId) {
+    if (!liveMeta?.callId || liveMeta.callId <= 0) {
       return
     }
 
-    let cancelled = false
-    const roomChannels: Array<{ stop: () => void }> = []
+    refreshEchoAuthHeaders()
 
-    const subscribeRooms = async () => {
-      const rooms = await fetchUnityCallChatRooms()
-      if (cancelled) {
-        return
-      }
+    const instance = echo()
+    const callChannel = instance.private(`unity-call.${liveMeta.callId}`)
 
-      const instance = echo()
+    callChannel.listen(".call.session.status", handleStatusPayload)
 
-      for (const room of rooms) {
-        const channelName = chatRoomChannelName(room)
-        const channel =
-          room.type === "public" ? instance.channel(channelName) : instance.private(channelName)
+    const roomChannel =
+      liveMeta.chatRoomId && !liveMeta.isGroupCall
+        ? instance.private(`direct-chat.${liveMeta.chatRoomId}`)
+        : null
+    roomChannel?.listen(".call.status", handleStatusPayload)
 
-        channel.listen(".call.incoming", handleGroupIncomingPayload)
-        channel.listen(".call.status", handleStatusPayload)
-        channel.error((error: unknown) => {
-          if (import.meta.env.DEV) {
-            console.error(`[UnityCall] room channel failed (${channelName}):`, error)
-          }
-        })
+    callChannel.subscribed(() => {
+      syncAcceptedFromServer(liveMeta.callId)
+    })
 
-        roomChannels.push({
-          stop: () => {
-            channel.stopListening(".call.incoming")
-            channel.stopListening(".call.status")
-          },
-        })
-      }
-    }
-
-    void subscribeRooms()
-
-    const resubscribe = () => {
-      roomChannels.forEach((entry) => entry.stop())
-      roomChannels.length = 0
-      void subscribeRooms()
-    }
-
-    const unsubscribeRouter = router.on("success", resubscribe)
+    roomChannel?.subscribed(() => {
+      syncAcceptedFromServer(liveMeta.callId)
+    })
 
     return () => {
-      cancelled = true
-      unsubscribeRouter()
-      roomChannels.forEach((entry) => entry.stop())
+      callChannel.stopListening(".call.session.status")
+      roomChannel?.stopListening(".call.status")
     }
-  }, [handleGroupIncomingPayload, handleStatusPayload, userId])
+  }, [
+    handleStatusPayload,
+    liveMeta?.callId,
+    liveMeta?.chatRoomId,
+    liveMeta?.isGroupCall,
+    syncAcceptedFromServer,
+  ])
 
   return null
 }

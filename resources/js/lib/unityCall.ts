@@ -1,5 +1,7 @@
 import type { UnityCallPayload, UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { router } from "@inertiajs/react"
+import { dispatchUnityCallStatus } from "@/lib/unityCallEvents"
+import { clearUnityCallTimerAnchor } from "@/lib/unityCallTimer"
 
 function getCsrfToken(): string {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
@@ -36,8 +38,38 @@ export function isOnUnityCallShowPage(callId?: number): boolean {
 /** In-memory live call from UnityCallSessionProvider — avoids stale sessionStorage blocking incoming calls. */
 let providerLiveCallId: number | null = null
 
+export type UnityCallLiveMeta = {
+  callId: number
+  chatRoomId: number | null
+  isGroupCall: boolean
+}
+
+let providerLiveCallMeta: UnityCallLiveMeta | null = null
+
+export function setUnityCallLiveCallMeta(meta: UnityCallLiveMeta | null): void {
+  providerLiveCallMeta = meta
+  providerLiveCallId = meta?.callId ?? null
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("unity-call-live-id", { detail: providerLiveCallId }))
+    window.dispatchEvent(new CustomEvent("unity-call-live-meta", { detail: meta }))
+  }
+}
+
+export function getUnityCallLiveCallMeta(): UnityCallLiveMeta | null {
+  return providerLiveCallMeta
+}
+
 export function setUnityCallProviderLiveCallId(callId: number | null): void {
   providerLiveCallId = callId
+  if (callId === null) {
+    providerLiveCallMeta = null
+  } else if (!providerLiveCallMeta || providerLiveCallMeta.callId !== callId) {
+    providerLiveCallMeta = { callId, chatRoomId: null, isGroupCall: false }
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("unity-call-live-id", { detail: callId }))
+    window.dispatchEvent(new CustomEvent("unity-call-live-meta", { detail: providerLiveCallMeta }))
+  }
 }
 
 export function getUnityCallProviderLiveCallId(): number | null {
@@ -53,6 +85,7 @@ export function markUnityCallBackgrounded(callId: number): void {
 
 export function clearUnityCallBackgroundState(callId: number): void {
   clearUnityCallLiveOnPage(callId)
+  clearUnityCallTimerAnchor(callId)
   if (getUnityCallProviderLiveCallId() === callId) {
     setUnityCallProviderLiveCallId(null)
   }
@@ -90,6 +123,7 @@ export type UnityCallAcceptResponse = {
   call_id: number
   status: string
   join_url: string
+  serverNow?: string | null
   call: UnityCallPayload
   caller: {
     id: number
@@ -443,6 +477,15 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
   if (!ok && message) {
     throw new Error(message)
   }
+
+  if (ok && data?.call_id) {
+    setUnityCallLiveCallMeta({
+      callId: data.call_id,
+      chatRoomId,
+      isGroupCall: false,
+    })
+  }
+
   return ok && data ? data : null
 }
 
@@ -485,11 +528,49 @@ export type UnityCallActiveSession = {
 }
 
 export async function fetchActiveUnityCallSession(): Promise<UnityCallActiveSession | null> {
-  const { ok, data } = await getUnityCallJson<{ active?: UnityCallActiveSession | null }>(
-    route("unity-calls.active"),
-  )
+  const { ok, data } = await getUnityCallJson<{
+    active?: UnityCallActiveSession | null
+    serverNow?: string | null
+  }>(route("unity-calls.active"))
 
   return ok && data?.active ? data.active : null
+}
+
+/** One-shot server status (not polling) — used when Reverb subscribe/reconnect may have missed accept. */
+export async function refreshUnityCallStatusFromServer(
+  expectedCallId?: number,
+): Promise<UnityCallStatusEvent | null> {
+  const { ok, data } = await getUnityCallJson<{
+    active?: UnityCallActiveSession | null
+    serverNow?: string | null
+  }>(route("unity-calls.active"))
+
+  if (!ok || !data?.active) {
+    return null
+  }
+
+  const active = data.active
+  if (expectedCallId && active.call.id !== expectedCallId) {
+    return null
+  }
+
+  const reason =
+    active.call.status === "accepted"
+      ? "accepted"
+      : active.call.status === "ringing"
+        ? "ringing"
+        : active.call.status
+
+  const payload: UnityCallStatusEvent = {
+    reason,
+    serverNow: data.serverNow ?? null,
+    call: active.call,
+    caller: active.caller,
+    participants: active.participants,
+  }
+
+  dispatchUnityCallStatus(payload)
+  return payload
 }
 
 export type UnityCallChatRoomChannel = {

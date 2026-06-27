@@ -623,6 +623,10 @@ export function useUnityCallWebRTC({
           return
         }
 
+        if (pc.getTransceivers().length === 0) {
+          pc.addTransceiver("audio", { direction: "sendrecv" })
+        }
+
         const attached = await addLocalAudioToPeer(peerId, pc)
         if (!attached || !hasAudioSender(pc)) {
           return
@@ -687,6 +691,10 @@ export function useUnityCallWebRTC({
 
       makingOffer.current.set(peerId, true)
       try {
+        if (pc.getTransceivers().length === 0) {
+          pc.addTransceiver("audio", { direction: "sendrecv" })
+        }
+
         const attached = await addLocalAudioToPeer(peerId, pc)
         if (!attached || !hasAudioSender(pc)) {
           return
@@ -795,7 +803,7 @@ export function useUnityCallWebRTC({
       try {
         switch (normalized.type) {
           case "offer": {
-            const isPolite = Number(userIdStr) > Number(from)
+            const isPolite = isGroupCall ? Number(userIdStr) > Number(from) : true
             const offerCollision = pc.signalingState !== "stable" || makingOffer.current.get(from)
             ignoreOffer.current.set(from, !isPolite && Boolean(offerCollision))
             if (ignoreOffer.current.get(from)) {
@@ -845,12 +853,14 @@ export function useUnityCallWebRTC({
               return
             }
             await pc.setRemoteDescription(remoteAnswer)
+            await addLocalAudioToPeer(from, pc)
             syncRemoteTracksFromPeer(from, pc)
             const pending = pendingCandidates.current.get(from) ?? []
             for (const candidate of pending) {
               await pc.addIceCandidate(candidate).catch(() => {})
             }
             pendingCandidates.current.delete(from)
+            resumeUnityCallRemotePlayback()
             break
           }
           case "ice-candidate": {
@@ -871,7 +881,10 @@ export function useUnityCallWebRTC({
         console.error("[UnityCallWebRTC] Signal handling failed:", normalized.type, error)
         processedSignals.current.delete(dedupeKey)
         if (normalized.type === "offer" || normalized.type === "answer") {
-          resetPeerConnection(from)
+          const failedPc = peerConnections.current.get(from)
+          if (!failedPc || (!isPeerConnected(failedPc) && !peerHasCompletedNegotiation(failedPc))) {
+            resetPeerConnection(from)
+          }
         }
       }
 
@@ -939,7 +952,7 @@ export function useUnityCallWebRTC({
   }, [callId, enqueueSignal])
 
   const connectPeers = useCallback(() => {
-    if (callEnded.current || !channelReady.current || !mediaStarted.current || !localStreamRef.current) {
+    if (callEnded.current || !mediaStarted.current || !localStreamRef.current) {
       return
     }
 
@@ -1227,9 +1240,7 @@ export function useUnityCallWebRTC({
     }
 
     void reviveLocalMicrophone().finally(() => {
-      const fetchPending = channelReady.current ? Promise.resolve() : fetchPendingSignals()
-
-      void fetchPending.finally(() => {
+      void fetchPendingSignals().finally(() => {
         syncPeerConnections()
         updateMediaConnected()
         resumeRemotePlayback()
@@ -1307,25 +1318,15 @@ export function useUnityCallWebRTC({
       return
     }
 
-    let navigateResyncTimer = 0
-
     const onNavigate = () => {
       refreshEchoAuthHeaders()
-      if (navigateResyncTimer) {
-        window.clearTimeout(navigateResyncTimer)
-      }
-      navigateResyncTimer = window.setTimeout(() => {
-        resyncCallRef.current()
-      }, 400)
+      resyncCallRef.current()
     }
 
     onNavigate()
     const unsubRouter = router.on("success", onNavigate)
 
     return () => {
-      if (navigateResyncTimer) {
-        window.clearTimeout(navigateResyncTimer)
-      }
       unsubRouter()
     }
   }, [callId, keepAlive])
@@ -1359,23 +1360,6 @@ export function useUnityCallWebRTC({
       return
     }
 
-    const intervalId = window.setInterval(() => {
-      if (callEnded.current || !mediaStarted.current || mediaConnectedRef.current) {
-        return
-      }
-      resyncCallRef.current()
-    }, 12000)
-
-    return () => window.clearInterval(intervalId)
-  }, [callId, keepAlive])
-
-  useEffect(() => {
-    if (!keepAlive || !callId) {
-      return
-    }
-
-    let intervalId = 0
-
     const keepMicAlive = () => {
       if (callEnded.current || !mediaStarted.current) {
         return
@@ -1388,26 +1372,12 @@ export function useUnityCallWebRTC({
       void reviveLocalMicrophoneRef.current()
     }
 
-    const restartInterval = () => {
-      if (intervalId) {
-        window.clearInterval(intervalId)
-      }
-      const connected = mediaConnectedRef.current
-      const hidden = document.visibilityState === "hidden"
-      const delay = connected ? (hidden ? 5000 : 30000) : hidden ? 1500 : 5000
-      intervalId = window.setInterval(keepMicAlive, delay)
-    }
-
-    restartInterval()
-    document.addEventListener("visibilitychange", restartInterval)
+    document.addEventListener("visibilitychange", keepMicAlive)
 
     return () => {
-      if (intervalId) {
-        window.clearInterval(intervalId)
-      }
-      document.removeEventListener("visibilitychange", restartInterval)
+      document.removeEventListener("visibilitychange", keepMicAlive)
     }
-  }, [callId, keepAlive, mediaConnected])
+  }, [callId, keepAlive])
 
   useEffect(() => {
     if (!callId) {
@@ -1418,6 +1388,7 @@ export function useUnityCallWebRTC({
 
     channel.listen(".webrtc.signal", (payload) => {
       enqueueSignalRef.current(payload as WebRTCSignal)
+      updateMediaConnectedRef.current()
     })
 
     channel.listen(".call.session.status", (payload) => {
@@ -1431,6 +1402,9 @@ export function useUnityCallWebRTC({
           participantsRef.current,
           statusPayload.participants,
         )
+      }
+
+      if (statusPayload.reason && statusPayload.reason !== "incoming") {
         onSessionStatusRef.current?.(statusPayload)
       }
 
@@ -1466,7 +1440,13 @@ export function useUnityCallWebRTC({
       })
       .error((error) => {
         console.error("[UnityCallWebRTC] Channel subscription failed:", error)
-        setConnectionStatus("Could not join call channel")
+        channelReady.current = false
+        setConnectionStatus("Realtime channel unavailable — using direct signaling…")
+        if (mediaStarted.current) {
+          void fetchPendingSignalsRef.current().finally(() => {
+            connectPeersRef.current()
+          })
+        }
       })
 
     return () => {
@@ -1492,90 +1472,14 @@ export function useUnityCallWebRTC({
   }, [syncPeerConnections, mediaActive, participants, callStatus])
 
   useEffect(() => {
-    if (!mediaActive || !mediaStarted.current) {
+    if (!mediaActive || !mediaStarted.current || callStatus !== "accepted") {
       return
     }
 
-    const intervalId = window.setInterval(() => {
-      updateMediaConnected()
-    }, 1000)
-
-    return () => window.clearInterval(intervalId)
-  }, [mediaActive, updateMediaConnected])
-
-  useEffect(() => {
-    if (!mediaActive || !mediaStarted.current || mediaConnected) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      if (mediaConnected || callEnded.current) {
-        return
-      }
-
-      if (isCaller) {
-        acceptedPeerIds().forEach((peerId) => {
-          const pc = peerConnections.current.get(peerId)
-          if (pc && (isPeerConnected(pc) || isPeerNegotiationSettled(pc))) {
-            syncRemoteTracksFromPeer(peerId, pc)
-            void addLocalAudioToPeer(peerId, pc)
-            resumeUnityCallRemotePlayback()
-            return
-          }
-          void createHostOffer(peerId)
-        })
-      }
-    }, 3000)
-
-    return () => window.clearInterval(intervalId)
-  }, [acceptedPeerIds, addLocalAudioToPeer, createHostOffer, isCaller, mediaActive, mediaConnected, syncRemoteTracksFromPeer])
-
-  useEffect(() => {
-    if (!mediaActive || !mediaStarted.current || mediaConnected || callEnded.current) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      if (mediaConnected || callEnded.current || channelReady.current) {
-        return
-      }
-      void fetchPendingSignalsRef.current()
-    }, 5000)
-
-    return () => window.clearInterval(intervalId)
-  }, [mediaActive, mediaConnected])
-
-  useEffect(() => {
-    if (!mediaActive || !mediaStarted.current || mediaConnected || callEnded.current || isCaller || isGroupCall) {
-      return
-    }
-
-    const peerId = String(callerId)
-    const intervalId = window.setInterval(() => {
-      if (mediaConnected || callEnded.current) {
-        return
-      }
-
-      const pc = peerConnections.current.get(peerId)
-      if (pc?.remoteDescription) {
-        return
-      }
-
-      if (pc?.localDescription && pc.signalingState === "have-local-offer") {
-        resendDirectCalleeOffer(peerId)
-        return
-      }
-
-      void createDirectCalleeOffer(peerId)
-      sendSignal({
-        type: "offer-request",
-        from: userIdStr,
-        to: peerId,
-      })
-    }, 5000)
-
-    return () => window.clearInterval(intervalId)
-  }, [callerId, createDirectCalleeOffer, isCaller, isGroupCall, mediaActive, mediaConnected, resendDirectCalleeOffer, sendSignal, userIdStr])
+    void fetchPendingSignalsRef.current().finally(() => {
+      syncPeerConnectionsRef.current()
+    })
+  }, [callStatus, mediaActive])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {

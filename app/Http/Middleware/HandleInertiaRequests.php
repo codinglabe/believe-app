@@ -318,6 +318,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'appEnv' => config('app.env'),
+            'unityCallEnabled' => (bool) config('unity_call.enabled'),
             'seoSiteName' => $seoSiteName,
             'seoCanonical' => $seoCanonical,
             'seoDefaultImage' => $seoDefaultImage,

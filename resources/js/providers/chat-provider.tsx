@@ -13,7 +13,7 @@ import {
   toInternalAppPath,
   unityCallShowPath,
 } from "@/lib/unityCall"
-import { dispatchUnityCallIncoming, dispatchUnityCallStatus, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
+import { dispatchUnityCallStatus, dispatchUnityCallTerminated, isUnityCallTerminated } from "@/lib/unityCallEvents"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { getBrowserTimezone } from "@/lib/timezone-detection"
 import { ChatContext } from "@/providers/chat-context"
@@ -572,28 +572,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })
 
-    channel.listen(".call.incoming", (payload: UnityCallStatusEvent) => {
-      if (payload.caller?.id === currentUser.id || payload.call.status !== "ringing") {
-        return
-      }
-
-      const participants = payload.participants.some((p) => p.userId === currentUser.id)
-        ? payload.participants
-        : [
-            ...payload.participants,
-            {
-              userId: currentUser.id,
-              name: currentUser.name,
-              avatar: currentUser.avatar_url,
-              role: "callee" as const,
-              status: "ringing" as const,
-            },
-          ]
-
-      dispatchUnityCallStatus({ ...payload, participants })
-      dispatchUnityCallIncoming({ ...payload, participants })
-    })
-
     channel.listen(".call.status", (payload: UnityCallStatusEvent) => {
       dispatchUnityCallStatus(payload)
 
@@ -751,7 +729,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       channel.stopListening(".MessageSent")
-      channel.stopListening(".call.incoming")
       channel.stopListening(".call.status")
       channel.stopListening(".user.typing")
       channel.stopListening(".member.joined")

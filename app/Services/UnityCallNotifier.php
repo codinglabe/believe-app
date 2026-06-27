@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Events\UnityCallRoomIncoming;
 use App\Events\UnityCallRoomStatus;
 use App\Events\UnityCallSessionStatusChanged;
 use App\Events\UnityCallStatusChanged;
@@ -24,6 +23,24 @@ class UnityCallNotifier
     public function notifyIncoming(UnityCall $call, User $caller, User $callee): void
     {
         $call->loadMissing(['chatRoom', 'livestream']);
+
+        if ($call->chatRoom?->type !== 'direct') {
+            return;
+        }
+
+        if ((int) $callee->id === (int) $caller->id) {
+            return;
+        }
+
+        $isRingingCallee = $call->participants()
+            ->where('user_id', $callee->id)
+            ->where('role', UnityCallParticipant::ROLE_CALLEE)
+            ->where('status', UnityCallParticipant::STATUS_RINGING)
+            ->exists();
+
+        if (! $isRingingCallee) {
+            return;
+        }
         $callerName = trim((string) $caller->name) ?: 'Someone';
         $joinPath = '/unity-call/'.$call->id;
         $joinUrl = url($joinPath);
@@ -95,15 +112,13 @@ class UnityCallNotifier
 
     public function broadcastRoomIncoming(UnityCall $call, User $caller, ChatRoom $room): void
     {
-        $call->loadMissing(['chatRoom', 'participants.user']);
-        $payload = $this->payloadForUser($call, $caller, 'incoming');
-        UnityCallRoomIncoming::dispatch($room, $payload);
+        // Group/room-wide incoming calls are disabled — P2P direct calls only.
     }
 
     public function broadcastRoomStatus(UnityCall $call, User $caller, string $reason): void
     {
         $call->loadMissing(['chatRoom', 'participants.user']);
-        if (! $call->chatRoom) {
+        if ($call->chatRoom?->type !== 'direct' || $reason === 'incoming') {
             return;
         }
 
@@ -163,6 +178,7 @@ class UnityCallNotifier
 
         return [
             'reason' => $reason,
+            'serverNow' => now()->toIso8601String(),
             'call' => [
                 'id' => $call->id,
                 'status' => $call->status,

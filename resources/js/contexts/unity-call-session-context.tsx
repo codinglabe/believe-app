@@ -33,6 +33,7 @@ import {
   markUnityCallSessionActive,
   navigateAfterUnityCall,
   returnToUnityCall,
+  setUnityCallLiveCallMeta,
   setUnityCallProviderLiveCallId,
   terminateUnityCall,
 } from "@/lib/unityCall"
@@ -40,11 +41,13 @@ import {
   dispatchUnityCallStatus,
   dispatchUnityCallTerminated,
   isUnityCallTerminated,
+  replayUnityCallStatus,
   subscribeUnityCallStatus,
   subscribeUnityCallTerminated,
 } from "@/lib/unityCallEvents"
 import { mergeCallParticipants, participantsSnapshotEqual } from "@/lib/unityCallParticipants"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
+import { resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 export type UnityCallSessionSnapshot = {
@@ -136,10 +139,21 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return previous
       }
 
+      const nextParticipantStatus =
+        payload.participants.find((participant) => participant.userId === previous.authUserId)?.status ??
+        previous.participantStatus
+
       return {
         ...previous,
-        call: { ...previous.call, ...payload.call },
+        call: {
+          ...previous.call,
+          ...payload.call,
+          answeredAt: payload.call.answeredAt ?? previous.call.answeredAt,
+          ringExpiresAt: payload.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+          endedAt: payload.call.endedAt ?? previous.call.endedAt,
+        },
         participants: mergeCallParticipants(previous.participants, payload.participants),
+        participantStatus: nextParticipantStatus,
       }
     })
   }, [])
@@ -218,15 +232,17 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   }, [session])
 
   useEffect(() => {
-    if (session && mediaState?.canBackgroundCall) {
-      setUnityCallProviderLiveCallId(session.call.id)
+    if (session) {
+      setUnityCallLiveCallMeta({
+        callId: session.call.id,
+        chatRoomId: session.call.chatRoomId ?? null,
+        isGroupCall: session.isGroupCall,
+      })
       return
     }
 
-    if (!session) {
-      setUnityCallProviderLiveCallId(null)
-    }
-  }, [mediaState?.canBackgroundCall, session])
+    setUnityCallProviderLiveCallId(null)
+  }, [session?.call.chatRoomId, session?.call.id, session?.isGroupCall])
 
   const registerSession = useCallback((snapshot: UnityCallSessionSnapshot) => {
     setSession((previous) => {
@@ -237,7 +253,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return {
           ...previous,
           ...snapshot,
-          call: { ...previous.call, ...snapshot.call },
+          call: {
+            ...previous.call,
+            ...snapshot.call,
+            answeredAt: snapshot.call.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: snapshot.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: snapshot.call.endedAt ?? previous.call.endedAt,
+          },
           participants: mergeCallParticipants(previous.participants, snapshot.participants),
         }
       }
@@ -251,7 +273,15 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return previous
       }
 
-      const nextCall = patch.call ? { ...previous.call, ...patch.call } : previous.call
+      const nextCall = patch.call
+        ? {
+            ...previous.call,
+            ...patch.call,
+            answeredAt: patch.call.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: patch.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: patch.call.endedAt ?? previous.call.endedAt,
+          }
+        : previous.call
       const nextParticipants = patch.participants
         ? mergeCallParticipants(previous.participants, patch.participants)
         : previous.participants
@@ -298,10 +328,16 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     if (!session?.call.chatRoomId) {
       return
     }
+
+    markUnityCallBackgrounded(session.call.id)
+    refreshEchoAuthHeaders()
+    resyncCallRef.current()
+    resumeUnityCallRemotePlayback()
+
     router.visit(`${route("chat.index")}?room=${session.call.chatRoomId}`, {
       preserveScroll: true,
     })
-  }, [session?.call.chatRoomId])
+  }, [session?.call.chatRoomId, session?.call.id])
 
   const endActiveCall = useCallback(async () => {
     if (!session) {
@@ -346,6 +382,34 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     const authUserId = session.authUserId
     const isCaller = session.isCaller
 
+    replayUnityCallStatus(callId, (payload) => {
+      if (payload.reason === "incoming") {
+        return
+      }
+
+      setSession((previous) => {
+        if (!previous || previous.call.id !== callId) {
+          return previous
+        }
+
+        return {
+          ...previous,
+          call: {
+            ...previous.call,
+            ...payload.call,
+            answeredAt: payload.call.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: payload.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: payload.call.endedAt ?? previous.call.endedAt,
+          },
+          participants: mergeCallParticipants(previous.participants, payload.participants),
+        }
+      })
+
+      if (payload.reason === "accepted" || payload.reason === "participant_left") {
+        resyncCallRef.current()
+      }
+    })
+
     return subscribeUnityCallStatus((payload) => {
       if (payload.call.id !== callId) {
         return
@@ -372,7 +436,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
         return {
           ...previous,
-          call: nextCall,
+          call: {
+            ...previous.call,
+            ...nextCall,
+            answeredAt: nextCall.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: nextCall.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: nextCall.endedAt ?? previous.call.endedAt,
+          },
           participants: nextParticipants,
         }
       })
@@ -414,6 +484,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
     refreshEchoAuthHeaders()
     webrtc.resyncCall()
+    resumeUnityCallRemotePlayback()
   }, [appPath, onCallPage, session, mediaState?.canBackgroundCall, webrtc.resyncCall])
 
   useUnityCallAutoMinimize({
@@ -522,32 +593,31 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     return session.caller.name
   }, [session])
 
-  const keepBackgroundAudioAlive = Boolean(
+  const showRemoteAudio = Boolean(
     session &&
-      !onCallPage &&
-      mediaState?.callLive &&
-      mediaState.callConnected &&
-      (webrtc.mediaConnected || mediaEngaged || mergedRemoteStream.getAudioTracks().length > 0),
+      mediaState?.canBackgroundCall &&
+      (webrtc.remoteStreams.some(({ stream }) => stream.getAudioTracks().some((track) => track.readyState === "live")) ||
+        mergedRemoteStream.getAudioTracks().some((track) => track.readyState === "live") ||
+        webrtc.mediaConnected ||
+        mediaEngaged ||
+        Boolean(webrtc.localStream)),
   )
+
+  const keepBackgroundAudioAlive = Boolean(session && !onCallPage && showRemoteAudio)
 
   useUnityCallBackgroundKeepAlive({
     enabled: keepBackgroundAudioAlive,
     title: callBackgroundTitle,
     subtitle: "Believe In Unity · Voice call",
     localStream: webrtc.localStream,
-    remoteStream: mergedRemoteStream,
+    remoteStream: null,
     speakerOn,
-    preferWebAudioRemote: true,
+    preferWebAudioRemote: false,
     onHangUp: () => {
       void endActiveCall()
     },
     onResume: webrtc.resyncCall,
   })
-
-  const showRemoteAudio =
-    onCallPage &&
-    Boolean(session && mediaState?.callLive && mediaState.callConnected) &&
-    (mergedRemoteStream.getAudioTracks().length > 0 || webrtc.mediaConnected || mediaEngaged)
 
   const value = useMemo<UnityCallSessionContextValue>(
     () => ({
