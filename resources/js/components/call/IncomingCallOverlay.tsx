@@ -247,12 +247,7 @@ export default function IncomingCallOverlay({ authUserId }: Props) {
         return
       }
 
-      const self = payload.participants.find((p) => p.userId === activeUserId)
-      const isIncomingCallee =
-        payload.reason === "incoming" &&
-        payload.caller?.id !== activeUserId &&
-        payload.call.status === "ringing" &&
-        (!self || (self.role === "callee" && self.status === "ringing"))
+      const isIncomingCallee = isUnityCallIncomingForUser(payload, activeUserId)
 
       if (isIncomingCallee) {
         showIncoming(payload)
