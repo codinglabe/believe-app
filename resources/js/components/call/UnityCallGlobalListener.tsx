@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { router } from "@inertiajs/react"
 import { echo } from "@laravel/echo-react"
 import { stopCallRingtone } from "@/lib/callRingtone"
-import { getUnityCallProviderLiveCallId } from "@/lib/unityCall"
+import { getUnityCallLiveCallMeta, type UnityCallLiveMeta } from "@/lib/unityCall"
 import {
   dispatchUnityCallIncoming,
   dispatchUnityCallStatus,
@@ -50,22 +50,27 @@ function publishIncomingCall(payload: UnityCallStatusEvent): void {
   dispatchUnityCallIncoming(payload)
 }
 
-export default function UnityCallGlobalListener({ authUserId }: Props) {
-  const userId = useLiveAuthUserId(authUserId)
-  const [liveCallId, setLiveCallId] = useState<number | null>(() => getUnityCallProviderLiveCallId())
+function useLiveCallMeta(): UnityCallLiveMeta | null {
+  const [meta, setMeta] = useState<UnityCallLiveMeta | null>(() => getUnityCallLiveCallMeta())
 
   useEffect(() => {
-    const syncLiveCallId = () => setLiveCallId(getUnityCallProviderLiveCallId())
-    syncLiveCallId()
+    const sync = () => setMeta(getUnityCallLiveCallMeta())
+    sync()
 
-    const onLiveCallId = (event: Event) => {
-      const next = (event as CustomEvent<number | null>).detail ?? null
-      setLiveCallId(typeof next === "number" && next > 0 ? next : null)
+    const onMeta = (event: Event) => {
+      setMeta((event as CustomEvent<UnityCallLiveMeta | null>).detail ?? null)
     }
 
-    window.addEventListener("unity-call-live-id", onLiveCallId)
-    return () => window.removeEventListener("unity-call-live-id", onLiveCallId)
+    window.addEventListener("unity-call-live-meta", onMeta)
+    return () => window.removeEventListener("unity-call-live-meta", onMeta)
   }, [])
+
+  return meta
+}
+
+export default function UnityCallGlobalListener({ authUserId }: Props) {
+  const userId = useLiveAuthUserId(authUserId)
+  const liveMeta = useLiveCallMeta()
 
   const handleStatusPayload = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -126,21 +131,28 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
   }, [handleStatusPayload, userId])
 
   useEffect(() => {
-    if (!liveCallId || liveCallId <= 0) {
+    if (!liveMeta?.callId || liveMeta.callId <= 0) {
       return
     }
 
     refreshEchoAuthHeaders()
 
     const instance = echo()
-    const callChannel = instance.private(`unity-call.${liveCallId}`)
+    const callChannel = instance.private(`unity-call.${liveMeta.callId}`)
 
     callChannel.listen(".call.session.status", handleStatusPayload)
 
+    const roomChannel =
+      liveMeta.chatRoomId && !liveMeta.isGroupCall
+        ? instance.private(`direct-chat.${liveMeta.chatRoomId}`)
+        : null
+    roomChannel?.listen(".call.status", handleStatusPayload)
+
     return () => {
       callChannel.stopListening(".call.session.status")
+      roomChannel?.stopListening(".call.status")
     }
-  }, [handleStatusPayload, liveCallId])
+  }, [handleStatusPayload, liveMeta?.callId, liveMeta?.chatRoomId, liveMeta?.isGroupCall])
 
   return null
 }

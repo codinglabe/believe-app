@@ -25,12 +25,13 @@ export function useUnityCallBackgroundKeepAlive({
   localStream,
   remoteStream,
   speakerOn = true,
-  preferWebAudioRemote = true,
+  preferWebAudioRemote = false,
   onHangUp,
   onResume,
 }: Options): void {
   const onHangUpRef = useRef(onHangUp)
   const onResumeRef = useRef(onResume)
+  const handleRef = useRef<UnityCallBackgroundKeepAliveHandle | null>(null)
 
   useEffect(() => {
     onHangUpRef.current = onHangUp
@@ -42,6 +43,8 @@ export function useUnityCallBackgroundKeepAlive({
 
   useEffect(() => {
     if (!enabled) {
+      handleRef.current?.release()
+      handleRef.current = null
       return
     }
 
@@ -55,9 +58,21 @@ export function useUnityCallBackgroundKeepAlive({
       onHangUp: () => onHangUpRef.current?.(),
       onResume: () => onResumeRef.current?.(),
     })
+    handleRef.current = handle
 
     return () => {
       handle.release()
+      if (handleRef.current === handle) {
+        handleRef.current = null
+      }
     }
-  }, [enabled, title, subtitle, localStream, remoteStream, speakerOn, preferWebAudioRemote])
+  }, [enabled, preferWebAudioRemote, subtitle, title])
+
+  useEffect(() => {
+    handleRef.current?.updateStreams(localStream, remoteStream)
+  }, [localStream, remoteStream])
+
+  useEffect(() => {
+    handleRef.current?.setSpeakerOn(speakerOn)
+  }, [speakerOn])
 }

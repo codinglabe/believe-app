@@ -33,6 +33,7 @@ import {
   markUnityCallSessionActive,
   navigateAfterUnityCall,
   returnToUnityCall,
+  setUnityCallLiveCallMeta,
   setUnityCallProviderLiveCallId,
   terminateUnityCall,
 } from "@/lib/unityCall"
@@ -46,6 +47,7 @@ import {
 } from "@/lib/unityCallEvents"
 import { mergeCallParticipants, participantsSnapshotEqual } from "@/lib/unityCallParticipants"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
+import { resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 export type UnityCallSessionSnapshot = {
@@ -137,10 +139,15 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return previous
       }
 
+      const nextParticipantStatus =
+        payload.participants.find((participant) => participant.userId === previous.authUserId)?.status ??
+        previous.participantStatus
+
       return {
         ...previous,
         call: { ...previous.call, ...payload.call },
         participants: mergeCallParticipants(previous.participants, payload.participants),
+        participantStatus: nextParticipantStatus,
       }
     })
   }, [])
@@ -220,12 +227,16 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     if (session) {
-      setUnityCallProviderLiveCallId(session.call.id)
+      setUnityCallLiveCallMeta({
+        callId: session.call.id,
+        chatRoomId: session.call.chatRoomId ?? null,
+        isGroupCall: session.isGroupCall,
+      })
       return
     }
 
     setUnityCallProviderLiveCallId(null)
-  }, [session?.call.id])
+  }, [session?.call.chatRoomId, session?.call.id, session?.isGroupCall])
 
   const registerSession = useCallback((snapshot: UnityCallSessionSnapshot) => {
     setSession((previous) => {
@@ -297,10 +308,16 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     if (!session?.call.chatRoomId) {
       return
     }
+
+    markUnityCallBackgrounded(session.call.id)
+    refreshEchoAuthHeaders()
+    resyncCallRef.current()
+    resumeUnityCallRemotePlayback()
+
     router.visit(`${route("chat.index")}?room=${session.call.chatRoomId}`, {
       preserveScroll: true,
     })
-  }, [session?.call.chatRoomId])
+  }, [session?.call.chatRoomId, session?.call.id])
 
   const endActiveCall = useCallback(async () => {
     if (!session) {
@@ -435,6 +452,7 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
     refreshEchoAuthHeaders()
     webrtc.resyncCall()
+    resumeUnityCallRemotePlayback()
   }, [appPath, onCallPage, session, mediaState?.canBackgroundCall, webrtc.resyncCall])
 
   useUnityCallAutoMinimize({
@@ -543,36 +561,31 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
     return session.caller.name
   }, [session])
 
-  const keepBackgroundAudioAlive = Boolean(
+  const showRemoteAudio = Boolean(
     session &&
-      !onCallPage &&
-      mediaState?.callLive &&
-      mediaState.callConnected &&
-      (webrtc.mediaConnected || mediaEngaged || mergedRemoteStream.getAudioTracks().length > 0),
+      mediaState?.canBackgroundCall &&
+      (webrtc.remoteStreams.some(({ stream }) => stream.getAudioTracks().some((track) => track.readyState === "live")) ||
+        mergedRemoteStream.getAudioTracks().some((track) => track.readyState === "live") ||
+        webrtc.mediaConnected ||
+        mediaEngaged ||
+        Boolean(webrtc.localStream)),
   )
+
+  const keepBackgroundAudioAlive = Boolean(session && !onCallPage && showRemoteAudio)
 
   useUnityCallBackgroundKeepAlive({
     enabled: keepBackgroundAudioAlive,
     title: callBackgroundTitle,
     subtitle: "Believe In Unity · Voice call",
     localStream: webrtc.localStream,
-    remoteStream: mergedRemoteStream,
+    remoteStream: null,
     speakerOn,
-    preferWebAudioRemote: true,
+    preferWebAudioRemote: false,
     onHangUp: () => {
       void endActiveCall()
     },
     onResume: webrtc.resyncCall,
   })
-
-  const showRemoteAudio =
-    onCallPage &&
-    Boolean(session && mediaState?.callLive) &&
-    (webrtc.remoteStreams.some(({ stream }) => stream.getAudioTracks().some((track) => track.readyState === "live")) ||
-      mergedRemoteStream.getAudioTracks().some((track) => track.readyState === "live") ||
-      webrtc.mediaConnected ||
-      mediaEngaged ||
-      Boolean(mediaState?.callConnected))
 
   const value = useMemo<UnityCallSessionContextValue>(
     () => ({
