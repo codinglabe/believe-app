@@ -13,7 +13,6 @@ import {
   navigateAfterUnityCall,
   notifyCalleeIncomingDelivered,
   terminateUnityCall,
-  unityCallChatChannelName,
   unityCallChatUrl,
 } from "@/lib/unityCall"
 import { applyRemoteAudioOutput } from "@/lib/callAudioOutput"
@@ -21,13 +20,11 @@ import { resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState, normalizeCallParticipants } from "@/lib/unityCallMediaState"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
-import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTerminated, replayUnityCallStatus, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
-import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
-import { useEcho } from "@laravel/echo-react"
-import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTerminated, peekUnityCallStatus, replayUnityCallStatus, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
+import type { UnityCallParticipantRow, UnityCallPayload, UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { refreshUnityCallStatusFromServer } from "@/lib/unityCall"
 import { useUnityCallElapsed } from "@/hooks/useUnityCallElapsed"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
-import { useStableCallback } from "@/hooks/useStableCallback"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import { syncUnityCallServerClock } from "@/lib/unityCallTimer"
 
@@ -44,27 +41,6 @@ type Props = {
   acceptCallUrl: string
   chatUrl: string
   authUserId: number
-}
-
-function UnityCallChatStatusEcho({
-  channelName,
-  visibility,
-  onStatus,
-}: {
-  channelName: string
-  visibility: "public" | "private"
-  onStatus: (payload: UnityCallStatusEvent) => void
-}) {
-  const onStatusStable = useStableCallback(onStatus)
-
-  useEcho<UnityCallStatusEvent>(
-    channelName,
-    ".call.status",
-    onStatusStable,
-    [channelName, visibility],
-    visibility,
-  )
-  return null
 }
 
 export default function UnityCallShow({
@@ -157,6 +133,7 @@ export default function UnityCallShow({
 
   const sessionRegisteredRef = useRef<number | null>(null)
   const calleeWasRingingRef = useRef(false)
+  const callerServerSyncRef = useRef<number | null>(null)
 
   const isPendingIncomingCallee =
     !isCaller && selfStatus === "ringing" && activeCall.status === "ringing"
@@ -174,7 +151,12 @@ export default function UnityCallShow({
     }
 
     const needsFullRegister =
-      sessionRegisteredRef.current !== call.id || calleeJustAccepted
+      sessionRegisteredRef.current !== call.id ||
+      calleeJustAccepted ||
+      (isCaller &&
+        liveSession?.call.id === call.id &&
+        liveSession.call.status === "accepted" &&
+        call.status === "ringing")
 
     if (!needsFullRegister) {
       return
@@ -201,6 +183,8 @@ export default function UnityCallShow({
     isCaller,
     isGroupCall,
     isPendingIncomingCallee,
+    liveSession?.call.id,
+    liveSession?.call.status,
     registerSession,
     selfStatus,
   ])
@@ -211,13 +195,23 @@ export default function UnityCallShow({
     }
 
     const mergedParticipants = mergeCallParticipants(participants, liveSession.participants)
-    const mergedCall = { ...call, ...liveSession.call }
+    const mergedCall = {
+      ...call,
+      ...liveSession.call,
+      answeredAt: liveSession.call.answeredAt ?? call.answeredAt,
+      ringExpiresAt: liveSession.call.ringExpiresAt ?? call.ringExpiresAt,
+      endedAt: liveSession.call.endedAt ?? call.endedAt,
+    }
     const participantsChanged = mergedParticipants.some((row) => {
       const localRow = participants.find((participant) => participant.userId === row.userId)
       return !localRow || localRow.status !== row.status || localRow.incomingDelivered !== row.incomingDelivered
     })
 
-    if (mergedCall.status !== call.status || participantsChanged) {
+    if (
+      mergedCall.status !== call.status ||
+      mergedCall.answeredAt !== call.answeredAt ||
+      participantsChanged
+    ) {
       setCall(mergedCall)
       setParticipants(mergedParticipants)
     }
@@ -460,7 +454,17 @@ export default function UnityCallShow({
         return
       }
 
-      setCall((current) => ({ ...current, ...payload.call }))
+      if (payload.serverNow) {
+        syncUnityCallServerClock(payload.serverNow)
+      }
+
+      setCall((current) => ({
+        ...current,
+        ...payload.call,
+        answeredAt: payload.call.answeredAt ?? current.answeredAt,
+        ringExpiresAt: payload.call.ringExpiresAt ?? current.ringExpiresAt,
+        endedAt: payload.call.endedAt ?? current.endedAt,
+      }))
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
       if (payload.reason === "accepted") {
@@ -521,13 +525,29 @@ export default function UnityCallShow({
     [authUserId, call.id, exitCallScreen, iceServers, isCaller, isGroupCall, participantStatus, registerSession, unlockRemotePlayback, updateSession],
   )
 
-  const onStatus = useStableCallback(handleCallTerminated)
-
-  useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId], "private")
-
   useEffect(() => {
+    refreshEchoAuthHeaders()
     replayUnityCallStatus(call.id, handleCallTerminated)
 
+    const cached = peekUnityCallStatus(call.id)
+    if (cached?.reason === "accepted") {
+      handleCallTerminated(cached)
+      return
+    }
+
+    if (!isCaller || call.status !== "ringing" || callerServerSyncRef.current === call.id) {
+      return
+    }
+
+    callerServerSyncRef.current = call.id
+    void refreshUnityCallStatusFromServer(call.id).then((payload) => {
+      if (payload) {
+        handleCallTerminated(payload)
+      }
+    })
+  }, [call.id, call.status, handleCallTerminated, isCaller])
+
+  useEffect(() => {
     return subscribeUnityCallStatus((payload) => {
       if (payload.call.id !== call.id) {
         return
@@ -535,23 +555,6 @@ export default function UnityCallShow({
       handleCallTerminated(payload)
     })
   }, [call.id, handleCallTerminated])
-
-  useEcho<UnityCallStatusEvent>(
-    `unity-call.${call.id}`,
-    ".call.session.status",
-    onStatus,
-    [call.id],
-    "private",
-  )
-
-  const chatChannelName = useMemo(() => {
-    if (!call.chatRoomId) {
-      return null
-    }
-    return unityCallChatChannelName(call.chatRoomId, isGroupCall, call.chatRoomType ?? null)
-  }, [call.chatRoomId, call.chatRoomType, isGroupCall])
-
-  const chatChannelVisibility = chatChannelName?.startsWith("public-chat.") ? "public" : "private"
 
   useUnityCallRingTimeout({
     callId: call.id,
@@ -725,14 +728,6 @@ export default function UnityCallShow({
   return (
     <>
       <Head title="Audio call" />
-
-      {chatChannelName ? (
-        <UnityCallChatStatusEcho
-          channelName={chatChannelName}
-          visibility={chatChannelVisibility}
-          onStatus={handleCallTerminated}
-        />
-      ) : null}
 
       <UnityCallScreen
         displayName={displayName}

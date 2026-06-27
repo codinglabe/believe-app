@@ -4,13 +4,18 @@ import { useCallback, useEffect, useState } from "react"
 import { router } from "@inertiajs/react"
 import { echo } from "@laravel/echo-react"
 import { stopCallRingtone } from "@/lib/callRingtone"
-import { getUnityCallLiveCallMeta, type UnityCallLiveMeta } from "@/lib/unityCall"
+import {
+  getUnityCallLiveCallMeta,
+  refreshUnityCallStatusFromServer,
+  type UnityCallLiveMeta,
+} from "@/lib/unityCall"
 import {
   dispatchUnityCallIncoming,
   dispatchUnityCallStatus,
   dispatchUnityCallTerminated,
   isUnityCallIncomingForUser,
   isUnityCallTerminated,
+  peekUnityCallStatus,
 } from "@/lib/unityCallEvents"
 import { rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
@@ -72,6 +77,15 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
   const userId = useLiveAuthUserId(authUserId)
   const liveMeta = useLiveCallMeta()
 
+  const syncAcceptedFromServer = useCallback((callId: number) => {
+    const cached = peekUnityCallStatus(callId)
+    if (cached?.reason === "accepted" && cached.call.status === "accepted") {
+      return
+    }
+
+    void refreshUnityCallStatusFromServer(callId)
+  }, [])
+
   const handleStatusPayload = useCallback(
     (payload: UnityCallStatusEvent) => {
       if (!userId) {
@@ -121,6 +135,10 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
     const connection = instance.connector?.pusher?.connection
     const onReconnected = () => {
       refreshEchoAuthHeaders()
+      const callId = getUnityCallLiveCallMeta()?.callId
+      if (callId) {
+        syncAcceptedFromServer(callId)
+      }
     }
     connection?.bind("connected", onReconnected)
 
@@ -128,7 +146,7 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       connection?.unbind("connected", onReconnected)
       userChannel.stopListening(".call.status")
     }
-  }, [handleStatusPayload, userId])
+  }, [handleStatusPayload, syncAcceptedFromServer, userId])
 
   useEffect(() => {
     if (!liveMeta?.callId || liveMeta.callId <= 0) {
@@ -148,11 +166,25 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
         : null
     roomChannel?.listen(".call.status", handleStatusPayload)
 
+    callChannel.subscribed(() => {
+      syncAcceptedFromServer(liveMeta.callId)
+    })
+
+    roomChannel?.subscribed(() => {
+      syncAcceptedFromServer(liveMeta.callId)
+    })
+
     return () => {
       callChannel.stopListening(".call.session.status")
       roomChannel?.stopListening(".call.status")
     }
-  }, [handleStatusPayload, liveMeta?.callId, liveMeta?.chatRoomId, liveMeta?.isGroupCall])
+  }, [
+    handleStatusPayload,
+    liveMeta?.callId,
+    liveMeta?.chatRoomId,
+    liveMeta?.isGroupCall,
+    syncAcceptedFromServer,
+  ])
 
   return null
 }

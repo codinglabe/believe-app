@@ -52,7 +52,10 @@ class UnityCallController extends Controller
 
         $session['iceServers'] = $webrtcIce->iceServers();
 
-        return response()->json(['active' => $session]);
+        return response()->json([
+            'active' => $session,
+            'serverNow' => now()->toIso8601String(),
+        ]);
     }
 
     public function chatRooms(Request $request, UnityCallService $calls): JsonResponse
