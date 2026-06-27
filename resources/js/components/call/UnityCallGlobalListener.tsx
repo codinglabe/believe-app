@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { router } from "@inertiajs/react"
 import { echo } from "@laravel/echo-react"
 import { stopCallRingtone } from "@/lib/callRingtone"
+import { getUnityCallProviderLiveCallId } from "@/lib/unityCall"
 import {
   dispatchUnityCallIncoming,
   dispatchUnityCallStatus,
@@ -12,6 +13,7 @@ import {
   isUnityCallTerminated,
 } from "@/lib/unityCallEvents"
 import { rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
+import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
 type Props = {
@@ -50,6 +52,20 @@ function publishIncomingCall(payload: UnityCallStatusEvent): void {
 
 export default function UnityCallGlobalListener({ authUserId }: Props) {
   const userId = useLiveAuthUserId(authUserId)
+  const [liveCallId, setLiveCallId] = useState<number | null>(() => getUnityCallProviderLiveCallId())
+
+  useEffect(() => {
+    const syncLiveCallId = () => setLiveCallId(getUnityCallProviderLiveCallId())
+    syncLiveCallId()
+
+    const onLiveCallId = (event: Event) => {
+      const next = (event as CustomEvent<number | null>).detail ?? null
+      setLiveCallId(typeof next === "number" && next > 0 ? next : null)
+    }
+
+    window.addEventListener("unity-call-live-id", onLiveCallId)
+    return () => window.removeEventListener("unity-call-live-id", onLiveCallId)
+  }, [])
 
   const handleStatusPayload = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -85,6 +101,8 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       return
     }
 
+    refreshEchoAuthHeaders()
+
     const instance = echo()
     const userChannel = instance.private(`user.${userId}`)
 
@@ -95,10 +113,34 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       }
     })
 
+    const connection = instance.connector?.pusher?.connection
+    const onReconnected = () => {
+      refreshEchoAuthHeaders()
+    }
+    connection?.bind("connected", onReconnected)
+
     return () => {
+      connection?.unbind("connected", onReconnected)
       userChannel.stopListening(".call.status")
     }
   }, [handleStatusPayload, userId])
+
+  useEffect(() => {
+    if (!liveCallId || liveCallId <= 0) {
+      return
+    }
+
+    refreshEchoAuthHeaders()
+
+    const instance = echo()
+    const callChannel = instance.private(`unity-call.${liveCallId}`)
+
+    callChannel.listen(".call.session.status", handleStatusPayload)
+
+    return () => {
+      callChannel.stopListening(".call.session.status")
+    }
+  }, [handleStatusPayload, liveCallId])
 
   return null
 }

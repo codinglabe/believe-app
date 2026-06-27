@@ -21,12 +21,11 @@ import { resumeUnityCallRemotePlayback } from "@/lib/unityCallWebRTC"
 import { useUnityCallSession } from "@/contexts/unity-call-session-context"
 import { computeUnityCallMediaState, normalizeCallParticipants } from "@/lib/unityCallMediaState"
 import { mergeCallParticipants } from "@/lib/unityCallParticipants"
-import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTerminated, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
+import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTerminated, replayUnityCallStatus, subscribeUnityCallStatus } from "@/lib/unityCallEvents"
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
-import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 import { useStableCallback } from "@/hooks/useStableCallback"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
 import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
@@ -535,22 +534,11 @@ export default function UnityCallShow({
 
   const onStatus = useStableCallback(handleCallTerminated)
 
-  const shouldSyncCallStatus =
-    isCaller &&
-    !ending &&
-    !isTerminalCallStatus &&
-    (activeCall.status === "ringing" ||
-      (activeCall.status === "accepted" && acceptedCallees.length === 0))
-
-  useUnityCallStatusSync({
-    callId: call.id,
-    enabled: shouldSyncCallStatus,
-    onStatus: onStatus,
-  })
-
   useEcho<UnityCallStatusEvent>(`user.${authUserId}`, ".call.status", onStatus, [authUserId], "private")
 
   useEffect(() => {
+    replayUnityCallStatus(call.id, handleCallTerminated)
+
     return subscribeUnityCallStatus((payload) => {
       if (payload.call.id !== call.id) {
         return

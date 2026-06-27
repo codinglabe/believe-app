@@ -1063,7 +1063,6 @@ Route::prefix('unity-calls')->middleware(['auth', 'EnsureEmailIsVerified', 'topi
     Route::post('/{call}/incoming-delivered', [UnityCallController::class, 'markIncomingDelivered'])->name('incoming-delivered')->where('call', '[0-9]+');
     Route::post('/{call}/signal', [UnityCallController::class, 'signal'])->name('signal')->where('call', '[0-9]+');
     Route::get('/{call}/pending-signals', [UnityCallController::class, 'pendingSignals'])->name('pending-signals')->where('call', '[0-9]+');
-    Route::get('/{call}/sync', [UnityCallController::class, 'sync'])->name('sync')->where('call', '[0-9]+');
 });
 
 Route::get('/unity-calls/{call}', function (Request $request, int $call) {

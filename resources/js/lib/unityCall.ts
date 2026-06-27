@@ -38,6 +38,9 @@ let providerLiveCallId: number | null = null
 
 export function setUnityCallProviderLiveCallId(callId: number | null): void {
   providerLiveCallId = callId
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("unity-call-live-id", { detail: callId }))
+  }
 }
 
 export function getUnityCallProviderLiveCallId(): number | null {
@@ -443,6 +446,11 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
   if (!ok && message) {
     throw new Error(message)
   }
+
+  if (ok && data?.call_id) {
+    setUnityCallProviderLiveCallId(data.call_id)
+  }
+
   return ok && data ? data : null
 }
 
@@ -490,14 +498,6 @@ export async function fetchActiveUnityCallSession(): Promise<UnityCallActiveSess
   )
 
   return ok && data?.active ? data.active : null
-}
-
-export async function fetchUnityCallSync(callId: number): Promise<UnityCallStatusEvent | null> {
-  const { ok, data } = await getUnityCallJson<{ status?: UnityCallStatusEvent | null }>(
-    route("unity-calls.sync", callId),
-  )
-
-  return ok && data?.status ? data.status : null
 }
 
 export type UnityCallChatRoomChannel = {
