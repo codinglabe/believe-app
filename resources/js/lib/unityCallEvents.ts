@@ -70,12 +70,24 @@ export function isUnityCallIncomingForUser(payload: UnityCallStatusEvent, userId
     return false
   }
 
+  if (payload.call.chatRoomType && payload.call.chatRoomType !== "direct") {
+    return false
+  }
+
   if (payload.caller?.id === userId) {
     return false
   }
 
   const self = payload.participants.find((participant) => participant.userId === userId)
-  return !self || (self.role === "callee" && self.status === "ringing")
+  if (!self || self.role !== "callee" || self.status !== "ringing") {
+    return false
+  }
+
+  const ringingCallees = payload.participants.filter(
+    (participant) => participant.role === "callee" && participant.status === "ringing",
+  )
+
+  return ringingCallees.length === 1 && ringingCallees[0]?.userId === userId
 }
 
 export function dispatchUnityCallIncoming(payload: UnityCallStatusEvent): void {

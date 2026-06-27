@@ -11,7 +11,6 @@ import {
   isUnityCallIncomingForUser,
   isUnityCallTerminated,
 } from "@/lib/unityCallEvents"
-import { fetchUnityCallChatRooms, type UnityCallChatRoomChannel } from "@/lib/unityCall"
 import { rehydratePendingIncomingCall } from "@/lib/swIncomingCallBridge"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 
@@ -44,39 +43,6 @@ function useLiveAuthUserId(initial?: number | null | undefined): number | null {
   return userId
 }
 
-function chatRoomChannelName(room: UnityCallChatRoomChannel): string {
-  if (room.type === "public") {
-    return `public-chat.${room.id}`
-  }
-  if (room.type === "private") {
-    return `private-chat.${room.id}`
-  }
-  return `direct-chat.${room.id}`
-}
-
-function normalizeRoomIncomingPayload(
-  payload: UnityCallStatusEvent,
-  userId: number,
-): UnityCallStatusEvent {
-  const hasSelf = payload.participants.some((participant) => participant.userId === userId)
-  if (hasSelf) {
-    return payload
-  }
-
-  return {
-    ...payload,
-    participants: [
-      ...payload.participants,
-      {
-        userId,
-        name: "You",
-        role: "callee",
-        status: "ringing",
-      },
-    ],
-  }
-}
-
 function publishIncomingCall(payload: UnityCallStatusEvent): void {
   dispatchUnityCallStatus(payload)
   dispatchUnityCallIncoming(payload)
@@ -84,28 +50,6 @@ function publishIncomingCall(payload: UnityCallStatusEvent): void {
 
 export default function UnityCallGlobalListener({ authUserId }: Props) {
   const userId = useLiveAuthUserId(authUserId)
-
-  const handleDirectIncomingPayload = useCallback(
-    (payload: UnityCallStatusEvent) => {
-      if (!userId || !isUnityCallIncomingForUser(payload, userId)) {
-        return
-      }
-
-      publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
-    },
-    [userId],
-  )
-
-  const handleGroupIncomingPayload = useCallback(
-    (payload: UnityCallStatusEvent) => {
-      if (!userId || payload.caller?.id === userId || payload.call.status !== "ringing") {
-        return
-      }
-
-      publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
-    },
-    [userId],
-  )
 
   const handleStatusPayload = useCallback(
     (payload: UnityCallStatusEvent) => {
@@ -116,7 +60,7 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       dispatchUnityCallStatus(payload)
 
       if (isUnityCallIncomingForUser(payload, userId)) {
-        publishIncomingCall(normalizeRoomIncomingPayload(payload, userId))
+        publishIncomingCall(payload)
         return
       }
 
@@ -155,61 +99,6 @@ export default function UnityCallGlobalListener({ authUserId }: Props) {
       userChannel.stopListening(".call.status")
     }
   }, [handleStatusPayload, userId])
-
-  useEffect(() => {
-    if (!userId) {
-      return
-    }
-
-    let cancelled = false
-    const roomChannels: Array<{ stop: () => void }> = []
-
-    const subscribeRooms = async () => {
-      const rooms = await fetchUnityCallChatRooms()
-      if (cancelled) {
-        return
-      }
-
-      const instance = echo()
-
-      for (const room of rooms) {
-        const channelName = chatRoomChannelName(room)
-        const channel =
-          room.type === "public" ? instance.channel(channelName) : instance.private(channelName)
-
-        channel.listen(".call.incoming", handleGroupIncomingPayload)
-        channel.listen(".call.status", handleStatusPayload)
-        channel.error((error: unknown) => {
-          if (import.meta.env.DEV) {
-            console.error(`[UnityCall] room channel failed (${channelName}):`, error)
-          }
-        })
-
-        roomChannels.push({
-          stop: () => {
-            channel.stopListening(".call.incoming")
-            channel.stopListening(".call.status")
-          },
-        })
-      }
-    }
-
-    void subscribeRooms()
-
-    const resubscribe = () => {
-      roomChannels.forEach((entry) => entry.stop())
-      roomChannels.length = 0
-      void subscribeRooms()
-    }
-
-    const unsubscribeRouter = router.on("success", resubscribe)
-
-    return () => {
-      cancelled = true
-      unsubscribeRouter()
-      roomChannels.forEach((entry) => entry.stop())
-    }
-  }, [handleGroupIncomingPayload, handleStatusPayload, userId])
 
   return null
 }

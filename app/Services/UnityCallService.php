@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Jobs\NotifyUnityCallRoomMembersJob;
 use App\Models\ChatRoom;
 use App\Models\UnityCall;
 use App\Models\UnityCallParticipant;
@@ -99,11 +98,6 @@ class UnityCallService
 
             return $call->fresh(['participants.user', 'chatRoom', 'caller']);
         });
-
-        if (! $isDirect) {
-            $this->notifier->broadcastRoomIncoming($call, $caller, $chatRoom);
-            NotifyUnityCallRoomMembersJob::dispatchSync($call->id, $caller->id);
-        }
 
         $this->syncChatCallMessage($call->fresh(['participants.user', 'chatRoom', 'caller']));
 
@@ -653,18 +647,7 @@ class UnityCallService
      */
     public function chatRoomsForIncomingListener(User $user): array
     {
-        return $user->chatRooms()
-            ->where('chat_rooms.is_active', true)
-            ->where('chat_rooms.type', 'direct')
-            ->orderByDesc('chat_rooms.updated_at')
-            ->limit(64)
-            ->get(['chat_rooms.id', 'chat_rooms.type'])
-            ->map(fn ($room) => [
-                'id' => (int) $room->id,
-                'type' => (string) $room->type,
-            ])
-            ->values()
-            ->all();
+        return [];
     }
 
     /**
@@ -922,16 +905,7 @@ class UnityCallService
             throw ValidationException::withMessages(['call' => __('Only callees can join this way.')]);
         }
 
-        if (! $this->userCanAccess($call, $user)) {
-            throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
-        }
-
-        return UnityCallParticipant::create([
-            'unity_call_id' => $call->id,
-            'user_id' => $user->id,
-            'role' => UnityCallParticipant::ROLE_CALLEE,
-            'status' => UnityCallParticipant::STATUS_RINGING,
-        ]);
+        throw ValidationException::withMessages(['call' => __('You are not part of this call.')]);
     }
 
     private function requireParticipant(UnityCall $call, User $user): UnityCallParticipant
