@@ -643,31 +643,6 @@ class UnityCallService
     }
 
     /**
-     * Realtime status snapshot for an active call (HTTP sync when Echo is delayed).
-     *
-     * @return array<string, mixed>|null
-     */
-    public function statusPayloadForUser(UnityCall $call, User $user): ?array
-    {
-        if (! $this->userCanAccess($call, $user)) {
-            return null;
-        }
-
-        $call->loadMissing(['caller', 'participants.user', 'chatRoom']);
-        if (! $call->caller || ! $call->isActive()) {
-            return null;
-        }
-
-        $reason = match ($call->status) {
-            UnityCall::STATUS_ACCEPTED => 'accepted',
-            UnityCall::STATUS_RINGING => 'ringing',
-            default => (string) $call->status,
-        };
-
-        return $this->notifier->payloadForUser($call, $call->caller, $reason);
-    }
-
-    /**
      * @return array<int, array{id: int, type: string}>
      */
     public function chatRoomsForIncomingListener(User $user): array

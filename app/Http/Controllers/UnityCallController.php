@@ -227,25 +227,6 @@ class UnityCallController extends Controller
         return response()->json(['signals' => $forMe]);
     }
 
-    public function sync(Request $request, UnityCall $call, UnityCallService $calls): JsonResponse
-    {
-        $this->authorizeCall($request, $call);
-
-        $call = $calls->expireCallIfRinging($call, $request->user());
-        $call->load(['caller', 'participants.user', 'chatRoom']);
-
-        if (! $call->isActive()) {
-            return response()->json(['status' => null]);
-        }
-
-        $payload = $calls->statusPayloadForUser($call, $request->user());
-        if ($payload === null) {
-            abort(403);
-        }
-
-        return response()->json(['status' => $payload]);
-    }
-
     public function show(Request $request, UnityCall $call, UnityCallService $calls, WebRtcIceService $webrtcIce): Response
     {
         $user = $request->user();

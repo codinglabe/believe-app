@@ -97,10 +97,28 @@ export function dispatchUnityCallIncoming(payload: UnityCallStatusEvent): void {
   window.dispatchEvent(new CustomEvent(UNITY_CALL_INCOMING_EVENT, { detail: payload }))
 }
 
+const latestStatusByCallId = new Map<number, UnityCallStatusEvent>()
+
+/** Latest Reverb status for a call — replays when UI mounts after accept (events are not buffered by Echo). */
+export function peekUnityCallStatus(callId: number): UnityCallStatusEvent | null {
+  return latestStatusByCallId.get(callId) ?? null
+}
+
+export function clearUnityCallStatusCache(callId: number): void {
+  latestStatusByCallId.delete(callId)
+}
+
 export function dispatchUnityCallStatus(payload: UnityCallStatusEvent): void {
   if (typeof window === "undefined") {
     return
   }
+
+  latestStatusByCallId.set(payload.call.id, payload)
+
+  if (isUnityCallTerminated(payload)) {
+    latestStatusByCallId.delete(payload.call.id)
+  }
+
   window.dispatchEvent(new CustomEvent(UNITY_CALL_STATUS_EVENT, { detail: payload }))
 }
 
@@ -118,6 +136,14 @@ export function subscribeUnityCallStatus(handler: (payload: UnityCallStatusEvent
 
   window.addEventListener(UNITY_CALL_STATUS_EVENT, listener)
   return () => window.removeEventListener(UNITY_CALL_STATUS_EVENT, listener)
+}
+
+/** Apply the newest cached status when a screen subscribes after Reverb already fired. */
+export function replayUnityCallStatus(callId: number, handler: (payload: UnityCallStatusEvent) => void): void {
+  const cached = peekUnityCallStatus(callId)
+  if (cached && cached.call.id === callId) {
+    handler(cached)
+  }
 }
 
 export function subscribeUnityCallIncoming(handler: (payload: UnityCallStatusEvent) => void): () => void {
