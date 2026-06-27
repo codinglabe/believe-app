@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\UnityCallRoomStatus;
 use App\Events\UnityCallSessionStatusChanged;
 use App\Events\UnityCallStatusChanged;
 use App\Models\ChatRoom;
@@ -116,7 +117,13 @@ class UnityCallNotifier
 
     public function broadcastRoomStatus(UnityCall $call, User $caller, string $reason): void
     {
-        // No room-wide call status broadcasts — each participant gets a private user channel event.
+        $call->loadMissing(['chatRoom', 'participants.user']);
+        if ($call->chatRoom?->type !== 'direct' || $reason === 'incoming') {
+            return;
+        }
+
+        $payload = $this->payloadForUser($call, $caller, $reason);
+        UnityCallRoomStatus::dispatch($call->chatRoom, $payload);
     }
 
     public function broadcastSessionStatus(UnityCall $call, User $caller, string $reason): void

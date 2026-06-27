@@ -475,6 +475,10 @@ export default function UnityCallShow({
       setParticipants((previous) => mergeCallParticipants(previous, payload.participants))
 
       if (payload.reason === "accepted") {
+        updateSession({
+          call: payload.call,
+          participants: payload.participants,
+        })
         unlockRemotePlayback()
         if (payload.call.answeredAt) {
           setCall((current) => ({ ...current, answeredAt: payload.call.answeredAt }))
@@ -509,7 +513,7 @@ export default function UnityCallShow({
         }
       }
     },
-    [authUserId, call.id, exitCallScreen, isCaller, unlockRemotePlayback],
+    [authUserId, call.id, exitCallScreen, isCaller, unlockRemotePlayback, updateSession],
   )
 
   const onStatus = useStableCallback(handleCallTerminated)

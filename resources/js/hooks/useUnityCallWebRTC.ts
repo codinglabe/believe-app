@@ -623,6 +623,10 @@ export function useUnityCallWebRTC({
           return
         }
 
+        if (pc.getTransceivers().length === 0) {
+          pc.addTransceiver("audio", { direction: "sendrecv" })
+        }
+
         const attached = await addLocalAudioToPeer(peerId, pc)
         if (!attached || !hasAudioSender(pc)) {
           return
@@ -687,6 +691,10 @@ export function useUnityCallWebRTC({
 
       makingOffer.current.set(peerId, true)
       try {
+        if (pc.getTransceivers().length === 0) {
+          pc.addTransceiver("audio", { direction: "sendrecv" })
+        }
+
         const attached = await addLocalAudioToPeer(peerId, pc)
         if (!attached || !hasAudioSender(pc)) {
           return
@@ -795,7 +803,7 @@ export function useUnityCallWebRTC({
       try {
         switch (normalized.type) {
           case "offer": {
-            const isPolite = Number(userIdStr) > Number(from)
+            const isPolite = isGroupCall ? Number(userIdStr) > Number(from) : true
             const offerCollision = pc.signalingState !== "stable" || makingOffer.current.get(from)
             ignoreOffer.current.set(from, !isPolite && Boolean(offerCollision))
             if (ignoreOffer.current.get(from)) {
@@ -845,12 +853,14 @@ export function useUnityCallWebRTC({
               return
             }
             await pc.setRemoteDescription(remoteAnswer)
+            await addLocalAudioToPeer(from, pc)
             syncRemoteTracksFromPeer(from, pc)
             const pending = pendingCandidates.current.get(from) ?? []
             for (const candidate of pending) {
               await pc.addIceCandidate(candidate).catch(() => {})
             }
             pendingCandidates.current.delete(from)
+            resumeUnityCallRemotePlayback()
             break
           }
           case "ice-candidate": {
@@ -1513,6 +1523,16 @@ export function useUnityCallWebRTC({
   }, [syncPeerConnections, mediaActive, participants, callStatus])
 
   useEffect(() => {
+    if (!mediaActive || !mediaStarted.current || callStatus !== "accepted") {
+      return
+    }
+
+    void fetchPendingSignalsRef.current().finally(() => {
+      syncPeerConnectionsRef.current()
+    })
+  }, [callStatus, mediaActive])
+
+  useEffect(() => {
     if (!mediaActive || !mediaStarted.current) {
       return
     }
@@ -1561,7 +1581,7 @@ export function useUnityCallWebRTC({
         return
       }
       void fetchPendingSignalsRef.current()
-    }, 4000)
+    }, 2000)
 
     return () => window.clearInterval(intervalId)
   }, [mediaActive, mediaConnected])
@@ -1572,6 +1592,7 @@ export function useUnityCallWebRTC({
     }
 
     const peerId = String(callerId)
+
     const intervalId = window.setInterval(() => {
       if (mediaConnected || callEnded.current) {
         return
@@ -1582,21 +1603,31 @@ export function useUnityCallWebRTC({
         return
       }
 
-      if (pc?.localDescription && pc.signalingState === "have-local-offer") {
-        resendDirectCalleeOffer(peerId)
-        return
-      }
-
-      void createDirectCalleeOffer(peerId)
       sendSignal({
         type: "offer-request",
         from: userIdStr,
         to: peerId,
       })
-    }, 5000)
+    }, 2500)
 
-    return () => window.clearInterval(intervalId)
-  }, [callerId, createDirectCalleeOffer, isCaller, isGroupCall, mediaActive, mediaConnected, resendDirectCalleeOffer, sendSignal, userIdStr])
+    const fallbackOfferId = window.setTimeout(() => {
+      if (mediaConnected || callEnded.current) {
+        return
+      }
+
+      const pc = peerConnections.current.get(peerId)
+      if (pc?.remoteDescription || pc?.localDescription) {
+        return
+      }
+
+      void createDirectCalleeOffer(peerId)
+    }, 12000)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.clearTimeout(fallbackOfferId)
+    }
+  }, [callerId, createDirectCalleeOffer, isCaller, isGroupCall, mediaActive, mediaConnected, sendSignal, userIdStr])
 
   useEffect(() => {
     return subscribeUnityCallTerminated((payload) => {
