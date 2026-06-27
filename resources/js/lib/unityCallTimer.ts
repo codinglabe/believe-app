@@ -1,6 +1,6 @@
 let serverClockOffsetMs = 0
 
-/** Align elapsed time with Laravel server clock (Reverb payloads include serverNow). */
+/** Align elapsed time with Laravel server clock — only from fresh payloads. */
 export function syncUnityCallServerClock(serverNow?: string | null): void {
   if (!serverNow) {
     return
@@ -8,6 +8,11 @@ export function syncUnityCallServerClock(serverNow?: string | null): void {
 
   const serverMs = new Date(serverNow).getTime()
   if (!Number.isFinite(serverMs)) {
+    return
+  }
+
+  const driftMs = Math.abs(serverMs - Date.now())
+  if (driftMs > 15_000) {
     return
   }
 
@@ -31,10 +36,40 @@ export function resolveUnityCallTimerAnchor(options: {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-const stickyTimerAnchorByCallId = new Map<number, number>()
+const lockedTimerAnchorByCallId = new Map<number, number>()
+const elapsedListenersByCallId = new Map<number, Set<() => void>>()
+let globalTimerIntervalId = 0
 
-/** Keep one timer anchor per call — survives minimize, mute, and brief state flicker. */
-export function resolveStickyUnityCallTimerAnchor(
+function isTerminalCallStatus(status: string): boolean {
+  return ["ended", "cancelled", "declined", "missed"].includes(status)
+}
+
+function ensureGlobalTimerTicker(): void {
+  if (globalTimerIntervalId || typeof window === "undefined") {
+    return
+  }
+
+  globalTimerIntervalId = window.setInterval(() => {
+    lockedTimerAnchorByCallId.forEach((_anchor, callId) => {
+      const listeners = elapsedListenersByCallId.get(callId)
+      listeners?.forEach((listener) => listener())
+    })
+  }, 1000)
+}
+
+function stopGlobalTimerTickerIfIdle(): void {
+  if (elapsedListenersByCallId.size > 0 || lockedTimerAnchorByCallId.size > 0) {
+    return
+  }
+
+  if (globalTimerIntervalId) {
+    window.clearInterval(globalTimerIntervalId)
+    globalTimerIntervalId = 0
+  }
+}
+
+/** Lock timer start once per call — never moves forward on later state updates. */
+export function ensureUnityCallTimerAnchor(
   callId: number,
   options: {
     answeredAt?: string | null
@@ -46,26 +81,37 @@ export function resolveStickyUnityCallTimerAnchor(
   }
 
   const status = options.callStatus ?? ""
-  if (["ended", "cancelled", "declined", "missed"].includes(status)) {
-    stickyTimerAnchorByCallId.delete(callId)
+  if (isTerminalCallStatus(status)) {
+    clearUnityCallTimerAnchor(callId)
     return null
   }
 
-  const resolved = resolveUnityCallTimerAnchor(options)
-  if (resolved !== null) {
-    const existing = stickyTimerAnchorByCallId.get(callId)
-    if (existing === undefined || resolved < existing) {
-      stickyTimerAnchorByCallId.set(callId, resolved)
+  if (!lockedTimerAnchorByCallId.has(callId)) {
+    const resolved = resolveUnityCallTimerAnchor(options)
+    if (resolved !== null) {
+      lockedTimerAnchorByCallId.set(callId, resolved)
     }
   }
 
-  return stickyTimerAnchorByCallId.get(callId) ?? null
+  return lockedTimerAnchorByCallId.get(callId) ?? null
+}
+
+export function getUnityCallTimerAnchor(callId: number): number | null {
+  if (callId <= 0) {
+    return null
+  }
+
+  return lockedTimerAnchorByCallId.get(callId) ?? null
 }
 
 export function clearUnityCallTimerAnchor(callId: number): void {
-  if (callId > 0) {
-    stickyTimerAnchorByCallId.delete(callId)
+  if (callId <= 0) {
+    return
   }
+
+  lockedTimerAnchorByCallId.delete(callId)
+  elapsedListenersByCallId.delete(callId)
+  stopGlobalTimerTickerIfIdle()
 }
 
 export function formatUnityCallElapsed(totalSeconds: number): string {
@@ -79,5 +125,40 @@ export function formatUnityCallElapsed(totalSeconds: number): string {
 }
 
 export function tickUnityCallElapsed(anchor: number): number {
-  return Math.max(0, Math.floor((unityCallNowMs() - anchor) / 1000))
+  return Math.max(0, Math.floor((Date.now() - anchor) / 1000))
+}
+
+export function subscribeUnityCallElapsed(callId: number, listener: () => void): () => void {
+  if (callId <= 0 || typeof window === "undefined") {
+    return () => {}
+  }
+
+  let listeners = elapsedListenersByCallId.get(callId)
+  if (!listeners) {
+    listeners = new Set()
+    elapsedListenersByCallId.set(callId, listeners)
+  }
+
+  listeners.add(listener)
+  ensureGlobalTimerTicker()
+
+  return () => {
+    const current = elapsedListenersByCallId.get(callId)
+    current?.delete(listener)
+    if (current && current.size === 0) {
+      elapsedListenersByCallId.delete(callId)
+    }
+    stopGlobalTimerTickerIfIdle()
+  }
+}
+
+/** @deprecated Use ensureUnityCallTimerAnchor */
+export function resolveStickyUnityCallTimerAnchor(
+  callId: number,
+  options: {
+    answeredAt?: string | null
+    callStatus?: string
+  },
+): number | null {
+  return ensureUnityCallTimerAnchor(callId, options)
 }
