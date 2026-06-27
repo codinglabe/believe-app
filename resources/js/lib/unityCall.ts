@@ -1,5 +1,6 @@
 import type { UnityCallPayload, UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { router } from "@inertiajs/react"
+import { dispatchUnityCallStatus } from "@/lib/unityCallEvents"
 
 function getCsrfToken(): string {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
@@ -525,11 +526,49 @@ export type UnityCallActiveSession = {
 }
 
 export async function fetchActiveUnityCallSession(): Promise<UnityCallActiveSession | null> {
-  const { ok, data } = await getUnityCallJson<{ active?: UnityCallActiveSession | null }>(
-    route("unity-calls.active"),
-  )
+  const { ok, data } = await getUnityCallJson<{
+    active?: UnityCallActiveSession | null
+    serverNow?: string | null
+  }>(route("unity-calls.active"))
 
   return ok && data?.active ? data.active : null
+}
+
+/** One-shot server status (not polling) — used when Reverb subscribe/reconnect may have missed accept. */
+export async function refreshUnityCallStatusFromServer(
+  expectedCallId?: number,
+): Promise<UnityCallStatusEvent | null> {
+  const { ok, data } = await getUnityCallJson<{
+    active?: UnityCallActiveSession | null
+    serverNow?: string | null
+  }>(route("unity-calls.active"))
+
+  if (!ok || !data?.active) {
+    return null
+  }
+
+  const active = data.active
+  if (expectedCallId && active.call.id !== expectedCallId) {
+    return null
+  }
+
+  const reason =
+    active.call.status === "accepted"
+      ? "accepted"
+      : active.call.status === "ringing"
+        ? "ringing"
+        : active.call.status
+
+  const payload: UnityCallStatusEvent = {
+    reason,
+    serverNow: data.serverNow ?? null,
+    call: active.call,
+    caller: active.caller,
+    participants: active.participants,
+  }
+
+  dispatchUnityCallStatus(payload)
+  return payload
 }
 
 export type UnityCallChatRoomChannel = {
