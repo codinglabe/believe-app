@@ -547,7 +547,10 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   const showRemoteAudio =
     onCallPage &&
     Boolean(session && mediaState?.callLive && mediaState.callConnected) &&
-    (mergedRemoteStream.getAudioTracks().length > 0 || webrtc.mediaConnected || mediaEngaged)
+    (webrtc.remoteStreams.some(({ stream }) => stream.getAudioTracks().some((track) => track.readyState === "live")) ||
+      mergedRemoteStream.getAudioTracks().some((track) => track.readyState === "live") ||
+      webrtc.mediaConnected ||
+      mediaEngaged)
 
   const value = useMemo<UnityCallSessionContextValue>(
     () => ({

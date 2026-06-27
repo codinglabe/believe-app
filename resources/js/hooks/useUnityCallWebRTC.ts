@@ -871,7 +871,10 @@ export function useUnityCallWebRTC({
         console.error("[UnityCallWebRTC] Signal handling failed:", normalized.type, error)
         processedSignals.current.delete(dedupeKey)
         if (normalized.type === "offer" || normalized.type === "answer") {
-          resetPeerConnection(from)
+          const failedPc = peerConnections.current.get(from)
+          if (!failedPc || (!isPeerConnected(failedPc) && !peerHasCompletedNegotiation(failedPc))) {
+            resetPeerConnection(from)
+          }
         }
       }
 
@@ -939,7 +942,7 @@ export function useUnityCallWebRTC({
   }, [callId, enqueueSignal])
 
   const connectPeers = useCallback(() => {
-    if (callEnded.current || !channelReady.current || !mediaStarted.current || !localStreamRef.current) {
+    if (callEnded.current || !mediaStarted.current || !localStreamRef.current) {
       return
     }
 
@@ -1227,9 +1230,7 @@ export function useUnityCallWebRTC({
     }
 
     void reviveLocalMicrophone().finally(() => {
-      const fetchPending = channelReady.current ? Promise.resolve() : fetchPendingSignals()
-
-      void fetchPending.finally(() => {
+      void fetchPendingSignals().finally(() => {
         syncPeerConnections()
         updateMediaConnected()
         resumeRemotePlayback()
@@ -1466,10 +1467,30 @@ export function useUnityCallWebRTC({
       })
       .error((error) => {
         console.error("[UnityCallWebRTC] Channel subscription failed:", error)
-        setConnectionStatus("Could not join call channel")
+        channelReady.current = false
+        setConnectionStatus("Realtime channel unavailable — using direct signaling…")
+        if (mediaStarted.current) {
+          void fetchPendingSignalsRef.current().finally(() => {
+            connectPeersRef.current()
+          })
+        }
       })
 
+    const subscribeFallbackId = window.setTimeout(() => {
+      if (channelReady.current || callEnded.current || !mediaStarted.current) {
+        return
+      }
+
+      setConnectionStatus((prev) =>
+        prev === "Joining call channel…" ? "Realtime channel slow — using direct signaling…" : prev,
+      )
+      void fetchPendingSignalsRef.current().finally(() => {
+        connectPeersRef.current()
+      })
+    }, 8000)
+
     return () => {
+      window.clearTimeout(subscribeFallbackId)
       channel.stopListening?.(".webrtc.signal")
       channel.stopListening?.(".call.session.status")
       channelReady.current = false
@@ -1536,11 +1557,11 @@ export function useUnityCallWebRTC({
     }
 
     const intervalId = window.setInterval(() => {
-      if (mediaConnected || callEnded.current || channelReady.current) {
+      if (mediaConnected || callEnded.current) {
         return
       }
       void fetchPendingSignalsRef.current()
-    }, 5000)
+    }, 4000)
 
     return () => window.clearInterval(intervalId)
   }, [mediaActive, mediaConnected])

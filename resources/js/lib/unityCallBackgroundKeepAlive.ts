@@ -139,6 +139,9 @@ export function startUnityCallBackgroundKeepAlive(
 
     const context = ensureAudioContext()
     if (!context) {
+      if (!preferWebAudioRemote) {
+        resumeUnityCallRemotePlayback()
+      }
       return
     }
 
@@ -150,7 +153,9 @@ export function startUnityCallBackgroundKeepAlive(
       remoteGain.connect(context.destination)
       watchRemoteStreamTracks(stream)
     } catch {
-      // Fall back to HTMLAudioElement playback only.
+      if (!preferWebAudioRemote) {
+        resumeUnityCallRemotePlayback()
+      }
     }
   }
 
