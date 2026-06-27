@@ -31,6 +31,43 @@ export function resolveUnityCallTimerAnchor(options: {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+const stickyTimerAnchorByCallId = new Map<number, number>()
+
+/** Keep one timer anchor per call — survives minimize, mute, and brief state flicker. */
+export function resolveStickyUnityCallTimerAnchor(
+  callId: number,
+  options: {
+    answeredAt?: string | null
+    callStatus?: string
+  },
+): number | null {
+  if (callId <= 0) {
+    return null
+  }
+
+  const status = options.callStatus ?? ""
+  if (["ended", "cancelled", "declined", "missed"].includes(status)) {
+    stickyTimerAnchorByCallId.delete(callId)
+    return null
+  }
+
+  const resolved = resolveUnityCallTimerAnchor(options)
+  if (resolved !== null) {
+    const existing = stickyTimerAnchorByCallId.get(callId)
+    if (existing === undefined || resolved < existing) {
+      stickyTimerAnchorByCallId.set(callId, resolved)
+    }
+  }
+
+  return stickyTimerAnchorByCallId.get(callId) ?? null
+}
+
+export function clearUnityCallTimerAnchor(callId: number): void {
+  if (callId > 0) {
+    stickyTimerAnchorByCallId.delete(callId)
+  }
+}
+
 export function formatUnityCallElapsed(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600)
   const m = Math.floor((totalSeconds % 3600) / 60)

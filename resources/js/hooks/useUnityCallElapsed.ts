@@ -1,32 +1,41 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   formatUnityCallElapsed,
-  resolveUnityCallTimerAnchor,
+  resolveStickyUnityCallTimerAnchor,
   tickUnityCallElapsed,
 } from "@/lib/unityCallTimer"
 
 type Options = {
+  callId: number
   answeredAt?: string | null
   callStatus: string
 }
 
-export function useUnityCallElapsed({ answeredAt, callStatus }: Options) {
+export function useUnityCallElapsed({ callId, answeredAt, callStatus }: Options) {
   const anchor = useMemo(
-    () => resolveUnityCallTimerAnchor({ answeredAt, callStatus }),
-    [answeredAt, callStatus],
+    () => resolveStickyUnityCallTimerAnchor(callId, { answeredAt, callStatus }),
+    [answeredAt, callId, callStatus],
   )
+
+  const anchorRef = useRef(anchor)
+  anchorRef.current = anchor
 
   const [elapsed, setElapsed] = useState(() => (anchor === null ? 0 : tickUnityCallElapsed(anchor)))
 
   useEffect(() => {
     if (anchor === null) {
-      setElapsed(0)
       return
     }
 
-    const tick = () => setElapsed(tickUnityCallElapsed(anchor))
-    tick()
+    const tick = () => {
+      const currentAnchor = anchorRef.current
+      if (currentAnchor === null) {
+        return
+      }
+      setElapsed(tickUnityCallElapsed(currentAnchor))
+    }
 
+    tick()
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
   }, [anchor])

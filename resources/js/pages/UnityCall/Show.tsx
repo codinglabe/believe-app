@@ -26,7 +26,7 @@ import { refreshUnityCallStatusFromServer } from "@/lib/unityCall"
 import { useUnityCallElapsed } from "@/hooks/useUnityCallElapsed"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
-import { syncUnityCallServerClock } from "@/lib/unityCallTimer"
+import { clearUnityCallTimerAnchor, syncUnityCallServerClock } from "@/lib/unityCallTimer"
 
 type Props = {
   call: UnityCallPayload
@@ -127,6 +127,7 @@ export default function UnityCallShow({
   )
 
   const { formatted: elapsedLabel, isRunning: callTimerRunning } = useUnityCallElapsed({
+    callId: activeCall.id,
     answeredAt: activeCall.answeredAt,
     callStatus: activeCall.status,
   })

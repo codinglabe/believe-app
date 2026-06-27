@@ -124,6 +124,7 @@ export function UnityCallFloatingBar({
   )
 
   const { formatted: elapsedLabel, isRunning: callTimerRunning } = useUnityCallElapsed({
+    callId: session.call.id,
     answeredAt: session.call.answeredAt,
     callStatus: session.call.status,
   })
