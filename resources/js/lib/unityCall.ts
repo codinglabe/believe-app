@@ -1,6 +1,7 @@
 import type { UnityCallPayload, UnityCallParticipantRow, UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
 import { router } from "@inertiajs/react"
 import { dispatchUnityCallStatus } from "@/lib/unityCallEvents"
+import { clearUnityCallTimerAnchor } from "@/lib/unityCallTimer"
 
 function getCsrfToken(): string {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
@@ -84,6 +85,7 @@ export function markUnityCallBackgrounded(callId: number): void {
 
 export function clearUnityCallBackgroundState(callId: number): void {
   clearUnityCallLiveOnPage(callId)
+  clearUnityCallTimerAnchor(callId)
   if (getUnityCallProviderLiveCallId() === callId) {
     setUnityCallProviderLiveCallId(null)
   }
