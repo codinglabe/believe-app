@@ -17,6 +17,10 @@ class UnityCallController extends Controller
 {
     public function store(Request $request, UnityCallService $calls): JsonResponse
     {
+        if (! config('unity_call.enabled')) {
+            abort(403, 'Unity Call is not available.');
+        }
+
         $validated = $request->validate([
             'chat_room_id' => ['required', 'integer', 'exists:chat_rooms,id'],
         ]);
