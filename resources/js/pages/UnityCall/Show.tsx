@@ -25,10 +25,11 @@ import { dispatchUnityCallTerminated, dispatchUnityCallStatus, isUnityCallTermin
 import type { UnityCallParticipantRow, UnityCallPayload } from "@/hooks/useUnityCallNotifications"
 import { useEcho } from "@laravel/echo-react"
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { useUnityCallElapsed } from "@/hooks/useUnityCallElapsed"
 import { useUnityCallRingTimeout } from "@/hooks/useUnityCallRingTimeout"
 import { useStableCallback } from "@/hooks/useStableCallback"
 import { refreshEchoAuthHeaders } from "@/lib/reverb-config"
-import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
+import { syncUnityCallServerClock } from "@/lib/unityCallTimer"
 
 type Props = {
   call: UnityCallPayload
@@ -78,7 +79,6 @@ export default function UnityCallShow({
 }: Props) {
   const [call, setCall] = useState(initialCall)
   const [participants, setParticipants] = useState(initialParticipants)
-  const [elapsed, setElapsed] = useState(0)
   const [ending, setEnding] = useState(false)
   const [accepting, setAccepting] = useState(false)
 
@@ -111,7 +111,14 @@ export default function UnityCallShow({
     if (liveSession?.call.id !== call.id) {
       return call
     }
-    return { ...call, ...liveSession.call }
+
+    return {
+      ...call,
+      ...liveSession.call,
+      answeredAt: liveSession.call.answeredAt ?? call.answeredAt,
+      ringExpiresAt: liveSession.call.ringExpiresAt ?? call.ringExpiresAt,
+      endedAt: liveSession.call.endedAt ?? call.endedAt,
+    }
   }, [call, liveSession])
 
   const activeParticipants = useMemo(() => {
@@ -142,6 +149,11 @@ export default function UnityCallShow({
       ringingCallees.some((participant) => participant.incomingDelivered === true),
     [ringingCallees],
   )
+
+  const { formatted: elapsedLabel, isRunning: callTimerRunning } = useUnityCallElapsed({
+    answeredAt: activeCall.answeredAt,
+    callStatus: activeCall.status,
+  })
 
   const sessionRegisteredRef = useRef<number | null>(null)
   const calleeWasRingingRef = useRef(false)
@@ -236,16 +248,6 @@ export default function UnityCallShow({
   const otherParty = useMemo(
     () => activeParticipants.find((p) => p.userId !== authUserId) ?? null,
     [activeParticipants, authUserId],
-  )
-
-  const callTimerAnchor = useMemo(
-    () =>
-      resolveUnityCallTimerAnchor({
-        answeredAt: activeCall.answeredAt,
-        callConnected,
-        callStatus: activeCall.status,
-      }),
-    [activeCall.answeredAt, activeCall.status, callConnected],
   )
 
   const isTerminalCallStatus = useMemo(
@@ -351,30 +353,18 @@ export default function UnityCallShow({
     if (isRingingCallee) {
       return "Incoming call"
     }
-    if (callTimerAnchor !== null) {
-      return formatUnityCallElapsed(elapsed)
+    if (callTimerRunning) {
+      return elapsedLabel
     }
     if (isCaller) {
       const calleeJoined = acceptedCallees.length > 0 || activeCall.status === "accepted"
       if (calleeJoined) {
-        if (callTimerAnchor !== null) {
-          return formatUnityCallElapsed(elapsed)
-        }
-        if (callConnected && mediaConnected) {
-          return formatUnityCallElapsed(elapsed)
-        }
-        if (callConnected) {
-          return "Connecting…"
-        }
         return "Connecting…"
       }
       if (ringingCallees.length > 0 || activeCall.status === "ringing") {
         return calleeIncomingVisible ? "Ringing" : "Calling…"
       }
       return "Calling…"
-    }
-    if (callConnected && mediaConnected) {
-      return formatUnityCallElapsed(elapsed)
     }
     if (callConnected) {
       return "Connecting…"
@@ -384,15 +374,14 @@ export default function UnityCallShow({
     ending,
     isTerminalCallStatus,
     isRingingCallee,
-    callTimerAnchor,
+    callTimerRunning,
+    elapsedLabel,
     isCaller,
     acceptedCallees.length,
     ringingCallees.length,
     calleeIncomingVisible,
     activeCall.status,
     callConnected,
-    mediaConnected,
-    elapsed,
   ])
 
   const statusHint = useMemo(() => {
@@ -579,21 +568,6 @@ export default function UnityCallShow({
     }
   }, [call.id, ending, isTerminalCallStatus])
 
-  useEffect(() => {
-    if (callTimerAnchor === null) {
-      return
-    }
-    const tick = () => {
-      if (callTimerAnchor === null) {
-        return
-      }
-      setElapsed(tickUnityCallElapsed(callTimerAnchor))
-    }
-    tick()
-    const id = window.setInterval(tick, 1000)
-    return () => window.clearInterval(id)
-  }, [callTimerAnchor])
-
   const isRejoinCallee =
     !isCaller &&
     call.status === "accepted" &&
@@ -621,6 +595,7 @@ export default function UnityCallShow({
     setAccepting(false)
 
     if (ok && data) {
+      syncUnityCallServerClock(data.serverNow)
       const nextCall = { ...data.call, joinUrl: data.join_url }
       const nextParticipants = data.participants
       setCall(nextCall)
@@ -637,6 +612,7 @@ export default function UnityCallShow({
       })
       dispatchUnityCallStatus({
         reason: "accepted",
+        serverNow: data.serverNow,
         call: nextCall,
         caller: data.caller,
         participants: nextParticipants,

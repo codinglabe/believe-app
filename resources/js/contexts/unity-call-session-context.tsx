@@ -145,7 +145,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
       return {
         ...previous,
-        call: { ...previous.call, ...payload.call },
+        call: {
+          ...previous.call,
+          ...payload.call,
+          answeredAt: payload.call.answeredAt ?? previous.call.answeredAt,
+          ringExpiresAt: payload.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+          endedAt: payload.call.endedAt ?? previous.call.endedAt,
+        },
         participants: mergeCallParticipants(previous.participants, payload.participants),
         participantStatus: nextParticipantStatus,
       }
@@ -247,7 +253,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return {
           ...previous,
           ...snapshot,
-          call: { ...previous.call, ...snapshot.call },
+          call: {
+            ...previous.call,
+            ...snapshot.call,
+            answeredAt: snapshot.call.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: snapshot.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: snapshot.call.endedAt ?? previous.call.endedAt,
+          },
           participants: mergeCallParticipants(previous.participants, snapshot.participants),
         }
       }
@@ -261,7 +273,15 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
         return previous
       }
 
-      const nextCall = patch.call ? { ...previous.call, ...patch.call } : previous.call
+      const nextCall = patch.call
+        ? {
+            ...previous.call,
+            ...patch.call,
+            answeredAt: patch.call.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: patch.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: patch.call.endedAt ?? previous.call.endedAt,
+          }
+        : previous.call
       const nextParticipants = patch.participants
         ? mergeCallParticipants(previous.participants, patch.participants)
         : previous.participants
@@ -374,7 +394,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
         return {
           ...previous,
-          call: { ...previous.call, ...payload.call },
+          call: {
+            ...previous.call,
+            ...payload.call,
+            answeredAt: payload.call.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: payload.call.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: payload.call.endedAt ?? previous.call.endedAt,
+          },
           participants: mergeCallParticipants(previous.participants, payload.participants),
         }
       })
@@ -410,7 +436,13 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
 
         return {
           ...previous,
-          call: nextCall,
+          call: {
+            ...previous.call,
+            ...nextCall,
+            answeredAt: nextCall.answeredAt ?? previous.call.answeredAt,
+            ringExpiresAt: nextCall.ringExpiresAt ?? previous.call.ringExpiresAt,
+            endedAt: nextCall.endedAt ?? previous.call.endedAt,
+          },
           participants: nextParticipants,
         }
       })

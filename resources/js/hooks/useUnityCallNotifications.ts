@@ -23,6 +23,7 @@ export type UnityCallPayload = {
 
 export type UnityCallStatusEvent = {
   reason: string
+  serverNow?: string | null
   call: UnityCallPayload
   caller: {
     id: number

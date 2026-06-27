@@ -396,6 +396,7 @@ class UnityCallController extends Controller
             'call_id' => $call->id,
             'status' => $call->status,
             'join_url' => $this->callJoinPath($call),
+            'serverNow' => now()->toIso8601String(),
             'call' => [
                 'id' => $call->id,
                 'status' => $call->status,

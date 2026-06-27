@@ -120,6 +120,7 @@ export type UnityCallAcceptResponse = {
   call_id: number
   status: string
   join_url: string
+  serverNow?: string | null
   call: UnityCallPayload
   caller: {
     id: number

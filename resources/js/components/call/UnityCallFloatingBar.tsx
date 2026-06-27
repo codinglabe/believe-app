@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Mic, MicOff, PhoneOff, User } from "lucide-react"
 import type { UnityCallSessionSnapshot } from "@/contexts/unity-call-session-context"
+import { useUnityCallElapsed } from "@/hooks/useUnityCallElapsed"
 import { cn } from "@/lib/utils"
 import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
-import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
 
 type Props = {
   session: UnityCallSessionSnapshot
@@ -27,10 +27,6 @@ const EDGE_PADDING = 12
 const MOBILE_BOTTOM_NAV_OFFSET = 84
 const POSITION_STORAGE_KEY = "unity_call_bubble_position"
 const DRAG_THRESHOLD_PX = 6
-
-function formatElapsed(totalSeconds: number): string {
-  return formatUnityCallElapsed(totalSeconds)
-}
 
 function readSafeAreaBottom(): number {
   if (typeof window === "undefined") {
@@ -100,7 +96,6 @@ function readStoredPosition(): Point | null {
 
 export function UnityCallFloatingBar({
   session,
-  callConnected,
   mediaConnected,
   isAudioEnabled,
   onToggleMute,
@@ -113,7 +108,6 @@ export function UnityCallFloatingBar({
 
   const [position, setPosition] = useState<Point>(() => readStoredPosition() ?? defaultBubblePosition())
   const [isDragging, setIsDragging] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
 
   positionRef.current = position
 
@@ -129,27 +123,10 @@ export function UnityCallFloatingBar({
     [session],
   )
 
-  const anchor = useMemo(
-    () =>
-      resolveUnityCallTimerAnchor({
-        answeredAt: session.call.answeredAt,
-        callConnected: mediaState.callConnected,
-        callStatus: session.call.status,
-      }),
-    [mediaState.callConnected, session.call.answeredAt, session.call.status],
-  )
-
-  useEffect(() => {
-    if (anchor === null) {
-      setElapsed(0)
-      return
-    }
-
-    const tick = () => setElapsed(tickUnityCallElapsed(anchor))
-    tick()
-    const id = window.setInterval(tick, 1000)
-    return () => window.clearInterval(id)
-  }, [anchor])
+  const { formatted: elapsedLabel, isRunning: callTimerRunning } = useUnityCallElapsed({
+    answeredAt: session.call.answeredAt,
+    callStatus: session.call.status,
+  })
 
   const title = useMemo(() => {
     if (session.isGroupCall) {
@@ -245,23 +222,23 @@ export function UnityCallFloatingBar({
   }
 
   const statusLabel = useMemo(() => {
-    if (anchor !== null) {
-      return formatElapsed(elapsed)
+    if (callTimerRunning) {
+      return elapsedLabel
     }
 
     if (session.isCaller) {
       const calleeAccepted =
         mediaState.acceptedCallees.length > 0 || session.call.status === "accepted"
       if (calleeAccepted) {
-        return mediaConnected ? formatElapsed(elapsed) : "Connecting…"
+        return mediaConnected ? elapsedLabel : "Connecting…"
       }
       return "Calling…"
     }
 
-    return mediaConnected ? formatElapsed(elapsed) : "Connecting…"
+    return mediaConnected ? elapsedLabel : "Connecting…"
   }, [
-    anchor,
-    elapsed,
+    callTimerRunning,
+    elapsedLabel,
     mediaConnected,
     mediaState.acceptedCallees.length,
     session.call.status,
