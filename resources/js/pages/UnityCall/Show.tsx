@@ -243,9 +243,9 @@ export default function UnityCallShow({
       resolveUnityCallTimerAnchor({
         answeredAt: activeCall.answeredAt,
         callConnected,
-        mediaConnected,
+        callStatus: activeCall.status,
       }),
-    [activeCall.answeredAt, callConnected, mediaConnected],
+    [activeCall.answeredAt, activeCall.status, callConnected],
   )
 
   const isTerminalCallStatus = useMemo(

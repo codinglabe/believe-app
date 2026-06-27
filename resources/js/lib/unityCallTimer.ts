@@ -1,15 +1,24 @@
 export function resolveUnityCallTimerAnchor(options: {
   answeredAt?: string | null
   callConnected: boolean
-  mediaConnected: boolean
+  mediaConnected?: boolean
+  callStatus?: string
 }): number | null {
-  const { answeredAt, callConnected, mediaConnected } = options
-  if (!callConnected || !mediaConnected || !answeredAt) {
+  const { answeredAt, callConnected, callStatus } = options
+  if (!answeredAt) {
     return null
   }
 
   const parsed = new Date(answeredAt).getTime()
-  return Number.isFinite(parsed) ? parsed : null
+  if (!Number.isFinite(parsed)) {
+    return null
+  }
+
+  if (callConnected || callStatus === "accepted") {
+    return parsed
+  }
+
+  return null
 }
 
 export function formatUnityCallElapsed(totalSeconds: number): string {

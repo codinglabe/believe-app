@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Mic, MicOff, PhoneOff, User } from "lucide-react"
 import type { UnityCallSessionSnapshot } from "@/contexts/unity-call-session-context"
 import { cn } from "@/lib/utils"
+import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { formatUnityCallElapsed, resolveUnityCallTimerAnchor, tickUnityCallElapsed } from "@/lib/unityCallTimer"
 
 type Props = {
@@ -116,14 +117,26 @@ export function UnityCallFloatingBar({
 
   positionRef.current = position
 
+  const mediaState = useMemo(
+    () =>
+      computeUnityCallMediaState(
+        session.call,
+        session.participants,
+        session.authUserId,
+        session.isCaller,
+        session.participantStatus,
+      ),
+    [session],
+  )
+
   const anchor = useMemo(
     () =>
       resolveUnityCallTimerAnchor({
         answeredAt: session.call.answeredAt,
-        callConnected,
-        mediaConnected,
+        callConnected: mediaState.callConnected,
+        callStatus: session.call.status,
       }),
-    [callConnected, mediaConnected, session.call.answeredAt],
+    [mediaState.callConnected, session.call.answeredAt, session.call.status],
   )
 
   useEffect(() => {
@@ -231,7 +244,29 @@ export function UnityCallFloatingBar({
     }
   }
 
-  const statusLabel = anchor !== null ? formatElapsed(elapsed) : "…"
+  const statusLabel = useMemo(() => {
+    if (anchor !== null) {
+      return formatElapsed(elapsed)
+    }
+
+    if (session.isCaller) {
+      const calleeAccepted =
+        mediaState.acceptedCallees.length > 0 || session.call.status === "accepted"
+      if (calleeAccepted) {
+        return mediaConnected ? formatElapsed(elapsed) : "Connecting…"
+      }
+      return "Calling…"
+    }
+
+    return mediaConnected ? formatElapsed(elapsed) : "Connecting…"
+  }, [
+    anchor,
+    elapsed,
+    mediaConnected,
+    mediaState.acceptedCallees.length,
+    session.call.status,
+    session.isCaller,
+  ])
 
   return (
     <div

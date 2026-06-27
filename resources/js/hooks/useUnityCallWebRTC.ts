@@ -1402,6 +1402,9 @@ export function useUnityCallWebRTC({
           participantsRef.current,
           statusPayload.participants,
         )
+      }
+
+      if (statusPayload.reason && statusPayload.reason !== "incoming") {
         onSessionStatusRef.current?.(statusPayload)
       }
 

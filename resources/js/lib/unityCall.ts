@@ -36,10 +36,37 @@ export function isOnUnityCallShowPage(callId?: number): boolean {
 /** In-memory live call from UnityCallSessionProvider — avoids stale sessionStorage blocking incoming calls. */
 let providerLiveCallId: number | null = null
 
+export type UnityCallLiveMeta = {
+  callId: number
+  chatRoomId: number | null
+  isGroupCall: boolean
+}
+
+let providerLiveCallMeta: UnityCallLiveMeta | null = null
+
+export function setUnityCallLiveCallMeta(meta: UnityCallLiveMeta | null): void {
+  providerLiveCallMeta = meta
+  providerLiveCallId = meta?.callId ?? null
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("unity-call-live-id", { detail: providerLiveCallId }))
+    window.dispatchEvent(new CustomEvent("unity-call-live-meta", { detail: meta }))
+  }
+}
+
+export function getUnityCallLiveCallMeta(): UnityCallLiveMeta | null {
+  return providerLiveCallMeta
+}
+
 export function setUnityCallProviderLiveCallId(callId: number | null): void {
   providerLiveCallId = callId
+  if (callId === null) {
+    providerLiveCallMeta = null
+  } else if (!providerLiveCallMeta || providerLiveCallMeta.callId !== callId) {
+    providerLiveCallMeta = { callId, chatRoomId: null, isGroupCall: false }
+  }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("unity-call-live-id", { detail: callId }))
+    window.dispatchEvent(new CustomEvent("unity-call-live-meta", { detail: providerLiveCallMeta }))
   }
 }
 
@@ -448,7 +475,11 @@ export async function startAudioCall(chatRoomId: number): Promise<UnityCallInitR
   }
 
   if (ok && data?.call_id) {
-    setUnityCallProviderLiveCallId(data.call_id)
+    setUnityCallLiveCallMeta({
+      callId: data.call_id,
+      chatRoomId,
+      isGroupCall: false,
+    })
   }
 
   return ok && data ? data : null
