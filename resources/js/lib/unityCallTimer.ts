@@ -1,24 +1,34 @@
+let serverClockOffsetMs = 0
+
+/** Align elapsed time with Laravel server clock (Reverb payloads include serverNow). */
+export function syncUnityCallServerClock(serverNow?: string | null): void {
+  if (!serverNow) {
+    return
+  }
+
+  const serverMs = new Date(serverNow).getTime()
+  if (!Number.isFinite(serverMs)) {
+    return
+  }
+
+  serverClockOffsetMs = serverMs - Date.now()
+}
+
+export function unityCallNowMs(): number {
+  return Date.now() + serverClockOffsetMs
+}
+
 export function resolveUnityCallTimerAnchor(options: {
   answeredAt?: string | null
-  callConnected: boolean
-  mediaConnected?: boolean
   callStatus?: string
 }): number | null {
-  const { answeredAt, callConnected, callStatus } = options
-  if (!answeredAt) {
+  const { answeredAt, callStatus } = options
+  if (callStatus !== "accepted" || !answeredAt) {
     return null
   }
 
   const parsed = new Date(answeredAt).getTime()
-  if (!Number.isFinite(parsed)) {
-    return null
-  }
-
-  if (callConnected || callStatus === "accepted") {
-    return parsed
-  }
-
-  return null
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 export function formatUnityCallElapsed(totalSeconds: number): string {
@@ -32,5 +42,5 @@ export function formatUnityCallElapsed(totalSeconds: number): string {
 }
 
 export function tickUnityCallElapsed(anchor: number): number {
-  return Math.max(0, Math.floor((Date.now() - anchor) / 1000))
+  return Math.max(0, Math.floor((unityCallNowMs() - anchor) / 1000))
 }

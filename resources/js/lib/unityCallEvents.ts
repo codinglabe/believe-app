@@ -1,4 +1,5 @@
 import type { UnityCallStatusEvent } from "@/hooks/useUnityCallNotifications"
+import { syncUnityCallServerClock } from "@/lib/unityCallTimer"
 
 export const UNITY_CALL_INCOMING_EVENT = "unity-call-incoming"
 export const UNITY_CALL_STATUS_EVENT = "unity-call-status"
@@ -112,6 +113,8 @@ export function dispatchUnityCallStatus(payload: UnityCallStatusEvent): void {
   if (typeof window === "undefined") {
     return
   }
+
+  syncUnityCallServerClock(payload.serverNow)
 
   latestStatusByCallId.set(payload.call.id, payload)
 

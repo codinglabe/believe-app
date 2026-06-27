@@ -178,6 +178,7 @@ class UnityCallNotifier
 
         return [
             'reason' => $reason,
+            'serverNow' => now()->toIso8601String(),
             'call' => [
                 'id' => $call->id,
                 'status' => $call->status,
