@@ -492,6 +492,14 @@ export async function fetchActiveUnityCallSession(): Promise<UnityCallActiveSess
   return ok && data?.active ? data.active : null
 }
 
+export async function fetchUnityCallSync(callId: number): Promise<UnityCallStatusEvent | null> {
+  const { ok, data } = await getUnityCallJson<{ status?: UnityCallStatusEvent | null }>(
+    route("unity-calls.sync", callId),
+  )
+
+  return ok && data?.status ? data.status : null
+}
+
 export type UnityCallChatRoomChannel = {
   id: number
   type: "direct" | "private" | "public" | string

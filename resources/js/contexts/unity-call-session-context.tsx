@@ -20,6 +20,7 @@ import { computeUnityCallMediaState } from "@/lib/unityCallMediaState"
 import { useUnityCallBackgroundKeepAlive } from "@/hooks/useUnityCallBackgroundKeepAlive"
 import { useUnityCallAutoMinimize } from "@/hooks/useUnityCallAutoMinimize"
 import { useUnityCallSessionRestore } from "@/hooks/useUnityCallSessionRestore"
+import { useUnityCallStatusSync } from "@/hooks/useUnityCallStatusSync"
 import {
   clearUnityCallLiveOnPage,
   clearUnityCallSessionActive,
@@ -425,6 +426,32 @@ export function UnityCallSessionProvider({ children }: { children: ReactNode }) 
   useUnityCallSessionRestore({
     session,
     registerSession,
+  })
+
+  const shouldSyncCallerStatus = Boolean(
+    session?.isCaller &&
+      (session.call.status === "ringing" ||
+        (session.call.status === "accepted" &&
+          !session.participants.some(
+            (participant) => participant.role === "callee" && participant.status === "accepted",
+          ))),
+  )
+
+  useUnityCallStatusSync({
+    callId: session?.call.id ?? 0,
+    enabled: shouldSyncCallerStatus,
+    onStatus: (payload) => {
+      if (!session || payload.call.id !== session.call.id || payload.reason === "incoming") {
+        return
+      }
+
+      applyUnityCallStatus(payload)
+      dispatchUnityCallStatus(payload)
+
+      if (payload.reason === "accepted") {
+        resyncCallRef.current()
+      }
+    },
   })
 
   useEffect(() => {
