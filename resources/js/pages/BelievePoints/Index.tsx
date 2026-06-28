@@ -1041,10 +1041,6 @@ export default function BelievePointsIndex({
                     <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                        <span>Use BP for donations and eligible purchases on Believe.</span>
-                      </li>
-                      <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
                         <span>Earn {formatPoints(purchaseSettings.brp_award)} BRP per transaction ({formatPoints(purchaseSettings.free_brp_award)} Free · {formatPoints(purchaseSettings.prime_brp_award)} Prime) · Minimum purchase {formatCurrency(minPurchaseAmount)} · BRP = {formatCurrency(purchaseSettings.brp_value)} each.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
