@@ -15,6 +15,16 @@ export function eventTypeCatalogForHub(
   return hub === "companion" ? companionEventTypes : eventTypes
 }
 
+export function topicCatalogSignature(
+  hub: ConnectionHubType,
+  companionEventTypes: EventTypeOption[],
+  eventTypes: EventTypeOption[],
+): string {
+  const catalog = eventTypeCatalogForHub(hub, companionEventTypes, eventTypes)
+
+  return `${hub}|${catalog.map((type) => type.id).join(",")}`
+}
+
 export function defaultHubTypeForCreate(
   lockedHubListingType: ConnectionHubListingLockType | null | undefined,
   companionEventTypes: EventTypeOption[],
@@ -82,4 +92,41 @@ export function defaultEventTypeIdForCategory(
   category: string,
 ): string {
   return subTopicsForCategory(eventTypes, category)[0]?.id?.toString() ?? ""
+}
+
+export type EventTypeCategoryOption = {
+  key: string
+  category: string
+  defaultEventTypeId: string
+}
+
+/** Stable select keys for topic categories (avoids Radix issues with long/special category labels). */
+export function eventTypeCategoryOptions(
+  eventTypes: EventTypeOption[],
+): EventTypeCategoryOption[] {
+  return eventTypeCategories(eventTypes).map((category, index) => ({
+    key: String(index),
+    category,
+    defaultEventTypeId: defaultEventTypeIdForCategory(eventTypes, category),
+  }))
+}
+
+export function categoryKeyForEventTypeId(
+  eventTypes: EventTypeOption[],
+  eventTypeId: string,
+): string | null {
+  const category = categoryForEventTypeId(eventTypes, eventTypeId)
+  if (!category) return null
+
+  return (
+    eventTypeCategoryOptions(eventTypes).find((option) => option.category === category)?.key ??
+    null
+  )
+}
+
+export function categoryOptionForKey(
+  eventTypes: EventTypeOption[],
+  key: string,
+): EventTypeCategoryOption | null {
+  return eventTypeCategoryOptions(eventTypes).find((option) => option.key === key) ?? null
 }
