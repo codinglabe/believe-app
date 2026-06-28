@@ -143,7 +143,7 @@ const navigationItems = [
     name: "Add Points",
     href: "/believe-points#add-believe-points",
     icon: Coins,
-    description: "Fund your Believe Points wallet (1 Point = $1 USD)",
+    description: "Fund your Believe Points wallet",
     color: "from-blue-500 to-purple-600",
   },
   {

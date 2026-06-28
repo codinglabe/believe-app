@@ -295,7 +295,7 @@ export function QuickAddBelievePointsModal({
                 />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {formatCurrency(minPurchaseAmount)} – {formatCurrency(maxPurchaseAmount)} · 1 BP = $1 USD
+                {formatCurrency(minPurchaseAmount)} – {formatCurrency(maxPurchaseAmount)}
               </p>
             </div>
 

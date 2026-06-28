@@ -748,7 +748,6 @@ export default function BelievePointsIndex({
               processingBalance={processingBalance}
               processingReleaseHint={formatProcessingReleaseHint(processingReleaseAt)}
               formatPoints={formatPoints}
-              formatCurrency={formatCurrency}
               onRefunds={() => router.visit(route("believe-points.refunds"))}
               onAddPoints={scrollToAddPoints}
             />
@@ -785,7 +784,7 @@ export default function BelievePointsIndex({
                   <BpSectionHeader
                     icon={DollarSign}
                     title="Add Believe Points"
-                    description={`Choose a payment method below. You receive 1 BP per $1 USD. Purchased BP credits as Processing BP until settlement. Each qualifying purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per transaction.`}
+                    description={`Choose a payment method below. Purchased BP credits as Processing BP until settlement. Each qualifying purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per transaction.`}
                   />
                   <Badge variant="secondary" className="w-fit shrink-0 font-normal">
                     Secure checkout · Stripe
@@ -1025,7 +1024,7 @@ export default function BelievePointsIndex({
                           {formatPoints(amountNum)} BP
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {isAchPayment ? achSettlementLabel : cardSettlementLabel} · {formatCurrency(amountNum)} face value
+                          {isAchPayment ? achSettlementLabel : cardSettlementLabel}
                         </p>
                       </div>
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-md">
@@ -1042,7 +1041,7 @@ export default function BelievePointsIndex({
                     <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                        <span>1 BP = $1 USD for donations and eligible purchases on Believe.</span>
+                        <span>Use BP for donations and eligible purchases on Believe.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
@@ -1135,7 +1134,7 @@ export default function BelievePointsIndex({
                                     <li>Be funded via Believe wallet balances, virtual accounts, or Bridge (purchases on this page use Stripe card or US bank)</li>
                                   </ul>
                                   <p className="text-muted-foreground mt-2">
-                                    Purchased Believe Points may be moved into your verified Believe Bridge wallet when that feature is enabled (1 BP = $1). Gifted points cannot be moved to your wallet.
+                                    Purchased Believe Points may be moved into your verified Believe Bridge wallet when that feature is enabled. Gifted points cannot be moved to your wallet.
                                   </p>
                                 </div>
 
@@ -1168,7 +1167,7 @@ export default function BelievePointsIndex({
                                 <div>
                                   <h3 className="font-semibold text-base mb-2">6. Separation From Wallet & Payments</h3>
                                   <p className="text-muted-foreground">
-                                    Believe operates a separate financial wallet system for real money transactions. Purchased Points may be moved into your verified Believe Bridge wallet when enabled (1 BP = $1). Gifted points cannot be moved. Wallet funds cannot be used to acquire Points.
+                                    Believe operates a separate financial wallet system for real money transactions. Purchased Points may be moved into your verified Believe Bridge wallet when enabled. Gifted points cannot be moved. Wallet funds cannot be used to acquire Points.
                                   </p>
                                 </div>
 
@@ -1610,7 +1609,7 @@ export default function BelievePointsIndex({
               <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Believe Points</p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Add & manage platform credits</h1>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Buy BP for donations and eligible purchases. 1 Point = $1 USD face value. Secure checkout via Stripe.
+                Buy BP for donations and eligible purchases. Secure checkout via Stripe.
               </p>
             </div>
           </div>

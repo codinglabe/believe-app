@@ -1,15 +1,52 @@
-import { Coins, Plus, RefreshCw } from "lucide-react"
+import { Coins, Info, Plus, RefreshCw } from "lucide-react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type BpBalanceHeroProps = {
   balance: number
   processingBalance: number
   processingReleaseHint?: string | null
   formatPoints: (value: number | string) => string
-  formatCurrency: (value: number | string) => string
   onRefunds: () => void
   onAddPoints: () => void
+}
+
+function BalanceColumn({
+  label,
+  value,
+  hint,
+  badge,
+  valueClassName,
+}: {
+  label: string
+  value: string
+  hint?: string | null
+  badge?: { text: string; className: string }
+  valueClassName: string
+}) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-1 text-muted-foreground">
+        <span className="text-xs font-medium">{label}</span>
+        <Info className="h-3 w-3 shrink-0 opacity-50" aria-hidden />
+      </div>
+      <div className="mt-1 flex flex-wrap items-baseline gap-2">
+        <span className={cn("text-3xl font-bold tracking-tight tabular-nums sm:text-4xl", valueClassName)}>
+          {value}
+        </span>
+        <span className="text-base font-semibold text-muted-foreground">BP</span>
+        {badge && (
+          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", badge.className)}>
+            {badge.text}
+          </span>
+        )}
+      </div>
+      {hint && (
+        <p className="mt-1 text-[11px] leading-snug text-amber-700/90 dark:text-amber-300/90">{hint}</p>
+      )}
+    </div>
+  )
 }
 
 export function BpBalanceHero({
@@ -17,10 +54,11 @@ export function BpBalanceHero({
   processingBalance,
   processingReleaseHint,
   formatPoints,
-  formatCurrency,
   onRefunds,
   onAddPoints,
 }: BpBalanceHeroProps) {
+  const totalBalance = balance + processingBalance
+
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="p-5 sm:p-6">
@@ -31,47 +69,62 @@ export function BpBalanceHero({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">Believe Points</p>
-              <p className="text-xs text-muted-foreground">1 BP = $1 USD</p>
+              <p className="text-xs text-muted-foreground">
+                Total:{" "}
+                <motion.span
+                  key={totalBalance}
+                  initial={{ opacity: 0.6 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.2 }}
+                  className="font-semibold tabular-nums text-foreground"
+                >
+                  {formatPoints(totalBalance)} BP
+                </motion.span>
+              </p>
             </div>
           </div>
-          {processingBalance > 0 && (
-            <div className="max-w-[140px] shrink-0 rounded-lg border border-amber-200/80 bg-amber-50 px-2.5 py-1.5 text-right dark:border-amber-800/50 dark:bg-amber-950/30">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                Processing
-              </p>
-              <p className="text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
-                {formatPoints(processingBalance)} BP
-              </p>
-              {processingReleaseHint && (
-                <p className="mt-0.5 text-[10px] leading-tight text-amber-700/90 dark:text-amber-300/90">
-                  {processingReleaseHint}
-                </p>
-              )}
-            </div>
-          )}
         </div>
 
-        <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">Available balance</p>
-            <motion.div
-              key={balance}
-              initial={{ opacity: 0.6, y: 2 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mt-1 flex items-baseline gap-1.5"
-            >
-              <span className="text-4xl font-bold tracking-tight tabular-nums text-foreground sm:text-5xl">
-                {formatPoints(balance)}
-              </span>
-              <span className="text-lg font-semibold text-muted-foreground">BP</span>
-            </motion.div>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Face value ≈ {formatCurrency(balance)} for donations and eligible purchases
-            </p>
-          </div>
+        <div className="mt-5 flex items-stretch gap-4 border-t border-border pt-5">
+          <BalanceColumn
+            label="Processing"
+            value={formatPoints(processingBalance)}
+            hint={processingBalance > 0 ? processingReleaseHint : null}
+            valueClassName="text-amber-700 dark:text-amber-300"
+            badge={
+              processingBalance > 0
+                ? {
+                    text: "Processing",
+                    className: "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300",
+                  }
+                : undefined
+            }
+          />
+          <div className="w-px self-stretch bg-border" />
+          <BalanceColumn
+            label="Available"
+            value={formatPoints(balance)}
+            valueClassName="text-foreground"
+            badge={
+              balance > 0
+                ? {
+                    text: "Available",
+                    className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300",
+                  }
+                : undefined
+            }
+          />
+        </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            <span className="font-semibold text-amber-700 dark:text-amber-400">Processing</span> can be used for
+            donations.{" "}
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400">Available</span> can be used for all
+            eligible transactions.
+          </p>
+
+          <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
             <Button
               type="button"
               variant="ghost"

@@ -36,7 +36,9 @@ import {
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
-import { eventTypeCatalogForHub } from "@/lib/event-type-catalog"
+import { eventTypeCatalogForHub, topicCatalogSignature } from "@/lib/event-type-catalog"
+
+const EMPTY_COMPANION_EVENT_TYPES: EventType[] = []
 
 interface EventType {
   id: number
@@ -132,12 +134,14 @@ export default function AdminCoursesEdit() {
   const {
     course,
     eventTypes,
-    companionEventTypes = [],
+    companionEventTypes: companionEventTypesProp,
     organizationPrimaryActionCategories,
     causesCatalogSource,
     organizationName,
     sellerNameLabel,
   } = usePage<AdminCoursesEditProps>().props
+
+  const companionEventTypes = companionEventTypesProp ?? EMPTY_COMPANION_EVENT_TYPES
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -212,12 +216,18 @@ export default function AdminCoursesEdit() {
     [data.type, companionEventTypes, eventTypes],
   )
 
+  const topicCatalogKey = useMemo(
+    () => topicCatalogSignature(data.type, companionEventTypes, eventTypes),
+    [data.type, companionEventTypes, eventTypes],
+  )
+
   useEffect(() => {
     const ids = new Set(topicCatalog.map((t) => t.id.toString()))
-    if (data.event_type_id && ids.has(data.event_type_id)) return
+    const currentEventTypeId = data.event_type_id?.toString() ?? ""
+    if (currentEventTypeId && ids.has(currentEventTypeId)) return
     setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only when hub `type` or topic catalog changes
-  }, [data.type, topicCatalog])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset topic only when hub type or catalog contents change
+  }, [topicCatalogKey])
 
   const formattedProgramLengthPreview = useMemo(() => {
     if (!data.start_date || !data.end_date) return null
@@ -379,6 +389,9 @@ export default function AdminCoursesEdit() {
 
   const statCardClass =
     "rounded-xl border border-gray-200/90 bg-white p-4 shadow-sm transition hover:border-purple-200/60 hover:shadow-md dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-purple-900/50"
+
+  const profileTopicTriggerClassName =
+    "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-purple-500"
 
   return (
     <ProfileLayout title="Edit listing" description={course.name}>
@@ -565,6 +578,9 @@ export default function AdminCoursesEdit() {
                         typeof errors.event_type_id === "string" ? errors.event_type_id : undefined
                       }
                       labelClassName="text-sm font-medium"
+                      triggerClassName={`${profileTopicTriggerClassName} ${
+                        errors.event_type_id ? "border-destructive focus:border-destructive focus:ring-destructive" : ""
+                      }`}
                     />
 
                     <div className="space-y-2">

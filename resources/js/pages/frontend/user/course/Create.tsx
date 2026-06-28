@@ -37,7 +37,10 @@ import {
   defaultEventTypeIdForHub,
   defaultHubTypeForCreate,
   eventTypeCatalogForHub,
+  topicCatalogSignature,
 } from "@/lib/event-type-catalog"
+
+const EMPTY_COMPANION_EVENT_TYPES: EventType[] = []
 
 interface EventType {
   id: number
@@ -62,7 +65,7 @@ type CourseCreatePageProps = AdminCoursesCreateProps & { auth: { user: User } }
 export default function NonprofitCoursesCreate() {
   const {
     eventTypes,
-    companionEventTypes = [],
+    companionEventTypes: companionEventTypesProp,
     organizationPrimaryActionCategories,
     causesCatalogSource,
     organizationName,
@@ -70,6 +73,8 @@ export default function NonprofitCoursesCreate() {
     lockedHubListingType,
     auth,
   } = usePage<CourseCreatePageProps>().props
+
+  const companionEventTypes = companionEventTypesProp ?? EMPTY_COMPANION_EVENT_TYPES
 
   const hubTypeLocked = lockedHubListingType ?? null
   const initialHubType = defaultHubTypeForCreate(hubTypeLocked, companionEventTypes)
@@ -120,12 +125,18 @@ export default function NonprofitCoursesCreate() {
     [data.type, companionEventTypes, eventTypes],
   )
 
+  const topicCatalogKey = useMemo(
+    () => topicCatalogSignature(data.type, companionEventTypes, eventTypes),
+    [data.type, companionEventTypes, eventTypes],
+  )
+
   useEffect(() => {
     const ids = new Set(topicCatalog.map((t) => t.id.toString()))
-    if (data.event_type_id && ids.has(data.event_type_id)) return
+    const currentEventTypeId = data.event_type_id?.toString() ?? ""
+    if (currentEventTypeId && ids.has(currentEventTypeId)) return
     setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset topic when hub type or catalog changes
-  }, [data.type, topicCatalog])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset topic only when hub type or catalog contents change
+  }, [topicCatalogKey])
 
   const formattedProgramLengthPreview = useMemo(() => {
     if (!data.start_date || !data.end_date) return null
@@ -274,6 +285,9 @@ export default function NonprofitCoursesCreate() {
     })
   }
 
+  const profileTopicTriggerClassName =
+    "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-purple-500"
+
   return (
     <ProfileLayout
       title="Create listing"
@@ -410,6 +424,9 @@ export default function NonprofitCoursesCreate() {
                         typeof errors.event_type_id === "string" ? errors.event_type_id : undefined
                       }
                       labelClassName="text-sm font-medium"
+                      triggerClassName={`${profileTopicTriggerClassName} ${
+                        errors.event_type_id ? "border-destructive focus:border-destructive focus:ring-destructive" : ""
+                      }`}
                     />
 
                     <div className="space-y-2">
