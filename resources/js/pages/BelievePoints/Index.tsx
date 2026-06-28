@@ -46,7 +46,6 @@ import {
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
 import { BpBalanceHero } from "@/pages/BelievePoints/components/BpBalanceHero"
-import { BpMoveToWalletPopup } from "@/pages/BelievePoints/components/BpMoveToWalletPopup"
 import { BpSectionHeader } from "@/pages/BelievePoints/components/BpSectionHeader"
 import {
   QuickAddBelievePointsModal,
@@ -118,11 +117,11 @@ interface PurchaseSettings {
   brp_value: number
   platform_fee_percent: number
   processing_fee_percent: number
-  /** BRP earned per $1 of BP for Free (non-Prime) supporters. */
+  /** BRP earned per qualifying BP purchase for Free (non-Prime) supporters. */
   free_brp_award: number
-  /** BRP earned per $1 of BP for Prime supporters. */
+  /** BRP earned per qualifying BP purchase for Prime supporters. */
   prime_brp_award: number
-  /** BRP earned per $1 of BP for the current buyer's membership tier. */
+  /** BRP earned per qualifying BP purchase for the current buyer's membership tier. */
   brp_award: number
   card_hold_hours: number
   new_card_hold_hours?: number
@@ -258,7 +257,6 @@ export default function BelievePointsIndex({
     availableMethods: availableMethodsProp = {},
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
-    walletTransfer,
     walletTransfers = [],
   } = page.props
   const purchaseSettings = purchaseSettingsProp ?? {
@@ -318,9 +316,6 @@ export default function BelievePointsIndex({
     policyAccepted: false,
   })
   const [arSubmitting, setArSubmitting] = useState(false)
-  const [walletTransferAmount, setWalletTransferAmount] = useState("")
-  const [walletTransferOpen, setWalletTransferOpen] = useState(false)
-  const [walletTransferSubmitting, setWalletTransferSubmitting] = useState(false)
   const [localBalance, setLocalBalance] = useState(currentBalance)
   const [arSavedCardId, setArSavedCardId] = useState<string | null>(
     autoReplenish.saved_payment_method_id,
@@ -336,60 +331,6 @@ export default function BelievePointsIndex({
   useEffect(() => {
     setLocalBalance(currentBalance)
   }, [currentBalance])
-
-  const handleTransferToWallet = async () => {
-    const amount = parseFloat(walletTransferAmount)
-    const min = walletTransfer?.min_amount ?? 1
-    const max = walletTransfer?.max_amount ?? 10000
-
-    if (!amount || amount < min || amount > max) {
-      showErrorToast(`Enter an amount between $${min.toFixed(2)} and $${max.toFixed(2)}`)
-      return
-    }
-
-    if (amount > localBalance + 0.0001) {
-      showErrorToast("Insufficient purchased Believe Points. Gifted points cannot be moved to your wallet.")
-      return
-    }
-
-    setWalletTransferSubmitting(true)
-    try {
-      const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
-      const response = await fetch(route("believe-points.transfer-to-wallet"), {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrf,
-          "X-Requested-With": "XMLHttpRequest",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          amount,
-          idempotency_key: crypto.randomUUID(),
-        }),
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        showSuccessToast(data.message || "Wallet funding started")
-        if (typeof data.data?.believe_points_balance === "number") {
-          setLocalBalance(data.data.believe_points_balance)
-        } else {
-          setLocalBalance((prev) => Math.max(0, prev - amount))
-        }
-        setWalletTransferAmount("")
-        setWalletTransferOpen(false)
-        router.reload({ only: ["currentBalance", "processingBalance", "processingReleaseAt", "purchases", "walletTransfers"] })
-      } else {
-        showErrorToast(data.message || "Failed to move Believe Points to wallet")
-      }
-    } catch {
-      showErrorToast("Failed to move Believe Points to wallet")
-    } finally {
-      setWalletTransferSubmitting(false)
-    }
-  }
 
   const believePointsFeePreviewSkipRef = useRef(true)
 
@@ -776,10 +717,6 @@ export default function BelievePointsIndex({
     document.getElementById(ADD_BELIEVE_POINTS_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
-  const openMoveToWalletPopup = () => {
-    setWalletTransferOpen(true)
-  }
-
   const content = (
     <>
       <div className="mx-auto w-full min-w-0 max-w-6xl space-y-8">
@@ -811,30 +748,8 @@ export default function BelievePointsIndex({
               processingBalance={processingBalance}
               processingReleaseHint={formatProcessingReleaseHint(processingReleaseAt)}
               formatPoints={formatPoints}
-              formatCurrency={formatCurrency}
               onRefunds={() => router.visit(route("believe-points.refunds"))}
               onAddPoints={scrollToAddPoints}
-              showWalletAction={Boolean(
-                walletTransfer?.eligible &&
-                  (walletTransfer?.enabled || walletTransfer?.sandbox_unavailable),
-              )}
-              onMoveToWallet={openMoveToWalletPopup}
-            />
-
-            <BpMoveToWalletPopup
-              isOpen={walletTransferOpen}
-              onClose={() => {
-                if (walletTransferSubmitting) return
-                setWalletTransferOpen(false)
-              }}
-              balance={localBalance}
-              amount={walletTransferAmount}
-              onAmountChange={setWalletTransferAmount}
-              walletTransfer={walletTransfer}
-              isSubmitting={walletTransferSubmitting}
-              onSubmit={handleTransferToWallet}
-              formatCurrency={formatCurrency}
-              formatPoints={formatPoints}
             />
 
             {hasSavedStripeMethods && quickBuyDefaultMethod && (
@@ -869,7 +784,7 @@ export default function BelievePointsIndex({
                   <BpSectionHeader
                     icon={DollarSign}
                     title="Add Believe Points"
-                    description={`Choose a payment method below. You receive 1 BP per $1 USD. Purchased BP credits as Processing BP until settlement. Each purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP purchased.`}
+                    description={`Choose a payment method below. Purchased BP credits as Processing BP until settlement. Each qualifying purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per transaction.`}
                   />
                   <Badge variant="secondary" className="w-fit shrink-0 font-normal">
                     Secure checkout · Stripe
@@ -912,9 +827,9 @@ export default function BelievePointsIndex({
                       title="Payment method"
                       description={
                         isAchPayment
-                          ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP. ${achSettlementLabel}.`
+                          ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per transaction. ${achSettlementLabel}.`
                           : isCardPayment
-                            ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP. ${cardSettlementLabel}.`
+                            ? `Earn ${formatPoints(purchaseSettings.brp_award)} BRP per transaction. ${cardSettlementLabel}.`
                             : isManualMethod(paymentMethod)
                               ? "Transfer outside Stripe, then confirm. An admin verifies before points are credited."
                               : "Complete checkout with your selected payment provider."
@@ -1109,7 +1024,7 @@ export default function BelievePointsIndex({
                           {formatPoints(amountNum)} BP
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {isAchPayment ? achSettlementLabel : cardSettlementLabel} · {formatCurrency(amountNum)} face value
+                          {isAchPayment ? achSettlementLabel : cardSettlementLabel}
                         </p>
                       </div>
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-md">
@@ -1126,11 +1041,11 @@ export default function BelievePointsIndex({
                     <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                        <span>1 BP = $1 USD for donations and eligible purchases on Believe.</span>
+                        <span>Use BP for donations and eligible purchases on Believe.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                        <span>Earn {formatPoints(purchaseSettings.brp_award)} BRP per $1 of BP ({formatPoints(purchaseSettings.free_brp_award)}/$1 Free · {formatPoints(purchaseSettings.prime_brp_award)}/$1 Prime) · BRP = {formatCurrency(purchaseSettings.brp_value)} each.</span>
+                        <span>Earn {formatPoints(purchaseSettings.brp_award)} BRP per transaction ({formatPoints(purchaseSettings.free_brp_award)} Free · {formatPoints(purchaseSettings.prime_brp_award)} Prime) · Minimum purchase {formatCurrency(minPurchaseAmount)} · BRP = {formatCurrency(purchaseSettings.brp_value)} each.</span>
                       </li>
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
@@ -1219,7 +1134,7 @@ export default function BelievePointsIndex({
                                     <li>Be funded via Believe wallet balances, virtual accounts, or Bridge (purchases on this page use Stripe card or US bank)</li>
                                   </ul>
                                   <p className="text-muted-foreground mt-2">
-                                    Purchased Believe Points may be moved into your verified Believe Bridge wallet when that feature is enabled (1 BP = $1). Gifted points cannot be moved to your wallet.
+                                    Purchased Believe Points may be moved into your verified Believe Bridge wallet when that feature is enabled. Gifted points cannot be moved to your wallet.
                                   </p>
                                 </div>
 
@@ -1252,7 +1167,7 @@ export default function BelievePointsIndex({
                                 <div>
                                   <h3 className="font-semibold text-base mb-2">6. Separation From Wallet & Payments</h3>
                                   <p className="text-muted-foreground">
-                                    Believe operates a separate financial wallet system for real money transactions. Purchased Points may be moved into your verified Believe Bridge wallet when enabled (1 BP = $1). Gifted points cannot be moved. Wallet funds cannot be used to acquire Points.
+                                    Believe operates a separate financial wallet system for real money transactions. Purchased Points may be moved into your verified Believe Bridge wallet when enabled. Gifted points cannot be moved. Wallet funds cannot be used to acquire Points.
                                   </p>
                                 </div>
 
@@ -1675,7 +1590,7 @@ export default function BelievePointsIndex({
     return (
       <>
         <Head title="Believe Points" />
-        <ProfileLayout title="Believe Points" description="Purchase platform credits, move funds to your wallet, and manage auto top-up.">
+        <ProfileLayout title="Believe Points" description="Purchase platform credits and manage auto top-up.">
           {content}
         </ProfileLayout>
       </>
@@ -1694,7 +1609,7 @@ export default function BelievePointsIndex({
               <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Believe Points</p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Add & manage platform credits</h1>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Buy BP for donations and eligible purchases. 1 Point = $1 USD face value. Secure checkout via Stripe.
+                Buy BP for donations and eligible purchases. Secure checkout via Stripe.
               </p>
             </div>
           </div>

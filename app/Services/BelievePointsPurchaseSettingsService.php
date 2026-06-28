@@ -45,10 +45,10 @@ final class BelievePointsPurchaseSettingsService
 
     public const DEFAULT_PROCESSING_FEE_PERCENT = 1.0;
 
-    /** Believe Reward Points earned per $1 of BP purchased by a Free supporter. */
+    /** Believe Reward Points earned per qualifying BP purchase by a Free supporter. */
     public const DEFAULT_FREE_BRP_AWARD = 5.0;
 
-    /** Believe Reward Points earned per $1 of BP purchased by a Prime supporter. */
+    /** Believe Reward Points earned per qualifying BP purchase by a Prime supporter. */
     public const DEFAULT_PRIME_BRP_AWARD = 10.0;
 
     public const DEFAULT_CARD_HOLD_HOURS = 0;
@@ -81,7 +81,7 @@ final class BelievePointsPurchaseSettingsService
     }
 
     /**
-     * Believe Reward Points earned per $1 of BP purchased by a Free (non-Prime) supporter.
+     * Believe Reward Points earned per qualifying BP purchase by a Free (non-Prime) supporter.
      */
     public static function freeBrpAward(): float
     {
@@ -89,7 +89,7 @@ final class BelievePointsPurchaseSettingsService
     }
 
     /**
-     * Believe Reward Points earned per $1 of BP purchased by a Prime supporter.
+     * Believe Reward Points earned per qualifying BP purchase by a Prime supporter.
      */
     public static function primeBrpAward(): float
     {
@@ -97,7 +97,7 @@ final class BelievePointsPurchaseSettingsService
     }
 
     /**
-     * Believe Reward Points earned per $1 of BP purchased, based on the buyer's
+     * Believe Reward Points earned per qualifying BP purchase, based on the buyer's
      * supporter membership tier (Free vs Prime).
      */
     public static function brpAwardForUser(?User $user): float

@@ -39,7 +39,7 @@ class ProcessBelievePointsAutoReplenishJob
 
         $threshold = (float) ($user->believe_points_auto_replenish_threshold ?? 0);
         $amount = (float) ($user->believe_points_auto_replenish_amount ?? 0);
-        $minPurchase = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchase = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchase = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         if ($amount < $minPurchase || $amount > $maxPurchase) {

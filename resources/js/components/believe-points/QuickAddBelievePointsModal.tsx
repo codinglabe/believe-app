@@ -38,7 +38,7 @@ export interface BelievePointsFeePreview {
 }
 
 interface PurchaseSettings {
-  /** BRP earned per $1 of BP for the current buyer's membership tier. */
+  /** BRP earned per qualifying BP purchase for the current buyer's membership tier. */
   brp_award: number
   card_hold_hours: number
 }
@@ -295,7 +295,7 @@ export function QuickAddBelievePointsModal({
                 />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {formatCurrency(minPurchaseAmount)} – {formatCurrency(maxPurchaseAmount)} · 1 BP = $1 USD
+                {formatCurrency(minPurchaseAmount)} – {formatCurrency(maxPurchaseAmount)}
               </p>
             </div>
 

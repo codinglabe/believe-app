@@ -30,7 +30,10 @@ import {
   defaultEventTypeIdForHub,
   defaultHubTypeForCreate,
   eventTypeCatalogForHub,
+  topicCatalogSignature,
 } from "@/lib/event-type-catalog"
+
+const EMPTY_COMPANION_EVENT_TYPES: EventType[] = []
 
 interface EventType {
   id: number
@@ -52,13 +55,15 @@ type CourseCreatePageProps = AdminCoursesCreateProps & { auth: { user: User } }
 export default function NonprofitCoursesCreate() {
   const {
     eventTypes,
-    companionEventTypes = [],
+    companionEventTypes: companionEventTypesProp,
     organizationPrimaryActionCategories,
     organizationName,
     sellerNameLabel,
     lockedHubListingType,
     auth,
   } = usePage<CourseCreatePageProps>().props
+
+  const companionEventTypes = companionEventTypesProp ?? EMPTY_COMPANION_EVENT_TYPES
 
   const hubTypeLocked = lockedHubListingType ?? null
   const initialHubType = defaultHubTypeForCreate(hubTypeLocked, companionEventTypes)
@@ -112,12 +117,18 @@ export default function NonprofitCoursesCreate() {
     [data.type, companionEventTypes, eventTypes],
   )
 
+  const topicCatalogKey = useMemo(
+    () => topicCatalogSignature(data.type, companionEventTypes, eventTypes),
+    [data.type, companionEventTypes, eventTypes],
+  )
+
   useEffect(() => {
     const ids = new Set(topicCatalog.map((t) => t.id.toString()))
-    if (data.event_type_id && ids.has(data.event_type_id)) return
+    const currentEventTypeId = data.event_type_id?.toString() ?? ""
+    if (currentEventTypeId && ids.has(currentEventTypeId)) return
     setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only when hub `type` or topic catalog changes
-  }, [data.type, topicCatalog])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset topic only when hub type or catalog contents change
+  }, [topicCatalogKey])
 
   const formattedProgramLengthPreview = useMemo(() => {
     if (!data.start_date || !data.end_date) return null

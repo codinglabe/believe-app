@@ -24,7 +24,7 @@ class UserPaymentMethodController extends Controller
 
         $layout = $request->routeIs('settings.saved-payment-methods.*') ? 'settings' : 'profile';
         $believePointsEnabled = (bool) AdminSetting::get('believe_points_enabled', true);
-        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 1.00);
+        $minPurchaseAmount = (float) AdminSetting::get('believe_points_min_purchase', 10.00);
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         $feePreview = null;
