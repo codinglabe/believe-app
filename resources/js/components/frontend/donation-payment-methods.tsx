@@ -348,14 +348,14 @@ export function DonationPaymentMethods({
               </p>
               <p className="text-xs text-slate-600/80 dark:text-white/55">
                 {canUseBelievePoints
-                  ? "Donation-eligible total (Processing + Available)"
+                  ? "Total balance (Processing + Available)"
                   : "Insufficient balance for this amount"}
               </p>
               {(availableBalance !== undefined || processingBalance > 0) && (
                 <p className="mt-1 text-[11px] leading-snug text-slate-600/75 dark:text-white/50">
                   Available: {(availableBalance ?? currentBalance).toLocaleString()} BP
                   {processingBalance > 0
-                    ? ` · Processing: ${processingBalance.toLocaleString()} BP (donation-eligible)`
+                    ? ` · Processing: ${processingBalance.toLocaleString()} BP`
                     : ""}
                 </p>
               )}

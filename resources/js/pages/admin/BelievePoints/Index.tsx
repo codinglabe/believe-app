@@ -850,7 +850,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                 <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
                   <li>Believe Points are platform credits purchased through enabled payment methods (Stripe, PayPal, Venmo, Cash App, Zelle)</li>
                   <li>Points credit as Processing BP after payment; they become Available BP after settlement</li>
-                  <li>Processing BP can be donated; wallet, marketplace, and gift cards use Available BP only</li>
+                  <li>Wallet, marketplace, and gift cards use Available BP only</li>
                   <li>Both supporters and organizations can purchase Believe Points</li>
                   <li>Purchase history is tracked for all transactions</li>
                 </ul>
