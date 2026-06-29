@@ -1050,7 +1050,7 @@ export default function BelievePointsIndex({
                       <li className="flex gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
                         <span>
-                          {cardSettlementLabel}. {achSettlementLabel}. Donations can use Processing BP; wallet and marketplace use Available BP only.
+                          {cardSettlementLabel}. {achSettlementLabel}. Wallet and marketplace use Available BP only.
                         </span>
                       </li>
                     </ul>
@@ -1107,7 +1107,7 @@ export default function BelievePointsIndex({
                                 <div>
                                   <h3 className="font-semibold text-base mb-2">1. Purpose of Points</h3>
                                   <p className="text-muted-foreground">
-                                    Points are closed‑loop platform credits issued by Believe for use only within the Believe website ecosystem. Points are designed to enable purchases, donations, and organizational activity on the platform and are not a substitute for money.
+                                    Points are closed‑loop platform credits issued by Believe for use only within the Believe website ecosystem. Points are designed to enable purchases and organizational activity on the platform and are not a substitute for money.
                                   </p>
                                 </div>
 
@@ -1198,14 +1198,7 @@ export default function BelievePointsIndex({
                                 </div>
 
                                 <div>
-                                  <h3 className="font-semibold text-base mb-2">10. Donations Using Points</h3>
-                                  <p className="text-muted-foreground">
-                                    When Points are given to a qualified nonprofit, the transfer is treated as a charitable donation. Donations are irrevocable. Donors receive no goods or services in exchange. Donation receipts may reflect the defined face value of Points, or a non‑cash contribution description, as applicable.
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <h3 className="font-semibold text-base mb-2">11. No Ownership or Investment Rights</h3>
+                                  <h3 className="font-semibold text-base mb-2">10. No Ownership or Investment Rights</h3>
                                   <p className="text-muted-foreground mb-2">Points do not represent:</p>
                                   <ul className="text-muted-foreground space-y-1 list-disc list-inside">
                                     <li>Ownership</li>
@@ -1218,14 +1211,14 @@ export default function BelievePointsIndex({
                                 </div>
 
                                 <div>
-                                  <h3 className="font-semibold text-base mb-2">12. Abuse, Enforcement & Termination</h3>
+                                  <h3 className="font-semibold text-base mb-2">11. Abuse, Enforcement & Termination</h3>
                                   <p className="text-muted-foreground">
                                     Believe reserves the right to suspend or terminate Points access for abuse or misuse, revoke Points obtained through fraud or policy violations, and modify or discontinue the Points program at any time.
                                   </p>
                                 </div>
 
                                 <div>
-                                  <h3 className="font-semibold text-base mb-2">13. Modifications to This Policy</h3>
+                                  <h3 className="font-semibold text-base mb-2">12. Modifications to This Policy</h3>
                                   <p className="text-muted-foreground">
                                     Believe may update this policy periodically. Material changes will be communicated where required.
                                   </p>
@@ -1624,7 +1617,7 @@ export default function BelievePointsIndex({
               <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Believe Points</p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Add & manage platform credits</h1>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Buy BP for donations and eligible purchases. Secure checkout via Stripe.
+                Buy BP for eligible purchases. Secure checkout via Stripe.
               </p>
             </div>
           </div>

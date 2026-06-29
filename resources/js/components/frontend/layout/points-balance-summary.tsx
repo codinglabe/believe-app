@@ -187,7 +187,7 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
         <div className="space-y-1">
           <p>
             <span className="font-semibold text-purple-600 dark:text-purple-400">Processing:</span>{" "}
-            <span className="text-muted-foreground">Funding is in progress. Can be used for donations.</span>
+            <span className="text-muted-foreground">Funding is in progress.</span>
           </p>
           <p>
             <span className="font-semibold text-emerald-600 dark:text-emerald-400">Available:</span>{" "}

@@ -696,7 +696,7 @@ class BelievePointController extends Controller
                         $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
                     }
                     if (! $purchase->points_released) {
-                        $message .= ' Your BP is in Processing balance until platform settlement completes, then becomes Available for wallet and marketplace use. Donations can use Processing BP now.';
+                        $message .= ' Your BP is in Processing balance until platform settlement completes, then becomes Available for wallet and marketplace use.';
                     }
 
                     return redirect()->route('believe-points.index')->with('success', $message);
