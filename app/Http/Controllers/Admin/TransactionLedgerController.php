@@ -208,9 +208,11 @@ class TransactionLedgerController extends Controller
                 if (! $t instanceof Transaction) {
                     continue;
                 }
+                $presentation = $this->prepareLedgerPresentation($t);
                 $flat = $this->flatFileMapper->map(
                     $t,
-                    $this->prepareLedgerPresentation($t)['unified']
+                    $presentation['unified'],
+                    $presentation['related'],
                 );
                 yield array_map(
                     static fn (string $h) => $flat[$h] ?? '',
@@ -919,6 +921,7 @@ class TransactionLedgerController extends Controller
             'payout_status' => $fin['payout_status'],
             'organization_id' => $org['organization_id'],
             'organization_name' => $org['organization_name'],
+            'organization_ein' => $org['organization_ein'] ?? null,
             'subtotal_amount' => $fin['subtotal_amount'] ?? null,
             'sales_tax_amount' => $fin['sales_tax_amount'] ?? null,
             'shipping_amount' => $fin['shipping_amount'] ?? null,
@@ -1405,12 +1408,25 @@ class TransactionLedgerController extends Controller
         }
 
         if ($oid > 0 && $oname === null) {
-            $oname = Organization::query()->where('id', $oid)->value('name');
+            $orgRow = Organization::query()->whereKey($oid)->first(['name', 'ein']);
+            if ($orgRow !== null) {
+                $oname = $orgRow->name;
+            }
+        }
+
+        $ein = null;
+        if ($oid > 0) {
+            if (isset($orgRow) && $orgRow !== null) {
+                $ein = $orgRow->ein;
+            } else {
+                $ein = Organization::query()->whereKey($oid)->value('ein');
+            }
         }
 
         return [
             'organization_id' => $oid > 0 ? $oid : null,
             'organization_name' => $oname,
+            'organization_ein' => $ein !== null && trim((string) $ein) !== '' ? trim((string) $ein) : null,
         ];
     }
 

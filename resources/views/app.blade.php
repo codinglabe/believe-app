@@ -13,6 +13,7 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
         @auth
         <meta name="user-id" content="{{ auth()->id() }}">
+        <meta name="proximity-notifications-enabled" content="{{ auth()->user()->proximity_notifications_enabled === false ? '0' : '1' }}">
         @endauth
         @unless($isLivestock || $isMerchant)
         <meta name="firebase-vapid-key" content="{{ config('services.firebase.vapid_key', '') }}">
