@@ -19,6 +19,14 @@ class BelievePointsLedgerEntry extends Model
 
     public const TYPE_WALLET_TRANSFER_REFUND = 'wallet_transfer_refund';
 
+    public const TYPE_SETTLEMENT = 'settlement';
+
+    public const TYPE_GIFT_SENT = 'gift_sent';
+
+    public const TYPE_GIFT_RECEIVED = 'gift_received';
+
+    public const TYPE_REFUND = 'refund';
+
     protected $fillable = [
         'user_id',
         'payment_transaction_id',

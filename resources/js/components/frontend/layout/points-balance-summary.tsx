@@ -4,11 +4,13 @@ import { ChevronRight, Gift, Info, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface PointsUser {
+  /** Settled / spendable reward points. */
   reward_points?: number
-  /** Settled / available reward points (defaults to reward_points). */
   available_reward_points?: number
   /** Reward points still processing. */
   processing_reward_points?: number
+  /** Total reward points (available + processing). */
+  reward_points_total?: number
   believe_points?: number
   processing_believe_points?: number
   believe_points_total?: number
@@ -51,18 +53,23 @@ function MetricColumn({
 }
 
 export function PointsBalanceSummary({ user }: { user: PointsUser }) {
-  const hasReward = user?.reward_points !== undefined
+  const hasReward =
+    user?.reward_points !== undefined ||
+    user?.available_reward_points !== undefined ||
+    user?.processing_reward_points !== undefined ||
+    user?.reward_points_total !== undefined
   const hasBelieve = user?.believe_points !== undefined
 
-  const rewardTotal = Number(user?.reward_points) || 0
+  const rewardAvailable = Number(user?.available_reward_points ?? user?.reward_points) || 0
   const rewardProcessing = Number(user?.processing_reward_points) || 0
-  const rewardAvailable =
-    user?.available_reward_points !== undefined ? Number(user.available_reward_points) : rewardTotal - rewardProcessing
+  // Dashboard total = processing + available (same as Believe Points).
+  const rewardTotal =
+    user?.reward_points_total !== undefined ? Number(user.reward_points_total) : rewardAvailable + rewardProcessing
 
   const believeAvailable = Number(user?.believe_points) || 0
   const believeProcessing = Number(user?.processing_believe_points) || 0
-  const believeTotal =
-    user?.believe_points_total !== undefined ? Number(user.believe_points_total) : believeAvailable + believeProcessing
+  // Dashboard total = processing + available (gifted is shown separately below).
+  const believeTotal = believeAvailable + believeProcessing
   const giftedBelieve = Number(user?.gifted_believe_points) || 0
 
   return (
@@ -83,9 +90,33 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
             <span className="shrink-0 text-base font-semibold text-blue-600 dark:text-blue-400">Earned</span>
           </div>
           <div className="mt-2.5 flex items-stretch gap-3 border-t border-blue-200/70 pt-2.5 dark:border-blue-800/70">
-            <MetricColumn label="Processing" value={fmt(rewardProcessing)} valueClassName="text-blue-700 dark:text-blue-300" />
+            <MetricColumn
+              label="Processing"
+              value={fmt(rewardProcessing)}
+              valueClassName="text-blue-700 dark:text-blue-300"
+              badge={
+                rewardProcessing > 0
+                  ? {
+                      text: "Processing",
+                      className: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+                    }
+                  : undefined
+              }
+            />
             <div className="w-px self-stretch bg-blue-200/70 dark:bg-blue-800/70" />
-            <MetricColumn label="Available" value={fmt(rewardAvailable)} valueClassName="text-blue-700 dark:text-blue-300" />
+            <MetricColumn
+              label="Available"
+              value={fmt(rewardAvailable)}
+              valueClassName="text-blue-700 dark:text-blue-300"
+              badge={
+                rewardAvailable > 0
+                  ? {
+                      text: "Available",
+                      className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
+                    }
+                  : undefined
+              }
+            />
           </div>
         </div>
       )}

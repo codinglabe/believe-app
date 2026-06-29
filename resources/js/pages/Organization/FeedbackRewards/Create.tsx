@@ -150,7 +150,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
     if (s === 0) {
       if (!form.title.trim()) e.title = 'Campaign title is required'
       if (!form.reward_per_response_brp || form.reward_per_response_brp < 1) e.reward = 'Reward must be at least 1 BP'
-      if (!budget || budget * 100 < reward) e.budget = 'Budget in BP (1 BP = $1) must cover the per-response cost'
+      if (!budget || budget < reward) e.budget = 'Budget in BP must cover the per-response cost'
     }
     if (s === 1) {
       if (!form.question_text.trim()) e.question_text = 'Question is required'
@@ -195,7 +195,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
           </Link>
           <div>
             <h1 className={`text-2xl font-bold ${ofb.titleGradient}`}>Create Feedback Campaign</h1>
-            <p className="text-sm text-muted-foreground">{organization.name} · 1 BP = $1.00</p>
+            <p className="text-sm text-muted-foreground">{organization.name}</p>
           </div>
         </div>
 
@@ -285,7 +285,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
                       />
                       <div className="px-3 py-2 rounded-lg bg-muted/50 border text-sm whitespace-nowrap">BP</div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">1 BP = $1.00 (≈ ${budgetHintUsd.toFixed(2)} in dollars)</p>
+                    <p className="text-xs text-muted-foreground mt-1">Budget must cover all responses at the per-response reward.</p>
                     {errors.budget && <p className="text-xs text-destructive mt-1">{errors.budget}</p>}
                   </div>
                   <div>

@@ -96,7 +96,12 @@ interface SharedData extends Record<string, unknown> {
       impact_score?: number
       referral_link?: string
       balance?: string // Added wallet_balance
-      reward_points?: number // Added reward_points
+      reward_points?: number // Settled / available reward points
+      available_reward_points?: number
+      /** Reward points still processing (e.g. from unsettled Believe Point purchases). */
+      processing_reward_points?: number
+      /** Total reward points (available + processing). */
+      reward_points_total?: number
       believe_points?: number // Added believe_points
       /** Believe points still settling (funding in progress). */
       processing_believe_points?: number

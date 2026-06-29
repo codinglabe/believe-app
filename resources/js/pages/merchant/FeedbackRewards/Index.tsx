@@ -100,7 +100,7 @@ export default function FeedbackRewardsIndex({ campaigns, stats, wallet, filters
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-1">Feedback & Rewards</h1>
-                <p className="text-gray-400">Collect feedback and let supporters earn BP. 1 BP = $1.00.</p>
+                <p className="text-gray-400">Collect feedback and let supporters earn BP.</p>
               </div>
               <Link href="/feedback-rewards/create">
                 <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">

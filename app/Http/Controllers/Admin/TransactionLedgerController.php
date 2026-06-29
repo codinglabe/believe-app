@@ -1109,6 +1109,143 @@ class TransactionLedgerController extends Controller
     }
 
     /**
+     * Believe Points purchase rows store platform fee and Stripe processing fee separately on the purchase + transaction meta.
+     */
+    private function isBelievePointsPurchaseLedgerRow(Transaction $t): bool
+    {
+        if ($t->type === 'refund') {
+            return false;
+        }
+
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $source = (string) ($meta['source'] ?? '');
+        if ($source === 'believe_points_purchase_refund') {
+            return false;
+        }
+        if ($source === 'believe_points_purchase') {
+            return true;
+        }
+
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+
+        return $rt === BelievePointPurchase::class || str_ends_with($rt, 'BelievePointPurchase');
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @param  array{gross_amount: float, stripe_fee: float, bridge_fee: float, biu_fee: float, split_deduction: float, refund_amount: float, net_to_organization: float|null}  $fin
+     * @return array{gross_amount: float, stripe_fee: float, biu_fee: float, net_to_organization: float, platform_payout: float|null}
+     */
+    private function mergeBelievePointsPurchaseLedgerFinancials(
+        Transaction $t,
+        array $meta,
+        array $fin,
+        float $feeCol,
+    ): array {
+        $purchase = null;
+        $needsPurchaseLookup = $t->related_id !== null
+            && (int) $t->related_id > 0
+            && (
+                $this->ledgerMetaFloat($meta, ['base_points_usd', 'intended_points']) <= 0
+                || $this->ledgerMetaFloat($meta, ['checkout_total_usd', 'gross_amount']) <= 0
+                || (
+                    $fin['biu_fee'] <= 0
+                    && $this->ledgerMetaFloat($meta, ['platform_fee', 'platform_fee_amount', 'platform_fee_usd']) <= 0
+                )
+                || (
+                    $fin['stripe_fee'] <= 0
+                    && $this->ledgerMetaFloat($meta, [
+                        'stripe_fee', 'stripe_fee_amount', 'payment_processor_fee', 'processor_fee', 'stripe_processing_fee',
+                        'processing_fee_estimate',
+                    ]) <= 0
+                )
+            );
+        if ($needsPurchaseLookup) {
+            $purchase = BelievePointPurchase::query()->find((int) $t->related_id);
+        }
+
+        $basePoints = $this->ledgerMetaFloat($meta, ['base_points_usd', 'intended_points']);
+        if ($basePoints <= 0 && $purchase !== null) {
+            $basePoints = round((float) $purchase->amount, 2);
+        }
+
+        $checkoutTotal = $this->ledgerMetaFloat($meta, ['checkout_total_usd', 'gross_amount']);
+        if ($checkoutTotal <= 0 && $purchase?->checkout_total !== null) {
+            $checkoutTotal = round((float) $purchase->checkout_total, 2);
+        }
+        if ($checkoutTotal <= 0) {
+            $checkoutTotal = (float) $t->amount;
+        }
+
+        $platformFee = $fin['biu_fee'];
+        if ($platformFee <= 0) {
+            $platformFee = $this->ledgerMetaFloat($meta, ['platform_fee', 'platform_fee_amount', 'platform_fee_usd']);
+        }
+        if ($platformFee <= 0 && $purchase?->platform_fee !== null) {
+            $platformFee = round((float) $purchase->platform_fee, 2);
+        }
+
+        $processingFee = $fin['stripe_fee'];
+        $syncSource = (string) ($meta['stripe_fee_sync_source'] ?? '');
+        if (in_array($syncSource, ['webhook', 'balance_transaction'], true)) {
+            $syncedFee = $this->ledgerMetaFloat($meta, [
+                'stripe_fee', 'stripe_fee_amount', 'stripe_processing_fee', 'payment_processor_fee', 'processor_fee',
+            ]);
+            if ($syncedFee > 0) {
+                $processingFee = $syncedFee;
+            }
+        }
+        if ($processingFee <= 0) {
+            $processingFee = $this->ledgerMetaFloat($meta, [
+                'stripe_fee', 'stripe_fee_amount', 'payment_processor_fee', 'processor_fee', 'stripe_processing_fee',
+            ]);
+        }
+        if ($processingFee <= 0) {
+            $processingFee = $this->ledgerMetaFloat($meta, [
+                'processing_fee_estimate',
+            ]);
+        }
+        if ($processingFee <= 0 && $purchase?->processing_fee_estimate !== null) {
+            $processingFee = round((float) $purchase->processing_fee_estimate, 2);
+        }
+
+        if ($processingFee <= 0 && $platformFee > 0 && $feeCol > $platformFee) {
+            $processingFee = round($feeCol - $platformFee, 2);
+        } elseif ($platformFee <= 0 && $processingFee > 0 && $feeCol > $processingFee) {
+            $platformFee = round($feeCol - $processingFee, 2);
+        } elseif ($processingFee <= 0 && $platformFee <= 0 && $feeCol > 0 && $purchase !== null) {
+            $processingFee = $purchase->processing_fee_estimate !== null
+                ? round((float) $purchase->processing_fee_estimate, 2)
+                : 0.0;
+            $platformFee = $purchase->platform_fee !== null
+                ? round((float) $purchase->platform_fee, 2)
+                : 0.0;
+            if ($processingFee <= 0 && $platformFee <= 0) {
+                $processingFee = round($feeCol, 2);
+            }
+        }
+
+        if ($checkoutTotal <= 0 && $basePoints > 0) {
+            $checkoutTotal = round($basePoints + $platformFee + $processingFee, 2);
+        }
+        if ($basePoints <= 0 && $checkoutTotal > 0) {
+            $basePoints = round(max(0.0, $checkoutTotal - $platformFee - $processingFee), 2);
+        }
+
+        $net = $basePoints > 0
+            ? $basePoints
+            : round(max(0.0, $checkoutTotal - $processingFee - $platformFee - $fin['bridge_fee'] - $fin['split_deduction']), 2);
+
+        return [
+            'gross_amount' => round($checkoutTotal, 2),
+            'stripe_fee' => round($processingFee, 2),
+            'biu_fee' => round($platformFee, 2),
+            'net_to_organization' => round($net, 2),
+            'platform_payout' => $platformFee > 0 ? round($platformFee, 2) : null,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>|null  $donationPayload
      * @return array{gross_amount: float, stripe_fee: float, bridge_fee: float, biu_fee: float, split_deduction: float, refund_amount: float, net_to_organization: float|null, payout_status: string|null}
      */
@@ -1126,14 +1263,21 @@ class TransactionLedgerController extends Controller
             'processing_fee_estimate',
         ]);
         $bridgeFee = $this->ledgerMetaFloat($meta, ['bridge_fee', 'bridge_fee_amount', 'bridge_transaction_fee']);
-        $biuFee = $this->ledgerMetaFloat($meta, ['biu_fee', 'biu_amount', 'biu', 'believe_biu_fee']);
+        $biuFee = $this->ledgerMetaFloat($meta, [
+            'biu_fee', 'biu_amount', 'biu', 'believe_biu_fee',
+            'platform_fee', 'platform_fee_amount', 'platform_fee_usd',
+        ]);
         $splitDed = $this->ledgerMetaFloat($meta, [
             'split_deduction', 'split_amount', 'allocation_deduction', 'care_alliance_split_amount', 'member_pool_deduction',
         ]);
 
         $feeCol = (float) $t->fee;
-        if ($stripeFee <= 0 && $feeCol > 0 && $bridgeFee <= 0 && $biuFee <= 0) {
-            $stripeFee = $feeCol;
+        if ($stripeFee <= 0 && $feeCol > 0 && $bridgeFee <= 0) {
+            if ($biuFee > 0 && $feeCol > $biuFee) {
+                $stripeFee = round($feeCol - $biuFee, 2);
+            } elseif ($biuFee <= 0) {
+                $stripeFee = $feeCol;
+            }
         }
 
         $refund = 0.0;
@@ -1216,6 +1360,24 @@ class TransactionLedgerController extends Controller
             }
         }
 
+        $platformPayout = null;
+        if ($this->isBelievePointsPurchaseLedgerRow($t)) {
+            $bpFinancials = $this->mergeBelievePointsPurchaseLedgerFinancials($t, $meta, [
+                'gross_amount' => round($gross, 2),
+                'stripe_fee' => round($stripeFee, 2),
+                'bridge_fee' => round($bridgeFee, 2),
+                'biu_fee' => round($biuFee, 2),
+                'split_deduction' => round($splitDed, 2),
+                'refund_amount' => round($refund, 2),
+                'net_to_organization' => round($net, 2),
+            ], $feeCol);
+            $gross = $bpFinancials['gross_amount'];
+            $stripeFee = $bpFinancials['stripe_fee'];
+            $biuFee = $bpFinancials['biu_fee'];
+            $net = $bpFinancials['net_to_organization'];
+            $platformPayout = $bpFinancials['platform_payout'] ?? null;
+        }
+
         $payout = null;
         foreach (['payout_status', 'settlement_status', 'bridge_payout_status', 'payout_state', 'transfer_status'] as $k) {
             if (! empty($meta[$k])) {
@@ -1244,6 +1406,9 @@ class TransactionLedgerController extends Controller
             'net_to_organization' => round($net, 2),
             'payout_status' => $payout,
         ];
+        if ($platformPayout !== null && $platformPayout > 0) {
+            $out['platform_payout'] = round($platformPayout, 2);
+        }
 
         if (
             ($donationPayload === null || ($donationPayload['kind'] ?? '') !== 'donation')

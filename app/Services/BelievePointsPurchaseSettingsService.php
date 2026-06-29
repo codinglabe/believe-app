@@ -33,6 +33,12 @@ final class BelievePointsPurchaseSettingsService
     /** Whether the supporter is charged the BIU platform fee on top of their BP. */
     public const KEY_SUPPORTER_PAYS_PLATFORM_FEE = 'bp_purchase_supporter_pays_platform_fee';
 
+    /**
+     * When enabled, the purchaser is charged BP + payment processing fee + platform fee.
+     * Alias for enabling both fee toggles together.
+     */
+    public const KEY_PAYER_COVERS_TRANSACTION_FEE = 'bp_purchase_payer_covers_transaction_fee';
+
     public const KEY_CARD_SETTLEMENT_BUSINESS_DAYS = 'bp_purchase_card_settlement_business_days';
 
     public const KEY_ACH_SETTLEMENT_BUSINESS_DAYS = 'bp_purchase_ach_settlement_business_days';
@@ -58,6 +64,8 @@ final class BelievePointsPurchaseSettingsService
     public const DEFAULT_SUPPORTER_PAYS_PROCESSING_FEE = true;
 
     public const DEFAULT_SUPPORTER_PAYS_PLATFORM_FEE = true;
+
+    public const DEFAULT_PAYER_COVERS_TRANSACTION_FEE = true;
 
     public const DEFAULT_CARD_SETTLEMENT_BUSINESS_DAYS = 1;
 
@@ -154,13 +162,29 @@ final class BelievePointsPurchaseSettingsService
         return max(0, (int) AdminSetting::get(self::KEY_ACH_HOLD_HOURS, self::DEFAULT_ACH_HOLD_HOURS));
     }
 
+    public static function payerCoversTransactionFee(): bool
+    {
+        return (bool) AdminSetting::get(
+            self::KEY_PAYER_COVERS_TRANSACTION_FEE,
+            self::DEFAULT_PAYER_COVERS_TRANSACTION_FEE,
+        );
+    }
+
     public static function supporterPaysProcessingFee(): bool
     {
+        if (self::payerCoversTransactionFee()) {
+            return true;
+        }
+
         return (bool) AdminSetting::get(self::KEY_SUPPORTER_PAYS_PROCESSING_FEE, self::DEFAULT_SUPPORTER_PAYS_PROCESSING_FEE);
     }
 
     public static function supporterPaysPlatformFee(): bool
     {
+        if (self::payerCoversTransactionFee()) {
+            return true;
+        }
+
         return (bool) AdminSetting::get(self::KEY_SUPPORTER_PAYS_PLATFORM_FEE, self::DEFAULT_SUPPORTER_PAYS_PLATFORM_FEE);
     }
 
@@ -179,6 +203,7 @@ final class BelievePointsPurchaseSettingsService
             'card_hold_hours' => self::cardHoldHours(),
             'new_card_hold_hours' => self::newCardHoldHours(),
             'ach_hold_hours' => self::achHoldHours(),
+            'payer_covers_transaction_fee' => self::payerCoversTransactionFee(),
             'supporter_pays_processing_fee' => self::supporterPaysProcessingFee(),
             'supporter_pays_platform_fee' => self::supporterPaysPlatformFee(),
             'card_settlement_business_days' => self::cardSettlementBusinessDays(),

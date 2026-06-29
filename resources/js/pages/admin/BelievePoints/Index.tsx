@@ -83,6 +83,7 @@ interface PageProps {
     ach_hold_hours: number
     supporter_pays_processing_fee: boolean
     supporter_pays_platform_fee: boolean
+    payer_covers_transaction_fee: boolean
     card_settlement_business_days: number
     ach_settlement_business_days: number
     require_bridge_reserve_confirmation: boolean
@@ -119,6 +120,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     ach_hold_hours: settings.ach_hold_hours.toString(),
     supporter_pays_processing_fee: settings.supporter_pays_processing_fee,
     supporter_pays_platform_fee: settings.supporter_pays_platform_fee,
+    payer_covers_transaction_fee: settings.payer_covers_transaction_fee ?? true,
     card_settlement_business_days: (settings.card_settlement_business_days ?? 1).toString(),
     ach_settlement_business_days: (settings.ach_settlement_business_days ?? 3).toString(),
     require_bridge_reserve_confirmation: settings.require_bridge_reserve_confirmation ?? true,
@@ -270,6 +272,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         ach_hold_hours: parseInt(formData.ach_hold_hours, 10),
         supporter_pays_processing_fee: formData.supporter_pays_processing_fee,
         supporter_pays_platform_fee: formData.supporter_pays_platform_fee,
+        payer_covers_transaction_fee: formData.payer_covers_transaction_fee,
         card_settlement_business_days: parseInt(formData.card_settlement_business_days, 10),
         ach_settlement_business_days: parseInt(formData.ach_settlement_business_days, 10),
         require_bridge_reserve_confirmation: formData.require_bridge_reserve_confirmation,
@@ -335,7 +338,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Believe Points Management</h1>
           <p className="text-sm text-muted-foreground mt-2">
-            Configure the Believe Points system. 1 Believe Point = $1. Supporters and organizations can purchase Believe Points through Stripe.
+            Configure the Believe Points system. Supporters and organizations can purchase Believe Points through Stripe.
           </p>
         </div>
 
@@ -400,7 +403,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
               Believe Points Settings
             </CardTitle>
             <CardDescription>
-              Configure the Believe Points purchase system. Users can purchase Believe Points at a 1:1 ratio ($1 = 1 Believe Point).
+              Configure the Believe Points purchase system, rewards, fees, and settlement rules for the Add Believe Points flow.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -499,6 +502,28 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center justify-between p-3 border rounded-lg sm:col-span-2 bg-muted/20">
+                    <div className="min-w-0 pr-4">
+                      <Label htmlFor="payer_covers_transaction_fee" className="text-sm font-medium">Purchaser Covers Transaction Fee</Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        When on, the supporter is charged enough to cover Believe Points, the payment processing fee, and the platform fee.
+                      </p>
+                    </div>
+                    <Switch
+                      id="payer_covers_transaction_fee"
+                      checked={formData.payer_covers_transaction_fee}
+                      disabled={isSubmitting}
+                      onCheckedChange={(checked) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          payer_covers_transaction_fee: checked,
+                          supporter_pays_processing_fee: checked,
+                          supporter_pays_platform_fee: checked,
+                        }))
+                      }
+                    />
+                  </div>
+
                   <div className="flex items-center justify-between p-3 border rounded-lg sm:col-span-2">
                     <div className="min-w-0 pr-4">
                       <Label htmlFor="supporter_pays_platform_fee" className="text-sm font-medium">Supporter Pays Platform Fee</Label>
@@ -823,8 +848,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   How It Works
                 </h3>
                 <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
-                  <li>1 Believe Point = $1 USD (1:1 ratio)</li>
-                  <li>Users can purchase Believe Points through enabled payment methods (Stripe, PayPal, Venmo, Cash App, Zelle)</li>
+                  <li>Believe Points are platform credits purchased through enabled payment methods (Stripe, PayPal, Venmo, Cash App, Zelle)</li>
                   <li>Points credit as Processing BP after payment; they become Available BP after settlement</li>
                   <li>Processing BP can be donated; wallet, marketplace, and gift cards use Available BP only</li>
                   <li>Both supporters and organizations can purchase Believe Points</li>

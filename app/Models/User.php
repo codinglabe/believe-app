@@ -1309,6 +1309,35 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Reward points tied to Believe Point purchases still in the processing/settlement window.
+     */
+    public function processingRewardPointsBalance(): float
+    {
+        return round((float) BelievePointPurchase::query()
+            ->where('user_id', $this->id)
+            ->where('status', 'completed')
+            ->where('points_released', false)
+            ->where('reward_points_awarded', '>', 0)
+            ->sum('reward_points_awarded'), 2);
+    }
+
+    /**
+     * Settled reward points (excludes purchase-linked points still processing).
+     */
+    public function availableRewardPointsBalance(): float
+    {
+        return round(max(0, $this->currentRewardPoints() - $this->processingRewardPointsBalance()), 2);
+    }
+
+    /**
+     * Total reward points (available + processing).
+     */
+    public function totalRewardPointsBalance(): float
+    {
+        return round($this->availableRewardPointsBalance() + $this->processingRewardPointsBalance(), 2);
+    }
+
+    /**
      * Send the email verification notification.
      *
      * @param  string|null  $domain  The domain from the request context (where user is accessing from)

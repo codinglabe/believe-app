@@ -95,7 +95,10 @@ class UserProfileController extends Controller
                 'wallet_user_id' => $user->wallet_user_id,
                 'balance' => $walletBalance,
             ],
-            'reward_points' => (float) ($user->reward_points ?? 0),
+            'reward_points' => $user->availableRewardPointsBalance(),
+            'available_reward_points' => $user->availableRewardPointsBalance(),
+            'processing_reward_points' => $user->processingRewardPointsBalance(),
+            'reward_points_total' => $user->totalRewardPointsBalance(),
             'impact_score' => $impactScore,
             'impact_breakdown' => $impactBreakdown,
         ]);
