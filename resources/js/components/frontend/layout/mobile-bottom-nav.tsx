@@ -6,6 +6,7 @@ import {
   MobileFavoritesHubSheet,
   MobileFavoritesOnboarding,
   MobileGuestHubSheet,
+  MobileProfileMenuSheet,
 } from "@/components/frontend/layout/mobile-favorites-sheets"
 import { useMobileNav } from "@/contexts/mobile-nav-context"
 import { showWalletInMobileNav, useOpenWalletPopup } from "@/hooks/use-open-wallet-popup"
@@ -32,13 +33,15 @@ function NavTab({
   path,
   isActiveOverride,
   onPress,
+  ariaExpanded,
 }: {
   item: MobileNavMenuItem
   path: string
   isActiveOverride?: boolean
   onPress?: () => void
+  ariaExpanded?: boolean
 }) {
-  if (item.isHub || (!item.href && !item.opensWallet)) return null
+  if (item.isHub || (!item.href && !item.opensWallet && !onPress)) return null
   const Icon = resolveSiteMenuIcon(item.icon)
   const isActive = isActiveOverride ?? isMobileNavItemActive(path, item)
 
@@ -65,11 +68,13 @@ function NavTab({
     </>
   )
 
-  if (item.opensWallet && onPress) {
+  if ((item.opensWallet || onPress) && onPress) {
     return (
       <button
         type="button"
         onClick={onPress}
+        aria-expanded={ariaExpanded}
+        aria-haspopup={item.menuKey === "profile" ? "menu" : undefined}
         className="relative z-10 flex h-full w-full flex-col items-center justify-end gap-1 px-1 pb-1.5 pt-1 touch-manipulation active:opacity-80"
       >
         {content}
@@ -134,6 +139,7 @@ export default function MobileBottomNav() {
   const [favoritesOpen, setFavoritesOpen] = useState(false)
   const [browseOpen, setBrowseOpen] = useState(false)
   const [customizeOpen, setCustomizeOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
 
   const isLoggedIn = Boolean(auth?.user)
@@ -161,6 +167,7 @@ export default function MobileBottomNav() {
     setFavoritesOpen(false)
     setBrowseOpen(false)
     setCustomizeOpen(false)
+    setProfileMenuOpen(false)
     closeWallet()
   }, [path, closeWallet])
 
@@ -168,6 +175,7 @@ export default function MobileBottomNav() {
     if (isMenuOpen) {
       setFavoritesOpen(false)
       setBrowseOpen(false)
+      setProfileMenuOpen(false)
     }
   }, [isMenuOpen])
 
@@ -194,7 +202,16 @@ export default function MobileBottomNav() {
     setFavoritesOpen(false)
     setBrowseOpen(false)
     setCustomizeOpen(false)
+    setProfileMenuOpen(false)
     void openWallet()
+  }
+
+  const handleProfilePress = () => {
+    closeMenu()
+    setFavoritesOpen(false)
+    setBrowseOpen(false)
+    setCustomizeOpen(false)
+    setProfileMenuOpen((open) => !open)
   }
 
   return (
@@ -231,6 +248,14 @@ export default function MobileBottomNav() {
         </>
       )}
 
+      {isLoggedIn && (
+        <MobileProfileMenuSheet
+          open={profileMenuOpen}
+          onClose={() => setProfileMenuOpen(false)}
+          profileHref={routes.profileHref}
+        />
+      )}
+
       <nav
         aria-label="Mobile bottom navigation"
         className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 2xl:hidden"
@@ -247,6 +272,7 @@ export default function MobileBottomNav() {
                         type="button"
                         onClick={() => {
                           closeMenu()
+                          setProfileMenuOpen(false)
                           setFavoritesOpen((open) => !open)
                         }}
                         aria-expanded={hubActive}
@@ -279,14 +305,18 @@ export default function MobileBottomNav() {
                 }
 
                 const opensWallet = item.opensWallet || item.menuKey === "wallet"
+                const opensProfileMenu = isLoggedIn && item.menuKey === "profile" && item.slot === 5
 
                 return (
                   <NavTab
                     key={`${item.slot}-${item.menuKey}`}
                     item={item}
                     path={path}
-                    isActiveOverride={opensWallet ? showWalletPopup : undefined}
-                    onPress={opensWallet ? handleWalletPress : undefined}
+                    isActiveOverride={
+                      opensWallet ? showWalletPopup : opensProfileMenu ? profileMenuOpen || isMobileNavItemActive(path, item) : undefined
+                    }
+                    onPress={opensWallet ? handleWalletPress : opensProfileMenu ? handleProfilePress : undefined}
+                    ariaExpanded={opensProfileMenu ? profileMenuOpen : undefined}
                   />
                 )
               })}
