@@ -3,10 +3,11 @@
 import type { MobileNavMenuItem, MobileNavPayload } from "@/types/mobile-nav"
 import { isMobileNavItemActive } from "@/types/mobile-nav"
 import { resolveSiteMenuIcon } from "@/lib/site-menu-icons"
+import { prepareLogout } from "@/lib/logout"
 import { cn } from "@/lib/utils"
 import { Link, router } from "@inertiajs/react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronRight, Heart, Settings2, Star, X } from "lucide-react"
+import { ChevronRight, Heart, LogOut, Settings2, Star, User, X } from "lucide-react"
 import { useState } from "react"
 
 const smoothEase = [0.25, 0.1, 0.25, 1] as const
@@ -429,6 +430,76 @@ export function MobileGuestHubSheet({
                 )
               })}
             </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
+export function MobileProfileMenuSheet({
+  open,
+  onClose,
+  profileHref,
+}: {
+  open: boolean
+  onClose: () => void
+  profileHref: string
+}) {
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    onClose()
+    await prepareLogout()
+    router.post(route("logout.main"))
+    router.flushAll()
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.button
+            type="button"
+            aria-label="Close profile menu"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={overlayTransition}
+            className="pointer-events-auto fixed inset-0 z-[66] bg-black/25 2xl:hidden"
+            onClick={onClose}
+          />
+          <motion.div
+            role="menu"
+            aria-label="Profile menu"
+            initial={{ opacity: 0, y: 12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={sheetTransition}
+            className="pointer-events-auto fixed right-4 z-[67] w-[min(13rem,calc(100vw-2rem))] origin-bottom-right rounded-2xl border border-border/70 bg-background p-1.5 shadow-2xl 2xl:hidden"
+            style={{ bottom: "calc(5.25rem + env(safe-area-inset-bottom, 0px))" }}
+          >
+            <Link
+              href={profileHref}
+              role="menuitem"
+              onClick={onClose}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-foreground transition-colors active:bg-muted"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                <User className="h-4 w-4 stroke-[2px]" />
+              </span>
+              Profile
+            </Link>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors active:bg-destructive/10"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <LogOut className="h-4 w-4 stroke-[2px]" />
+              </span>
+              Log out
+            </button>
           </motion.div>
         </>
       )}
