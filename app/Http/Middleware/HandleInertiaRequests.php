@@ -3,11 +3,13 @@
 namespace App\Http\Middleware;
 
 use App\Models\AdminSetting;
+use App\Models\BelievePointPurchase;
 use App\Models\CareAlliance;
 use App\Models\LivestockUser;
 use App\Models\Merchant;
 use App\Models\Organization;
 use App\Models\OrganizationProduct;
+use App\Services\BelievePointsPurchaseSettingsService;
 use App\Services\BridgeVerificationService;
 use App\Services\SeoService;
 use App\Services\StripeProcessingFeeEstimator;
@@ -233,6 +235,15 @@ class HandleInertiaRequests extends Middleware
                         'available_reward_points' => $user->availableRewardPointsBalance(),
                         'processing_reward_points' => $user->processingRewardPointsBalance(),
                         'reward_points_total' => $user->totalRewardPointsBalance(),
+                        'brp_award_per_transaction' => BelievePointsPurchaseSettingsService::brpAwardForUser($user),
+                        'supporter_membership_label' => SupporterSubscriptionService::currentTierSlug($user) === SupporterSubscriptionService::SLUG_PRIME || $user->hasNonprofitDashboardRole()
+                            ? 'Prime Member'
+                            : 'Free Member',
+                        'completed_bp_purchase_count' => BelievePointPurchase::query()
+                            ->where('user_id', $user->id)
+                            ->where('status', 'completed')
+                            ->where('reward_points_awarded', '>', 0)
+                            ->count(),
                         'believe_points' => $user->believe_points ?? 0,
                         'processing_believe_points' => $user->processing_believe_points ?? 0,
                         'donateable_believe_points' => round(

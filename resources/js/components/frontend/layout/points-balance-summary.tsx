@@ -11,6 +11,9 @@ interface PointsUser {
   processing_reward_points?: number
   /** Total reward points (available + processing). */
   reward_points_total?: number
+  brp_award_per_transaction?: number
+  supporter_membership_label?: string
+  completed_bp_purchase_count?: number
   believe_points?: number
   processing_believe_points?: number
   believe_points_total?: number
@@ -71,6 +74,9 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
   // Dashboard total = processing + available (gifted is shown separately below).
   const believeTotal = believeAvailable + believeProcessing
   const giftedBelieve = Number(user?.gifted_believe_points) || 0
+  const brpAward = Number(user?.brp_award_per_transaction) || 0
+  const membershipLabel = user?.supporter_membership_label ?? "Free Member"
+  const completedPurchases = Number(user?.completed_bp_purchase_count) || 0
 
   return (
     <div className="space-y-3">
@@ -83,12 +89,27 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
                 <Gift className="h-6 w-6 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm text-muted-foreground">Reward Points</p>
+                <p className="text-sm text-muted-foreground">Reward Points (BRP)</p>
                 <p className="text-2xl font-bold leading-tight text-blue-700 dark:text-blue-300">{fmt(rewardTotal)}</p>
               </div>
             </div>
             <span className="shrink-0 text-base font-semibold text-blue-600 dark:text-blue-400">Earned</span>
           </div>
+          {brpAward > 0 && (
+            <div className="mt-2 space-y-0.5 text-xs leading-snug text-muted-foreground">
+              <p>
+                {membershipLabel}: Earn {brpAward.toLocaleString()} BRP per completed transaction.
+              </p>
+              <p>
+                You have{" "}
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  {completedPurchases.toLocaleString()} completed{" "}
+                  {completedPurchases === 1 ? "transaction" : "transactions"}
+                </span>
+                .
+              </p>
+            </div>
+          )}
           <div className="mt-2.5 flex items-stretch gap-3 border-t border-blue-200/70 pt-2.5 dark:border-blue-800/70">
             <MetricColumn
               label="Processing"
@@ -130,7 +151,7 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
                 <Sparkles className="h-6 w-6 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm text-muted-foreground">Believe Points</p>
+                <p className="text-sm text-muted-foreground">Believe Points (BP)</p>
                 <p className="text-2xl font-bold leading-tight text-purple-700 dark:text-purple-300">{fmt(believeTotal)}</p>
               </div>
             </div>
@@ -187,7 +208,9 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
         <div className="space-y-1">
           <p>
             <span className="font-semibold text-purple-600 dark:text-purple-400">Processing:</span>{" "}
-            <span className="text-muted-foreground">Funding is in progress.</span>
+            <span className="text-muted-foreground">
+              Funding is in progress. Can be used for selected transactions.
+            </span>
           </p>
           <p>
             <span className="font-semibold text-emerald-600 dark:text-emerald-400">Available:</span>{" "}
