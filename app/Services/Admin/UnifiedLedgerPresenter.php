@@ -2,6 +2,11 @@
 
 namespace App\Services\Admin;
 
+use App\Models\CareAllianceDonation;
+use App\Models\Event;
+use App\Models\FundMeDonation;
+use App\Models\Merchant;
+use App\Models\MerchantHubOfferRedemption;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Transaction;
@@ -36,6 +41,7 @@ class UnifiedLedgerPresenter
         $provider = $this->resolveProvider($t, $meta, $ledgerReport, $donationPayload);
         $reference = $this->resolveExternalReference($t, $meta);
         $relatedRecord = $this->resolveRelatedRecordLabel($t, $donationPayload, $related, $sourceType);
+        $subscriber = $this->resolveSubscriberContact($parties, $t, $donationPayload);
         $when = $t->processed_at ?? $t->created_at;
         $orderForMarkup = $this->resolveOrderForSellingPriceMarkup($t);
         $sellingPriceMarkupPercent = $orderForMarkup !== null
@@ -83,7 +89,15 @@ class UnifiedLedgerPresenter
             'provider' => $provider,
             'reference' => $reference,
             'organization_id' => $ledgerReport['organization_id'] ?? null,
-            'organization_name' => $ledgerReport['organization_name'] ?? null,
+            'organization_name' => $this->resolveOrganizationName($ledgerReport, $parties),
+            'organization_ein' => isset($ledgerReport['organization_ein']) && $ledgerReport['organization_ein'] !== ''
+                ? (string) $ledgerReport['organization_ein']
+                : null,
+            'subscriber_name' => $subscriber['name'],
+            'subscriber_email' => $subscriber['email'],
+            'merchant_name' => $this->resolveMerchantName($t, $module, $parties),
+            'campaign_name' => $this->resolveCampaignName($t, $module, $donationPayload, $related),
+            'event_name' => $this->resolveEventName($t),
             'supplier_name' => isset($ledgerReport['supplier_name']) && $ledgerReport['supplier_name'] !== ''
                 ? (string) $ledgerReport['supplier_name']
                 : null,
@@ -943,6 +957,249 @@ class UnifiedLedgerPresenter
             'from_email' => $walletUser->email,
             'from_id' => (int) $walletUser->id,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ledgerReport
+     * @param  array{from_type: string, from_name: string|null, from_email: string|null, from_id: int|null, to_type: string, to_name: string|null, to_email: string|null, to_id: int|null}  $parties
+     */
+    private function resolveOrganizationName(array $ledgerReport, array $parties): ?string
+    {
+        $name = isset($ledgerReport['organization_name']) ? trim((string) $ledgerReport['organization_name']) : '';
+        if ($name !== '') {
+            return $name;
+        }
+
+        if (($parties['to_type'] ?? '') === 'organization' && ! empty($parties['to_name'])) {
+            return trim((string) $parties['to_name']);
+        }
+
+        if (($parties['from_type'] ?? '') === 'organization' && ! empty($parties['from_name'])) {
+            return trim((string) $parties['from_name']);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{from_type: string, from_name: string|null, from_email: string|null, from_id: int|null, to_type: string, to_name: string|null, to_email: string|null, to_id: int|null}  $parties
+     * @param  array<string, mixed>|null  $donationPayload
+     * @return array{name: string|null, email: string|null}
+     */
+    private function resolveSubscriberContact(array $parties, Transaction $t, ?array $donationPayload): array
+    {
+        $fromType = strtolower((string) ($parties['from_type'] ?? ''));
+        $toType = strtolower((string) ($parties['to_type'] ?? ''));
+
+        if (in_array($fromType, ['supporter', 'buyer', 'organization', 'merchant'], true)) {
+            $name = isset($parties['from_name']) && $parties['from_name'] !== '' ? (string) $parties['from_name'] : null;
+            $email = isset($parties['from_email']) && $parties['from_email'] !== '' ? (string) $parties['from_email'] : null;
+            if ($name !== null || $email !== null) {
+                return ['name' => $name, 'email' => $email];
+            }
+        }
+
+        if (in_array($toType, ['supporter', 'buyer'], true)) {
+            $name = isset($parties['to_name']) && $parties['to_name'] !== '' ? (string) $parties['to_name'] : null;
+            $email = isset($parties['to_email']) && $parties['to_email'] !== '' ? (string) $parties['to_email'] : null;
+            if ($name !== null || $email !== null) {
+                return ['name' => $name, 'email' => $email];
+            }
+        }
+
+        if ($donationPayload !== null && ! empty($donationPayload['donor_user_id'])) {
+            $donor = User::query()->find((int) $donationPayload['donor_user_id'], ['name', 'email']);
+            if ($donor !== null) {
+                return [
+                    'name' => $donor->name ?: null,
+                    'email' => $donor->email ?: null,
+                ];
+            }
+        }
+
+        $meta = is_array($t->meta) ? $t->meta : [];
+        foreach ([['donor_name', 'donor_email'], ['customer_name', 'customer_email'], ['payer_name', 'payer_email']] as [$nameKey, $emailKey]) {
+            $name = isset($meta[$nameKey]) && is_string($meta[$nameKey]) ? trim($meta[$nameKey]) : '';
+            $email = isset($meta[$emailKey]) && is_string($meta[$emailKey]) ? trim($meta[$emailKey]) : '';
+            if ($name !== '' || $email !== '') {
+                return [
+                    'name' => $name !== '' ? $name : null,
+                    'email' => $email !== '' ? $email : null,
+                ];
+            }
+        }
+
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if (str_ends_with($rt, 'FundMeDonation') && $t->related_id) {
+            $donation = FundMeDonation::query()->find((int) $t->related_id, ['donor_name', 'donor_email', 'anonymous']);
+            if ($donation !== null && ! $donation->anonymous) {
+                $name = trim((string) ($donation->donor_name ?? ''));
+                $email = trim((string) ($donation->donor_email ?? ''));
+                if ($name !== '' || $email !== '') {
+                    return [
+                        'name' => $name !== '' ? $name : null,
+                        'email' => $email !== '' ? $email : null,
+                    ];
+                }
+            }
+        }
+
+        if (! empty($parties['from_name']) || ! empty($parties['from_email'])) {
+            return [
+                'name' => ! empty($parties['from_name']) ? (string) $parties['from_name'] : null,
+                'email' => ! empty($parties['from_email']) ? (string) $parties['from_email'] : null,
+            ];
+        }
+
+        $walletUser = $t->relationLoaded('user') ? $t->user : null;
+        if (! $walletUser && $t->user_id) {
+            $walletUser = User::query()->find($t->user_id, ['id', 'name', 'email']);
+        }
+        if ($walletUser !== null) {
+            return [
+                'name' => $walletUser->name ?: null,
+                'email' => $walletUser->email ?: null,
+            ];
+        }
+
+        return ['name' => null, 'email' => null];
+    }
+
+    /**
+     * @param  array{from_type: string, from_name: string|null, from_email: string|null, from_id: int|null, to_type: string, to_name: string|null, to_email: string|null, to_id: int|null}  $parties
+     */
+    private function resolveMerchantName(Transaction $t, string $module, array $parties): ?string
+    {
+        if (($parties['from_type'] ?? '') === 'merchant' && ! empty($parties['from_name'])) {
+            return (string) $parties['from_name'];
+        }
+
+        if (($parties['to_type'] ?? '') === 'merchant' && ! empty($parties['to_name'])) {
+            return (string) $parties['to_name'];
+        }
+
+        $meta = is_array($t->meta) ? $t->meta : [];
+
+        if (! empty($meta['merchant_name']) && is_string($meta['merchant_name'])) {
+            $name = trim($meta['merchant_name']);
+
+            return $name !== '' ? $name : null;
+        }
+
+        if (! empty($meta['merchant_id']) && is_numeric($meta['merchant_id'])) {
+            $merchant = Merchant::query()->find((int) $meta['merchant_id'], ['name', 'business_name']);
+            if ($merchant !== null) {
+                $label = trim((string) ($merchant->business_name ?: $merchant->name));
+
+                return $label !== '' ? $label : null;
+            }
+        }
+
+        if (! in_array($module, ['merchant_hub', 'merchant_subscription'], true)) {
+            return null;
+        }
+
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if (str_ends_with($rt, 'MerchantHubOfferRedemption') && $t->related_id) {
+            $redemption = MerchantHubOfferRedemption::query()
+                ->with('offer.merchant:id,name')
+                ->find((int) $t->related_id);
+            $hubMerchant = $redemption?->offer?->merchant;
+            if ($hubMerchant !== null && trim((string) $hubMerchant->name) !== '') {
+                return trim((string) $hubMerchant->name);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $donationPayload
+     * @param  array{related_kind: string, related_label: string, related_display_name: string}  $related
+     */
+    private function resolveCampaignName(
+        Transaction $t,
+        string $module,
+        ?array $donationPayload,
+        array $related,
+    ): ?string {
+        if ($donationPayload !== null) {
+            if (($donationPayload['kind'] ?? '') === 'care_alliance_campaign') {
+                $name = trim((string) ($donationPayload['campaign_name'] ?? ''));
+
+                return $name !== '' ? $name : null;
+            }
+
+            $allianceName = trim((string) ($donationPayload['care_alliance_name'] ?? ''));
+            if ($allianceName !== '' && in_array($module, ['donation', 'campaign'], true)) {
+                return $allianceName;
+            }
+        }
+
+        $meta = is_array($t->meta) ? $t->meta : [];
+        foreach (['campaign_name', 'fundme_campaign_name', 'fundme_campaign_title', 'care_alliance_name'] as $key) {
+            if (! empty($meta[$key]) && is_string($meta[$key])) {
+                $value = trim($meta[$key]);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+
+        if ((str_ends_with($rt, 'FundMeDonation') || $module === 'fundme') && $t->related_id) {
+            $donation = FundMeDonation::query()->with('campaign:id,title')->find((int) $t->related_id);
+            if ($donation?->campaign?->title) {
+                return (string) $donation->campaign->title;
+            }
+        }
+
+        if ((str_ends_with($rt, 'CareAllianceDonation') || $module === 'campaign') && $t->related_id) {
+            $donation = CareAllianceDonation::query()->with('campaign:id,name')->find((int) $t->related_id);
+            if ($donation?->campaign?->name) {
+                return (string) $donation->campaign->name;
+            }
+        }
+
+        if (in_array($module, ['campaign', 'fundme'], true)) {
+            $label = trim((string) ($related['related_label'] ?? ''));
+
+            return $label !== '' && $label !== '—' ? $label : null;
+        }
+
+        return null;
+    }
+
+    private function resolveEventName(Transaction $t): ?string
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+
+        foreach (['event_name', 'event_title'] as $key) {
+            if (! empty($meta[$key]) && is_string($meta[$key])) {
+                $value = trim($meta[$key]);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        if (! empty($meta['event_id']) && is_numeric($meta['event_id'])) {
+            $name = Event::query()->whereKey((int) $meta['event_id'])->value('name');
+            if (is_string($name) && trim($name) !== '') {
+                return trim($name);
+            }
+        }
+
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if (($rt === Event::class || str_ends_with($rt, 'Event')) && $t->related_id) {
+            $name = Event::query()->whereKey((int) $t->related_id)->value('name');
+            if (is_string($name) && trim($name) !== '') {
+                return trim($name);
+            }
+        }
+
+        return null;
     }
 
     /**

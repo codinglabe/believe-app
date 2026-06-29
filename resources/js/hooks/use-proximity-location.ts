@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef } from "react"
+import {
+  getGeolocationPermissionState,
+  LOCATION_PERMISSION_GRANTED_EVENT,
+  type LocationPermissionGrantedDetail,
+} from "@/lib/location-permissions"
 import { postProximityLocation } from "@/lib/proximity-location-api"
-import { requestLocationPermission } from "@/lib/request-location-permission"
 
 /** Minimum movement (meters) before re-reporting — filters GPS jitter, not a time interval. */
 const MIN_MOVEMENT_METERS = 25
@@ -26,14 +30,13 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
 }
 
 /**
- * Real-time proximity checks via geolocation watchPosition (no polling interval).
- * Uses the browser's native location permission prompt only.
+ * Real-time proximity checks via geolocation watchPosition after permission is granted.
+ * The native prompt is triggered from LocationPermissionPrompt (user gesture — required for PWA / iOS).
  */
 export function useProximityLocation({ enabled }: UseProximityLocationOptions): void {
   const watchIdRef = useRef<number | null>(null)
   const lastReportedRef = useRef<{ lat: number; lng: number } | null>(null)
   const inFlightRef = useRef(false)
-  const permissionRequestedRef = useRef(false)
 
   const reportPosition = useCallback((position: GeolocationPosition) => {
     const { latitude, longitude } = position.coords
@@ -62,15 +65,13 @@ export function useProximityLocation({ enabled }: UseProximityLocationOptions): 
       return
     }
 
-    lastReportedRef.current = null
-
     watchIdRef.current = navigator.geolocation.watchPosition(
       reportPosition,
       () => {},
       {
         enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 20_000,
+        maximumAge: 60_000,
+        timeout: 30_000,
       },
     )
   }, [reportPosition])
@@ -83,7 +84,7 @@ export function useProximityLocation({ enabled }: UseProximityLocationOptions): 
     lastReportedRef.current = null
   }, [])
 
-  const startWatching = useCallback(async () => {
+  const startIfGranted = useCallback(async () => {
     if (!enabled || typeof navigator === "undefined" || !navigator.geolocation) {
       return
     }
@@ -92,35 +93,50 @@ export function useProximityLocation({ enabled }: UseProximityLocationOptions): 
       return
     }
 
-    if (!permissionRequestedRef.current) {
-      permissionRequestedRef.current = true
-
-      const result = await requestLocationPermission()
-
-      if (result.status === "granted") {
-        lastReportedRef.current = { lat: result.latitude, lng: result.longitude }
-        postProximityLocation(result.latitude, result.longitude)
-        beginWatch()
-        return
-      }
-
-      permissionRequestedRef.current = false
+    const permission = await getGeolocationPermissionState()
+    if (permission !== "granted") {
       return
     }
 
-    beginWatch()
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        lastReportedRef.current = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        }
+        postProximityLocation(position.coords.latitude, position.coords.longitude)
+        beginWatch()
+      },
+      () => {
+        beginWatch()
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 60_000,
+        timeout: 30_000,
+      },
+    )
   }, [enabled, beginWatch])
 
   useEffect(() => {
     if (!enabled) {
       stopWatching()
-      permissionRequestedRef.current = false
       return
     }
 
+    const onGranted = (event: Event) => {
+      const detail = (event as CustomEvent<LocationPermissionGrantedDetail>).detail
+      if (detail?.latitude != null && detail?.longitude != null) {
+        lastReportedRef.current = { lat: detail.latitude, lng: detail.longitude }
+      }
+      beginWatch()
+    }
+
+    window.addEventListener(LOCATION_PERMISSION_GRANTED_EVENT, onGranted)
+
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        void startWatching()
+        void startIfGranted()
       } else {
         stopWatching()
       }
@@ -130,10 +146,11 @@ export function useProximityLocation({ enabled }: UseProximityLocationOptions): 
     document.addEventListener("visibilitychange", handleVisibility)
 
     return () => {
+      window.removeEventListener(LOCATION_PERMISSION_GRANTED_EVENT, onGranted)
       document.removeEventListener("visibilitychange", handleVisibility)
       stopWatching()
     }
-  }, [enabled, startWatching, stopWatching])
+  }, [enabled, startIfGranted, stopWatching, beginWatch])
 }
 
 export function isProximityEnabledForUser(user: ProximityAuthUser | null | undefined): boolean {

@@ -1307,7 +1307,15 @@ export default function ProfileEdit() {
                         type="checkbox"
                         className="peer sr-only"
                         checked={data.proximity_notifications_enabled !== false}
-                        onChange={(e) => setData("proximity_notifications_enabled", e.target.checked)}
+                        onChange={(e) => {
+                          const enabled = e.target.checked
+                          setData("proximity_notifications_enabled", enabled)
+                          if (enabled) {
+                            void import("@/lib/location-permissions").then(({ requestLocationPermissionPrompt }) => {
+                              requestLocationPermissionPrompt()
+                            })
+                          }
+                        }}
                       />
                       <span className="peer h-6 w-11 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-blue-600 peer-checked:after:translate-x-full dark:bg-gray-600" />
                     </label>

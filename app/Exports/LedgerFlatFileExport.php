@@ -31,6 +31,6 @@ final class LedgerFlatFileExport implements FromGenerator, WithHeadings
      */
     public function headings(): array
     {
-        return UnifiedLedgerFlatFileMapper::CSV_HEADERS;
+        return UnifiedLedgerFlatFileMapper::exportHeadings();
     }
 }

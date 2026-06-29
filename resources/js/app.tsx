@@ -22,6 +22,7 @@ import { syncPushTokenWithServer, startPushTokenRefreshListeners } from './lib/p
 import { ensureMobilePwaCookie, logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import IncomingCallOverlay from './components/call/IncomingCallOverlay';
 import CallPermissionsPrompt from './components/call/CallPermissionsPrompt';
+import LocationPermissionPrompt from './components/LocationPermissionPrompt';
 import UnityCallGlobalListener from './components/call/UnityCallGlobalListener';
 import { UnityCallSessionProvider } from './contexts/unity-call-session-context';
 import { setupSwIncomingCallBridge } from './lib/swIncomingCallBridge';
@@ -130,6 +131,7 @@ createInertiaApp({
               <App {...props} />
               <IncomingCallOverlay authUserId={initialUserId ?? null} />
               <CallPermissionsPrompt authUserId={initialUserId ?? null} />
+              <LocationPermissionPrompt />
               <UnityCallGlobalListener authUserId={initialUserId ?? null} />
               <Toaster
                 position="top-right"
