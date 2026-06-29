@@ -48,7 +48,7 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-1">Rewards Wallet</h1>
-                <p className="text-gray-400">Manage your BP balance and view transactions. 1 BP = $1.00.</p>
+                <p className="text-gray-400">Manage your BP balance and view transactions.</p>
               </div>
               <Link href="/wallet/brp/buy">
                 <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-emerald-600 hover:to-emerald-700">

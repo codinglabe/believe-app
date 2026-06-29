@@ -9,6 +9,7 @@ use App\Support\UnityLiveBroadcast;
 use App\Models\SupporterBelievePointGift;
 use App\Models\User;
 use App\Notifications\SupporterBelievePointGiftReceivedNotification;
+use App\Services\BelievePointsWalletLedgerService;
 use App\Services\FirebaseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -133,6 +134,9 @@ class SupporterBelievePointGiftController extends Controller
 
             return [$lockedSender, $lockedRecipient, $gift];
         });
+
+        BelievePointsWalletLedgerService::recordGiftSent($gift);
+        BelievePointsWalletLedgerService::recordGiftReceived($gift);
 
         try {
             $lockedRecipient->notify(new SupporterBelievePointGiftReceivedNotification(

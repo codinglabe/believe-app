@@ -114,7 +114,7 @@ interface RaffleShowProps extends PageProps {
     feePreview?: FeePreviewFromServer | null;
     /** When false, only Stripe checkout is offered */
     believePointsEnabled?: boolean;
-    /** Purchased Believe Points balance (1 point ≈ $1 toward eligible purchases) */
+    /** Purchased Believe Points balance */
     believePointsBalance?: number;
     auth: {
         user: {
@@ -513,7 +513,7 @@ export default function RaffleShow({
                                                                 <strong className="font-semibold text-foreground">
                                                                     {believePointsBalance.toFixed(2)}
                                                                 </strong>{' '}
-                                                                pts · 1 pt = $1
+                                                                pts
                                                             </span>
                                                         </div>
                                                         <ChevronRight

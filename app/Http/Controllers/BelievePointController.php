@@ -15,6 +15,7 @@ use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\BelievePointsPurchaseSettingsService;
 use App\Services\BelievePointsToBridgeWalletService;
+use App\Services\BelievePointsWalletLedgerService;
 use App\Services\BelievePointsWalletTransferSettingsService;
 use App\Services\Payments\BelievePointsPaymentMethodResolver;
 use App\Services\Payments\BelievePointsPurchasePaymentService;
@@ -106,10 +107,16 @@ class BelievePointController extends Controller
             'currentBalance' => $currentBalance,
             'processingBalance' => $user->currentProcessingBelievePoints(),
             'processingReleaseAt' => $user->nextProcessingBelievePointsReleaseAt()?->toIso8601String(),
+            'giftedBalance' => round((float) ($user->gifted_believe_points ?? 0), 2),
             'minPurchaseAmount' => $minPurchaseAmount,
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
             'walletTransfers' => $walletTransfers,
+            'walletLedger' => app(BelievePointsWalletLedgerService::class)->paginateForUser(
+                $user,
+                max(1, min(100, (int) $request->integer('ledger_per_page', 25))),
+                max(1, (int) $request->integer('ledger_page', 1)),
+            ),
             'feePreview' => $feePreview,
             'purchaseSettings' => BelievePointsPurchaseSettingsService::frontendPayload($user),
             'availableMethods' => BelievePointsPaymentMethodResolver::availableMethods(),
@@ -123,7 +130,7 @@ class BelievePointController extends Controller
     }
 
     /**
-     * Move purchased Believe Points into the user's verified Bridge wallet (1 BP = $1).
+     * Move purchased Believe Points into the user's verified Bridge wallet.
      */
     public function transferToWallet(Request $request)
     {
@@ -269,12 +276,15 @@ class BelievePointController extends Controller
                 'is_trusted_instrument' => false,
             ]);
 
+            $ledgerTransactionId = $this->ledgerTransactionIdForPurchase($purchase);
+            $ledgerMeta = $ledgerTransactionId ? ['ledger_transaction_id' => (string) $ledgerTransactionId] : [];
+
             $amountInCents = (int) round($checkoutTotalUsd * 100);
 
             $checkoutOptions = [
                 'success_url' => route('believe-points.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('believe-points.cancel').'?session_id={CHECKOUT_SESSION_ID}',
-                'metadata' => [
+                'metadata' => array_merge([
                     'purchase_id' => (string) $purchase->id,
                     'user_id' => (string) $user->id,
                     'type' => 'believe_points_purchase',
@@ -282,17 +292,17 @@ class BelievePointController extends Controller
                     'payment_method' => $paymentMethod,
                     'base_points_usd' => (string) $netPointsUsd,
                     'checkout_total_usd' => (string) $checkoutTotalUsd,
-                ],
+                ], $ledgerMeta),
                 'payment_method_types' => $feeRail === 'bank' ? ['us_bank_account'] : ['card'],
                 'billing_address_collection' => 'auto',
                 'payment_intent_data' => [
-                    'metadata' => [
+                    'metadata' => array_merge([
                         'purchase_id' => (string) $purchase->id,
                         'user_id' => (string) $user->id,
                         'type' => 'believe_points_purchase',
                         'base_points_usd' => (string) $netPointsUsd,
                         'checkout_total_usd' => (string) $checkoutTotalUsd,
-                    ],
+                    ], $ledgerMeta),
                 ],
             ];
 
@@ -1053,6 +1063,8 @@ class BelievePointController extends Controller
                     'refund_status' => $refund->status,
                 ]);
 
+                BelievePointsWalletLedgerService::recordPurchaseRefund($purchase->fresh(), (float) $purchase->points);
+
                 $refundedUsd = $purchase->checkout_total !== null
                     ? (float) $purchase->checkout_total
                     : (float) $purchase->amount;
@@ -1402,5 +1414,20 @@ class BelievePointController extends Controller
             'card_last4' => $user->believe_points_auto_replenish_card_last4,
             'last_replenish_at' => $user->believe_points_last_auto_replenish_at?->toIso8601String(),
         ];
+    }
+
+    private function ledgerTransactionIdForPurchase(BelievePointPurchase $purchase): ?int
+    {
+        $id = Transaction::query()
+            ->where('related_id', $purchase->id)
+            ->where('type', 'purchase')
+            ->where(function ($q) {
+                $q->where('related_type', BelievePointPurchase::class)
+                    ->orWhere('related_type', 'like', '%BelievePointPurchase');
+            })
+            ->orderBy('id')
+            ->value('id');
+
+        return $id ? (int) $id : null;
     }
 }

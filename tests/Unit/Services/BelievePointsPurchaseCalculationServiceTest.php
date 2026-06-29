@@ -49,6 +49,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
 
     public function test_platform_fee_is_zero_when_supporter_does_not_pay_it(): void
     {
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PAYER_COVERS_TRANSACTION_FEE, false, 'boolean');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PLATFORM_FEE, '0', 'boolean');
 
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::platformFeeUsd(100));
@@ -67,6 +68,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
 
     public function test_processing_fee_is_zero_when_supporter_does_not_pay_it(): void
     {
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PAYER_COVERS_TRANSACTION_FEE, false, 'boolean');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PROCESSING_FEE, '0', 'boolean');
 
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::processingFeeUsd(101, 'card'));

@@ -431,7 +431,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                 <div className="rounded-lg border border-[#2563EB]/25 bg-black/25 p-4">
                   <p className="text-sm font-semibold text-white">BP vs BRP</p>
                   <ul className="mt-2 space-y-1 text-xs text-white/70">
-                    <li>BP (Believe Points): 1 BP = $1.00</li>
+                    <li>BP (Believe Points): platform credits for eligible purchases</li>
                     <li>BRP (Believe Reward Points): 1 BRP = $0.01</li>
                     <li>BP can be used anywhere, BRP is merchant-hub only.</li>
                   </ul>

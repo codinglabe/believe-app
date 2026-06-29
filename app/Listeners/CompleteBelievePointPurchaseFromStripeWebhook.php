@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Services\BelievePointPurchaseSettlementService;
+use App\Services\BelievePointPurchaseStripeFeeSyncService;
 use Laravel\Cashier\Events\WebhookReceived;
 
 class CompleteBelievePointPurchaseFromStripeWebhook
@@ -21,6 +22,10 @@ class CompleteBelievePointPurchaseFromStripeWebhook
                 (int) $meta['purchase_id'],
                 (string) $pi['id']
             );
+            $purchase = \App\Models\BelievePointPurchase::find((int) $meta['purchase_id']);
+            if ($purchase) {
+                BelievePointPurchaseStripeFeeSyncService::syncPurchase($purchase, (string) $pi['id']);
+            }
 
             return;
         }
@@ -42,6 +47,10 @@ class CompleteBelievePointPurchaseFromStripeWebhook
                 (int) $meta['purchase_id'],
                 (string) $piId
             );
+            $purchase = \App\Models\BelievePointPurchase::find((int) $meta['purchase_id']);
+            if ($purchase) {
+                BelievePointPurchaseStripeFeeSyncService::syncPurchase($purchase, (string) $piId);
+            }
         }
     }
 }
