@@ -105,7 +105,6 @@ export default function BuyBrp({ wallet, packages, feePreview = null }: Props) {
                   <p className="text-gray-400">Top up Believe Points for Feedback & Rewards campaigns.</p>
                 </div>
                 <div className="text-sm text-gray-500">
-                  1 BP = $1.00
                 </div>
               </div>
             </div>

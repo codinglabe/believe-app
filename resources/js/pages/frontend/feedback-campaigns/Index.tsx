@@ -274,7 +274,7 @@ export default function FeedbackCampaignsIndex({ campaigns, filters, typeOptions
                             <p className="mt-1 text-2xl font-black text-emerald-300">
                               {((campaign.reward_bp_display ?? campaign.reward_per_response_brp / 100)).toFixed(2)} BP
                             </p>
-                            <p className="text-xs text-emerald-100/60">1 BP = $1.00 · ${campaign.reward_dollars.toFixed(2)}</p>
+                            <p className="text-xs text-emerald-100/60">{campaign.reward_dollars.toFixed(2)} BP reward</p>
                           </div>
                           <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-3">
                             <p className="text-xs uppercase tracking-wide text-slate-500">Participation</p>

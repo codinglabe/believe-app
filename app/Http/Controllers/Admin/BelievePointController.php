@@ -82,6 +82,7 @@ class BelievePointController extends BaseController
             'ach_hold_hours' => ['required', 'integer', 'min:0', 'max:720'],
             'supporter_pays_processing_fee' => ['sometimes', 'boolean'],
             'supporter_pays_platform_fee' => ['sometimes', 'boolean'],
+            'payer_covers_transaction_fee' => ['sometimes', 'boolean'],
             'card_settlement_business_days' => ['required', 'integer', 'min:0', 'max:30'],
             'ach_settlement_business_days' => ['required', 'integer', 'min:0', 'max:30'],
             'require_bridge_reserve_confirmation' => ['required', 'boolean'],
@@ -116,6 +117,13 @@ class BelievePointController extends BaseController
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_HOLD_HOURS, $request->input('ach_hold_hours'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PROCESSING_FEE, $request->boolean('supporter_pays_processing_fee'), 'boolean');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PLATFORM_FEE, $request->boolean('supporter_pays_platform_fee'), 'boolean');
+        if ($request->has('payer_covers_transaction_fee')) {
+            AdminSetting::set(
+                BelievePointsPurchaseSettingsService::KEY_PAYER_COVERS_TRANSACTION_FEE,
+                $request->boolean('payer_covers_transaction_fee'),
+                'boolean',
+            );
+        }
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_SETTLEMENT_BUSINESS_DAYS, $request->input('card_settlement_business_days'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_SETTLEMENT_BUSINESS_DAYS, $request->input('ach_settlement_business_days'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_REQUIRE_BRIDGE_RESERVE, $request->boolean('require_bridge_reserve_confirmation'), 'boolean');

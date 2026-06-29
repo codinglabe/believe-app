@@ -5,7 +5,7 @@ namespace App\Services\Admin;
 use App\Models\Transaction;
 
 /**
- * Maps unified ledger rows to the client's minimum flat-file columns (CSV / ETL).
+ * Maps unified ledger rows to the client's reconciliation flat-file columns (CSV / ETL).
  *
  * @see UnifiedLedgerPresenter::present()
  */
@@ -14,8 +14,36 @@ class UnifiedLedgerFlatFileMapper
     /** @var list<string> */
     public const CSV_HEADERS = [
         'transaction_number',
+        'datetime',
+        'status',
         'module',
+        'event',
         'transaction_type',
+        'from_type',
+        'from_id',
+        'from_name',
+        'to_type',
+        'to_id',
+        'to_name',
+        'wallet_type',
+        'wallet_amount',
+        'bp_credit',
+        'bp_debit',
+        'processing_bp',
+        'available_bp',
+        'balance_after_transaction',
+        'gross_amount',
+        'payment_processing_fee',
+        'platform_fee_amount',
+        'net_amount',
+        'provider',
+        'payment_method',
+        'payment_intent_id',
+        'charge_id',
+        'balance_transaction_id',
+        'related_type',
+        'related_id',
+        'description',
         'from_to',
         'subscriber_name',
         'subscriber_email',
@@ -24,17 +52,12 @@ class UnifiedLedgerFlatFileMapper
         'merchant_name',
         'campaign_name',
         'event_name',
-        'gross_amount',
         'processor_fee_amount',
-        'platform_fee_amount',
         'split_amount',
         'refund_amount',
-        'net_amount',
         'supplier_payout_amount',
         'organization_payout_amount',
         'platform_payout_amount',
-        'status',
-        'provider',
         'related_name',
         'processed_at',
     ];
@@ -42,8 +65,36 @@ class UnifiedLedgerFlatFileMapper
     /** @var array<string, string> */
     public const CSV_HEADER_LABELS = [
         'transaction_number' => 'Transaction Number',
+        'datetime' => 'Date/Time',
+        'status' => 'Status',
         'module' => 'Module',
+        'event' => 'Event',
         'transaction_type' => 'Transaction Type',
+        'from_type' => 'From Type',
+        'from_id' => 'From ID',
+        'from_name' => 'From Name',
+        'to_type' => 'To Type',
+        'to_id' => 'To ID',
+        'to_name' => 'To Name',
+        'wallet_type' => 'Wallet Type',
+        'wallet_amount' => 'Wallet Amount',
+        'bp_credit' => 'BP Credit',
+        'bp_debit' => 'BP Debit',
+        'processing_bp' => 'Processing BP',
+        'available_bp' => 'Available BP',
+        'balance_after_transaction' => 'Balance After Transaction',
+        'gross_amount' => 'Gross Amount',
+        'payment_processing_fee' => 'Payment Processing Fee',
+        'platform_fee_amount' => 'Platform Fee',
+        'net_amount' => 'Net Amount',
+        'provider' => 'Provider',
+        'payment_method' => 'Payment Method',
+        'payment_intent_id' => 'Payment Intent ID',
+        'charge_id' => 'Charge ID',
+        'balance_transaction_id' => 'Balance Transaction ID',
+        'related_type' => 'Related Type',
+        'related_id' => 'Related ID',
+        'description' => 'Description',
         'from_to' => 'From → To',
         'subscriber_name' => 'Subscriber Name',
         'subscriber_email' => 'Subscriber Email',
@@ -52,17 +103,12 @@ class UnifiedLedgerFlatFileMapper
         'merchant_name' => 'Merchant Name',
         'campaign_name' => 'Campaign Name',
         'event_name' => 'Event Name',
-        'gross_amount' => 'Gross Amount',
         'processor_fee_amount' => 'Processor Fee Amount',
-        'platform_fee_amount' => 'Platform Fee Amount',
         'split_amount' => 'Split Amount',
         'refund_amount' => 'Refund Amount',
-        'net_amount' => 'Net Amount',
         'supplier_payout_amount' => 'Supplier Payout Amount',
         'organization_payout_amount' => 'Organization Payout Amount',
         'platform_payout_amount' => 'Platform Payout Amount',
-        'status' => 'Status',
-        'provider' => 'Provider',
         'related_name' => 'Related',
         'processed_at' => 'Processed At',
     ];
@@ -87,14 +133,51 @@ class UnifiedLedgerFlatFileMapper
      */
     public function map(Transaction $t, array $unified, array $related = []): array
     {
+        $meta = is_array($t->meta) ? $t->meta : [];
         $txnNumber = (string) ($t->transaction_id !== null && $t->transaction_id !== ''
             ? $t->transaction_id
             : 'TXN-'.$t->id);
 
+        $module = (string) ($unified['module'] ?? '');
+        $walletType = $this->resolveWalletType($t, $module, $meta);
+        $bpAmounts = $this->resolveBelievePointAmounts($t, $meta, $module);
+
         $row = [
             'transaction_number' => $txnNumber,
-            'module' => $this->moduleTableLabel((string) ($unified['module'] ?? '')),
+            'datetime' => (string) ($unified['datetime_iso'] ?? ''),
+            'status' => (string) ($unified['status'] ?? $t->status ?? ''),
+            'module' => $this->moduleTableLabel($module),
+            'event' => (string) ($unified['event_name'] ?? $meta['event_name'] ?? ''),
             'transaction_type' => $this->humanizeTransactionType((string) ($unified['transaction_type'] ?? '')),
+            'from_type' => (string) ($unified['from_type'] ?? ''),
+            'from_id' => $this->nullableInt($unified['from_id'] ?? null),
+            'from_name' => (string) ($unified['from_name'] ?? ''),
+            'to_type' => (string) ($unified['to_type'] ?? ''),
+            'to_id' => $this->nullableInt($unified['to_id'] ?? null),
+            'to_name' => (string) ($unified['to_name'] ?? ''),
+            'wallet_type' => $walletType,
+            'wallet_amount' => $this->nullableMoney($bpAmounts['wallet_amount'] ?? null),
+            'bp_credit' => $this->nullableMoney($bpAmounts['credit'] ?? null),
+            'bp_debit' => $this->nullableMoney($bpAmounts['debit'] ?? null),
+            'processing_bp' => $this->nullableMoney($bpAmounts['processing'] ?? null),
+            'available_bp' => $this->nullableMoney($bpAmounts['available'] ?? null),
+            'balance_after_transaction' => $this->nullableMoney($bpAmounts['balance_after'] ?? null),
+            'gross_amount' => $this->money($unified['gross_amount'] ?? 0),
+            'payment_processing_fee' => $this->money($unified['processor_fee_amount'] ?? 0),
+            'platform_fee_amount' => $this->money($unified['biu_fee_amount'] ?? 0),
+            'net_amount' => $this->nullableMoney($unified['net_amount'] ?? null),
+            'provider' => (string) ($unified['provider'] ?? ''),
+            'payment_method' => (string) ($t->payment_method ?? ''),
+            'payment_intent_id' => $this->stripeId($meta, [
+                'stripe_payment_intent', 'stripe_payment_intent_id', 'payment_intent_id',
+            ], $t->transaction_id),
+            'charge_id' => $this->stripeId($meta, ['stripe_charge_id', 'charge_id']),
+            'balance_transaction_id' => $this->stripeId($meta, [
+                'stripe_balance_transaction_id', 'balance_transaction_id',
+            ]),
+            'related_type' => $t->related_type ? class_basename((string) $t->related_type) : '',
+            'related_id' => $this->nullableInt($t->related_id),
+            'description' => (string) ($meta['description'] ?? $related['related_label'] ?? ''),
             'from_to' => $this->partiesSummary($unified),
             'subscriber_name' => (string) ($unified['subscriber_name'] ?? ''),
             'subscriber_email' => (string) ($unified['subscriber_email'] ?? ''),
@@ -103,22 +186,138 @@ class UnifiedLedgerFlatFileMapper
             'merchant_name' => (string) ($unified['merchant_name'] ?? ''),
             'campaign_name' => (string) ($unified['campaign_name'] ?? ''),
             'event_name' => (string) ($unified['event_name'] ?? ''),
-            'gross_amount' => $this->money($unified['gross_amount'] ?? 0),
             'processor_fee_amount' => $this->money($unified['processor_fee_amount'] ?? 0),
-            'platform_fee_amount' => $this->money($unified['biu_fee_amount'] ?? 0),
             'split_amount' => $this->money($unified['split_amount'] ?? 0),
             'refund_amount' => $this->money($unified['refund_amount'] ?? 0),
-            'net_amount' => $this->nullableMoney($unified['net_amount'] ?? null),
             'supplier_payout_amount' => $this->nullableMoney($unified['supplier_payout_amount'] ?? null),
             'organization_payout_amount' => $this->nullableMoney($unified['organization_payout_amount'] ?? null),
             'platform_payout_amount' => $this->nullableMoney($unified['platform_payout_amount'] ?? null),
-            'status' => (string) ($unified['status'] ?? $t->status ?? ''),
-            'provider' => (string) ($unified['provider'] ?? ''),
             'related_name' => $this->resolveRelatedName($related, $unified),
             'processed_at' => (string) ($unified['datetime_iso'] ?? ''),
         ];
 
         return $row;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array{credit: float|null, debit: float|null, processing: float|null, available: float|null, balance_after: float|null, wallet_amount: float|null}
+     */
+    private function resolveBelievePointAmounts(Transaction $t, array $meta, string $module): array
+    {
+        if ($module !== 'believe_points') {
+            return [
+                'credit' => null,
+                'debit' => null,
+                'processing' => null,
+                'available' => null,
+                'balance_after' => null,
+                'wallet_amount' => null,
+            ];
+        }
+
+        $source = (string) ($meta['source'] ?? '');
+        $points = round((float) ($meta['intended_points'] ?? $meta['points_credited'] ?? $meta['points_amount'] ?? $t->amount), 2);
+
+        if ($source === 'bp_settlement' || $t->type === 'bp_settlement') {
+            return [
+                'credit' => $points,
+                'debit' => null,
+                'processing' => null,
+                'available' => $points,
+                'balance_after' => $points,
+                'wallet_amount' => $points,
+            ];
+        }
+
+        if ($source === 'believe_points_wallet_transfer' || $t->type === 'believe_points_wallet_transfer') {
+            return [
+                'credit' => null,
+                'debit' => $points,
+                'processing' => null,
+                'available' => null,
+                'balance_after' => null,
+                'wallet_amount' => -$points,
+            ];
+        }
+
+        if ($source === 'believe_points_purchase' && ($meta['bp_status'] ?? '') === 'processing') {
+            return [
+                'credit' => $points,
+                'debit' => null,
+                'processing' => $points,
+                'available' => null,
+                'balance_after' => $points,
+                'wallet_amount' => $points,
+            ];
+        }
+
+        if ($source === 'believe_points_purchase') {
+            return [
+                'credit' => $points,
+                'debit' => null,
+                'processing' => ($meta['bp_status'] ?? '') === 'available' ? null : $points,
+                'available' => ($meta['bp_status'] ?? '') === 'available' ? $points : null,
+                'balance_after' => $points,
+                'wallet_amount' => $points,
+            ];
+        }
+
+        return [
+            'credit' => $points > 0 && $t->type !== 'refund' ? $points : null,
+            'debit' => $t->type === 'refund' ? $points : null,
+            'processing' => null,
+            'available' => null,
+            'balance_after' => null,
+            'wallet_amount' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function resolveWalletType(Transaction $t, string $module, array $meta): string
+    {
+        if ($module === 'believe_points') {
+            return 'believe_point_wallet';
+        }
+        if ($module === 'wallet') {
+            return 'bridge_wallet';
+        }
+        if (($meta['source'] ?? '') === 'believe_points_purchase' || str_starts_with((string) ($t->transaction_id ?? ''), 'pi_')) {
+            return 'payment_ledger';
+        }
+
+        return 'payment_ledger';
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @param  list<string>  $keys
+     */
+    private function stripeId(array $meta, array $keys, ?string $fallback = null): string
+    {
+        foreach ($keys as $key) {
+            $value = trim((string) ($meta[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        if ($fallback && str_starts_with($fallback, 'pi_')) {
+            return $fallback;
+        }
+
+        return '';
+    }
+
+    private function nullableInt(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        return (string) (int) $value;
     }
 
     /**

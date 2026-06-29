@@ -47,6 +47,7 @@ import {
 } from "@/components/account/saved-payment-method-selector"
 import { BpBalanceHero } from "@/pages/BelievePoints/components/BpBalanceHero"
 import { BpSectionHeader } from "@/pages/BelievePoints/components/BpSectionHeader"
+import { BpWalletLedger, type BpWalletLedgerPagination } from "@/pages/BelievePoints/components/BpWalletLedger"
 import {
   QuickAddBelievePointsModal,
   readQuickAddBelievePointsPrompt,
@@ -176,6 +177,8 @@ interface PageProps {
   paymentMethodsUrl?: string
   walletTransfer?: WalletTransferSettings
   walletTransfers?: WalletTransferActivity[]
+  walletLedger?: BpWalletLedgerPagination
+  giftedBalance?: number
   flash?: {
     success?: string
     error?: string
@@ -258,6 +261,7 @@ export default function BelievePointsIndex({
     savedPaymentMethods = [],
     paymentMethodsUrl = "/profile/payment-methods",
     walletTransfers = [],
+    walletLedger,
   } = page.props
   const purchaseSettings = purchaseSettingsProp ?? {
     brp_value: 0.005,
@@ -1467,7 +1471,7 @@ export default function BelievePointsIndex({
                           </div>
                           <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
                             <span className="font-medium tabular-nums text-foreground">
-                              {formatCurrency(item.purchase.amount)}
+                              {formatPoints(item.purchase.points)} BP
                             </span>
                             <span>
                               {new Date(item.purchase.created_at).toLocaleDateString(undefined, {
@@ -1535,7 +1539,7 @@ export default function BelievePointsIndex({
                           </div>
                           <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
                             <span className="font-medium tabular-nums text-foreground">
-                              {formatCurrency(item.transfer.amount)}
+                              {formatPoints(String(item.transfer.amount))} BP
                             </span>
                             <span>
                               {new Date(item.transfer.created_at).toLocaleDateString(undefined, {
@@ -1557,6 +1561,21 @@ export default function BelievePointsIndex({
             </Card>
           </aside>
         </div>
+
+        {walletLedger && (
+          <Card className="overflow-hidden border-border/60 shadow-sm">
+            <CardHeader className="border-b bg-muted/30 pb-4">
+              <BpSectionHeader
+                icon={History}
+                title="Wallet ledger"
+                description="Believe Point transactions only — debits, credits, and running balances that reconcile to your dashboard totals."
+              />
+            </CardHeader>
+            <CardContent className="pt-5">
+              <BpWalletLedger ledger={walletLedger} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {quickAddPmId && (

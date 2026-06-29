@@ -229,7 +229,10 @@ class HandleInertiaRequests extends Middleware
                         'can_follow_organizations' => $user->canFollowOrganizations(),
                         'organization_role' => $user->organization_role ?? null,
                         'balance' => $user->balance,
-                        'reward_points' => $user->reward_points ?? 0,
+                        'reward_points' => $user->availableRewardPointsBalance(),
+                        'available_reward_points' => $user->availableRewardPointsBalance(),
+                        'processing_reward_points' => $user->processingRewardPointsBalance(),
+                        'reward_points_total' => $user->totalRewardPointsBalance(),
                         'believe_points' => $user->believe_points ?? 0,
                         'processing_believe_points' => $user->processing_believe_points ?? 0,
                         'donateable_believe_points' => round(

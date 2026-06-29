@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BelievePointProcessingLot;
 use App\Models\BelievePointPurchase;
 use App\Models\User;
+use App\Services\BelievePointsWalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -183,6 +184,8 @@ final class BelievePointProcessingLotService
                     $owner,
                     $points,
                 );
+
+                BelievePointsWalletLedgerService::recordSettlement($lockedPurchase, $points);
             }
 
             $settlementAt = $lockedPurchase->bridge_reserve_confirmed_at ?? now();

@@ -103,6 +103,12 @@ class BelievePointPurchaseSettlementService
             'metadata' => ['believe_point_purchase_id' => $purchase->id],
         ]);
 
+        BelievePointsWalletLedgerService::recordPurchaseProcessing($purchase->fresh());
+
+        if ($paymentIntentId) {
+            BelievePointPurchaseStripeFeeSyncService::syncPurchase($purchase->fresh(), $paymentIntentId);
+        }
+
         return true;
     }
 
@@ -346,6 +352,12 @@ class BelievePointPurchaseSettlementService
         ];
 
         if ($tx) {
+            $existingMeta = is_array($tx->meta) ? $tx->meta : [];
+            $feeSynced = in_array($existingMeta['stripe_fee_sync_source'] ?? '', ['webhook', 'balance_transaction'], true);
+            if ($feeSynced) {
+                $attrs['fee'] = (float) $tx->fee;
+                $attrs['meta'] = array_merge($existingMeta, $attrs['meta']);
+            }
             $tx->update($attrs);
         } else {
             Transaction::create($attrs);
