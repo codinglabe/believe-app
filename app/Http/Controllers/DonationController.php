@@ -443,7 +443,7 @@ class DonationController extends Controller
                 'paypal' => false,
                 'cashapp' => false,
                 'zelle' => false,
-                'believe_points' => true,
+                'believe_points' => false,
             ],
         ]);
     }
@@ -742,28 +742,11 @@ class DonationController extends Controller
             return redirect()->back()->with('warning', 'You cannot donate to your own organization.');
         }
 
-        // Validate Believe Points payment
+        // Believe Points are not accepted for donations.
         if ($paymentMethod === 'believe_points') {
-            // Believe Points only available for one-time donations
-            if ($validated['frequency'] !== 'one-time') {
-                return redirect()->back()->withErrors([
-                    'payment_method' => 'Believe Points can only be used for one-time donations. Please select "One-time" frequency or use Stripe for recurring donations.',
-                ]);
-            }
-
-            $pointsRequired = $validated['amount']; // 1$ = 1 believe point
-            $user->refresh(); // Get latest balance
-
-            $donateable = round(
-                (float) ($user->believe_points ?? 0) + (float) ($user->processing_believe_points ?? 0),
-                2
-            );
-
-            if ($donateable + 0.000001 < $pointsRequired) {
-                return redirect()->back()->withErrors([
-                    'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points (available + processing) but only have {$donateable}.",
-                ]);
-            }
+            return redirect()->back()->withErrors([
+                'payment_method' => 'Donations cannot be paid with Believe Points. Please choose another payment method.',
+            ]);
         }
 
         $allianceForCheckout = $this->resolveCareAllianceForCheckoutDisplay($request, $organization);

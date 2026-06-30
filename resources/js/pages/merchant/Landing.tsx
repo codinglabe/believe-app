@@ -147,12 +147,8 @@ const resourceItems = [
 ]
 
 const growthPlanIncludes = [
-  'Unlimited offers',
-  'Volunteer reward campaigns',
-  'Dashboard analytics',
-  'Featured listings',
-  'Customer insights',
-  'Priority support',
+  'Advanced Analytics',
+  'Priority Support',
 ]
 
 export default function MerchantLanding() {
@@ -302,12 +298,12 @@ export default function MerchantLanding() {
 
               <div className="mx-auto mt-8 max-w-md">
                 <div className="rounded-3xl border border-violet-400/35 bg-gradient-to-b from-[#121a3d] to-[#0A132B] p-8 shadow-[0_0_60px_rgba(139,92,246,0.15)]">
-                  <p className="text-center text-sm font-semibold uppercase tracking-wider text-violet-300">Growth Merchant</p>
+                  <p className="text-center text-sm font-semibold uppercase tracking-wider text-violet-300">Pro</p>
                   <p className="mt-2 text-center text-4xl font-extrabold sm:text-5xl">
                     $9<span className="text-lg font-semibold text-slate-400">/month</span>
                   </p>
-                  <p className="mt-3 text-center text-sm text-slate-300">Designed for active businesses growing through BIU.</p>
-                  <p className="mt-6 text-sm font-semibold text-white">Includes:</p>
+                  <p className="mt-3 text-center text-sm text-slate-300">Advanced Analytics and Priority Support for growing merchants.</p>
+                  <p className="mt-6 text-sm font-semibold text-white">Pro includes:</p>
                   <ul className="mt-3 space-y-2.5">
                     {growthPlanIncludes.map((line) => (
                       <li key={line} className="flex gap-2 text-sm text-slate-200">

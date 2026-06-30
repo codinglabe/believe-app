@@ -66,7 +66,7 @@ class OrganizationPaymentSetting extends Model
             'paypal' => (bool) $this->paypal_enabled,
             'cashapp' => (bool) $this->cashapp_manual_enabled,
             'zelle' => (bool) $this->zelle_enabled,
-            'believe_points' => true,
+            'believe_points' => false,
         ];
     }
 

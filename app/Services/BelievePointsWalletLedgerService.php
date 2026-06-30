@@ -92,6 +92,7 @@ final class BelievePointsWalletLedgerService
                 'entry_type' => $event['entry_type'],
                 'debit' => $debit > 0 ? $debit : null,
                 'credit' => $credit > 0 ? $credit : null,
+                'bp_change' => $credit > 0 ? $credit : ($debit > 0 ? -$debit : 0.0),
                 'processing_balance' => $processing,
                 'available_balance' => $available,
                 'gifted_balance' => $gifted,
@@ -320,6 +321,7 @@ final class BelievePointsWalletLedgerService
                 BelievePointWalletTransfer::STATUS_PENDING,
                 BelievePointWalletTransfer::STATUS_SUBMITTED,
                 BelievePointWalletTransfer::STATUS_COMPLETED,
+                BelievePointWalletTransfer::STATUS_REFUNDED,
             ])
             ->orderBy('id')
             ->get() as $transfer) {
@@ -328,13 +330,21 @@ final class BelievePointsWalletLedgerService
                 continue;
             }
             $at = $transfer->created_at ?? now();
+            $isPending = in_array($transfer->status, [
+                BelievePointWalletTransfer::STATUS_PENDING,
+                BelievePointWalletTransfer::STATUS_SUBMITTED,
+            ], true);
             $events[] = [
                 'id' => 'wallet-transfer-'.$transfer->id,
                 'sort_at' => $at->toIso8601String(),
                 'sort_key' => 1000000 + (int) $transfer->id,
                 'date' => $at->toIso8601String(),
                 'transaction_number' => 'bp_wallet_transfer:'.$transfer->id,
-                'description' => 'Believe Point wallet transfer',
+                'description' => $isPending
+                    ? 'Moving Believe Points to Believe wallet'
+                    : ($transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                        ? 'Believe Points reserved for wallet transfer'
+                        : 'Moved Believe Points to Believe wallet'),
                 'entry_type' => 'wallet_transfer',
                 'credit' => 0.0,
                 'debit' => $amount,
@@ -360,7 +370,7 @@ final class BelievePointsWalletLedgerService
                 'sort_key' => 1500000 + (int) $transfer->id,
                 'date' => Carbon::parse($at)->toIso8601String(),
                 'transaction_number' => 'bp_wallet_transfer_refund:'.$transfer->id,
-                'description' => 'Believe Point wallet transfer refund',
+                'description' => 'Returned to Available BP — wallet transfer not completed',
                 'entry_type' => 'wallet_transfer_refund',
                 'credit' => $amount,
                 'debit' => 0.0,

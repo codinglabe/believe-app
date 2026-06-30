@@ -410,24 +410,34 @@ final class UnifiedLedgerTransactionWriter
                 'user_id' => $user->id,
                 'related_id' => $transfer->id,
                 'related_type' => BelievePointWalletTransfer::class,
-                'type' => 'bp_redemption',
+                'type' => $transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                    ? 'refund'
+                    : 'bp_redemption',
                 'ledger_type' => UnifiedLedgerType::BP,
                 'bp_status' => UnifiedLedgerBpStatus::NA,
                 'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
                 'current_owner' => $user->name,
                 'available_at' => null,
                 'status' => $status,
-                'amount' => -$amount,
+                'amount' => $transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                    ? $amount
+                    : -$amount,
                 'fee' => 0,
                 'currency' => 'BP',
                 'payment_method' => 'believe_points',
                 'processed_at' => $processedAt,
                 'meta' => array_filter([
                     ...$sharedMeta,
-                    'source' => 'bp_redemption',
+                    'source' => $transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                        ? 'believe_points_wallet_transfer'
+                        : 'bp_redemption',
                     'ledger_type' => UnifiedLedgerType::BP,
-                    'ledger_role' => 'bp_redemption',
-                    'event_name' => 'BP Redemption',
+                    'ledger_role' => $transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                        ? 'wallet_transfer_refund'
+                        : 'bp_redemption',
+                    'event_name' => $transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                        ? 'BP Wallet Transfer Refund'
+                        : 'BP Redemption',
                     'description' => self::walletTransferBpDescription($transfer),
                     'gross_amount' => $amount,
                     'from_type' => 'Supporter',
@@ -504,7 +514,7 @@ final class UnifiedLedgerTransactionWriter
             BelievePointWalletTransfer::STATUS_PENDING => 'BP redemption for Bridge wallet (pending liquidity)',
             BelievePointWalletTransfer::STATUS_SUBMITTED => 'BP redemption for Bridge wallet (processing)',
             BelievePointWalletTransfer::STATUS_COMPLETED => 'BP redeemed for Bridge wallet transfer',
-            BelievePointWalletTransfer::STATUS_REFUNDED => 'BP redemption reversed (wallet transfer refunded)',
+            BelievePointWalletTransfer::STATUS_REFUNDED => 'Returned to Available BP — wallet transfer not completed',
             BelievePointWalletTransfer::STATUS_FAILED => 'BP redemption failed',
             default => 'BP redemption for Bridge wallet',
         };
