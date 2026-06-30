@@ -321,11 +321,11 @@ function SidebarContent({
                 <TrendingUp className="h-4 w-4 text-white" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white">Upgrade plan</p>
-                <p className="mt-1 text-xs leading-snug text-slate-400">Unlock offers, analytics, and more.</p>
+                <p className="text-sm font-semibold text-white">You&apos;re on the Free Plan</p>
+                <p className="mt-1 text-xs leading-snug text-slate-400">All features are included for now. Upgrade to Pro for premium perks.</p>
                 <Link href="/subscription" onClick={onNavigate} className="mt-3 block">
                   <MerchantButton size="sm" className="h-9 w-full text-xs">
-                    Upgrade Now
+                    Upgrade to Pro
                   </MerchantButton>
                 </Link>
               </div>
