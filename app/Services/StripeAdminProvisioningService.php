@@ -18,6 +18,12 @@ final class StripeAdminProvisioningService
      */
     public static function requiredWebhookEvents(): array
     {
+        $configured = config('cashier.webhook.events');
+
+        if (is_array($configured) && $configured !== []) {
+            return array_values(array_unique(array_map('strval', $configured)));
+        }
+
         return [
             'payment_intent.succeeded',
             'payment_intent.payment_failed',
@@ -36,6 +42,14 @@ final class StripeAdminProvisioningService
         ];
     }
 
+    public static function webhookEndpointUrl(): string
+    {
+        $base = rtrim((string) config('app.url'), '/');
+        $path = trim((string) config('cashier.path', 'stripe'), '/');
+
+        return $base.'/'.$path.'/webhook';
+    }
+
     /**
      * Fetch or create webhook endpoint and get its signing secret.
      */
@@ -44,7 +58,7 @@ final class StripeAdminProvisioningService
         try {
             Stripe::setApiKey($secretKey);
 
-            $webhookUrl = config('app.url').'/stripe/webhook';
+            $webhookUrl = StripeAdminProvisioningService::webhookEndpointUrl();
             $requiredEvents = self::requiredWebhookEvents();
 
             $webhooks = WebhookEndpoint::all(['limit' => 100]);
