@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Head, Link, router, usePage } from '@inertiajs/react'
+import { Head, Link, usePage } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
 import { SubscriptionRequiredModal } from '@/components/merchant/SubscriptionRequiredModal'
@@ -67,7 +67,6 @@ interface Props {
   weeklyRedemptions: WeeklyData[]
   recentRedemptions: RecentRedemption[]
   rewardsData: WeeklyData[]
-  subscription_required?: boolean
 }
 
 function GrowthBadge({ value }: { value: number | null | undefined }) {
@@ -109,7 +108,6 @@ export default function MerchantDashboard({
   weeklyRedemptions,
   recentRedemptions,
   rewardsData,
-  subscription_required,
 }: Props) {
   const weeklyData = weeklyRedemptions || []
   const recentData = recentRedemptions || []
@@ -117,15 +115,22 @@ export default function MerchantDashboard({
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
   const [rangeLabel] = useState('Last 7 Weeks')
 
-  const { auth } = usePage().props as { auth?: { user?: { name?: string; business_name?: string } } }
+  const { auth } = usePage().props as {
+    auth?: { user?: { name?: string; business_name?: string; has_active_subscription?: boolean } }
+  }
   const displayName = auth?.user?.business_name || auth?.user?.name || 'merchant'
+  const onFreePlan = !auth?.user?.has_active_subscription
 
   useEffect(() => {
-    if (subscription_required) {
+    if (onFreePlan && !sessionStorage.getItem('merchant_free_plan_notice_dismissed')) {
       setShowSubscriptionModal(true)
-      router.reload({ only: [], preserveScroll: true, preserveState: true })
     }
-  }, [subscription_required])
+  }, [onFreePlan])
+
+  const dismissFreePlanNotice = () => {
+    sessionStorage.setItem('merchant_free_plan_notice_dismissed', '1')
+    setShowSubscriptionModal(false)
+  }
 
   const insights = useMemo(() => {
     const g = stats?.growth
@@ -170,7 +175,7 @@ export default function MerchantDashboard({
       <Head title="Merchant Dashboard" />
       <SubscriptionRequiredModal
         isOpen={showSubscriptionModal}
-        onClose={() => setShowSubscriptionModal(false)}
+        onClose={dismissFreePlanNotice}
       />
       <MerchantDashboardLayout>
         <motion.div

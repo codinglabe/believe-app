@@ -51,7 +51,7 @@ class OrganizationPaymentMethodResolver
             'zelle' => $enabled['zelle'] && (
                 filled($settings->zelle_email) && filled($settings->zelle_phone)
             ),
-            'believe_points' => true,
+            'believe_points' => false,
         ];
     }
 

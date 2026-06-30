@@ -53,7 +53,7 @@ export default function MerchantSubscriptionSuccess({ planId }: Props) {
                             transition={{ delay: 0.4 }}
                             className="text-lg text-gray-300 mb-8"
                         >
-                            Your subscription has been successfully activated. You now have full access to all features.
+                            Your Pro subscription is active. You now have Advanced Analytics and Priority Support.
                         </motion.p>
 
                         {/* Sparkle Animation */}

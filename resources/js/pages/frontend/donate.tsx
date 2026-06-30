@@ -853,8 +853,8 @@ export default function DonatePage({
                   <Coins className="h-6 w-6 drop-shadow-sm" />
                 </span>
                 <span className="relative min-w-0 flex-1">
-                  <span className="block text-base font-bold sm:text-lg">Donate Cash / Points</span>
-                  <span className="mt-0.5 block text-xs text-white/90 sm:text-sm">Give using cash, ACH, or Believe Points (BP).</span>
+                  <span className="block text-base font-bold sm:text-lg">Donate Cash</span>
+                  <span className="mt-0.5 block text-xs text-white/90 sm:text-sm">Give using card, bank transfer, or other cash payment methods.</span>
                 </span>
                 <ChevronRight className="relative h-6 w-6 shrink-0 text-white/85 transition-transform group-hover:translate-x-0.5" />
               </button>
@@ -898,7 +898,7 @@ export default function DonatePage({
             />
           ) : donationMode === "cash_points" ? (
           <>
-          {/* Three glass cards — Cash / Points */}
+          {/* Three glass cards — Cash donations */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
             {/* Card 1: Select Your Donation */}
             <motion.div

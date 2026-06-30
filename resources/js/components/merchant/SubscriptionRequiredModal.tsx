@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link, router } from '@inertiajs/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Crown, Lock, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { X, Crown, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { MerchantButton } from '@/components/merchant-ui'
 
 interface SubscriptionRequiredModalProps {
@@ -92,7 +92,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] rounded-full blur-xl opacity-50 animate-pulse"></div>
                 <div className="relative p-6 bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-full">
-                  <Lock className="w-12 h-12 text-white" />
+                  <Sparkles className="w-12 h-12 text-white" />
                 </div>
               </motion.div>
             </div>
@@ -104,7 +104,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               transition={{ delay: 0.3 }}
               className="text-3xl sm:text-4xl font-bold text-center text-white mb-4"
             >
-              Subscription Required
+              You&apos;re on the Free Plan
             </motion.h2>
 
             {/* Description */}
@@ -114,7 +114,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               transition={{ delay: 0.4 }}
               className="text-center text-gray-300 mb-8 text-lg"
             >
-              To access this feature, please subscribe to one of our plans. Choose the perfect plan for your business needs.
+              You currently have full access to all merchant features at no cost. Upgrade to Pro for Advanced Analytics and Priority Support.
             </motion.p>
 
             {/* Features List */}
@@ -125,11 +125,8 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               className="space-y-4 mb-8"
             >
               {[
-                'Unlimited Offers',
                 'Advanced Analytics',
                 'Priority Support',
-                'QR Code Scanning',
-                'Redemption Management',
               ].map((feature, index) => (
                 <motion.div
                   key={feature}
@@ -162,14 +159,14 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
                 className="flex items-center justify-center gap-2 text-base sm:text-lg px-6 sm:px-10 py-3 sm:py-4 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95 text-white shadow-lg shadow-[#2563EB]/50 font-semibold"
               >
                 <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
-                View Plans
+                Upgrade to Pro
                 <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
               </MerchantButton>
               <button
                 onClick={onClose}
                 className="px-6 sm:px-10 py-3 sm:py-4 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-800/50 transition-colors text-base sm:text-lg font-medium"
               >
-                Maybe Later
+                Continue with Free Plan
               </button>
             </motion.div>
 
