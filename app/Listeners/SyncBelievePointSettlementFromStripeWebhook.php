@@ -18,7 +18,6 @@ class SyncBelievePointSettlementFromStripeWebhook
 
         match ($type) {
             'balance.available' => StripeBelievePointSettlementWebhookService::handleBalanceAvailable(),
-            'balance_transaction.created', 'balance_transaction.updated' => StripeBelievePointSettlementWebhookService::handleBalanceTransaction($object),
             'payout.paid' => StripeBelievePointSettlementWebhookService::handlePayoutPaid($object),
             'charge.refunded' => StripeBelievePointSettlementWebhookService::handleChargeRefunded($object),
             'charge.dispute.created' => StripeBelievePointSettlementWebhookService::handleChargeDisputeCreated($object),
