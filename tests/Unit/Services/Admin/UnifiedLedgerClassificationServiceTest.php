@@ -36,7 +36,7 @@ class UnifiedLedgerClassificationServiceTest extends TestCase
             'currency' => 'BP',
             'amount' => 5,
             'bp_status' => UnifiedLedgerBpStatus::PROCESSING,
-            'current_owner' => UnifiedLedgerOwner::SUPPORTER,
+            'current_owner' => 'Kenneth Matthews',
             'meta' => ['source' => 'believe_points_purchase_bp', 'owner_type' => 'supporter'],
         ]);
 
@@ -45,7 +45,8 @@ class UnifiedLedgerClassificationServiceTest extends TestCase
         $this->assertSame('BP', $present['ledger_type_label']);
         $this->assertSame('Processing', $present['bp_status_label']);
         $this->assertSame('N/A', $present['brp_activity_label']);
-        $this->assertSame('Supporter', $present['current_owner']);
+        $this->assertSame('Kenneth Matthews', $present['current_owner']);
+        $this->assertNull($present['available_at']);
     }
 
     public function test_bp_settlement_row_classifies_as_available(): void

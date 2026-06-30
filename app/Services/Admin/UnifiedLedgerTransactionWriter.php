@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\BelievePointPurchase;
 use App\Models\BelievePointProcessingLot;
+use App\Models\BelievePointWalletTransfer;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Models\RewardPointLedger;
@@ -86,7 +87,7 @@ final class UnifiedLedgerTransactionWriter
             default => Transaction::STATUS_PENDING,
         };
 
-        $availableAt = $purchase->points_released
+        $availableAt = $bpStatus === UnifiedLedgerBpStatus::AVAILABLE && $purchase->points_released
             ? (BelievePointPurchaseSettlementStatusService::settlementDate($purchase) ?? $purchase->points_available_at)
             : null;
 
@@ -98,12 +99,12 @@ final class UnifiedLedgerTransactionWriter
             'intended_points' => $points,
             'bp_status' => $bpStatus,
             'owner_type' => 'supporter',
-            'current_owner' => UnifiedLedgerOwner::SUPPORTER,
+            'current_owner' => $user->name,
             'event_name' => 'BP Purchase',
             'description' => sprintf('Believe Points purchase credit (%s BP)', number_format($points, 2)),
-            'from_type' => UnifiedLedgerOwner::PLATFORM,
+            'from_type' => 'BIU Platform',
             'from_name' => UnifiedLedgerOwner::PLATFORM,
-            'to_type' => UnifiedLedgerOwner::SUPPORTER,
+            'to_type' => 'Supporter',
             'to_name' => $user->name,
             'to_id' => $user->id,
         ];
@@ -122,7 +123,7 @@ final class UnifiedLedgerTransactionWriter
                 'ledger_type' => UnifiedLedgerType::BP,
                 'bp_status' => $bpStatus,
                 'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
-                'current_owner' => UnifiedLedgerOwner::SUPPORTER,
+                'current_owner' => $user->name,
                 'available_at' => $availableAt,
                 'status' => $status,
                 'amount' => $points,
@@ -160,7 +161,7 @@ final class UnifiedLedgerTransactionWriter
                 'ledger_type' => UnifiedLedgerType::BP,
                 'bp_status' => UnifiedLedgerBpStatus::AVAILABLE,
                 'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
-                'current_owner' => UnifiedLedgerOwner::SUPPORTER,
+                'current_owner' => $owner->name,
                 'available_at' => $settlementAt,
                 'status' => Transaction::STATUS_COMPLETED,
                 'amount' => $points,
@@ -177,9 +178,9 @@ final class UnifiedLedgerTransactionWriter
                     'owner_type' => 'supporter',
                     'event_name' => 'Processing BP to Available BP',
                     'description' => sprintf('Believe Points settlement: %s BP Processing → Available', number_format($points, 2)),
-                    'from_type' => UnifiedLedgerOwner::SUPPORTER,
+                    'from_type' => 'Supporter',
                     'from_name' => $owner->name,
-                    'to_type' => UnifiedLedgerOwner::SUPPORTER,
+                    'to_type' => 'Supporter',
                     'to_name' => $owner->name,
                     'to_id' => $owner->id,
                     'current_bp_owner_user_id' => $owner->id,
@@ -206,7 +207,10 @@ final class UnifiedLedgerTransactionWriter
         }
 
         $organization->loadMissing('user');
-        $ownerLabel = $organization->name ?: UnifiedLedgerOwner::ORGANIZATION;
+        $ownerName = trim((string) ($organization->name ?: ''));
+        if ($ownerName === '') {
+            $ownerName = UnifiedLedgerOwner::ORGANIZATION;
+        }
         $bpStatus = $fromProcessing > 0 && $fromAvailable <= 0
             ? UnifiedLedgerBpStatus::PROCESSING
             : UnifiedLedgerBpStatus::AVAILABLE;
@@ -221,8 +225,10 @@ final class UnifiedLedgerTransactionWriter
                 'ledger_type' => UnifiedLedgerType::BP,
                 'bp_status' => $bpStatus,
                 'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
-                'current_owner' => UnifiedLedgerOwner::ORGANIZATION,
-                'available_at' => $bpStatus === UnifiedLedgerBpStatus::PROCESSING ? null : now(),
+                'current_owner' => $ownerName,
+                'available_at' => $bpStatus === UnifiedLedgerBpStatus::AVAILABLE
+                    ? now()
+                    : null,
                 'status' => $bpStatus === UnifiedLedgerBpStatus::PROCESSING
                     ? Transaction::STATUS_PENDING
                     : Transaction::STATUS_COMPLETED,
@@ -243,10 +249,10 @@ final class UnifiedLedgerTransactionWriter
                     'organization_name' => $organization->name,
                     'event_name' => 'Processing BP Donation',
                     'description' => 'Believe Points donation',
-                    'from_type' => UnifiedLedgerOwner::SUPPORTER,
+                    'from_type' => 'Supporter',
                     'from_name' => $donor->name,
-                    'to_type' => UnifiedLedgerOwner::ORGANIZATION,
-                    'to_name' => $ownerLabel,
+                    'to_type' => 'Organization',
+                    'to_name' => $ownerName,
                 ],
             ],
         );
@@ -269,7 +275,7 @@ final class UnifiedLedgerTransactionWriter
                 'ledger_type' => UnifiedLedgerType::BRP,
                 'bp_status' => UnifiedLedgerBpStatus::NA,
                 'brp_activity_type' => UnifiedLedgerBrpActivity::EARNED,
-                'current_owner' => UnifiedLedgerOwner::SUPPORTER,
+                'current_owner' => $user->name,
                 'available_at' => null,
                 'status' => Transaction::STATUS_COMPLETED,
                 'amount' => $brp,
@@ -284,9 +290,9 @@ final class UnifiedLedgerTransactionWriter
                     'believe_point_purchase_id' => $purchase->id,
                     'event_name' => 'BP Purchase Participation Reward',
                     'description' => 'Believe Reward Points earned for qualifying BP purchase',
-                    'from_type' => UnifiedLedgerOwner::PLATFORM,
+                    'from_type' => 'BIU Platform',
                     'from_name' => UnifiedLedgerOwner::PLATFORM,
-                    'to_type' => UnifiedLedgerOwner::SUPPORTER,
+                    'to_type' => 'Supporter',
                     'to_name' => $user->name,
                     'to_id' => $user->id,
                 ],
@@ -320,7 +326,7 @@ final class UnifiedLedgerTransactionWriter
                 'ledger_type' => UnifiedLedgerType::BRP,
                 'bp_status' => UnifiedLedgerBpStatus::NA,
                 'brp_activity_type' => $activity,
-                'current_owner' => UnifiedLedgerOwner::SUPPORTER,
+                'current_owner' => $user?->name,
                 'available_at' => null,
                 'status' => Transaction::STATUS_COMPLETED,
                 'amount' => $amount,
@@ -340,6 +346,180 @@ final class UnifiedLedgerTransactionWriter
                 ],
             ],
         );
+    }
+
+    /**
+     * BP → Bridge wallet: two ledger rows (BP redemption burn + money transfer to Bridge wallet).
+     */
+    public static function syncWalletTransferRows(BelievePointWalletTransfer $transfer): void
+    {
+        if (! $transfer->user_id) {
+            return;
+        }
+
+        $transfer->loadMissing('user');
+        $user = $transfer->user;
+        if (! $user) {
+            return;
+        }
+
+        $amount = round((float) $transfer->amount, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $metadata = is_array($transfer->metadata) ? $transfer->metadata : [];
+        $bridgeTransferId = trim((string) ($transfer->bridge_transfer_id ?? ''));
+
+        $status = match ($transfer->status) {
+            BelievePointWalletTransfer::STATUS_COMPLETED => Transaction::STATUS_COMPLETED,
+            BelievePointWalletTransfer::STATUS_FAILED => Transaction::STATUS_FAILED,
+            BelievePointWalletTransfer::STATUS_REFUNDED => Transaction::STATUS_REFUND,
+            BelievePointWalletTransfer::STATUS_SUBMITTED => Transaction::STATUS_PENDING,
+            default => Transaction::STATUS_PENDING,
+        };
+
+        $processedAt = in_array($transfer->status, [
+            BelievePointWalletTransfer::STATUS_COMPLETED,
+            BelievePointWalletTransfer::STATUS_FAILED,
+            BelievePointWalletTransfer::STATUS_REFUNDED,
+        ], true)
+            ? ($transfer->completed_at ?? $transfer->updated_at ?? now())
+            : null;
+
+        $bpReference = 'bp_redemption:wallet_transfer:'.$transfer->id;
+        $moneyReference = $bridgeTransferId !== ''
+            ? $bridgeTransferId
+            : 'bridge_wallet_transfer:wallet_transfer:'.$transfer->id;
+
+        $sharedMeta = [
+            'believe_point_wallet_transfer_id' => $transfer->id,
+            'believe_point_wallet_transfer_status' => $transfer->status,
+            'bridge_transfer_id' => $bridgeTransferId !== '' ? $bridgeTransferId : null,
+            'bridge_transfer_state' => $transfer->bridge_transfer_state,
+            'recipient_customer_id' => $metadata['recipient_customer_id'] ?? null,
+            'recipient_wallet_id' => $metadata['recipient_wallet_id'] ?? null,
+            'points_amount' => $amount,
+            'awaiting_liquidity' => (bool) ($metadata['awaiting_liquidity'] ?? false),
+            'failure_message' => $transfer->failure_message,
+        ];
+
+        Transaction::query()->updateOrCreate(
+            ['transaction_id' => $bpReference],
+            [
+                'user_id' => $user->id,
+                'related_id' => $transfer->id,
+                'related_type' => BelievePointWalletTransfer::class,
+                'type' => 'bp_redemption',
+                'ledger_type' => UnifiedLedgerType::BP,
+                'bp_status' => UnifiedLedgerBpStatus::NA,
+                'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
+                'current_owner' => $user->name,
+                'available_at' => null,
+                'status' => $status,
+                'amount' => -$amount,
+                'fee' => 0,
+                'currency' => 'BP',
+                'payment_method' => 'believe_points',
+                'processed_at' => $processedAt,
+                'meta' => array_filter([
+                    ...$sharedMeta,
+                    'source' => 'bp_redemption',
+                    'ledger_type' => UnifiedLedgerType::BP,
+                    'ledger_role' => 'bp_redemption',
+                    'event_name' => 'BP Redemption',
+                    'description' => self::walletTransferBpDescription($transfer),
+                    'gross_amount' => $amount,
+                    'from_type' => 'Supporter',
+                    'from_name' => $user->name,
+                    'from_id' => $user->id,
+                    'to_type' => 'BIU Platform',
+                    'to_name' => UnifiedLedgerOwner::PLATFORM,
+                    'current_owner' => $user->name,
+                    'owner_type' => 'supporter',
+                ], static fn ($v) => $v !== null && $v !== ''),
+            ],
+        );
+
+        Transaction::query()->updateOrCreate(
+            ['transaction_id' => $moneyReference],
+            [
+                'user_id' => $user->id,
+                'related_id' => $transfer->id,
+                'related_type' => BelievePointWalletTransfer::class,
+                'type' => 'bridge_wallet_transfer',
+                'ledger_type' => UnifiedLedgerType::MONEY,
+                'bp_status' => UnifiedLedgerBpStatus::NA,
+                'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
+                'current_owner' => null,
+                'available_at' => null,
+                'status' => $status,
+                'amount' => $amount,
+                'fee' => 0,
+                'currency' => 'USD',
+                'payment_method' => 'bridge',
+                'processed_at' => $processedAt,
+                'meta' => array_filter([
+                    ...$sharedMeta,
+                    'source' => 'bridge_wallet_transfer',
+                    'ledger_type' => UnifiedLedgerType::MONEY,
+                    'ledger_role' => 'bridge_money_transfer',
+                    'event_name' => 'Bridge Wallet Transfer',
+                    'description' => self::walletTransferMoneyDescription($transfer),
+                    'gross_amount' => $amount,
+                    'from_type' => 'BIU Platform',
+                    'from_name' => UnifiedLedgerOwner::PLATFORM,
+                    'to_type' => 'Supporter',
+                    'to_name' => $user->name,
+                    'to_id' => $user->id,
+                ], static fn ($v) => $v !== null && $v !== ''),
+            ],
+        );
+
+        if ($transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED) {
+            $bpTx = Transaction::query()->where('transaction_id', $bpReference)->first();
+            if ($bpTx) {
+                $meta = is_array($bpTx->meta) ? $bpTx->meta : [];
+                $meta['refund_amount'] = $amount;
+                $bpTx->forceFill([
+                    'bp_status' => UnifiedLedgerBpStatus::REVERSED,
+                    'meta' => $meta,
+                ])->saveQuietly();
+            }
+        }
+
+        Transaction::query()
+            ->where('related_id', $transfer->id)
+            ->where(function ($q) {
+                $q->where('related_type', BelievePointWalletTransfer::class)
+                    ->orWhere('related_type', 'like', '%BelievePointWalletTransfer');
+            })
+            ->whereNotIn('transaction_id', [$bpReference, $moneyReference])
+            ->delete();
+    }
+
+    private static function walletTransferBpDescription(BelievePointWalletTransfer $transfer): string
+    {
+        return match ($transfer->status) {
+            BelievePointWalletTransfer::STATUS_PENDING => 'BP redemption for Bridge wallet (pending liquidity)',
+            BelievePointWalletTransfer::STATUS_SUBMITTED => 'BP redemption for Bridge wallet (processing)',
+            BelievePointWalletTransfer::STATUS_COMPLETED => 'BP redeemed for Bridge wallet transfer',
+            BelievePointWalletTransfer::STATUS_REFUNDED => 'BP redemption reversed (wallet transfer refunded)',
+            BelievePointWalletTransfer::STATUS_FAILED => 'BP redemption failed',
+            default => 'BP redemption for Bridge wallet',
+        };
+    }
+
+    private static function walletTransferMoneyDescription(BelievePointWalletTransfer $transfer): string
+    {
+        return match ($transfer->status) {
+            BelievePointWalletTransfer::STATUS_PENDING => 'Bridge wallet transfer from BIU Reserve (pending)',
+            BelievePointWalletTransfer::STATUS_SUBMITTED => 'Bridge wallet transfer from BIU Reserve (processing)',
+            BelievePointWalletTransfer::STATUS_COMPLETED => 'Bridge wallet transfer from BIU Reserve Account',
+            BelievePointWalletTransfer::STATUS_REFUNDED => 'Bridge wallet transfer refunded',
+            BelievePointWalletTransfer::STATUS_FAILED => 'Bridge wallet transfer failed',
+            default => 'Bridge wallet transfer from BIU Reserve Account',
+        };
     }
 
     private static function bpStatusForPurchase(BelievePointPurchase $purchase): string

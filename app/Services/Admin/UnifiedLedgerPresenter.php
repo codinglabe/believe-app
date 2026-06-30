@@ -676,9 +676,15 @@ class UnifiedLedgerPresenter
     private function believePointsTransactionType(Transaction $t): string
     {
         $meta = is_array($t->meta) ? $t->meta : [];
+        if (($meta['source'] ?? '') === 'bp_redemption' || $t->type === 'bp_redemption') {
+            return 'bp_redemption';
+        }
+        if (($meta['source'] ?? '') === 'bridge_wallet_transfer' || $t->type === 'bridge_wallet_transfer') {
+            return 'bridge_wallet_transfer';
+        }
         if (($meta['source'] ?? '') === 'believe_points_wallet_transfer'
             || $t->type === 'believe_points_wallet_transfer') {
-            return 'believe_points_wallet_transfer';
+            return 'bp_redemption';
         }
         if (($meta['source'] ?? '') === 'bp_settlement' || $t->type === 'bp_settlement') {
             return 'bp_settlement';
@@ -877,8 +883,10 @@ class UnifiedLedgerPresenter
 
         if ($module === 'believe_points' && $walletUser) {
             $rowMeta = is_array($t->meta) ? $t->meta : [];
-            $isWalletTransfer = ($rowMeta['source'] ?? '') === 'believe_points_wallet_transfer'
-                || $t->type === 'believe_points_wallet_transfer';
+            $isWalletTransfer = in_array($rowMeta['source'] ?? '', ['bp_redemption', 'bridge_wallet_transfer', 'believe_points_wallet_transfer'], true)
+                || in_array($t->type, ['bp_redemption', 'bridge_wallet_transfer', 'believe_points_wallet_transfer'], true);
+            $isBridgeMoneyTransfer = ($rowMeta['source'] ?? '') === 'bridge_wallet_transfer'
+                || $t->type === 'bridge_wallet_transfer';
 
             $defaultFrom = [
                 'from_type' => 'buyer',
@@ -886,19 +894,26 @@ class UnifiedLedgerPresenter
                 'from_email' => $walletUser->email,
                 'from_id' => (int) $walletUser->id,
             ];
-            $defaultTo = $isWalletTransfer
+            $defaultTo = $isWalletTransfer && ! $isBridgeMoneyTransfer
                 ? [
-                    'to_type' => 'wallet',
-                    'to_name' => 'Believe Bridge wallet',
-                    'to_email' => $walletUser->email,
-                    'to_id' => (int) $walletUser->id,
-                ]
-                : [
-                    'to_type' => '',
-                    'to_name' => null,
+                    'to_type' => 'platform',
+                    'to_name' => 'BIU Platform',
                     'to_email' => null,
                     'to_id' => null,
-                ];
+                ]
+                : ($isBridgeMoneyTransfer
+                    ? [
+                        'to_type' => 'wallet',
+                        'to_name' => 'Believe Bridge wallet',
+                        'to_email' => $walletUser->email,
+                        'to_id' => (int) $walletUser->id,
+                    ]
+                    : [
+                        'to_type' => '',
+                        'to_name' => null,
+                        'to_email' => null,
+                        'to_id' => null,
+                    ]);
         }
 
         $rowMeta = is_array($t->meta) ? $t->meta : [];
@@ -1370,10 +1385,20 @@ class UnifiedLedgerPresenter
                 ? 'Believe Points refund #'.$t->related_id
                 : 'Believe Points purchase #'.$t->related_id;
         }
+        if ($sourceType === 'bp_redemption' && $t->related_id) {
+            return $t->status === Transaction::STATUS_REFUND
+                ? 'BP redemption refund #'.$t->related_id
+                : 'BP redemption #'.$t->related_id;
+        }
+        if ($sourceType === 'bridge_wallet_transfer' && $t->related_id) {
+            return $t->status === Transaction::STATUS_REFUND
+                ? 'Bridge wallet transfer refund #'.$t->related_id
+                : 'Bridge wallet transfer #'.$t->related_id;
+        }
         if ($sourceType === 'believe_points_wallet_transfer' && $t->related_id) {
             return $t->status === Transaction::STATUS_REFUND
-                ? 'Believe Points wallet transfer refund #'.$t->related_id
-                : 'Believe Points wallet transfer #'.$t->related_id;
+                ? 'BP redemption refund #'.$t->related_id
+                : 'BP redemption #'.$t->related_id;
         }
 
         $label = trim((string) ($related['related_label'] ?? ''));

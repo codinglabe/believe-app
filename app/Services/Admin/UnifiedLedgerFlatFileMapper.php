@@ -263,7 +263,8 @@ class UnifiedLedgerFlatFileMapper
             ];
         }
 
-        if ($source === 'believe_points_wallet_transfer' || $t->type === 'believe_points_wallet_transfer') {
+        if ($source === 'bp_redemption' || $t->type === 'bp_redemption'
+            || $source === 'believe_points_wallet_transfer' || $t->type === 'believe_points_wallet_transfer') {
             return [
                 'credit' => null,
                 'debit' => $points,

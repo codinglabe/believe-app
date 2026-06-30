@@ -2,27 +2,16 @@
 
 namespace App\Support;
 
-/** BIU unified ledger owner categories (client spec). */
+/** BIU unified ledger owner labels (actual names + platform constant). */
 final class UnifiedLedgerOwner
 {
-    public const SUPPORTER = 'Supporter';
+    public const PLATFORM = 'BIU Platform';
 
     public const ORGANIZATION = 'Organization';
 
     public const MERCHANT = 'Merchant';
 
-    public const PLATFORM = 'BIU Platform';
-
-    /** @return list<string> */
-    public static function all(): array
-    {
-        return [
-            self::SUPPORTER,
-            self::ORGANIZATION,
-            self::MERCHANT,
-            self::PLATFORM,
-        ];
-    }
+    public const SUPPORTER = 'Supporter';
 
     public static function fromOwnerType(?string $ownerType): string
     {
@@ -36,7 +25,8 @@ final class UnifiedLedgerOwner
 
     public static function normalize(?string $value, ?string $ownerType = null): ?string
     {
-        if ($value !== null && in_array($value, self::all(), true)) {
+        $value = trim((string) $value);
+        if ($value !== '') {
             return $value;
         }
 
