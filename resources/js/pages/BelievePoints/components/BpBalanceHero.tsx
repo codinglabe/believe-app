@@ -117,12 +117,16 @@ export function BpBalanceHero({
         </div>
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            <span className="font-semibold text-amber-700 dark:text-amber-400">Processing:</span>{" "}
-            Funding is in progress.{" "}
-            <span className="font-semibold text-emerald-700 dark:text-emerald-400">Available:</span>{" "}
-            Can be used for all eligible transactions.
-          </p>
+          <div className="space-y-1 text-[11px] leading-snug text-muted-foreground">
+            <p>
+              <span className="font-semibold text-purple-600 dark:text-purple-400">Processing:</span>{" "}
+              Funding is in progress. Can be used for selected transactions.
+            </p>
+            <p>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">Available:</span>{" "}
+              Funds have settled. Can be used for all eligible transactions.
+            </p>
+          </div>
 
           <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
             <Button

@@ -3,6 +3,7 @@
 namespace Tests\Unit\Services;
 
 use App\Models\AdminSetting;
+use App\Models\User;
 use App\Services\BelievePointsPurchaseCalculationService;
 use App\Services\BelievePointsPurchaseSettingsService;
 use App\Services\StripeProcessingFeeEstimator;
@@ -28,8 +29,8 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_BRP_VALUE, 0.005, 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PLATFORM_FEE_PERCENT, 1, 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PROCESSING_FEE_PERCENT, 1, 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_AWARD, 5, 'float');
-        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_AWARD, 10, 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_AWARD, 1, 'float');
+        AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_AWARD, 2, 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, 24, 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_HOLD_HOURS, 0, 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PROCESSING_FEE, '1', 'boolean');
@@ -74,22 +75,68 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::processingFeeUsd(101, 'card'));
     }
 
-    public function test_brp_earned_is_flat_per_transaction_for_free_supporters(): void
+    public function test_brp_earned_is_zero_below_minimum_qualifying_purchase(): void
     {
         AdminSetting::set('believe_points_min_purchase', 10, 'float');
 
-        $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned(10));
-        $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned(100));
-        $this->assertSame(5.0, BelievePointsPurchaseCalculationService::brpEarned(50, null));
+        $this->assertSame(0.0, BelievePointsPurchaseCalculationService::brpEarned(5));
+        $this->assertSame(0.0, BelievePointsPurchaseCalculationService::brpEarned(9));
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::brpEarned(9.99));
         $this->assertSame(0.0, BelievePointsPurchaseCalculationService::brpEarned(0));
     }
 
+    public function test_brp_earned_is_flat_per_transaction_for_free_supporters(): void
+    {
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+
+        $this->assertSame(1.0, BelievePointsPurchaseCalculationService::brpEarned(10));
+        $this->assertSame(1.0, BelievePointsPurchaseCalculationService::brpEarned(100));
+        $this->assertSame(1.0, BelievePointsPurchaseCalculationService::brpEarned(1000));
+        $this->assertSame(1.0, BelievePointsPurchaseCalculationService::brpEarned(50, null));
+    }
+
+    public function test_brp_earned_is_flat_per_transaction_for_prime_supporters(): void
+    {
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+        $primeUser = $this->createMock(User::class);
+        $primeUser->method('hasNonprofitDashboardRole')->willReturn(true);
+
+        $this->assertSame(2.0, BelievePointsPurchaseCalculationService::brpEarned(10, $primeUser));
+        $this->assertSame(2.0, BelievePointsPurchaseCalculationService::brpEarned(100, $primeUser));
+        $this->assertSame(2.0, BelievePointsPurchaseCalculationService::brpEarned(1000, $primeUser));
+    }
+
+    public function test_multiple_qualifying_transactions_accumulate_for_free_supporters(): void
+    {
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+
+        $total = 0.0;
+        for ($i = 0; $i < 10; $i++) {
+            $total += BelievePointsPurchaseCalculationService::brpEarned(10);
+        }
+
+        $this->assertSame(10.0, $total);
+    }
+
+    public function test_multiple_qualifying_transactions_accumulate_for_prime_supporters(): void
+    {
+        AdminSetting::set('believe_points_min_purchase', 10, 'float');
+        $primeUser = $this->createMock(User::class);
+        $primeUser->method('hasNonprofitDashboardRole')->willReturn(true);
+
+        $total = 0.0;
+        for ($i = 0; $i < 10; $i++) {
+            $total += BelievePointsPurchaseCalculationService::brpEarned(10, $primeUser);
+        }
+
+        $this->assertSame(20.0, $total);
+    }
+
     public function test_brp_award_settings_expose_free_and_prime_per_transaction_amounts(): void
     {
-        $this->assertSame(5.0, BelievePointsPurchaseSettingsService::freeBrpAward());
-        $this->assertSame(10.0, BelievePointsPurchaseSettingsService::primeBrpAward());
-        $this->assertSame(5.0, BelievePointsPurchaseSettingsService::brpAwardForUser(null));
+        $this->assertSame(1.0, BelievePointsPurchaseSettingsService::freeBrpAward());
+        $this->assertSame(2.0, BelievePointsPurchaseSettingsService::primeBrpAward());
+        $this->assertSame(1.0, BelievePointsPurchaseSettingsService::brpAwardForUser(null));
     }
 
     public function test_card_checkout_breakdown_includes_platform_fee_and_processing_gross_up(): void
@@ -110,7 +157,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
             round($breakdown['bp_amount_usd'] + $breakdown['platform_fee_usd'] + $breakdown['processing_fee_usd'], 2),
             $breakdown['checkout_total_usd']
         );
-        $this->assertSame(5.0, $breakdown['brp_earned']);
+        $this->assertSame(1.0, $breakdown['brp_earned']);
         $this->assertStringContainsString('Processing BP', $breakdown['bp_availability']);
         $this->assertStringContainsString('24-hour security hold', $breakdown['bp_availability']);
     }
@@ -126,7 +173,7 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
     {
         $breakdown = BelievePointsPurchaseCalculationService::checkoutBreakdown(100, 'bank');
 
-        $this->assertSame(5.0, $breakdown['brp_earned']);
+        $this->assertSame(1.0, $breakdown['brp_earned']);
         $this->assertStringContainsString('Processing BP', $breakdown['bp_availability']);
         $this->assertStringContainsString('3 business days', $breakdown['bp_availability']);
     }
@@ -148,9 +195,9 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
 
         $this->assertSame(0.005, $preview['brp_value']);
         $this->assertSame(1.0, $preview['platform_fee_percent']);
-        $this->assertSame(5.0, $preview['free_brp_award']);
-        $this->assertSame(10.0, $preview['prime_brp_award']);
-        $this->assertSame(5.0, $preview['brp_award']);
+        $this->assertSame(1.0, $preview['free_brp_award']);
+        $this->assertSame(2.0, $preview['prime_brp_award']);
+        $this->assertSame(1.0, $preview['brp_award']);
         $this->assertSame(24, $preview['card_hold_hours']);
         $this->assertSame(24, $preview['new_card_hold_hours']);
         $this->assertSame(0, $preview['ach_hold_hours']);
@@ -158,6 +205,6 @@ class BelievePointsPurchaseCalculationServiceTest extends TestCase
         $this->assertTrue($preview['supporter_pays_platform_fee']);
         $this->assertSame(1, $preview['card_settlement_business_days']);
         $this->assertSame(3, $preview['ach_settlement_business_days']);
-        $this->assertSame(5.0, $preview['brp_earned']);
+        $this->assertSame(1.0, $preview['brp_earned']);
     }
 }

@@ -263,7 +263,7 @@ function PaymentMethodsContent({
           <Button
             type="button"
             size="sm"
-            className="h-9 shrink-0 bg-purple-600 hover:bg-purple-700"
+            className="h-9 shrink-0 border border-emerald-950/80 !bg-gradient-to-b !from-emerald-700 !via-emerald-800 !to-emerald-950 font-semibold !text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18),0_3px_0_0_#064e3b,0_5px_10px_rgba(0,0,0,0.3)] transition-all hover:!from-emerald-600 hover:!via-emerald-700 hover:!to-emerald-900 hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22),0_3px_0_0_#064e3b,0_6px_12px_rgba(0,0,0,0.35)] active:translate-y-0.5 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.35),0_1px_0_0_#064e3b]"
             onClick={() => openQuickAdd()}
           >
             <Coins className="mr-1.5 h-3.5 w-3.5" />
@@ -330,11 +330,7 @@ function PaymentMethodsContent({
           currentBalance={quickAddBelievePoints.currentBalance}
           feePreview={feePreview}
           feePreviewUrl={typeof window !== "undefined" ? window.location.pathname : "/profile/payment-methods"}
-          paymentSavedMessage={
-            flash?.success
-              ? `${flash.success} Add Believe Points now with your saved ${quickAddRail === "bank" ? "bank account" : "card"}.`
-              : "Buy Believe Points instantly with your saved payment method."
-          }
+          paymentSavedMessage="Your payment method is saved. Add BP now with one tap."
         />
       )}
     </div>
