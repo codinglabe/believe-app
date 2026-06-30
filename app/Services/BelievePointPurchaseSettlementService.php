@@ -6,7 +6,11 @@ use App\Enums\PaymentTransactionType;
 use App\Models\BelievePointPurchase;
 use App\Models\PaymentTransaction;
 use App\Models\Transaction;
+use App\Services\Admin\UnifiedLedgerTransactionWriter;
 use App\Support\StripeReferenceMode;
+use App\Support\UnifiedLedgerBpStatus;
+use App\Support\UnifiedLedgerBrpActivity;
+use App\Support\UnifiedLedgerType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -338,6 +342,11 @@ class BelievePointPurchaseSettlementService
             'related_id' => $purchase->id,
             'related_type' => BelievePointPurchase::class,
             'type' => 'purchase',
+            'ledger_type' => UnifiedLedgerType::MONEY,
+            'bp_status' => UnifiedLedgerBpStatus::NA,
+            'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
+            'current_owner' => null,
+            'available_at' => null,
             'status' => $status,
             'amount' => round(max(0, $gross), 2),
             'fee' => round(max(0, $feeEst + $platformFee), 2),
@@ -361,6 +370,11 @@ class BelievePointPurchaseSettlementService
             $tx->update($attrs);
         } else {
             Transaction::create($attrs);
+        }
+
+        $purchase->loadMissing('user');
+        if ($purchase->user) {
+            UnifiedLedgerTransactionWriter::syncBpCreditRow($purchase, $purchase->user);
         }
     }
 

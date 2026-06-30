@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\Transaction;
+use App\Support\UnifiedLedgerType;
 
 /**
  * Maps unified ledger rows to the client's reconciliation flat-file columns (CSV / ETL).
@@ -16,6 +17,11 @@ class UnifiedLedgerFlatFileMapper
         'transaction_number',
         'datetime',
         'status',
+        'ledger_type',
+        'bp_status',
+        'available_at',
+        'current_owner',
+        'brp_activity_type',
         'module',
         'event',
         'transaction_type',
@@ -67,6 +73,11 @@ class UnifiedLedgerFlatFileMapper
         'transaction_number' => 'Transaction Number',
         'datetime' => 'Date/Time',
         'status' => 'Status',
+        'ledger_type' => 'Ledger Type',
+        'bp_status' => 'BP Status',
+        'available_at' => 'Available Date',
+        'current_owner' => 'Current Owner',
+        'brp_activity_type' => 'BRP Activity',
         'module' => 'Module',
         'event' => 'Event',
         'transaction_type' => 'Transaction Type',
@@ -141,11 +152,17 @@ class UnifiedLedgerFlatFileMapper
         $module = (string) ($unified['module'] ?? '');
         $walletType = $this->resolveWalletType($t, $module, $meta);
         $bpAmounts = $this->resolveBelievePointAmounts($t, $meta, $module);
+        $ledgerFields = UnifiedLedgerClassificationService::presentForTransaction($t);
 
         $row = [
             'transaction_number' => $txnNumber,
             'datetime' => (string) ($unified['datetime_iso'] ?? ''),
             'status' => (string) ($unified['status'] ?? $t->status ?? ''),
+            'ledger_type' => (string) ($ledgerFields['ledger_type_label'] ?? 'Money'),
+            'bp_status' => (string) ($ledgerFields['bp_status_label'] ?? 'N/A'),
+            'available_at' => (string) ($ledgerFields['available_at'] ?? ''),
+            'current_owner' => (string) ($ledgerFields['current_owner'] ?? ''),
+            'brp_activity_type' => (string) ($ledgerFields['brp_activity_label'] ?? 'N/A'),
             'module' => $this->moduleTableLabel($module),
             'event' => (string) ($unified['event_name'] ?? $meta['event_name'] ?? ''),
             'transaction_type' => $this->humanizeTransactionType((string) ($unified['transaction_type'] ?? '')),
@@ -205,7 +222,23 @@ class UnifiedLedgerFlatFileMapper
      */
     private function resolveBelievePointAmounts(Transaction $t, array $meta, string $module): array
     {
-        if ($module !== 'believe_points') {
+        $ledgerType = UnifiedLedgerClassificationService::classify($t)['ledger_type'];
+
+        if ($ledgerType === UnifiedLedgerType::BRP) {
+            $points = round(abs((float) $t->amount), 2);
+            $signed = (float) $t->amount < 0 ? -$points : $points;
+
+            return [
+                'credit' => $signed > 0 ? $points : null,
+                'debit' => $signed < 0 ? $points : null,
+                'processing' => null,
+                'available' => null,
+                'balance_after' => null,
+                'wallet_amount' => $signed,
+            ];
+        }
+
+        if ($ledgerType !== UnifiedLedgerType::BP && $module !== 'believe_points') {
             return [
                 'credit' => null,
                 'debit' => null,

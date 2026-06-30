@@ -153,10 +153,12 @@ interface Props {
     organization_id: number | null
     module: string
     period: string
+    ledger_type: string
   }
   typeOptions: string[]
   statusOptions: string[]
   moduleOptions: string[]
+  ledgerTypeOptions: string[]
   /** Selected org label when URL has organization_id (combobox display before open). */
   ledgerOrganizationInitial: Array<{ value: string; label: string }>
 }
@@ -498,6 +500,7 @@ function isLedgerRowPaidWithBelievePoints(
   paymentMethod: string | null | undefined,
   row: Pick<LedgerRow, "meta">,
 ): boolean {
+  if (u?.ledger_type === "bp" || u?.ledger_type === "brp") return true
   const pm = (paymentMethod || "").toLowerCase()
   if (pm === "believe_points" || u?.provider === "points") return true
   const dpm = donationPaymentMethodFromMeta(row.meta)
@@ -662,6 +665,7 @@ export default function TransactionLedger({
   typeOptions,
   statusOptions,
   moduleOptions,
+  ledgerTypeOptions,
   ledgerOrganizationInitial,
 }: Props) {
   const [search, setSearch] = useState(filters.search || "")
@@ -673,6 +677,7 @@ export default function TransactionLedger({
   )
   const [module, setModule] = useState(filters.module ?? "all")
   const [period, setPeriod] = useState(filters.period ?? "all")
+  const [ledgerType, setLedgerType] = useState(filters.ledger_type ?? "all")
   const skipSearchDebounceOnce = useRef(true)
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: number | null; ref: string }>({
     open: false,
@@ -694,12 +699,13 @@ export default function TransactionLedger({
     if (organizationId && organizationId !== "all") params.organization_id = organizationId
     if (module && module !== "all") params.module = module
     if (period && period !== "all") params.period = period
+    if (ledgerType && ledgerType !== "all") params.ledger_type = ledgerType
     return params
   }
 
   const orgPickerBaseParams = useMemo(
     () => ledgerQueryParams(),
-    [search, type, status, perPage, organizationId, module, period],
+    [search, type, status, perPage, organizationId, module, period, ledgerType],
   )
 
   /** Export URL; `router.visit` sends X-Inertia → server returns 409 + `Inertia::location` → full GET downloads XLSX. */
@@ -707,7 +713,7 @@ export default function TransactionLedger({
     const qs = new URLSearchParams(ledgerQueryParams()).toString()
     const base = route("admin.transactions.ledger.export")
     return qs ? `${base}?${qs}` : base
-  }, [search, type, status, perPage, organizationId, module, period])
+  }, [search, type, status, perPage, organizationId, module, period, ledgerType])
 
   useEffect(() => {
     if (skipSearchDebounceOnce.current) {
@@ -734,6 +740,7 @@ export default function TransactionLedger({
     if (organizationId && organizationId !== "all") params.organization_id = organizationId
     if (module && module !== "all") params.module = module
     if (period && period !== "all") params.period = period
+    if (ledgerType && ledgerType !== "all") params.ledger_type = ledgerType
 
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
@@ -752,6 +759,7 @@ export default function TransactionLedger({
     if (organizationId && organizationId !== "all") params.organization_id = organizationId
     if (module && module !== "all") params.module = module
     if (period && period !== "all") params.period = period
+    if (ledgerType && ledgerType !== "all") params.ledger_type = ledgerType
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
       preserveScroll: true,
@@ -759,13 +767,15 @@ export default function TransactionLedger({
     })
   }
 
-  const applyLedgerFilter = (patch: Partial<{ organizationId: string; module: string; period: string }>) => {
+  const applyLedgerFilter = (patch: Partial<{ organizationId: string; module: string; period: string; ledgerType: string }>) => {
     const nextOrg = patch.organizationId ?? organizationId
     const nextMod = patch.module ?? module
     const nextPeriod = patch.period ?? period
+    const nextLedgerType = patch.ledgerType ?? ledgerType
     if (patch.organizationId !== undefined) setOrganizationId(patch.organizationId)
     if (patch.module !== undefined) setModule(patch.module)
     if (patch.period !== undefined) setPeriod(patch.period)
+    if (patch.ledgerType !== undefined) setLedgerType(patch.ledgerType)
 
     const params: Record<string, string> = {}
     if (search.trim()) params.search = search.trim()
@@ -775,6 +785,7 @@ export default function TransactionLedger({
     if (nextOrg && nextOrg !== "all") params.organization_id = nextOrg
     if (nextMod && nextMod !== "all") params.module = nextMod
     if (nextPeriod && nextPeriod !== "all") params.period = nextPeriod
+    if (nextLedgerType && nextLedgerType !== "all") params.ledger_type = nextLedgerType
 
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
@@ -1016,8 +1027,8 @@ export default function TransactionLedger({
               </div>
             </div>
 
-            {/* Row 2: Period, Organization, Module */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Row 2: Period, Organization, Module, Ledger type */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="min-w-0 space-y-1">
                 <Label htmlFor="ledger-period" className="text-xs uppercase tracking-wide text-muted-foreground">
                   Period
@@ -1073,6 +1084,26 @@ export default function TransactionLedger({
                   ))}
                 </select>
               </div>
+              <div className="min-w-0 space-y-1">
+                <Label htmlFor="ledger-type" className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Ledger type
+                </Label>
+                <select
+                  id="ledger-type"
+                  aria-label="Filter by ledger type"
+                  title="Ledger type"
+                  value={ledgerType}
+                  onChange={(e) => applyLedgerFilter({ ledgerType: e.target.value })}
+                  className={filterSelectClass}
+                >
+                  <option value="all">All ledger types</option>
+                  {ledgerTypeOptions.map((lt) => (
+                    <option key={lt} value={lt}>
+                      {lt === "money" ? "Money" : lt === "bp" ? "BP" : "BRP"}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -1086,7 +1117,7 @@ export default function TransactionLedger({
               ) : (
                 <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm ring-1 ring-border/20">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[2620px] border-collapse text-left text-base">
+                    <table className="w-full min-w-[3200px] border-collapse text-left text-base">
                       <thead>
                         <tr className="border-b border-border/60 bg-muted text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
                           <th
@@ -1104,6 +1135,11 @@ export default function TransactionLedger({
                           <th className="whitespace-nowrap px-4 py-3.5">When</th>
                           <th className="min-w-[8rem] whitespace-nowrap px-4 py-3.5">Reference</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Status</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">Ledger Type</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">BP Status</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">Available Date</th>
+                          <th className="min-w-[8rem] whitespace-nowrap px-4 py-3.5">Current Owner</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">BRP Activity</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Module</th>
                           <th className="min-w-[7rem] whitespace-nowrap px-4 py-3.5">Event</th>
                           <th className="min-w-[12rem] px-4 py-3.5">From → To</th>
@@ -1280,6 +1316,28 @@ export default function TransactionLedger({
                                   {statusIcon(row.status)}
                                   <span className="leading-none">{row.status}</span>
                                 </span>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
+                                {u?.ledger_type_label ?? "Money"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {u?.bp_status_label ?? "N/A"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {u?.available_at
+                                  ? new Date(u.available_at).toLocaleString(undefined, {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                    })
+                                  : u?.ledger_type === "bp" && u?.bp_status_label === "Processing"
+                                    ? "Pending"
+                                    : "—"}
+                              </td>
+                              <td className="max-w-[10rem] truncate px-4 py-3 text-sm text-foreground" title={u?.current_owner ?? undefined}>
+                                {u?.current_owner ?? "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {u?.brp_activity_label ?? "N/A"}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm">
                                 {u ? (

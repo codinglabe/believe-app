@@ -18,7 +18,9 @@ use App\Models\NodeSell;
 use App\Models\Subscription as AppSubscription;
 use App\Models\User;
 use App\Notifications\Channels\FirebaseChannel;
+use App\Models\RewardPointLedger;
 use App\Observers\BelievePointPurchaseObserver;
+use App\Observers\RewardPointLedgerObserver;
 use App\Observers\BelievePointWalletTransferObserver;
 use App\Observers\DonationObserver;
 use App\Observers\EnrollmentObserver;
@@ -74,6 +76,7 @@ class AppServiceProvider extends ServiceProvider
         NodeSell::observe(NodeSellObserver::class);
         FundMeDonation::observe(FundMeDonationObserver::class);
         BelievePointPurchase::observe(BelievePointPurchaseObserver::class);
+        RewardPointLedger::observe(RewardPointLedgerObserver::class);
         BelievePointWalletTransfer::observe(BelievePointWalletTransferObserver::class);
         Donation::observe(DonationObserver::class);
         Enrollment::observe(EnrollmentObserver::class);

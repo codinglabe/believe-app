@@ -116,8 +116,10 @@ class TransactionLedgerController extends Controller
                 'organization_id' => $organizationFilterActive ? $orgId : null,
                 'module' => $request->filled('module') ? $request->string('module')->toString() : 'all',
                 'period' => $request->filled('period') ? $request->string('period')->toString() : 'all',
+                'ledger_type' => $request->filled('ledger_type') ? $request->string('ledger_type')->toString() : 'all',
             ],
             'moduleOptions' => LedgerListFilters::moduleOptions(),
+            'ledgerTypeOptions' => LedgerListFilters::ledgerTypeOptions(),
             'ledgerOrganizationInitial' => $organizationFilterActive && $orgId > 0
                 ? [
                     [
@@ -279,6 +281,10 @@ class TransactionLedgerController extends Controller
 
         if ($request->filled('period') && $request->string('period') !== 'all') {
             LedgerListFilters::applyPeriod($query, $request->string('period')->toString());
+        }
+
+        if ($request->filled('ledger_type') && $request->string('ledger_type') !== 'all') {
+            LedgerListFilters::applyLedgerType($query, $request->string('ledger_type')->toString());
         }
 
         return [$query, $organizationFilterActive, $orgId];
