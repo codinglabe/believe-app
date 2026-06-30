@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\StripePaymentSettingsProvisioningJob;
 use App\Models\PaymentMethod;
 use App\Services\StripeAdminProvisioningService;
 use App\Services\StripeConfigService;
 use App\Services\StripeEnvironmentSyncService;
+use App\Services\StripePaymentSettingsProvisioningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -130,7 +130,7 @@ class PaymentMethodSettingController extends Controller
             }
         }
 
-        // Prepare Stripe config (customer IDs and webhook secrets are filled by StripePaymentSettingsProvisioningJob)
+        // Customer IDs, webhook secrets, and donation products are filled on save by StripePaymentSettingsProvisioningService.
         $stripeConfig = [
             'mode_environment' => $request->stripe_mode_environment,
             'sandbox_publishable_key' => $request->stripe_sandbox_publishable_key,
@@ -176,25 +176,30 @@ class PaymentMethodSettingController extends Controller
 
         PaymentMethod::setConfig('stripe', $stripeConfig);
 
-        // Push to the database queue now (not afterResponse). afterResponse() can fail to run or
-        // confuse workers on some PHP / server setups, so the job never appears for queue:work.
-        Log::info('StripePaymentSettingsProvisioningJob dispatch', [
-            'queue_connection' => config('queue.default'),
-            'admin_user_id' => auth()->id(),
-        ]);
+        $stripeAfterSave = PaymentMethod::getConfig('stripe');
+        $runCatalogSync = $credentialsChanged || $environmentChanged || $stripeCredentialsAddedFirstTime;
+        $needsInfrastructure = $runCatalogSync || $this->stripeInfrastructureIncomplete($stripeAfterSave);
 
-        StripePaymentSettingsProvisioningJob::dispatch(
-            auth()->id(),
-            $request->stripe_mode_environment,
-            [
-                'old_environment' => $oldStripe?->mode_environment,
-                'credentials_changed' => $credentialsChanged,
-                'environment_changed' => $environmentChanged,
-                'first_time_credentials' => $stripeCredentialsAddedFirstTime,
-            ]
-        );
+        $provisionMessage = 'Payment method settings saved.';
 
-        return redirect()->back()->with('success', 'Payment method settings updated successfully. Stripe webhook endpoint and signing secret are synced for Cashier when the queue job completes.');
+        if ($needsInfrastructure && $stripeAfterSave) {
+            Log::info('Stripe payment settings auto-provisioning (on save)', [
+                'admin_user_id' => auth()->id(),
+                'active_environment' => $request->stripe_mode_environment,
+                'run_catalog_sync' => $runCatalogSync,
+            ]);
+
+            $provisionResult = app(StripePaymentSettingsProvisioningService::class)->provisionAfterAdminSave(
+                (int) auth()->id(),
+                $request->stripe_mode_environment,
+                $credentialsChanged || $environmentChanged || $stripeCredentialsAddedFirstTime,
+                $runCatalogSync,
+            );
+
+            $provisionMessage = $provisionResult['message'];
+        }
+
+        return redirect()->back()->with('success', $provisionMessage);
     }
 
     private function stripeEnvironmentKeysChanged(PaymentMethod $old, Request $request, string $environment): bool
@@ -239,6 +244,41 @@ class PaymentMethodSettingController extends Controller
     {
         return $this->normStripeKey($old->live_publishable_key) !== $this->normStripeKey($request->stripe_live_publishable_key)
             || $this->normStripeKey($old->live_secret_key) !== $this->normStripeKey($request->stripe_live_secret_key);
+    }
+
+    /**
+     * @param  array<string, mixed>  $stripeConfig
+     * @return array<string, mixed>
+     */
+    private function stripeInfrastructureIncomplete(?PaymentMethod $stripe): bool
+    {
+        if (! $stripe) {
+            return false;
+        }
+
+        foreach (['sandbox', 'test', 'live'] as $environment) {
+            $secretKey = trim((string) ($stripe->{"{$environment}_secret_key"} ?? ''));
+            $publishableKey = trim((string) ($stripe->{"{$environment}_publishable_key"} ?? ''));
+
+            if ($secretKey === '' || $publishableKey === '') {
+                continue;
+            }
+
+            if (trim((string) ($stripe->{"{$environment}_webhook_secret"} ?? '')) === '') {
+                return true;
+            }
+
+            if (trim((string) ($stripe->{"{$environment}_customer_id"} ?? '')) === '') {
+                return true;
+            }
+
+            $donationColumn = StripeConfigService::donationProductColumn($environment);
+            if (trim((string) ($stripe->{$donationColumn} ?? '')) === '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
