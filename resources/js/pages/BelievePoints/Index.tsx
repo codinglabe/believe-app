@@ -223,6 +223,18 @@ function isManualMethod(method: BelievePointsPaymentMethodId): boolean {
   return method === "cashapp" || method === "zelle" || method === "venmo_manual"
 }
 
+/** Refunded / failed transfers restore BP — show as credit (+), not debit (−). */
+function isWalletTransferCredit(status: string): boolean {
+  return status === "refunded" || status === "failed"
+}
+
+function walletTransferAmountLabel(status: string): string {
+  if (status === "refunded") return "Returned to Available BP"
+  if (status === "failed") return "Wallet transfer not completed"
+  if (status === "pending" || status === "submitted") return "Moving to Believe wallet"
+  return "Moved to Believe wallet"
+}
+
 function defaultPaymentMethod(available: Record<string, boolean>): BelievePointsPaymentMethodId {
   if (available.stripe_ach) return "stripe_ach"
   if (available.stripe_card) return "stripe_card"
@@ -1437,8 +1449,9 @@ export default function BelievePointsIndex({
                   </div>
                 ) : (
                   <ul className="space-y-2">
-                    {recentActivity.map((item) =>
-                      item.kind === "purchase" ? (
+                    {recentActivity.map((item) => {
+                      if (item.kind === "purchase") {
+                        return (
                         <li
                           key={`purchase-${item.purchase.id}`}
                           className="rounded-xl border bg-card p-3.5 transition-colors hover:bg-muted/40"
@@ -1511,7 +1524,17 @@ export default function BelievePointsIndex({
                             </div>
                           )}
                         </li>
-                      ) : (
+                        )
+                      }
+
+                      const isCredit = isWalletTransferCredit(item.transfer.status)
+                      const amountLabel = formatPoints(String(item.transfer.amount))
+                      const activityDate =
+                        isCredit && item.transfer.completed_at
+                          ? item.transfer.completed_at
+                          : item.transfer.created_at
+
+                      return (
                         <li
                           key={`wallet-transfer-${item.transfer.id}`}
                           className="rounded-xl border bg-card p-3.5 transition-colors hover:bg-muted/40"
@@ -1522,32 +1545,51 @@ export default function BelievePointsIndex({
                                 <Wallet className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                               </div>
                               <div className="min-w-0">
-                                <span className="font-semibold tabular-nums text-foreground">
-                                  -{formatPoints(String(item.transfer.amount))} BP
+                                <span
+                                  className={cn(
+                                    "font-semibold tabular-nums",
+                                    isCredit
+                                      ? "text-emerald-700 dark:text-emerald-300"
+                                      : "text-foreground",
+                                  )}
+                                >
+                                  {isCredit ? "+" : "−"}
+                                  {amountLabel} BP
                                 </span>
-                                <p className="text-xs text-muted-foreground">Moved to Believe wallet</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {walletTransferAmountLabel(item.transfer.status)}
+                                </p>
                               </div>
                             </div>
                             {getWalletTransferStatusBadge(item.transfer)}
                           </div>
                           <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
-                            <span className="font-medium tabular-nums text-foreground">
-                              {formatPoints(String(item.transfer.amount))} BP
+                            <span
+                              className={cn(
+                                "font-medium tabular-nums",
+                                isCredit ? "text-emerald-700 dark:text-emerald-300" : "text-foreground",
+                              )}
+                            >
+                              {isCredit ? "+" : "−"}
+                              {amountLabel} BP
                             </span>
                             <span>
-                              {new Date(item.transfer.created_at).toLocaleDateString(undefined, {
+                              {new Date(activityDate).toLocaleDateString(undefined, {
                                 month: "short",
                                 day: "numeric",
                                 year: "numeric",
                               })}
                             </span>
                           </div>
-                          {item.transfer.status === "refunded" && item.transfer.failure_message && (
-                            <p className="mt-2 text-xs leading-snug text-muted-foreground">{item.transfer.failure_message}</p>
+                          {(item.transfer.status === "refunded" || item.transfer.status === "failed") &&
+                            item.transfer.failure_message && (
+                            <p className="mt-2 text-xs leading-snug text-muted-foreground">
+                              {item.transfer.failure_message}
+                            </p>
                           )}
                         </li>
-                      ),
-                    )}
+                      )
+                    })}
                   </ul>
                 )}
               </CardContent>

@@ -190,10 +190,20 @@ function formatMoney(n: number, currency: string) {
 
 function formatAmountForLedger(pointsPay: boolean, n: number, currency: string, className?: string) {
   if (pointsPay) {
+    const sign = n > 0 ? "+" : n < 0 ? "−" : ""
+    const abs = Math.abs(n)
     return (
-      <span className={cn("inline-flex items-center justify-end gap-1.5 tabular-nums", className)}>
+      <span
+        className={cn(
+          "inline-flex items-center justify-end gap-1.5 tabular-nums",
+          n > 0 && "text-emerald-700 dark:text-emerald-300",
+          n < 0 && "text-foreground",
+          className,
+        )}
+      >
         <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-        {n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pts
+        {sign}
+        {abs.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pts
       </span>
     )
   }
