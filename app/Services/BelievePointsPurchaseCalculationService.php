@@ -50,8 +50,10 @@ final class BelievePointsPurchaseCalculationService
     }
 
     /**
-     * Believe Reward Points earned for a qualifying purchase: a flat per-transaction
-     * award based on the buyer's Free/Prime membership tier (minimum purchase applies).
+     * Believe Reward Points earned for one qualifying BP purchase transaction.
+     *
+     * Qualifies when purchased BP >= believe_points_min_purchase (default 10).
+     * Awards a flat tier amount (Free vs Prime); larger purchases do not increase BRP.
      */
     public static function brpEarned(float $bpAmountUsd, ?User $user = null): float
     {

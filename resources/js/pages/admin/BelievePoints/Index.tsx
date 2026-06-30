@@ -603,7 +603,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.free_brp_award && <p className="text-sm text-red-600">{errors.free_brp_award}</p>}
-                    <p className="text-xs text-muted-foreground">BRP earned per qualifying BP purchase for Free (non-Prime) supporters. Default: 5 BRP per transaction.</p>
+                    <p className="text-xs text-muted-foreground">BRP earned per qualifying BP purchase for Free (non-Prime) supporters. Default: 1 BRP per transaction.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -617,7 +617,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.prime_brp_award && <p className="text-sm text-red-600">{errors.prime_brp_award}</p>}
-                    <p className="text-xs text-muted-foreground">BRP earned per qualifying BP purchase for Prime supporters. Default: 10 BRP per transaction.</p>
+                    <p className="text-xs text-muted-foreground">BRP earned per qualifying BP purchase for Prime supporters. Default: 2 BRP per transaction.</p>
                   </div>
 
                   <div className="space-y-2 sm:col-span-2">

@@ -267,9 +267,9 @@ export default function BelievePointsIndex({
     brp_value: 0.005,
     platform_fee_percent: 1,
     processing_fee_percent: 1,
-    free_brp_award: 5,
-    prime_brp_award: 10,
-    brp_award: 5,
+    free_brp_award: 1,
+    prime_brp_award: 2,
+    brp_award: 1,
     card_hold_hours: 0,
   }
   const availableMethods = availableMethodsProp
@@ -284,7 +284,7 @@ export default function BelievePointsIndex({
     feePreview?.brp_award ??
     feePreview?.brp_earned ??
     purchaseSettings.brp_award ??
-    5
+    1
   const cardSettlementDays = purchaseSettings.card_settlement_business_days ?? 1
   const achSettlementDays = purchaseSettings.ach_settlement_business_days ?? 3
   const cardSettlementLabel =
@@ -725,7 +725,7 @@ export default function BelievePointsIndex({
     <>
       <div className="mx-auto w-full min-w-0 max-w-6xl space-y-8">
         <div className="space-y-3">
-          {flash?.success && (
+          {flash?.success && !quickAddOpen && (
             <Alert className="border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/25">
               <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
               <AlertDescription className="text-green-900 dark:text-green-100">{flash.success}</AlertDescription>
@@ -769,7 +769,7 @@ export default function BelievePointsIndex({
                   </div>
                   <Button
                     type="button"
-                    className="h-10 shrink-0 bg-purple-600 px-5 hover:bg-purple-700"
+                    className="h-10 shrink-0 border border-emerald-950/80 !bg-gradient-to-b !from-emerald-700 !via-emerald-800 !to-emerald-950 px-5 font-semibold !text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18),0_4px_0_0_#064e3b,0_6px_14px_rgba(0,0,0,0.35)] transition-all hover:!from-emerald-600 hover:!via-emerald-700 hover:!to-emerald-900 hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22),0_4px_0_0_#064e3b,0_8px_16px_rgba(0,0,0,0.4)] active:translate-y-1 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.35),0_1px_0_0_#064e3b]"
                     onClick={() => openQuickAddBelievePoints(quickBuyDefaultMethod.id)}
                   >
                     <Coins className="mr-2 h-4 w-4" />
@@ -1584,11 +1584,7 @@ export default function BelievePointsIndex({
           currentBalance={currentBalance}
           feePreview={feePreview}
           feePreviewUrl={route("believe-points.index")}
-          paymentSavedMessage={
-            flash?.success
-              ? `${flash.success} Add Believe Points now with your saved ${quickAddRail === "bank" ? "bank account" : "card"}.`
-              : "Buy Believe Points instantly with your saved payment method."
-          }
+          paymentSavedMessage="Buy Believe Points instantly with your saved payment method."
         />
       )}
     </>

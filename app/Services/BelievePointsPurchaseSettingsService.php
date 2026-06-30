@@ -51,11 +51,11 @@ final class BelievePointsPurchaseSettingsService
 
     public const DEFAULT_PROCESSING_FEE_PERCENT = 1.0;
 
-    /** Believe Reward Points earned per qualifying BP purchase by a Free supporter. */
-    public const DEFAULT_FREE_BRP_AWARD = 5.0;
+    /** Believe Reward Points earned per qualifying BP purchase (>= min) by a Free supporter. */
+    public const DEFAULT_FREE_BRP_AWARD = 1.0;
 
-    /** Believe Reward Points earned per qualifying BP purchase by a Prime supporter. */
-    public const DEFAULT_PRIME_BRP_AWARD = 10.0;
+    /** Believe Reward Points earned per qualifying BP purchase (>= min) by a Prime supporter. */
+    public const DEFAULT_PRIME_BRP_AWARD = 2.0;
 
     public const DEFAULT_CARD_HOLD_HOURS = 0;
 

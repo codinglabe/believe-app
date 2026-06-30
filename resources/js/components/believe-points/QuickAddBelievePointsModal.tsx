@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { router } from "@inertiajs/react"
 import {
+  CheckCircle2,
   Coins,
   CreditCard,
   DollarSign,
@@ -57,6 +58,16 @@ interface QuickAddBelievePointsModalProps {
   /** Current page URL used for partial fee-preview reloads (payment methods or believe-points). */
   feePreviewUrl: string
   paymentSavedMessage?: string
+  onPurchaseSuccess?: () => void
+}
+
+type QuickAddPhase = "form" | "success"
+
+interface QuickAddSuccessDetails {
+  message: string
+  bpAmount: number
+  brpEarned: number
+  checkoutTotal: number | null
 }
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250]
@@ -100,6 +111,7 @@ export function QuickAddBelievePointsModal({
   feePreview,
   feePreviewUrl,
   paymentSavedMessage,
+  onPurchaseSuccess,
 }: QuickAddBelievePointsModalProps) {
   const presets = useMemo(
     () => PRESET_AMOUNTS.filter((a) => a >= minPurchaseAmount && a <= maxPurchaseAmount),
@@ -116,6 +128,8 @@ export function QuickAddBelievePointsModal({
   const [policyAccepted, setPolicyAccepted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feePreviewLoading, setFeePreviewLoading] = useState(false)
+  const [phase, setPhase] = useState<QuickAddPhase>("form")
+  const [successDetails, setSuccessDetails] = useState<QuickAddSuccessDetails | null>(null)
   const feePreviewSkipRef = useRef(true)
 
   const savedMethod = useMemo(
@@ -136,7 +150,11 @@ export function QuickAddBelievePointsModal({
       : `after ${purchaseSettings.card_hold_hours}-hour security review`
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setPhase("form")
+      setSuccessDetails(null)
+      return
+    }
     setAmount(defaultAmount)
     setPolicyAccepted(false)
     setIsSubmitting(false)
@@ -204,6 +222,20 @@ export function QuickAddBelievePointsModal({
         saved_payment_method_id: savedPaymentMethodId,
       },
       {
+        preserveScroll: true,
+        onSuccess: (page) => {
+          const flashSuccess = (page.props as { flash?: { success?: string } }).flash?.success
+          setSuccessDetails({
+            message:
+              flashSuccess ??
+              `Successfully purchased ${formatPoints(amountNum)} Believe Points!`,
+            bpAmount: amountNum,
+            brpEarned: brpAward,
+            checkoutTotal: feePreview?.checkout_total_usd ?? null,
+          })
+          setPhase("success")
+          onPurchaseSuccess?.()
+        },
         onError: () => {
           showErrorToast("Could not start your Believe Points purchase. Please try again.")
           setIsSubmitting(false)
@@ -213,12 +245,77 @@ export function QuickAddBelievePointsModal({
     )
   }
 
+  const handleClose = () => onOpenChange(false)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90vh,680px)] gap-0 overflow-y-auto p-0 sm:max-w-md">
-        <div className="h-1.5 w-full bg-gradient-to-r from-purple-600 via-violet-500 to-blue-600" aria-hidden />
+        {phase === "success" && successDetails ? (
+          <>
+            <div className="h-1.5 w-full bg-gradient-to-r from-emerald-600 via-green-500 to-teal-600" aria-hidden />
+            <div className="space-y-0 px-5 py-6 sm:px-6">
+              <div className="flex flex-col items-center text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/50">
+                  <CheckCircle2 className="h-9 w-9 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <DialogHeader className="mt-4 space-y-2">
+                  <DialogTitle className="text-xl">Purchase complete</DialogTitle>
+                  <DialogDescription className="text-sm leading-relaxed">
+                    {successDetails.message}
+                  </DialogDescription>
+                </DialogHeader>
+              </div>
 
+              <div className="mt-5 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-800 dark:bg-emerald-950/25">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Believe Points added</span>
+                  <span className="text-lg font-bold tabular-nums text-emerald-800 dark:text-emerald-200">
+                    +{formatPoints(successDetails.bpAmount)} BP
+                  </span>
+                </div>
+                {successDetails.brpEarned > 0 && (
+                  <div className="flex items-center justify-between gap-3 border-t border-emerald-200/80 pt-3 text-sm dark:border-emerald-800/80">
+                    <span className="text-muted-foreground">Reward points earned</span>
+                    <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-300">
+                      +{formatPoints(successDetails.brpEarned)} BRP
+                    </span>
+                  </div>
+                )}
+                {successDetails.checkoutTotal != null && (
+                  <div className="flex items-center justify-between gap-3 border-t border-emerald-200/80 pt-3 text-sm dark:border-emerald-800/80">
+                    <span className="text-muted-foreground">Total charged</span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatCurrency(successDetails.checkoutTotal)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">
+                Your BP are credited as Processing BP until settlement completes.
+                {currentBalance != null && (
+                  <>
+                    {" "}
+                    Updated balance:{" "}
+                    <span className="font-medium text-foreground">
+                      {formatPoints(currentBalance)} BP
+                    </span>
+                  </>
+                )}
+              </p>
+
+              <Button
+                type="button"
+                className="mt-6 h-11 w-full border border-emerald-950/80 !bg-gradient-to-b !from-emerald-700 !via-emerald-800 !to-emerald-950 font-semibold !text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18),0_4px_0_0_#064e3b,0_6px_14px_rgba(0,0,0,0.35)]"
+                onClick={handleClose}
+              >
+                Done
+              </Button>
+            </div>
+          </>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-0">
+          <div className="h-1.5 w-full bg-gradient-to-r from-purple-600 via-violet-500 to-blue-600" aria-hidden />
           <DialogHeader className="space-y-2 px-5 pb-2 pt-5 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
@@ -376,6 +473,7 @@ export function QuickAddBelievePointsModal({
             </Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   )
