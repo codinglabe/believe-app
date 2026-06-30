@@ -31,41 +31,107 @@ class PaymentMethodSettingController extends Controller
         $paypal = PaymentMethod::getConfig('paypal');
         $stripe = PaymentMethod::getConfig('stripe');
 
-        $settings = [
+        return Inertia::render('settings/payment-methods', [
+            'settings' => $this->buildSettingsPayload($paypal, $stripe),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSettingsPayload(?PaymentMethod $paypal, ?PaymentMethod $stripe): array
+    {
+        return [
             'paypal_client_id' => $paypal->client_id ?? null,
             'paypal_client_secret' => $paypal->client_secret ?? null,
             'paypal_mode_environment' => $paypal->mode_environment ?? 'sandbox',
 
-            'stripe_mode_environment' => $stripe->mode_environment ?? 'sandbox',
+            'stripe_mode_environment' => $stripe?->mode_environment ?? 'sandbox',
 
             // Sandbox credentials (Bridge Issuing / isolated sandbox account)
-            'stripe_sandbox_publishable_key' => $stripe->sandbox_publishable_key ?? null,
-            'stripe_sandbox_secret_key' => $stripe->sandbox_secret_key ?? null,
-            'stripe_sandbox_customer_id' => $stripe->sandbox_customer_id ?? null,
-            'stripe_sandbox_account_id' => $stripe->sandbox_account_id ?? null,
+            'stripe_sandbox_publishable_key' => $stripe?->sandbox_publishable_key ?? null,
+            'stripe_sandbox_secret_key' => $stripe?->sandbox_secret_key ?? null,
+            'stripe_sandbox_customer_id' => $stripe?->sandbox_customer_id ?? null,
+            'stripe_sandbox_account_id' => $stripe?->sandbox_account_id ?? null,
 
             // Test credentials
-            'stripe_test_publishable_key' => $stripe->test_publishable_key ?? null,
-            'stripe_test_secret_key' => $stripe->test_secret_key ?? null,
-            'stripe_test_customer_id' => $stripe->test_customer_id ?? null,
-            'stripe_test_account_id' => $stripe->test_account_id ?? null,
+            'stripe_test_publishable_key' => $stripe?->test_publishable_key ?? null,
+            'stripe_test_secret_key' => $stripe?->test_secret_key ?? null,
+            'stripe_test_customer_id' => $stripe?->test_customer_id ?? null,
+            'stripe_test_account_id' => $stripe?->test_account_id ?? null,
 
             // Separate live credentials
-            'stripe_live_publishable_key' => $stripe->live_publishable_key ?? null,
-            'stripe_live_secret_key' => $stripe->live_secret_key ?? null,
-            'stripe_live_customer_id' => $stripe->live_customer_id ?? null,
-            'stripe_live_account_id' => $stripe->live_account_id ?? null,
+            'stripe_live_publishable_key' => $stripe?->live_publishable_key ?? null,
+            'stripe_live_secret_key' => $stripe?->live_secret_key ?? null,
+            'stripe_live_customer_id' => $stripe?->live_customer_id ?? null,
+            'stripe_live_account_id' => $stripe?->live_account_id ?? null,
 
             'stripe_webhook_url' => StripeAdminProvisioningService::webhookEndpointUrl(),
             'stripe_webhook_events' => StripeAdminProvisioningService::requiredWebhookEvents(),
-            'stripe_sandbox_webhook_configured' => ! empty($stripe->sandbox_webhook_secret),
-            'stripe_test_webhook_configured' => ! empty($stripe->test_webhook_secret),
-            'stripe_live_webhook_configured' => ! empty($stripe->live_webhook_secret),
+            'stripe_sandbox_setup' => $this->stripeEnvironmentSetupSummary($stripe, 'sandbox'),
+            'stripe_test_setup' => $this->stripeEnvironmentSetupSummary($stripe, 'test'),
+            'stripe_live_setup' => $this->stripeEnvironmentSetupSummary($stripe, 'live'),
         ];
+    }
 
-        return Inertia::render('settings/payment-methods', [
-            'settings' => $settings,
-        ]);
+    /**
+     * @return array{
+     *     keys_configured: bool,
+     *     webhook_configured: bool,
+     *     customer_configured: bool,
+     *     setup_complete: bool,
+     *     webhook_secret_preview: string|null,
+     *     webhook_endpoint_id: string|null
+     * }
+     */
+    private function stripeEnvironmentSetupSummary(?PaymentMethod $stripe, string $environment): array
+    {
+        if (! $stripe) {
+            return [
+                'keys_configured' => false,
+                'webhook_configured' => false,
+                'customer_configured' => false,
+                'setup_complete' => false,
+                'webhook_secret_preview' => null,
+                'webhook_endpoint_id' => null,
+            ];
+        }
+
+        $publishableKey = trim((string) ($stripe->{"{$environment}_publishable_key"} ?? ''));
+        $secretKey = trim((string) ($stripe->{"{$environment}_secret_key"} ?? ''));
+        $webhookSecret = trim((string) ($stripe->{"{$environment}_webhook_secret"} ?? ''));
+        $customerId = trim((string) ($stripe->{"{$environment}_customer_id"} ?? ''));
+        $endpointIds = is_array($stripe->additional_config['stripe_webhook_endpoints'] ?? null)
+            ? $stripe->additional_config['stripe_webhook_endpoints']
+            : [];
+        $webhookEndpointId = trim((string) ($endpointIds[$environment] ?? ''));
+
+        $keysConfigured = $publishableKey !== '' && $secretKey !== '';
+        $webhookConfigured = $webhookSecret !== '' && $webhookEndpointId !== '';
+        $customerConfigured = $customerId !== '';
+
+        return [
+            'keys_configured' => $keysConfigured,
+            'webhook_configured' => $webhookConfigured,
+            'customer_configured' => $customerConfigured,
+            'setup_complete' => $keysConfigured && $webhookConfigured && $customerConfigured,
+            'webhook_secret_preview' => $webhookConfigured ? $this->maskWebhookSecret($webhookSecret) : null,
+            'webhook_endpoint_id' => $webhookEndpointId !== '' ? $webhookEndpointId : null,
+        ];
+    }
+
+    private function maskWebhookSecret(string $secret): string
+    {
+        $secret = trim($secret);
+        if ($secret === '') {
+            return '';
+        }
+
+        if (strlen($secret) <= 12) {
+            return str_repeat('•', strlen($secret));
+        }
+
+        return substr($secret, 0, 8).str_repeat('•', max(4, strlen($secret) - 12)).substr($secret, -4);
     }
 
     /**
@@ -141,6 +207,8 @@ class PaymentMethodSettingController extends Controller
             'live_secret_key' => $request->stripe_live_secret_key,
         ];
 
+        $stripeConfig = $this->mergeStripeKeysFromExisting($stripeConfig, $oldStripe);
+
         foreach (['sandbox', 'test', 'live'] as $environment) {
             $field = "{$environment}_webhook_secret";
             $submitted = trim((string) $request->input("stripe_{$field}", ''));
@@ -172,17 +240,22 @@ class PaymentMethodSettingController extends Controller
             $stripeConfig['live_donation_product_id'] = null;
         }
 
+        if ($oldStripe && $credentialsChanged) {
+            $stripeConfig = $this->clearStripeWebhookEndpointIds($stripeConfig, $oldStripe, $request);
+        }
+
         $stripeConfig = $this->attachResolvedStripeAccountIds($stripeConfig);
 
         PaymentMethod::setConfig('stripe', $stripeConfig);
 
         $stripeAfterSave = PaymentMethod::getConfig('stripe');
         $runCatalogSync = $credentialsChanged || $environmentChanged || $stripeCredentialsAddedFirstTime;
-        $needsInfrastructure = $runCatalogSync || $this->stripeInfrastructureIncomplete($stripeAfterSave);
+        $hasStripeKeys = $this->stripeHasAnyCompleteKeyPair($stripeAfterSave);
 
         $provisionMessage = 'Payment method settings saved.';
+        $flashKey = 'success';
 
-        if ($needsInfrastructure && $stripeAfterSave) {
+        if ($hasStripeKeys && $stripeAfterSave) {
             Log::info('Stripe payment settings auto-provisioning (on save)', [
                 'admin_user_id' => auth()->id(),
                 'active_environment' => $request->stripe_mode_environment,
@@ -197,9 +270,12 @@ class PaymentMethodSettingController extends Controller
             );
 
             $provisionMessage = $provisionResult['message'];
+            if (! ($provisionResult['success'] ?? false)) {
+                $flashKey = 'error';
+            }
         }
 
-        return redirect()->back()->with('success', $provisionMessage);
+        return redirect()->route('payment-methods.index')->with($flashKey, $provisionMessage);
     }
 
     private function stripeEnvironmentKeysChanged(PaymentMethod $old, Request $request, string $environment): bool
@@ -250,7 +326,28 @@ class PaymentMethodSettingController extends Controller
      * @param  array<string, mixed>  $stripeConfig
      * @return array<string, mixed>
      */
-    private function stripeInfrastructureIncomplete(?PaymentMethod $stripe): bool
+    private function mergeStripeKeysFromExisting(array $stripeConfig, ?PaymentMethod $oldStripe): array
+    {
+        if (! $oldStripe) {
+            return $stripeConfig;
+        }
+
+        foreach (['sandbox', 'test', 'live'] as $environment) {
+            foreach (['publishable_key', 'secret_key'] as $type) {
+                $field = "{$environment}_{$type}";
+                $submitted = trim((string) ($stripeConfig[$field] ?? ''));
+                $existing = trim((string) ($oldStripe->{$field} ?? ''));
+
+                if ($submitted === '' && $existing !== '') {
+                    $stripeConfig[$field] = $oldStripe->{$field};
+                }
+            }
+        }
+
+        return $stripeConfig;
+    }
+
+    private function stripeHasAnyCompleteKeyPair(?PaymentMethod $stripe): bool
     {
         if (! $stripe) {
             return false;
@@ -260,25 +357,35 @@ class PaymentMethodSettingController extends Controller
             $secretKey = trim((string) ($stripe->{"{$environment}_secret_key"} ?? ''));
             $publishableKey = trim((string) ($stripe->{"{$environment}_publishable_key"} ?? ''));
 
-            if ($secretKey === '' || $publishableKey === '') {
-                continue;
-            }
-
-            if (trim((string) ($stripe->{"{$environment}_webhook_secret"} ?? '')) === '') {
-                return true;
-            }
-
-            if (trim((string) ($stripe->{"{$environment}_customer_id"} ?? '')) === '') {
-                return true;
-            }
-
-            $donationColumn = StripeConfigService::donationProductColumn($environment);
-            if (trim((string) ($stripe->{$donationColumn} ?? '')) === '') {
+            if ($secretKey !== '' && $publishableKey !== '') {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $stripeConfig
+     * @return array<string, mixed>
+     */
+    private function clearStripeWebhookEndpointIds(array $stripeConfig, PaymentMethod $oldStripe, Request $request): array
+    {
+        $additionalConfig = is_array($oldStripe->additional_config) ? $oldStripe->additional_config : [];
+        $endpoints = is_array($additionalConfig['stripe_webhook_endpoints'] ?? null)
+            ? $additionalConfig['stripe_webhook_endpoints']
+            : [];
+
+        foreach (['sandbox', 'test', 'live'] as $environment) {
+            if ($this->stripeEnvironmentKeysChanged($oldStripe, $request, $environment)) {
+                unset($endpoints[$environment]);
+            }
+        }
+
+        $additionalConfig['stripe_webhook_endpoints'] = $endpoints;
+        $stripeConfig['additional_config'] = $additionalConfig;
+
+        return $stripeConfig;
     }
 
     /**

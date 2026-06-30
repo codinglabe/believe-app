@@ -4,10 +4,11 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
+use Laravel\Cashier\Cashier;
 use Stripe\Exception\ApiErrorException;
-use Stripe\Stripe;
 use Stripe\StripeClient;
-use Stripe\WebhookEndpoint;
+use Throwable;
 
 final class StripeAdminProvisioningService
 {
@@ -20,30 +21,40 @@ final class StripeAdminProvisioningService
     {
         $configured = config('cashier.webhook.events');
 
-        if (is_array($configured) && $configured !== []) {
-            return array_values(array_unique(array_map('strval', $configured)));
-        }
+        $events = is_array($configured) && $configured !== []
+            ? array_values(array_unique(array_map('strval', $configured)))
+            : [
+                'payment_intent.succeeded',
+                'payment_intent.payment_failed',
+                'checkout.session.completed',
+                'balance.available',
+                'payout.paid',
+                'charge.refunded',
+                'charge.dispute.created',
+                'customer.subscription.created',
+                'customer.subscription.updated',
+                'customer.subscription.deleted',
+                'invoice.payment_succeeded',
+                'invoice.payment_failed',
+            ];
 
-        return [
-            'payment_intent.succeeded',
-            'payment_intent.payment_failed',
-            'checkout.session.completed',
-            'balance.available',
-            'balance_transaction.created',
-            'balance_transaction.updated',
-            'payout.paid',
-            'charge.refunded',
-            'charge.dispute.created',
-            'customer.subscription.created',
-            'customer.subscription.updated',
-            'customer.subscription.deleted',
-            'invoice.payment_succeeded',
-            'invoice.payment_failed',
-        ];
+        // Stripe does not expose balance_transaction.* webhook event types.
+        return array_values(array_filter(
+            $events,
+            static fn (string $event): bool => ! str_starts_with($event, 'balance_transaction.')
+        ));
     }
 
     public static function webhookEndpointUrl(): string
     {
+        try {
+            if (Route::has('cashier.webhook')) {
+                return rtrim(route('cashier.webhook'), '/');
+            }
+        } catch (Throwable) {
+            // Fall back to APP_URL below.
+        }
+
         $base = rtrim((string) config('app.url'), '/');
         $path = trim((string) config('cashier.path', 'stripe'), '/');
 
@@ -51,49 +62,50 @@ final class StripeAdminProvisioningService
     }
 
     /**
-     * Ensure Cashier webhook exists at /stripe/webhook and return signing secret.
-     *
-     * When $recreate is true (or no secret can be retrieved), deletes any existing endpoint
-     * at this URL and creates a fresh one so Stripe returns whsec_ automatically.
-     *
-     * @return array{id: string|null, secret: string|null, recreated: bool}
+     * @return array{id: string|null, secret: string|null, recreated: bool, created: bool, error: string|null, url: string}
      */
     public function ensureCashierWebhook(
         string $secretKey,
         string $environment,
         bool $recreate = false,
     ): array {
-        try {
-            Stripe::setApiKey($secretKey);
+        $webhookUrl = self::webhookEndpointUrl();
+        $empty = [
+            'id' => null,
+            'secret' => null,
+            'recreated' => false,
+            'created' => false,
+            'error' => null,
+            'url' => $webhookUrl,
+        ];
 
-            $webhookUrl = self::webhookEndpointUrl();
+        try {
+            $stripe = new StripeClient(['api_key' => $secretKey]);
             $requiredEvents = self::requiredWebhookEvents();
 
-            $existingWebhook = null;
-            foreach (WebhookEndpoint::all(['limit' => 100])->data as $webhook) {
-                if (($webhook->url ?? '') === $webhookUrl) {
-                    $existingWebhook = $webhook;
-                    break;
-                }
-            }
+            $existingWebhook = $this->findWebhookAtUrl($stripe, $webhookUrl);
 
             if ($existingWebhook && ! $recreate) {
-                $this->syncWebhookEvents($existingWebhook, $requiredEvents, $environment);
+                $this->syncWebhookEvents($stripe, $existingWebhook, $requiredEvents, $environment);
 
                 return [
                     'id' => (string) ($existingWebhook->id ?? ''),
                     'secret' => null,
                     'recreated' => false,
+                    'created' => false,
+                    'error' => null,
+                    'url' => $webhookUrl,
                 ];
             }
 
             if ($existingWebhook && $recreate) {
                 try {
-                    WebhookEndpoint::retrieve($existingWebhook->id)->delete();
-                    Log::info("Replaced existing Stripe webhook for {$environment} mode to obtain signing secret", [
+                    $stripe->webhookEndpoints->delete($existingWebhook->id);
+                    Log::info("Replaced existing Stripe webhook for {$environment} mode", [
                         'webhook_id' => $existingWebhook->id,
+                        'url' => $webhookUrl,
                     ]);
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     Log::warning("Could not delete existing Stripe webhook for {$environment} mode", [
                         'webhook_id' => $existingWebhook->id ?? null,
                         'error' => $e->getMessage(),
@@ -101,10 +113,11 @@ final class StripeAdminProvisioningService
                 }
             }
 
-            $webhook = WebhookEndpoint::create([
+            $webhook = $stripe->webhookEndpoints->create(array_filter([
                 'url' => $webhookUrl,
                 'enabled_events' => $requiredEvents,
-            ]);
+                'api_version' => Cashier::STRIPE_VERSION,
+            ]));
 
             $secret = $webhook->secret ?? $webhook->signing_secret ?? null;
             if (! $secret && isset($webhook->secrets) && is_array($webhook->secrets) && count($webhook->secrets) > 0) {
@@ -119,6 +132,7 @@ final class StripeAdminProvisioningService
             } else {
                 Log::warning("Cashier Stripe webhook created without signing secret for {$environment} mode", [
                     'webhook_id' => $webhook->id ?? null,
+                    'url' => $webhookUrl,
                 ]);
             }
 
@@ -126,13 +140,26 @@ final class StripeAdminProvisioningService
                 'id' => (string) ($webhook->id ?? ''),
                 'secret' => is_string($secret) && $secret !== '' ? $secret : null,
                 'recreated' => (bool) $existingWebhook,
+                'created' => true,
+                'error' => is_string($secret) && $secret !== '' ? null : 'Stripe created the webhook but did not return a signing secret.',
+                'url' => $webhookUrl,
             ];
         } catch (ApiErrorException $e) {
+            $message = $e->getMessage();
             Log::error("Failed to ensure Cashier webhook for {$environment} mode", [
+                'url' => $webhookUrl,
+                'error' => $message,
+                'stripe_code' => $e->getStripeCode(),
+            ]);
+
+            return array_merge($empty, ['error' => $message]);
+        } catch (Throwable $e) {
+            Log::error("Unexpected error ensuring Cashier webhook for {$environment} mode", [
+                'url' => $webhookUrl,
                 'error' => $e->getMessage(),
             ]);
 
-            return ['id' => null, 'secret' => null, 'recreated' => false];
+            return array_merge($empty, ['error' => $e->getMessage()]);
         }
     }
 
@@ -144,10 +171,30 @@ final class StripeAdminProvisioningService
         return $this->ensureCashierWebhook($secretKey, $environment, true)['secret'];
     }
 
+    private function findWebhookAtUrl(StripeClient $stripe, string $webhookUrl): ?object
+    {
+        $target = $this->normalizeWebhookUrl($webhookUrl);
+
+        foreach ($stripe->webhookEndpoints->all(['limit' => 100])->data as $webhook) {
+            if ($this->normalizeWebhookUrl((string) ($webhook->url ?? '')) === $target) {
+                return $webhook;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeWebhookUrl(string $url): string
+    {
+        $url = trim($url);
+
+        return rtrim($url, '/');
+    }
+
     /**
      * @param  list<string>  $requiredEvents
      */
-    private function syncWebhookEvents(object $webhook, array $requiredEvents, string $environment): void
+    private function syncWebhookEvents(StripeClient $stripe, object $webhook, array $requiredEvents, string $environment): void
     {
         $webhookId = (string) ($webhook->id ?? '');
         if ($webhookId === '') {
@@ -165,7 +212,7 @@ final class StripeAdminProvisioningService
         sort($mergedEvents);
 
         try {
-            WebhookEndpoint::update($webhookId, [
+            $stripe->webhookEndpoints->update($webhookId, [
                 'enabled_events' => $mergedEvents,
             ]);
 
@@ -173,7 +220,7 @@ final class StripeAdminProvisioningService
                 'webhook_id' => $webhookId,
                 'added_events' => $missingEvents,
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning("Failed to update Stripe webhook enabled_events for {$environment} mode", [
                 'webhook_id' => $webhookId,
                 'added_events' => $missingEvents,
@@ -188,8 +235,6 @@ final class StripeAdminProvisioningService
     public function createOrFetchStripeCustomer(string $secretKey, string $environment, User $user): ?string
     {
         try {
-            Stripe::setApiKey($secretKey);
-
             $stripe = new StripeClient(['api_key' => $secretKey]);
 
             $existingId = StripeCustomerLookupService::findExistingCustomerId(

@@ -12,6 +12,15 @@ import { CreditCard, ShoppingCartIcon as Paypal, Settings, Eye, EyeOff } from "l
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SettingsLayout from "@/layouts/settings/layout"
 
+interface StripeEnvironmentSetup {
+  keys_configured: boolean
+  webhook_configured: boolean
+  customer_configured: boolean
+  setup_complete: boolean
+  webhook_secret_preview: string | null
+  webhook_endpoint_id: string | null
+}
+
 interface SettingsProps {
   paypal_mode: "automatic" | "manual"
   paypal_client_id: string | null
@@ -43,9 +52,9 @@ interface SettingsProps {
 
   stripe_webhook_url: string
   stripe_webhook_events: string[]
-  stripe_sandbox_webhook_configured: boolean
-  stripe_test_webhook_configured: boolean
-  stripe_live_webhook_configured: boolean
+  stripe_sandbox_setup: StripeEnvironmentSetup
+  stripe_test_setup: StripeEnvironmentSetup
+  stripe_live_setup: StripeEnvironmentSetup
 }
 
 interface Props {
@@ -171,19 +180,24 @@ export default function PaymentMethodSettings({ settings }: Props) {
         ? errors.stripe_test_publishable_key
         : errors.stripe_live_publishable_key
 
-  const stripeWebhookConfiguredByEnvironment: Record<StripeEnvironment, boolean> = {
-    sandbox: settings.stripe_sandbox_webhook_configured,
-    test: settings.stripe_test_webhook_configured,
-    live: settings.stripe_live_webhook_configured,
+  const stripeSetupByEnvironment: Record<StripeEnvironment, StripeEnvironmentSetup> = {
+    sandbox: settings.stripe_sandbox_setup,
+    test: settings.stripe_test_setup,
+    live: settings.stripe_live_setup,
   }
 
-  const { flash } = usePage<{ flash?: { success?: string } }>().props
+  const activeStripeSetup = stripeSetupByEnvironment[stripeEnvironment]
+
+  const { flash } = usePage<{ flash?: { success?: string; error?: string } }>().props
 
   React.useEffect(() => {
     if (flash?.success) {
       showSuccessToast(flash.success)
     }
-  }, [flash?.success])
+    if (flash?.error) {
+      showErrorToast(flash.error)
+    }
+  }, [flash?.success, flash?.error])
 
   const stripeSecretError =
     stripeEnvironment === "sandbox"
@@ -431,19 +445,49 @@ export default function PaymentMethodSettings({ settings }: Props) {
                           {settings.stripe_webhook_url}
                         </code>
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         <Label>Status ({stripeEnvironmentLabels[stripeEnvironment]})</Label>
-                        <p className="text-sm">
-                          {stripeWebhookConfiguredByEnvironment[stripeEnvironment] ? (
-                            <span className="font-medium text-green-700 dark:text-green-400">
-                              Ready — webhook and signing secret configured
-                            </span>
-                          ) : (
-                            <span className="font-medium text-amber-700 dark:text-amber-400">
-                              Save your {stripeEnvironmentLabels[stripeEnvironment]} keys to auto-create everything
-                            </span>
-                          )}
-                        </p>
+                        {activeStripeSetup.setup_complete ? (
+                          <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                              Configured — webhook created in Stripe
+                            </p>
+                            {activeStripeSetup.webhook_endpoint_id && (
+                              <p className="mt-1 text-sm text-green-700 dark:text-green-400">
+                                Stripe endpoint:{" "}
+                                <code className="rounded bg-background/80 px-1.5 py-0.5 font-mono text-xs">
+                                  {activeStripeSetup.webhook_endpoint_id}
+                                </code>
+                              </p>
+                            )}
+                            {activeStripeSetup.webhook_secret_preview && (
+                              <p className="mt-1 text-sm text-green-700 dark:text-green-400">
+                                Signing secret:{" "}
+                                <code className="rounded bg-background/80 px-1.5 py-0.5 font-mono text-xs">
+                                  {activeStripeSetup.webhook_secret_preview}
+                                </code>
+                              </p>
+                            )}
+                            <p className="mt-1 text-xs text-green-700/80 dark:text-green-400/80">
+                              Look for this endpoint under Stripe Dashboard → Developers → Webhooks.
+                            </p>
+                          </div>
+                        ) : activeStripeSetup.keys_configured ? (
+                          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                              Keys saved — click Save again to create the Stripe webhook
+                            </p>
+                            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                              {!activeStripeSetup.webhook_configured && "Webhook not created in Stripe yet. "}
+                              {!activeStripeSetup.customer_configured && "Platform customer pending. "}
+                              Confirm APP_URL in .env matches your public site URL.
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                            Save your {stripeEnvironmentLabels[stripeEnvironment]} keys to auto-create everything
+                          </p>
+                        )}
                       </div>
                       <details className="text-xs text-muted-foreground">
                         <summary className="cursor-pointer font-medium text-foreground">
