@@ -21,26 +21,28 @@ final class StripeAdminProvisioningService
     {
         $configured = config('cashier.webhook.events');
 
-        if (is_array($configured) && $configured !== []) {
-            return array_values(array_unique(array_map('strval', $configured)));
-        }
+        $events = is_array($configured) && $configured !== []
+            ? array_values(array_unique(array_map('strval', $configured)))
+            : [
+                'payment_intent.succeeded',
+                'payment_intent.payment_failed',
+                'checkout.session.completed',
+                'balance.available',
+                'payout.paid',
+                'charge.refunded',
+                'charge.dispute.created',
+                'customer.subscription.created',
+                'customer.subscription.updated',
+                'customer.subscription.deleted',
+                'invoice.payment_succeeded',
+                'invoice.payment_failed',
+            ];
 
-        return [
-            'payment_intent.succeeded',
-            'payment_intent.payment_failed',
-            'checkout.session.completed',
-            'balance.available',
-            'balance_transaction.created',
-            'balance_transaction.updated',
-            'payout.paid',
-            'charge.refunded',
-            'charge.dispute.created',
-            'customer.subscription.created',
-            'customer.subscription.updated',
-            'customer.subscription.deleted',
-            'invoice.payment_succeeded',
-            'invoice.payment_failed',
-        ];
+        // Stripe does not expose balance_transaction.* webhook event types.
+        return array_values(array_filter(
+            $events,
+            static fn (string $event): bool => ! str_starts_with($event, 'balance_transaction.')
+        ));
     }
 
     public static function webhookEndpointUrl(): string
