@@ -322,7 +322,7 @@ function SidebarContent({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-white">You&apos;re on the Free Plan</p>
-                <p className="mt-1 text-xs leading-snug text-slate-400">All features are included for now. Upgrade to Pro for premium perks.</p>
+                <p className="mt-1 text-xs leading-snug text-slate-400">All features are included on the free plan. Upgrade to Pro for Advanced Analytics and Priority Support.</p>
                 <Link href="/subscription" onClick={onNavigate} className="mt-3 block">
                   <MerchantButton size="sm" className="h-9 w-full text-xs">
                     Upgrade to Pro

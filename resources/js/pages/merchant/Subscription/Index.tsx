@@ -92,7 +92,7 @@ export default function MerchantSubscriptionIndex({
                             </h1>
                         </div>
                         <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-                            Select the perfect subscription plan for your business needs
+                            Upgrade to Pro for Advanced Analytics and Priority Support
                         </p>
                     </motion.div>
 
@@ -267,7 +267,7 @@ export default function MerchantSubscriptionIndex({
                     >
                         <div className="inline-flex items-center gap-2 text-gray-400 text-sm">
                             <Zap className="w-4 h-4" />
-                            <span>All plans include access to all features</span>
+                            <span>Pro includes Advanced Analytics and Priority Support</span>
                         </div>
                     </motion.div>
                 </div>

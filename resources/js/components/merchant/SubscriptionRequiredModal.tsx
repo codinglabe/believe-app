@@ -114,7 +114,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               transition={{ delay: 0.4 }}
               className="text-center text-gray-300 mb-8 text-lg"
             >
-              You currently have full access to all merchant features at no cost. Upgrade to Pro anytime for premium perks and priority support.
+              You currently have full access to all merchant features at no cost. Upgrade to Pro for Advanced Analytics and Priority Support.
             </motion.p>
 
             {/* Features List */}
@@ -125,11 +125,8 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               className="space-y-4 mb-8"
             >
               {[
-                'Unlimited Offers',
                 'Advanced Analytics',
                 'Priority Support',
-                'QR Code Scanning',
-                'Redemption Management',
               ].map((feature, index) => (
                 <motion.div
                   key={feature}
