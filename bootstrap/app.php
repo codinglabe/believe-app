@@ -123,6 +123,10 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (HttpException $e, $request) {
+            if ($request->is('stripe/webhook')) {
+                return response($e->getMessage() ?: 'Forbidden', $e->getStatusCode());
+            }
+
             if ($e->getStatusCode() === 413) {
                 if ($request->header('X-Inertia')) {
                     return redirect()->back()->with(
