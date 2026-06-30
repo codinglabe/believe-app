@@ -46,6 +46,7 @@ import {
   type SavedPaymentMethod,
 } from "@/components/account/saved-payment-method-selector"
 import { BpBalanceHero } from "@/pages/BelievePoints/components/BpBalanceHero"
+import { BpMoveToWalletPopup } from "@/pages/BelievePoints/components/BpMoveToWalletPopup"
 import { BpSectionHeader } from "@/pages/BelievePoints/components/BpSectionHeader"
 import { BpWalletLedger, type BpWalletLedgerPagination } from "@/pages/BelievePoints/components/BpWalletLedger"
 import {
@@ -274,6 +275,8 @@ export default function BelievePointsIndex({
     paymentMethodsUrl = "/profile/payment-methods",
     walletTransfers = [],
     walletLedger,
+    walletTransfer,
+    giftedBalance = 0,
   } = page.props
   const purchaseSettings = purchaseSettingsProp ?? {
     brp_value: 0.005,
@@ -339,6 +342,9 @@ export default function BelievePointsIndex({
   const [quickAddOpen, setQuickAddOpen] = useState(false)
   const [quickAddPmId, setQuickAddPmId] = useState<string | null>(null)
   const [quickAddRail, setQuickAddRail] = useState<"card" | "bank">("card")
+  const [walletTransferAmount, setWalletTransferAmount] = useState("")
+  const [walletTransferOpen, setWalletTransferOpen] = useState(false)
+  const [walletTransferSubmitting, setWalletTransferSubmitting] = useState(false)
   const savedCards = useMemo(
     () => filterMethodsForRail(savedPaymentMethods, "card"),
     [savedPaymentMethods],
@@ -622,6 +628,64 @@ export default function BelievePointsIndex({
     }).format(num)
   }
 
+  const handleTransferToWallet = async () => {
+    const amount = parseFloat(walletTransferAmount)
+    const min = walletTransfer?.min_amount ?? 1
+    const max = walletTransfer?.max_amount ?? 10000
+
+    if (!amount || amount < min || amount > max) {
+      showErrorToast(`Enter an amount between $${min.toFixed(2)} and $${max.toFixed(2)}`)
+      return
+    }
+
+    if (amount > localBalance + 0.0001) {
+      showErrorToast("Insufficient purchased Believe Points. Gifted points cannot be moved to your wallet.")
+      return
+    }
+
+    setWalletTransferSubmitting(true)
+    try {
+      const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
+      const response = await fetch(route("believe-points.transfer-to-wallet"), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          amount,
+          idempotency_key: crypto.randomUUID(),
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        showSuccessToast(data.message || "Wallet funding started")
+        if (typeof data.data?.believe_points_balance === "number") {
+          setLocalBalance(data.data.believe_points_balance)
+        } else {
+          setLocalBalance((prev) => Math.max(0, prev - amount))
+        }
+        setWalletTransferAmount("")
+        setWalletTransferOpen(false)
+        router.reload({ only: ["walletTransfers", "currentBalance", "processingBalance", "processingReleaseAt", "walletLedger"] })
+      } else {
+        showErrorToast(data.message || "Failed to move Believe Points to wallet")
+      }
+    } catch {
+      showErrorToast("Failed to move Believe Points to wallet")
+    } finally {
+      setWalletTransferSubmitting(false)
+    }
+  }
+
+  const openMoveToWalletPopup = () => {
+    setWalletTransferOpen(true)
+  }
+
   const getPurchaseStatusBadge = (purchase: Purchase) => {
     if (purchase.status === "completed" && purchase.points_released === false) {
       const requireBridge = purchaseSettings?.require_bridge_reserve_confirmation !== false
@@ -763,9 +827,32 @@ export default function BelievePointsIndex({
               balance={localBalance}
               processingBalance={processingBalance}
               processingReleaseHint={formatProcessingReleaseHint(processingReleaseAt)}
+              giftedBalance={giftedBalance}
               formatPoints={formatPoints}
               onRefunds={() => router.visit(route("believe-points.refunds"))}
               onAddPoints={scrollToAddPoints}
+              showWalletAction={Boolean(
+                walletTransfer?.enabled ||
+                  walletTransfer?.eligible ||
+                  walletTransfer?.sandbox_unavailable,
+              )}
+              onMoveToWallet={openMoveToWalletPopup}
+            />
+
+            <BpMoveToWalletPopup
+              isOpen={walletTransferOpen}
+              onClose={() => {
+                if (walletTransferSubmitting) return
+                setWalletTransferOpen(false)
+              }}
+              balance={localBalance}
+              amount={walletTransferAmount}
+              onAmountChange={setWalletTransferAmount}
+              walletTransfer={walletTransfer}
+              isSubmitting={walletTransferSubmitting}
+              onSubmit={handleTransferToWallet}
+              formatCurrency={formatCurrency}
+              formatPoints={formatPoints}
             />
 
             {hasSavedStripeMethods && quickBuyDefaultMethod && (
