@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Stripe\StripeClient;
+use Throwable;
 
 /**
  * Runs immediately when admin saves Settings → Payment Methods (Stripe).
@@ -51,7 +53,13 @@ final class StripePaymentSettingsProvisioningService
         }
 
         $updates = $this->stripeRowToConfigArray($stripe);
+        $additionalConfig = is_array($stripe->additional_config) ? $stripe->additional_config : [];
+        $endpointIds = is_array($additionalConfig['stripe_webhook_endpoints'] ?? null)
+            ? $additionalConfig['stripe_webhook_endpoints']
+            : [];
+
         $environmentResults = [];
+        $errors = [];
 
         foreach (['sandbox', 'test', 'live'] as $environment) {
             $secretKey = trim((string) ($stripe->{"{$environment}_secret_key"} ?? ''));
@@ -62,15 +70,18 @@ final class StripePaymentSettingsProvisioningService
             }
 
             $storedWebhookSecret = trim((string) ($stripe->{"{$environment}_webhook_secret"} ?? ''));
+            $storedEndpointId = trim((string) ($endpointIds[$environment] ?? ''));
 
-            $forceWebhook = $credentialsOrEnvironmentChanged || $storedWebhookSecret === '';
+            $endpointVerified = $this->verifyStoredWebhookEndpoint($secretKey, $storedEndpointId);
+            $forceWebhook = $credentialsOrEnvironmentChanged
+                || $storedWebhookSecret === ''
+                || ! $endpointVerified;
 
             $environmentResults[$environment] = $this->provisionEnvironment(
                 $secretKey,
                 $environment,
                 $user,
                 $forceWebhook,
-                $storedWebhookSecret !== '' ? $storedWebhookSecret : null,
             );
 
             $result = $environmentResults[$environment];
@@ -82,11 +93,25 @@ final class StripePaymentSettingsProvisioningService
             }
             if (! empty($result['webhook_secret'])) {
                 $updates["{$environment}_webhook_secret"] = $result['webhook_secret'];
+            } elseif ($forceWebhook) {
+                $updates["{$environment}_webhook_secret"] = null;
             }
             if (! empty($result['donation_product_id'])) {
                 $updates[StripeConfigService::donationProductColumn($environment)] = $result['donation_product_id'];
             }
+            if (! empty($result['webhook_id'])) {
+                $endpointIds[$environment] = $result['webhook_id'];
+            } elseif ($forceWebhook) {
+                unset($endpointIds[$environment]);
+            }
+
+            if (! empty($result['error'])) {
+                $errors[] = ucfirst($environment).': '.$result['error'];
+            }
         }
+
+        $additionalConfig['stripe_webhook_endpoints'] = $endpointIds;
+        $updates['additional_config'] = $additionalConfig;
 
         PaymentMethod::setConfig('stripe', $updates);
 
@@ -95,7 +120,7 @@ final class StripePaymentSettingsProvisioningService
         if ($runCatalogSync) {
             try {
                 $catalogSync = $this->syncActiveEnvironmentCatalog($activeEnvironment);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Log::error('Stripe catalog sync failed after admin save', [
                     'environment' => $activeEnvironment,
                     'error' => $e->getMessage(),
@@ -106,13 +131,18 @@ final class StripePaymentSettingsProvisioningService
         $stripe = PaymentMethod::getConfig('stripe');
         $activeEnvironment = $this->normalizeEnvironment($activeEnvironment);
         $activeWebhookSecret = trim((string) ($stripe?->{"{$activeEnvironment}_webhook_secret"} ?? ''));
+        $activeEndpointId = trim((string) (
+            is_array($stripe?->additional_config['stripe_webhook_endpoints'] ?? null)
+                ? ($stripe->additional_config['stripe_webhook_endpoints'][$activeEnvironment] ?? '')
+                : ''
+        ));
         $keysOk = StripeConfigService::getCredentials($activeEnvironment) !== null;
-        $webhookOk = $activeWebhookSecret !== '';
+        $webhookOk = $activeWebhookSecret !== '' && $activeEndpointId !== '';
 
         $message = $keysOk
             ? ($webhookOk
-                ? 'Stripe saved. Webhook, customer, and donation product were created automatically — no Stripe Dashboard setup needed.'
-                : 'Stripe keys saved, but the Cashier webhook signing secret could not be created. Confirm APP_URL is correct and save again.')
+                ? 'Stripe saved. Webhook was created in Stripe and the signing secret is stored for Cashier.'
+                : 'Stripe keys saved, but the webhook could not be created in Stripe. '.($errors !== [] ? implode(' ', $errors) : 'Confirm APP_URL matches your public site URL, then save again.'))
             : 'Stripe settings saved. Add publishable and secret keys for your active mode, then save again to auto-create everything.';
 
         if (is_array($catalogSync) && ! ($catalogSync['skipped'] ?? false)) {
@@ -134,7 +164,9 @@ final class StripePaymentSettingsProvisioningService
      *     webhook_secret: string|null,
      *     webhook_configured: bool,
      *     webhook_id: string|null,
-     *     donation_product_id: string|null
+     *     webhook_created: bool,
+     *     donation_product_id: string|null,
+     *     error: string|null
      * }
      */
     public function provisionEnvironment(
@@ -142,7 +174,6 @@ final class StripePaymentSettingsProvisioningService
         string $environment,
         User $user,
         bool $forceWebhookRecreate = false,
-        ?string $storedWebhookSecret = null,
     ): array {
         $customerId = $this->stripeAdminProvisioning->createOrFetchStripeCustomer(
             $secretKey,
@@ -158,24 +189,43 @@ final class StripePaymentSettingsProvisioningService
             $forceWebhookRecreate,
         );
 
-        $effectiveWebhookSecret = $webhook['secret']
-            ?? ((! $forceWebhookRecreate && is_string($storedWebhookSecret) && $storedWebhookSecret !== '')
-                ? $storedWebhookSecret
-                : null);
-
         $donationProductId = null;
         if (StripeConfigService::configureStripe($environment)) {
             $donationProductId = StripeConfigService::getDonationProductId($environment);
         }
 
+        $webhookSecret = is_string($webhook['secret'] ?? null) && $webhook['secret'] !== ''
+            ? $webhook['secret']
+            : null;
+
         return [
             'customer_id' => $customerId,
             'account_id' => $accountId,
-            'webhook_secret' => $effectiveWebhookSecret,
-            'webhook_configured' => is_string($effectiveWebhookSecret) && $effectiveWebhookSecret !== '',
-            'webhook_id' => $webhook['id'] ?? null,
+            'webhook_secret' => $webhookSecret,
+            'webhook_configured' => $webhookSecret !== null,
+            'webhook_id' => ! empty($webhook['id']) ? (string) $webhook['id'] : null,
+            'webhook_created' => (bool) ($webhook['created'] ?? false),
             'donation_product_id' => $donationProductId,
+            'error' => is_string($webhook['error'] ?? null) && $webhook['error'] !== ''
+                ? $webhook['error']
+                : null,
         ];
+    }
+
+    private function verifyStoredWebhookEndpoint(string $secretKey, string $endpointId): bool
+    {
+        if ($endpointId === '') {
+            return false;
+        }
+
+        try {
+            $stripe = new StripeClient(['api_key' => $secretKey]);
+            $endpoint = $stripe->webhookEndpoints->retrieve($endpointId);
+
+            return ! ($endpoint->deleted ?? false);
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -229,6 +279,7 @@ final class StripePaymentSettingsProvisioningService
             'sandbox_donation_product_id' => $stripe->sandbox_donation_product_id,
             'test_donation_product_id' => $stripe->test_donation_product_id,
             'live_donation_product_id' => $stripe->live_donation_product_id,
+            'additional_config' => $stripe->additional_config,
         ];
     }
 }
