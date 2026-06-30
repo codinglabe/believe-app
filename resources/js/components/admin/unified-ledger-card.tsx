@@ -68,6 +68,15 @@ export interface UnifiedLedgerRow {
   selling_price_markup_amount?: number | null
   /** Sum of catalog supplier base costs (source cost or subtotal ÷ (1 + markup%)); pairs with markup on the same lines. */
   supplier_cost_amount?: number | null
+  /** Unified ledger classification (Money / BP / BRP). */
+  ledger_type?: string
+  ledger_type_label?: string
+  bp_status?: string | null
+  bp_status_label?: string
+  brp_activity_type?: string | null
+  brp_activity_label?: string
+  current_owner?: string | null
+  available_at?: string | null
 }
 
 /** Believe Points: same numeric amount as points, show coin icon + pts (not USD). */

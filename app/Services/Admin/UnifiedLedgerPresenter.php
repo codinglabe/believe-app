@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\Admin\UnifiedLedgerClassificationService;
 
 /**
  * Builds the admin "BIU unified ledger" row: combines the workbook spec (module, transaction_type,
@@ -110,6 +111,7 @@ class UnifiedLedgerPresenter
             'selling_price_markup_amount' => $sellingPriceMarkupAmount,
             /** Sum of supplier base cost for those catalog lines: `source_cost`×qty, else line ÷ (1 + %÷100); pairs with markup (Subtotal_line ≈ Cost + Markup). */
             'supplier_cost_amount' => $supplierCostAmount,
+            ...UnifiedLedgerClassificationService::presentForTransaction($t),
         ];
     }
 

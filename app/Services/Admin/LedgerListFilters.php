@@ -17,6 +17,7 @@ use App\Models\Plan;
 use App\Models\Raffle;
 use App\Models\ServiceOrder;
 use App\Models\Transaction;
+use App\Support\UnifiedLedgerType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
@@ -26,6 +27,33 @@ use Illuminate\Support\Facades\Schema;
  */
 final class LedgerListFilters
 {
+    /**
+     * @return array<int, string>
+     */
+    public static function ledgerTypeOptions(): array
+    {
+        return UnifiedLedgerType::all();
+    }
+
+    public static function applyLedgerType(Builder $query, string $ledgerType): void
+    {
+        $ledgerType = strtolower(trim($ledgerType));
+        if (! in_array($ledgerType, UnifiedLedgerType::all(), true)) {
+            return;
+        }
+
+        if ($ledgerType === UnifiedLedgerType::MONEY) {
+            $query->where(function (Builder $q) {
+                $q->where('ledger_type', UnifiedLedgerType::MONEY)
+                    ->orWhereNull('ledger_type');
+            });
+
+            return;
+        }
+
+        $query->where('ledger_type', $ledgerType);
+    }
+
     /**
      * @return array<int, string>
      */
