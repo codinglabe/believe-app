@@ -51,82 +51,97 @@ final class StripeAdminProvisioningService
     }
 
     /**
-     * Fetch or create webhook endpoint and get its signing secret.
+     * Ensure Cashier webhook exists at /stripe/webhook and return signing secret.
+     *
+     * When $recreate is true (or no secret can be retrieved), deletes any existing endpoint
+     * at this URL and creates a fresh one so Stripe returns whsec_ automatically.
+     *
+     * @return array{id: string|null, secret: string|null, recreated: bool}
      */
-    public function fetchWebhookSecret(string $secretKey, string $environment): ?string
-    {
+    public function ensureCashierWebhook(
+        string $secretKey,
+        string $environment,
+        bool $recreate = false,
+    ): array {
         try {
             Stripe::setApiKey($secretKey);
 
-            $webhookUrl = StripeAdminProvisioningService::webhookEndpointUrl();
+            $webhookUrl = self::webhookEndpointUrl();
             $requiredEvents = self::requiredWebhookEvents();
 
-            $webhooks = WebhookEndpoint::all(['limit' => 100]);
-
             $existingWebhook = null;
-            foreach ($webhooks->data as $webhook) {
-                if ($webhook->url === $webhookUrl) {
+            foreach (WebhookEndpoint::all(['limit' => 100])->data as $webhook) {
+                if (($webhook->url ?? '') === $webhookUrl) {
                     $existingWebhook = $webhook;
                     break;
                 }
             }
 
-            if ($existingWebhook) {
+            if ($existingWebhook && ! $recreate) {
                 $this->syncWebhookEvents($existingWebhook, $requiredEvents, $environment);
 
-                Log::info("Webhook endpoint already exists for {$environment} mode", [
-                    'webhook_id' => $existingWebhook->id,
-                    'url' => $existingWebhook->url,
-                ]);
-                Log::info('Webhook exists but signing secret cannot be retrieved via API. Please get it from Stripe Dashboard.');
-
-                return null;
+                return [
+                    'id' => (string) ($existingWebhook->id ?? ''),
+                    'secret' => null,
+                    'recreated' => false,
+                ];
             }
 
-            try {
-                $webhook = WebhookEndpoint::create([
-                    'url' => $webhookUrl,
-                    'enabled_events' => $requiredEvents,
-                ]);
-
-                $webhookSecret = $webhook->secret ?? $webhook->signing_secret ?? null;
-
-                if ($webhookSecret) {
-                    Log::info("Created new webhook endpoint and got signing secret for {$environment} mode", [
-                        'webhook_id' => $webhook->id,
+            if ($existingWebhook && $recreate) {
+                try {
+                    WebhookEndpoint::retrieve($existingWebhook->id)->delete();
+                    Log::info("Replaced existing Stripe webhook for {$environment} mode to obtain signing secret", [
+                        'webhook_id' => $existingWebhook->id,
                     ]);
-
-                    return $webhookSecret;
+                } catch (\Throwable $e) {
+                    Log::warning("Could not delete existing Stripe webhook for {$environment} mode", [
+                        'webhook_id' => $existingWebhook->id ?? null,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
-
-                if (isset($webhook->secrets) && is_array($webhook->secrets) && count($webhook->secrets) > 0) {
-                    $webhookSecret = $webhook->secrets[0]->secret ?? null;
-                    if ($webhookSecret) {
-                        Log::info("Got signing secret from secrets array for {$environment} mode", [
-                            'webhook_id' => $webhook->id,
-                        ]);
-
-                        return $webhookSecret;
-                    }
-                }
-
-                Log::warning("Webhook created but no signing secret found for {$environment} mode");
-
-                return null;
-            } catch (\Exception $e) {
-                Log::error("Failed to create webhook endpoint for {$environment} mode", [
-                    'error' => $e->getMessage(),
-                ]);
-
-                return null;
             }
+
+            $webhook = WebhookEndpoint::create([
+                'url' => $webhookUrl,
+                'enabled_events' => $requiredEvents,
+            ]);
+
+            $secret = $webhook->secret ?? $webhook->signing_secret ?? null;
+            if (! $secret && isset($webhook->secrets) && is_array($webhook->secrets) && count($webhook->secrets) > 0) {
+                $secret = $webhook->secrets[0]->secret ?? null;
+            }
+
+            if ($secret) {
+                Log::info("Created Cashier Stripe webhook for {$environment} mode", [
+                    'webhook_id' => $webhook->id,
+                    'url' => $webhookUrl,
+                ]);
+            } else {
+                Log::warning("Cashier Stripe webhook created without signing secret for {$environment} mode", [
+                    'webhook_id' => $webhook->id ?? null,
+                ]);
+            }
+
+            return [
+                'id' => (string) ($webhook->id ?? ''),
+                'secret' => is_string($secret) && $secret !== '' ? $secret : null,
+                'recreated' => (bool) $existingWebhook,
+            ];
         } catch (ApiErrorException $e) {
-            Log::error("Failed to fetch/create webhook secret for {$environment} mode", [
+            Log::error("Failed to ensure Cashier webhook for {$environment} mode", [
                 'error' => $e->getMessage(),
             ]);
 
-            return null;
+            return ['id' => null, 'secret' => null, 'recreated' => false];
         }
+    }
+
+    /**
+     * @deprecated Use {@see ensureCashierWebhook()} instead.
+     */
+    public function fetchWebhookSecret(string $secretKey, string $environment): ?string
+    {
+        return $this->ensureCashierWebhook($secretKey, $environment, true)['secret'];
     }
 
     /**

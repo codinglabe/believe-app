@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { Head, useForm } from "@inertiajs/react"
+import { Head, useForm, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -95,10 +95,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
     // Live credentials
     stripe_live_publishable_key: settings.stripe_live_publishable_key || "",
     stripe_live_secret_key: settings.stripe_live_secret_key || "",
-
-    stripe_sandbox_webhook_secret: "",
-    stripe_test_webhook_secret: "",
-    stripe_live_webhook_secret: "",
   })
 
   // State for password visibility
@@ -106,7 +102,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
   const [showPaypalClientSecret, setShowPaypalClientSecret] = React.useState(false)
   const [showStripePublishable, setShowStripePublishable] = React.useState(false)
   const [showStripeSecret, setShowStripeSecret] = React.useState(false)
-  const [showStripeWebhookSecret, setShowStripeWebhookSecret] = React.useState(false)
   
   const [stripeEnvironment, setStripeEnvironment] = React.useState<StripeEnvironment>(
     (settings.stripe_mode_environment as StripeEnvironment) || "sandbox"
@@ -182,18 +177,13 @@ export default function PaymentMethodSettings({ settings }: Props) {
     live: settings.stripe_live_webhook_configured,
   }
 
-  const stripeWebhookSecretFieldByEnvironment: Record<StripeEnvironment, keyof typeof data> = {
-    sandbox: "stripe_sandbox_webhook_secret",
-    test: "stripe_test_webhook_secret",
-    live: "stripe_live_webhook_secret",
-  }
+  const { flash } = usePage<{ flash?: { success?: string } }>().props
 
-  const stripeWebhookSecretError =
-    stripeEnvironment === "sandbox"
-      ? errors.stripe_sandbox_webhook_secret
-      : stripeEnvironment === "test"
-        ? errors.stripe_test_webhook_secret
-        : errors.stripe_live_webhook_secret
+  React.useEffect(() => {
+    if (flash?.success) {
+      showSuccessToast(flash.success)
+    }
+  }, [flash?.success])
 
   const stripeSecretError =
     stripeEnvironment === "sandbox"
@@ -202,22 +192,9 @@ export default function PaymentMethodSettings({ settings }: Props) {
         ? errors.stripe_test_secret_key
         : errors.stripe_live_secret_key
 
-  const setStripeWebhookSecret = (environment: StripeEnvironment, value: string) => {
-    const field = stripeWebhookSecretFieldByEnvironment[environment]
-    setData(field, value)
-  }
-
-  const stripeWebhookSecretValue = (environment: StripeEnvironment): string => {
-    const field = stripeWebhookSecretFieldByEnvironment[environment]
-    return String(data[field] ?? "")
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     post("/settings/payment-methods", {
-      onSuccess: () => {
-        showSuccessToast("Payment method settings updated successfully!")
-      },
       onError: (formErrors) => {
         showErrorToast("Failed to update settings. Please check the form.")
         console.error(formErrors)
@@ -441,68 +418,32 @@ export default function PaymentMethodSettings({ settings }: Props) {
 
                     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4">
                       <div>
-                        <p className="text-sm font-semibold text-foreground">Cashier webhook (Laravel)</p>
+                        <p className="text-sm font-semibold text-foreground">Automatic Stripe setup</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Stripe sends payment and settlement events here. Cashier verifies the signature using the
-                          signing secret for the active mode below.
+                          When you save your publishable and secret keys, the app creates the Cashier webhook,
+                          platform customer, donation product, and syncs plans — no Stripe Dashboard configuration
+                          required.
                         </p>
                       </div>
                       <div className="space-y-1">
-                        <Label>Webhook URL</Label>
+                        <Label>Webhook URL (created for you)</Label>
                         <code className="block break-all rounded bg-background px-2 py-1.5 text-xs font-mono">
                           {settings.stripe_webhook_url}
                         </code>
-                        <p className="text-xs text-muted-foreground">
-                          Add this URL in Stripe Dashboard → Developers → Webhooks (or save keys here and the queue job
-                          will create/update the endpoint).
-                        </p>
                       </div>
                       <div className="space-y-1">
                         <Label>Status ({stripeEnvironmentLabels[stripeEnvironment]})</Label>
                         <p className="text-sm">
                           {stripeWebhookConfiguredByEnvironment[stripeEnvironment] ? (
-                            <span className="font-medium text-green-700 dark:text-green-400">Signing secret saved</span>
+                            <span className="font-medium text-green-700 dark:text-green-400">
+                              Ready — webhook and signing secret configured
+                            </span>
                           ) : (
                             <span className="font-medium text-amber-700 dark:text-amber-400">
-                              Signing secret missing — paste whsec_... from Stripe or save keys to auto-provision
+                              Save your {stripeEnvironmentLabels[stripeEnvironment]} keys to auto-create everything
                             </span>
                           )}
                         </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="stripe_webhook_secret">
-                          {stripeEnvironmentLabels[stripeEnvironment]} webhook signing secret (optional)
-                        </Label>
-                        <div className="relative">
-                          <Input
-                            id="stripe_webhook_secret"
-                            type={showStripeWebhookSecret ? "text" : "password"}
-                            value={stripeWebhookSecretValue(stripeEnvironment)}
-                            onChange={(e) => setStripeWebhookSecret(stripeEnvironment, e.target.value)}
-                            className="pr-10 font-mono text-sm"
-                            placeholder={
-                              stripeWebhookConfiguredByEnvironment[stripeEnvironment]
-                                ? "Leave blank to keep existing secret"
-                                : "whsec_..."
-                            }
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowStripeWebhookSecret((prev) => !prev)}
-                          >
-                            {showStripeWebhookSecret ? (
-                              <EyeOff className="h-4 w-4 text-gray-500" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-gray-500" />
-                            )}
-                          </Button>
-                        </div>
-                        {stripeWebhookSecretError && (
-                          <p className="text-sm text-red-500 mt-1">{stripeWebhookSecretError}</p>
-                        )}
                       </div>
                       <details className="text-xs text-muted-foreground">
                         <summary className="cursor-pointer font-medium text-foreground">
