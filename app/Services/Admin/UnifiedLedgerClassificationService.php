@@ -29,12 +29,16 @@ final class UnifiedLedgerClassificationService
     public static function classify(Transaction $transaction): array
     {
         if ($transaction->ledger_type && in_array($transaction->ledger_type, UnifiedLedgerType::all(), true)) {
+            $bpStatus = UnifiedLedgerBpStatus::normalize($transaction->bp_status);
+
             return [
                 'ledger_type' => $transaction->ledger_type,
-                'bp_status' => UnifiedLedgerBpStatus::normalize($transaction->bp_status),
+                'bp_status' => $bpStatus,
                 'brp_activity_type' => $transaction->brp_activity_type,
                 'current_owner' => UnifiedLedgerOwner::normalize($transaction->current_owner),
-                'available_at' => $transaction->available_at,
+                'available_at' => $bpStatus === UnifiedLedgerBpStatus::PROCESSING
+                    ? null
+                    : $transaction->available_at,
             ];
         }
 
@@ -69,6 +73,10 @@ final class UnifiedLedgerClassificationService
         $brpActivity = $classified['brp_activity_type'];
         $availableAt = $classified['available_at'];
 
+        if ($bpStatus === UnifiedLedgerBpStatus::PROCESSING) {
+            $availableAt = null;
+        }
+
         return [
             'ledger_type' => $classified['ledger_type'],
             'ledger_type_label' => UnifiedLedgerType::label($classified['ledger_type']),
@@ -94,6 +102,22 @@ final class UnifiedLedgerClassificationService
 
         if (($meta['ledger_type'] ?? '') === UnifiedLedgerType::BP) {
             return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'bp_redemption' || $transaction->type === 'bp_redemption') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'bridge_wallet_transfer' || $transaction->type === 'bridge_wallet_transfer') {
+            return UnifiedLedgerType::MONEY;
+        }
+
+        if (str_starts_with((string) ($transaction->transaction_id ?? ''), 'bp_redemption:')) {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (str_starts_with((string) ($transaction->transaction_id ?? ''), 'bridge_wallet_transfer:')) {
+            return UnifiedLedgerType::MONEY;
         }
 
         if ($transaction->type === 'bp_settlement') {
@@ -201,35 +225,35 @@ final class UnifiedLedgerClassificationService
             return null;
         }
 
-        $fromColumn = UnifiedLedgerOwner::normalize(
-            $transaction->current_owner,
-            is_string($meta['owner_type'] ?? null) ? $meta['owner_type'] : null,
-        );
-        if ($fromColumn !== null) {
-            return $fromColumn;
+        if (! empty($meta['current_owner'])) {
+            return trim((string) $meta['current_owner']);
         }
 
-        if (! empty($meta['organization_name']) || ($meta['owner_type'] ?? '') === 'organization') {
-            return UnifiedLedgerOwner::ORGANIZATION;
+        if (! empty($meta['current_bp_owner_name'])) {
+            return trim((string) $meta['current_bp_owner_name']);
+        }
+
+        if (! empty($meta['organization_name'])) {
+            return trim((string) $meta['organization_name']);
+        }
+
+        if (($meta['owner_type'] ?? '') === 'organization') {
+            return trim((string) ($meta['organization_name'] ?? UnifiedLedgerOwner::ORGANIZATION));
         }
 
         if (($meta['owner_type'] ?? '') === 'merchant') {
-            return UnifiedLedgerOwner::MERCHANT;
+            return trim((string) ($meta['merchant_name'] ?? UnifiedLedgerOwner::MERCHANT));
         }
 
         if (($meta['owner_type'] ?? '') === 'platform') {
             return UnifiedLedgerOwner::PLATFORM;
         }
 
-        if ($ledgerType === UnifiedLedgerType::BP && ($meta['source'] ?? '') === 'believe_points_donation') {
-            return UnifiedLedgerOwner::ORGANIZATION;
-        }
-
         if ($ledgerType === UnifiedLedgerType::BP || $ledgerType === UnifiedLedgerType::BRP) {
-            return UnifiedLedgerOwner::SUPPORTER;
+            return $transaction->user?->name;
         }
 
-        return null;
+        return UnifiedLedgerOwner::normalize($transaction->current_owner);
     }
 
     /**
@@ -241,8 +265,36 @@ final class UnifiedLedgerClassificationService
             return null;
         }
 
-        if ($transaction->available_at) {
+        if (($meta['bp_status'] ?? $transaction->bp_status ?? '') === UnifiedLedgerBpStatus::PROCESSING) {
+            return null;
+        }
+
+        if ($transaction->bp_status === UnifiedLedgerBpStatus::PROCESSING) {
+            return null;
+        }
+
+        if ($transaction->available_at && $transaction->bp_status !== UnifiedLedgerBpStatus::PROCESSING) {
             return $transaction->available_at;
+        }
+
+        if ($transaction->type === 'bp_settlement' || ($meta['source'] ?? '') === 'bp_settlement') {
+            $raw = $meta['settlement_date'] ?? null;
+            if ($raw) {
+                try {
+                    return \Illuminate\Support\Carbon::parse($raw);
+                } catch (\Throwable) {
+                    return null;
+                }
+            }
+
+            return $transaction->processed_at;
+        }
+
+        $bpStatus = UnifiedLedgerBpStatus::normalize(
+            is_string($meta['bp_status'] ?? null) ? $meta['bp_status'] : $transaction->bp_status
+        );
+        if ($bpStatus !== UnifiedLedgerBpStatus::AVAILABLE) {
+            return null;
         }
 
         $raw = $meta['settlement_date'] ?? $meta['points_available_at'] ?? null;
@@ -254,10 +306,6 @@ final class UnifiedLedgerClassificationService
             }
         }
 
-        if (($meta['bp_status'] ?? '') === UnifiedLedgerBpStatus::PROCESSING) {
-            return null;
-        }
-
-        return $transaction->processed_at;
+        return null;
     }
 }
