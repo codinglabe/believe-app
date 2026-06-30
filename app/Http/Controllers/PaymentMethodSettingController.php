@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\StripePaymentSettingsProvisioningJob;
 use App\Models\PaymentMethod;
+use App\Services\StripeAdminProvisioningService;
 use App\Services\StripeConfigService;
 use App\Services\StripeEnvironmentSyncService;
 use Illuminate\Http\Request;
@@ -54,6 +55,12 @@ class PaymentMethodSettingController extends Controller
             'stripe_live_secret_key' => $stripe->live_secret_key ?? null,
             'stripe_live_customer_id' => $stripe->live_customer_id ?? null,
             'stripe_live_account_id' => $stripe->live_account_id ?? null,
+
+            'stripe_webhook_url' => StripeAdminProvisioningService::webhookEndpointUrl(),
+            'stripe_webhook_events' => StripeAdminProvisioningService::requiredWebhookEvents(),
+            'stripe_sandbox_webhook_configured' => ! empty($stripe->sandbox_webhook_secret),
+            'stripe_test_webhook_configured' => ! empty($stripe->test_webhook_secret),
+            'stripe_live_webhook_configured' => ! empty($stripe->live_webhook_secret),
         ];
 
         return Inertia::render('settings/payment-methods', [
@@ -89,6 +96,11 @@ class PaymentMethodSettingController extends Controller
             // Live credentials
             'stripe_live_publishable_key' => ['nullable', 'string', 'max:255'],
             'stripe_live_secret_key' => ['nullable', 'string', 'max:255'],
+
+            // Optional: paste signing secret from Stripe Dashboard (whsec_...) when auto-provision cannot read it
+            'stripe_sandbox_webhook_secret' => ['nullable', 'string', 'max:255'],
+            'stripe_test_webhook_secret' => ['nullable', 'string', 'max:255'],
+            'stripe_live_webhook_secret' => ['nullable', 'string', 'max:255'],
         ]);
 
         PaymentMethod::setConfig('paypal', [
@@ -128,6 +140,16 @@ class PaymentMethodSettingController extends Controller
             'live_publishable_key' => $request->stripe_live_publishable_key,
             'live_secret_key' => $request->stripe_live_secret_key,
         ];
+
+        foreach (['sandbox', 'test', 'live'] as $environment) {
+            $field = "{$environment}_webhook_secret";
+            $submitted = trim((string) $request->input("stripe_{$field}", ''));
+            if ($submitted !== '') {
+                $stripeConfig[$field] = $submitted;
+            } elseif ($oldStripe && ! $this->stripeEnvironmentKeysChanged($oldStripe, $request, $environment)) {
+                $stripeConfig[$field] = $oldStripe->{$field};
+            }
+        }
 
         if ($oldStripe && $this->stripeSandboxKeysChanged($oldStripe, $request)) {
             $stripeConfig['sandbox_customer_id'] = null;
@@ -172,7 +194,17 @@ class PaymentMethodSettingController extends Controller
             ]
         );
 
-        return redirect()->back()->with('success', 'Payment method settings updated successfully.');
+        return redirect()->back()->with('success', 'Payment method settings updated successfully. Stripe webhook endpoint and signing secret are synced for Cashier when the queue job completes.');
+    }
+
+    private function stripeEnvironmentKeysChanged(PaymentMethod $old, Request $request, string $environment): bool
+    {
+        return match ($environment) {
+            'sandbox' => $this->stripeSandboxKeysChanged($old, $request),
+            'test' => $this->stripeTestKeysChanged($old, $request),
+            'live' => $this->stripeLiveKeysChanged($old, $request),
+            default => false,
+        };
     }
 
     private function normStripeKey(?string $value): string

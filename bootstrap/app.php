@@ -69,6 +69,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Security is handled in the webhook controller via signature verification.
         $middleware->validateCsrfTokens(except: [
             'webhooks/bridge',
+            'stripe/webhook',
             'api/*', // Exclude all API routes from CSRF protection
         ]);
 
@@ -81,6 +82,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // DetectTimezone syncs the viewer's IANA timezone to users.timezone (X-Timezone header).
         $middleware->web(prepend: [
             ForceHttps::class,
+            \App\Http\Middleware\ConfigureCashierStripeFromDatabase::class,
         ]);
 
         $middleware->web(append: [
