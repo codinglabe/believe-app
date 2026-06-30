@@ -1,0 +1,263 @@
+<?php
+
+namespace App\Services\Admin;
+
+use App\Models\BelievePointPurchase;
+use App\Models\BelievePointProcessingLot;
+use App\Models\BelievePointWalletTransfer;
+use App\Models\Transaction;
+use App\Support\UnifiedLedgerBpStatus;
+use App\Support\UnifiedLedgerBrpActivity;
+use App\Support\UnifiedLedgerOwner;
+use App\Support\UnifiedLedgerType;
+use Carbon\CarbonInterface;
+
+/**
+ * Resolves Money / BP / BRP ledger classification for admin transaction history.
+ */
+final class UnifiedLedgerClassificationService
+{
+    /**
+     * @return array{
+     *     ledger_type: string,
+     *     bp_status: string|null,
+     *     brp_activity_type: string|null,
+     *     current_owner: string|null,
+     *     available_at: \Carbon\CarbonInterface|null
+     * }
+     */
+    public static function classify(Transaction $transaction): array
+    {
+        if ($transaction->ledger_type && in_array($transaction->ledger_type, UnifiedLedgerType::all(), true)) {
+            return [
+                'ledger_type' => $transaction->ledger_type,
+                'bp_status' => UnifiedLedgerBpStatus::normalize($transaction->bp_status),
+                'brp_activity_type' => $transaction->brp_activity_type,
+                'current_owner' => UnifiedLedgerOwner::normalize($transaction->current_owner),
+                'available_at' => $transaction->available_at,
+            ];
+        }
+
+        $meta = is_array($transaction->meta) ? $transaction->meta : [];
+        $ledgerType = self::inferLedgerType($transaction, $meta);
+
+        return [
+            'ledger_type' => $ledgerType,
+            'bp_status' => self::inferBpStatus($ledgerType, $transaction, $meta),
+            'brp_activity_type' => self::inferBrpActivity($ledgerType, $transaction, $meta),
+            'current_owner' => self::inferCurrentOwner($ledgerType, $transaction, $meta),
+            'available_at' => self::inferAvailableAt($ledgerType, $transaction, $meta),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     ledger_type: string,
+     *     ledger_type_label: string,
+     *     bp_status: string|null,
+     *     bp_status_label: string,
+     *     brp_activity_type: string|null,
+     *     brp_activity_label: string,
+     *     current_owner: string|null,
+     *     available_at: string|null
+     * }
+     */
+    public static function presentForTransaction(Transaction $transaction): array
+    {
+        $classified = self::classify($transaction);
+        $bpStatus = $classified['bp_status'];
+        $brpActivity = $classified['brp_activity_type'];
+        $availableAt = $classified['available_at'];
+
+        return [
+            'ledger_type' => $classified['ledger_type'],
+            'ledger_type_label' => UnifiedLedgerType::label($classified['ledger_type']),
+            'bp_status' => $bpStatus,
+            'bp_status_label' => UnifiedLedgerBpStatus::label($bpStatus ?? UnifiedLedgerBpStatus::NA),
+            'brp_activity_type' => $brpActivity,
+            'brp_activity_label' => UnifiedLedgerBrpActivity::label($brpActivity ?? UnifiedLedgerBrpActivity::NA),
+            'current_owner' => $classified['current_owner'],
+            'available_at' => $availableAt instanceof CarbonInterface
+                ? $availableAt->toIso8601String()
+                : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private static function inferLedgerType(Transaction $transaction, array $meta): string
+    {
+        if (($meta['ledger_type'] ?? '') === UnifiedLedgerType::BRP) {
+            return UnifiedLedgerType::BRP;
+        }
+
+        if (($meta['ledger_type'] ?? '') === UnifiedLedgerType::BP) {
+            return UnifiedLedgerType::BP;
+        }
+
+        if ($transaction->type === 'bp_settlement') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'bp_settlement') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'believe_points_wallet_transfer') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if ($transaction->type === 'believe_points_wallet_transfer') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'believe_points_donation') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'believe_points_purchase_bp') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'believe_points_purchase' && ($meta['ledger_role'] ?? '') === 'bp_credit') {
+            return UnifiedLedgerType::BP;
+        }
+
+        if (($meta['source'] ?? '') === 'reward_point_ledger') {
+            return UnifiedLedgerType::BRP;
+        }
+
+        if (str_starts_with((string) ($transaction->transaction_id ?? ''), 'brp:')) {
+            return UnifiedLedgerType::BRP;
+        }
+
+        if (str_starts_with((string) ($transaction->transaction_id ?? ''), 'bp_credit:')) {
+            return UnifiedLedgerType::BP;
+        }
+
+        return UnifiedLedgerType::MONEY;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private static function inferBpStatus(string $ledgerType, Transaction $transaction, array $meta): ?string
+    {
+        if ($ledgerType !== UnifiedLedgerType::BP) {
+            return UnifiedLedgerBpStatus::NA;
+        }
+
+        $raw = strtolower(trim((string) ($meta['bp_status'] ?? $transaction->bp_status ?? '')));
+        if ($raw !== '') {
+            return UnifiedLedgerBpStatus::normalize($raw);
+        }
+
+        if ($transaction->type === 'bp_settlement' || ($meta['source'] ?? '') === 'bp_settlement') {
+            return UnifiedLedgerBpStatus::AVAILABLE;
+        }
+
+        if ($transaction->status === Transaction::STATUS_REFUND) {
+            return UnifiedLedgerBpStatus::REVERSED;
+        }
+
+        return UnifiedLedgerBpStatus::PROCESSING;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private static function inferBrpActivity(string $ledgerType, Transaction $transaction, array $meta): ?string
+    {
+        if ($ledgerType !== UnifiedLedgerType::BRP) {
+            return UnifiedLedgerBrpActivity::NA;
+        }
+
+        $raw = strtolower(trim((string) ($meta['brp_activity_type'] ?? $transaction->brp_activity_type ?? '')));
+        if ($raw !== '') {
+            return match ($raw) {
+                'earned', 'credit' => UnifiedLedgerBrpActivity::EARNED,
+                'redeemed', 'debit' => UnifiedLedgerBrpActivity::REDEEMED,
+                'adjusted', 'adjustment' => UnifiedLedgerBrpActivity::ADJUSTED,
+                'expired' => UnifiedLedgerBrpActivity::EXPIRED,
+                'n/a', 'na' => UnifiedLedgerBrpActivity::NA,
+                default => $raw,
+            };
+        }
+
+        if ((float) $transaction->amount < 0 || ($meta['direction'] ?? '') === 'debit') {
+            return UnifiedLedgerBrpActivity::REDEEMED;
+        }
+
+        return UnifiedLedgerBrpActivity::EARNED;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private static function inferCurrentOwner(string $ledgerType, Transaction $transaction, array $meta): ?string
+    {
+        if ($ledgerType === UnifiedLedgerType::MONEY) {
+            return null;
+        }
+
+        $fromColumn = UnifiedLedgerOwner::normalize(
+            $transaction->current_owner,
+            is_string($meta['owner_type'] ?? null) ? $meta['owner_type'] : null,
+        );
+        if ($fromColumn !== null) {
+            return $fromColumn;
+        }
+
+        if (! empty($meta['organization_name']) || ($meta['owner_type'] ?? '') === 'organization') {
+            return UnifiedLedgerOwner::ORGANIZATION;
+        }
+
+        if (($meta['owner_type'] ?? '') === 'merchant') {
+            return UnifiedLedgerOwner::MERCHANT;
+        }
+
+        if (($meta['owner_type'] ?? '') === 'platform') {
+            return UnifiedLedgerOwner::PLATFORM;
+        }
+
+        if ($ledgerType === UnifiedLedgerType::BP && ($meta['source'] ?? '') === 'believe_points_donation') {
+            return UnifiedLedgerOwner::ORGANIZATION;
+        }
+
+        if ($ledgerType === UnifiedLedgerType::BP || $ledgerType === UnifiedLedgerType::BRP) {
+            return UnifiedLedgerOwner::SUPPORTER;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private static function inferAvailableAt(string $ledgerType, Transaction $transaction, array $meta): ?CarbonInterface
+    {
+        if ($ledgerType !== UnifiedLedgerType::BP) {
+            return null;
+        }
+
+        if ($transaction->available_at) {
+            return $transaction->available_at;
+        }
+
+        $raw = $meta['settlement_date'] ?? $meta['points_available_at'] ?? null;
+        if ($raw) {
+            try {
+                return \Illuminate\Support\Carbon::parse($raw);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        if (($meta['bp_status'] ?? '') === UnifiedLedgerBpStatus::PROCESSING) {
+            return null;
+        }
+
+        return $transaction->processed_at;
+    }
+}

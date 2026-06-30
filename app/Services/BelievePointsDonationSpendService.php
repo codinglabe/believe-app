@@ -6,6 +6,7 @@ use App\Models\BelievePointsLedgerEntry;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Admin\UnifiedLedgerTransactionWriter;
 use Illuminate\Support\Facades\DB;
 
 final class BelievePointsDonationSpendService
@@ -77,6 +78,15 @@ final class BelievePointsDonationSpendService
                     'from_available' => $fromAvailable,
                 ],
             ]);
+
+            UnifiedLedgerTransactionWriter::syncBpDonationSpendRow(
+                $donorLocked,
+                $organization,
+                $donation,
+                $amount,
+                $fromProcessing,
+                $fromAvailable,
+            );
 
             return [
                 'from_processing' => $fromProcessing,

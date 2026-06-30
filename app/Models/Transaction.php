@@ -13,6 +13,11 @@ class Transaction extends Model
         'related_id',
         'related_type',
         'type',
+        'ledger_type',
+        'bp_status',
+        'available_at',
+        'current_owner',
+        'brp_activity_type',
         'status',
         'amount',
         'fee',
@@ -26,6 +31,7 @@ class Transaction extends Model
     protected $casts = [
         'meta' => 'array',
         'processed_at' => 'datetime',
+        'available_at' => 'datetime',
     ];
 
     public const STATUS_PENDING    = 'pending';

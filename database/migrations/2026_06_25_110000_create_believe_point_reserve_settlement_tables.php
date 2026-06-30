@@ -8,7 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('believe_point_reserve_settlement_credits', function (Blueprint $table) {
+        if (! Schema::hasTable('believe_point_reserve_settlement_credits')) {
+            Schema::create('believe_point_reserve_settlement_credits', function (Blueprint $table) {
             $table->id();
             $table->decimal('amount', 12, 2);
             $table->decimal('allocated_amount', 12, 2)->default(0);
@@ -25,9 +26,11 @@ return new class extends Migration
             $table->unique('bridge_transfer_id', 'bp_reserve_credit_transfer_uidx');
             $table->unique('bridge_activity_id', 'bp_reserve_credit_activity_uidx');
             $table->index('credited_at');
-        });
+            });
+        }
 
-        Schema::create('believe_point_reserve_settlement_allocations', function (Blueprint $table) {
+        if (! Schema::hasTable('believe_point_reserve_settlement_allocations')) {
+            Schema::create('believe_point_reserve_settlement_allocations', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('believe_point_reserve_settlement_credit_id');
             $table->unsignedBigInteger('believe_point_purchase_id');
@@ -44,7 +47,8 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->unique('believe_point_purchase_id', 'bp_reserve_alloc_purchase_uidx');
-        });
+            });
+        }
 
         Schema::table('believe_point_purchases', function (Blueprint $table) {
             if (! Schema::hasColumn('believe_point_purchases', 'stripe_funds_available_at')) {
