@@ -111,6 +111,7 @@ class UnifiedLedgerPresenter
             'selling_price_markup_amount' => $sellingPriceMarkupAmount,
             /** Sum of supplier base cost for those catalog lines: `source_cost`×qty, else line ÷ (1 + %÷100); pairs with markup (Subtotal_line ≈ Cost + Markup). */
             'supplier_cost_amount' => $supplierCostAmount,
+            'wallet_amount' => UnifiedLedgerWalletAmountResolver::resolve($t),
             ...UnifiedLedgerClassificationService::presentForTransaction($t),
         ];
     }

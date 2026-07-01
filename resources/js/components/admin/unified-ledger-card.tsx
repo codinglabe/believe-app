@@ -68,6 +68,8 @@ export interface UnifiedLedgerRow {
   selling_price_markup_amount?: number | null
   /** Sum of catalog supplier base costs (source cost or subtotal ÷ (1 + markup%)); pairs with markup on the same lines. */
   supplier_cost_amount?: number | null
+  /** Signed change to supporter total BP (ending − beginning). Null for money-only rows. */
+  wallet_amount?: number | null
   /** Unified ledger classification (Money / BP / BRP). */
   ledger_type?: string
   ledger_type_label?: string
@@ -90,10 +92,22 @@ function ledgerAmountNode(
   if (n === null || n === undefined) return "—"
   if (zeroAsDash && n === 0) return "—"
   if (usePoints) {
+    const signed = Number(n)
+    const sign = signed > 0 ? "+" : signed < 0 ? "−" : ""
+    const abs = Math.abs(signed)
     return (
-      <span className={cn("inline-flex items-center gap-1.5 tabular-nums text-foreground", emphasis && "text-lg font-bold")}>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 tabular-nums",
+          signed > 0 && "text-emerald-700 dark:text-emerald-300",
+          signed < 0 && "text-foreground",
+          !sign && "text-foreground",
+          emphasis && "text-lg font-bold",
+        )}
+      >
         <Coins className={cn("shrink-0 text-amber-600 dark:text-amber-400", emphasis ? "h-5 w-5" : "h-4 w-4")} aria-hidden />
-        {Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pts
+        {sign}
+        {abs.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pts
       </span>
     )
   }
@@ -299,6 +313,12 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
           </div>
           <div className="flex min-w-0 w-full flex-col gap-2 border-t border-primary/15 pt-2.5 sm:w-auto sm:flex-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:border-t-0 sm:pt-0">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+              {usePoints && data.wallet_amount != null && Number.isFinite(Number(data.wallet_amount)) ? (
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
+                  Wallet {ledgerAmountNode(true, data.wallet_amount, cur, true, false)}
+                </span>
+              ) : (
+                <>
               <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
                 Gross {ledgerAmountNode(usePoints, data.gross_amount, cur)}
               </span>
@@ -306,6 +326,8 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
                 Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
               </span>
+                </>
+              )}
               {showMarkupDollars &&
                 data.supplier_cost_amount != null &&
                 data.supplier_cost_amount !== undefined &&
@@ -519,10 +541,18 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 />
               </>
             ) : null}
+            {usePoints && data.wallet_amount != null && Number.isFinite(Number(data.wallet_amount)) ? (
+              <Amount
+                label="Wallet amt"
+                value={ledgerAmountNode(true, data.wallet_amount, cur, false, true)}
+                emphasis
+                hint="Signed change to supporter BP balance (ending − beginning). Not the same as Gross/Subtotal."
+              />
+            ) : null}
             <Amount
               label="Gross"
-              value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, true)}
-              emphasis
+              value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, !usePoints || data.wallet_amount == null)}
+              emphasis={!usePoints || data.wallet_amount == null}
               hint="Total paid. Gross = Subtotal + Shipping + Tax."
             />
             <div className="min-w-0 space-y-2 sm:col-span-2 lg:col-span-2">

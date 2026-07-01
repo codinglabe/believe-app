@@ -223,18 +223,16 @@ class UnifiedLedgerFlatFileMapper
     private function resolveBelievePointAmounts(Transaction $t, array $meta, string $module): array
     {
         $ledgerType = UnifiedLedgerClassificationService::classify($t)['ledger_type'];
+        $walletAmount = UnifiedLedgerWalletAmountResolver::resolve($t);
 
-        if ($ledgerType === UnifiedLedgerType::BRP) {
-            $points = round(abs((float) $t->amount), 2);
-            $signed = (float) $t->amount < 0 ? -$points : $points;
-
+        if ($ledgerType === UnifiedLedgerType::BRP && $walletAmount !== null) {
             return [
-                'credit' => $signed > 0 ? $points : null,
-                'debit' => $signed < 0 ? $points : null,
+                'credit' => $walletAmount > 0 ? abs($walletAmount) : null,
+                'debit' => $walletAmount < 0 ? abs($walletAmount) : null,
                 'processing' => null,
                 'available' => null,
                 'balance_after' => null,
-                'wallet_amount' => $signed,
+                'wallet_amount' => $walletAmount,
             ];
         }
 
@@ -249,61 +247,59 @@ class UnifiedLedgerFlatFileMapper
             ];
         }
 
+        $bucketColumns = $this->resolveBpBucketColumns($t, $meta);
+        $credit = $walletAmount !== null && $walletAmount > 0 ? abs($walletAmount) : null;
+        $debit = $walletAmount !== null && $walletAmount < 0 ? abs($walletAmount) : null;
+
+        return [
+            'credit' => $credit,
+            'debit' => $debit,
+            'processing' => $bucketColumns['processing'],
+            'available' => $bucketColumns['available'],
+            'balance_after' => $bucketColumns['balance_after'],
+            'wallet_amount' => $walletAmount,
+        ];
+    }
+
+    /**
+     * Bucket snapshot columns for export (processing vs available), separate from wallet balance delta.
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array{processing: float|null, available: float|null, balance_after: float|null}
+     */
+    private function resolveBpBucketColumns(Transaction $t, array $meta): array
+    {
+        $points = round((float) ($meta['intended_points'] ?? $meta['points_credited'] ?? $meta['points_amount'] ?? abs((float) $t->amount)), 2);
         $source = (string) ($meta['source'] ?? '');
-        $points = round((float) ($meta['intended_points'] ?? $meta['points_credited'] ?? $meta['points_amount'] ?? $t->amount), 2);
 
         if ($source === 'bp_settlement' || $t->type === 'bp_settlement') {
             return [
-                'credit' => $points,
-                'debit' => null,
                 'processing' => null,
-                'available' => $points,
-                'balance_after' => $points,
-                'wallet_amount' => $points,
-            ];
-        }
-
-        if ($source === 'bp_redemption' || $t->type === 'bp_redemption'
-            || $source === 'believe_points_wallet_transfer' || $t->type === 'believe_points_wallet_transfer') {
-            return [
-                'credit' => null,
-                'debit' => $points,
-                'processing' => null,
-                'available' => null,
-                'balance_after' => null,
-                'wallet_amount' => -$points,
+                'available' => $points > 0 ? $points : null,
+                'balance_after' => $points > 0 ? $points : null,
             ];
         }
 
         if ($source === 'believe_points_purchase' && ($meta['bp_status'] ?? '') === 'processing') {
             return [
-                'credit' => $points,
-                'debit' => null,
-                'processing' => $points,
+                'processing' => $points > 0 ? $points : null,
                 'available' => null,
-                'balance_after' => $points,
-                'wallet_amount' => $points,
+                'balance_after' => $points > 0 ? $points : null,
             ];
         }
 
-        if ($source === 'believe_points_purchase') {
+        if ($source === 'believe_points_purchase' || $source === 'believe_points_purchase_bp') {
             return [
-                'credit' => $points,
-                'debit' => null,
-                'processing' => ($meta['bp_status'] ?? '') === 'available' ? null : $points,
+                'processing' => ($meta['bp_status'] ?? '') === 'available' ? null : ($points > 0 ? $points : null),
                 'available' => ($meta['bp_status'] ?? '') === 'available' ? $points : null,
-                'balance_after' => $points,
-                'wallet_amount' => $points,
+                'balance_after' => $points > 0 ? $points : null,
             ];
         }
 
         return [
-            'credit' => $points > 0 && $t->type !== 'refund' ? $points : null,
-            'debit' => $t->type === 'refund' ? $points : null,
             'processing' => null,
             'available' => null,
             'balance_after' => null,
-            'wallet_amount' => null,
         ];
     }
 
