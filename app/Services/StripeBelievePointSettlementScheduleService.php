@@ -119,9 +119,47 @@ final class StripeBelievePointSettlementScheduleService
         return true;
     }
 
-    private static function availableOnFromPaymentIntent(?string $paymentIntentId): ?Carbon
+    /**
+     * Poll Stripe for the payment's balance transaction (missed webhooks / stale estimates).
+     */
+    public static function syncPurchaseFromStripeApi(BelievePointPurchase $purchase): bool
     {
-        $paymentIntentId = trim((string) ($paymentIntentId ?? ''));
+        $payload = self::balanceTransactionPayloadForPurchase($purchase);
+        if ($payload === null) {
+            return false;
+        }
+
+        return self::syncPurchaseFromBalanceTransactionPayload($purchase, $payload);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function balanceTransactionPayloadForPurchase(BelievePointPurchase $purchase): ?array
+    {
+        $paymentIntentId = trim((string) ($purchase->stripe_payment_intent_id ?? ''));
+        if ($paymentIntentId !== '' && str_starts_with($paymentIntentId, 'pi_')) {
+            return self::balanceTransactionPayloadForPaymentIntent($paymentIntentId);
+        }
+
+        $txnId = trim((string) ($purchase->stripe_balance_transaction_id ?? ''));
+        if ($txnId === '') {
+            $txnId = trim((string) ($purchase->stripe_settlement_reference ?? ''));
+        }
+
+        if ($txnId !== '' && str_starts_with($txnId, 'txn_')) {
+            return self::balanceTransactionPayloadForId($txnId);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function balanceTransactionPayloadForPaymentIntent(string $paymentIntentId): ?array
+    {
+        $paymentIntentId = trim($paymentIntentId);
         if ($paymentIntentId === '' || ! str_starts_with($paymentIntentId, 'pi_')) {
             return null;
         }
@@ -139,20 +177,66 @@ final class StripeBelievePointSettlementScheduleService
 
             $balanceTransaction = is_object($charge) ? ($charge->balance_transaction ?? null) : null;
             if (is_string($balanceTransaction)) {
-                $balanceTransaction = $stripe->balanceTransactions->retrieve($balanceTransaction);
+                return self::balanceTransactionPayloadForId($balanceTransaction);
             }
 
-            $availableOn = is_object($balanceTransaction) ? ($balanceTransaction->available_on ?? null) : null;
-            if ($availableOn !== null && is_numeric($availableOn)) {
-                return Carbon::createFromTimestamp((int) $availableOn);
+            if (is_object($balanceTransaction)) {
+                return self->normalizeBalanceTransactionObject($balanceTransaction);
             }
         } catch (\Throwable $e) {
-            Log::warning('Believe Points: could not read Stripe available_on', [
+            Log::warning('Believe Points: could not read Stripe balance transaction for payment intent', [
                 'payment_intent_id' => $paymentIntentId,
                 'message' => $e->getMessage(),
             ]);
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function balanceTransactionPayloadForId(string $balanceTransactionId): ?array
+    {
+        $balanceTransactionId = trim($balanceTransactionId);
+        if ($balanceTransactionId === '' || ! str_starts_with($balanceTransactionId, 'txn_')) {
+            return null;
+        }
+
+        try {
+            $balanceTransaction = Cashier::stripe()->balanceTransactions->retrieve($balanceTransactionId);
+
+            return self::normalizeBalanceTransactionObject($balanceTransaction);
+        } catch (\Throwable $e) {
+            Log::warning('Believe Points: could not read Stripe balance transaction', [
+                'balance_transaction_id' => $balanceTransactionId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function normalizeBalanceTransactionObject(object $balanceTransaction): array
+    {
+        return [
+            'id' => (string) ($balanceTransaction->id ?? ''),
+            'available_on' => $balanceTransaction->available_on ?? null,
+            'status' => (string) ($balanceTransaction->status ?? ''),
+            'source' => (string) ($balanceTransaction->source ?? ''),
+        ];
+    }
+
+    private static function availableOnFromPaymentIntent(?string $paymentIntentId): ?Carbon
+    {
+        $payload = self::balanceTransactionPayloadForPaymentIntent(trim((string) ($paymentIntentId ?? '')));
+        if ($payload === null) {
+            return null;
+        }
+
+        return self::parseAvailableOnFromBalanceTransactionPayload($payload);
     }
 }

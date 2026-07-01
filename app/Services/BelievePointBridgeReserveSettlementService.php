@@ -200,9 +200,54 @@ final class BelievePointBridgeReserveSettlementService
             }
         }
 
+        $count += self::reallocateExistingReserveCredits();
+
         BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
 
         return $count;
+    }
+
+    /**
+     * Match existing unallocated Bridge reserve credits to purchases still awaiting confirmation.
+     */
+    public static function reallocateExistingReserveCredits(): int
+    {
+        if (! self::requiresBridgeReserveConfirmation() || app(BridgeService::class)->isSandbox()) {
+            return 0;
+        }
+
+        $allocated = 0;
+
+        BelievePointReserveSettlementCredit::query()
+            ->whereColumn('allocated_amount', '<', 'amount')
+            ->orderBy('id')
+            ->each(function (BelievePointReserveSettlementCredit $credit) use (&$allocated) {
+                $pendingBefore = BelievePointPurchase::query()
+                    ->where('status', 'completed')
+                    ->where('points_released', false)
+                    ->whereNull('bridge_reserve_confirmed_at')
+                    ->count();
+
+                if ($pendingBefore === 0) {
+                    return false;
+                }
+
+                self::allocateCreditToPurchases($credit->fresh());
+
+                $pendingAfter = BelievePointPurchase::query()
+                    ->where('status', 'completed')
+                    ->where('points_released', false)
+                    ->whereNull('bridge_reserve_confirmed_at')
+                    ->count();
+
+                $allocated += max(0, $pendingBefore - $pendingAfter);
+            });
+
+        if ($allocated > 0) {
+            BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
+        }
+
+        return $allocated;
     }
 
     /**

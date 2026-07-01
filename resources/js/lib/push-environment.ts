@@ -55,15 +55,23 @@ export function ensureMobilePwaCookie(): void {
 
     const userAgent = navigator.userAgent;
     const isPhoneUserAgent = /iPhone|iPod|Android.*Mobile|Mobile.*Android/i.test(userAgent);
-    const isStandalonePwa =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-    if (!isPhoneUserAgent && !isStandalonePwa) {
+    if (!isPhoneUserAgent && !isStandalonePwa()) {
         return;
     }
 
     document.cookie = "biu_pwa_standalone=1; path=/; max-age=31536000; SameSite=Lax";
+}
+
+/** True when the app is running as an installed PWA (home screen / standalone), not in a browser tab. */
+export function isStandalonePwa(): boolean {
+    if (typeof window === "undefined") {
+        return false;
+    }
+
+    return (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
 }
 
 /** True on phone/tablet browsers where push is expected (Android Chrome, iOS installed PWA). */
@@ -73,11 +81,7 @@ export function isMobilePushClient(): boolean {
     }
     const ua = navigator.userAgent;
     const isMobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-    const isStandalonePwa =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-    return isMobileUa || isStandalonePwa;
+    return isMobileUa || isStandalonePwa();
 }
 
 export async function logPushDiagnostics(): Promise<void> {

@@ -46,6 +46,12 @@ import {
 } from "@/components/frontend/profile-organization-picker"
 import { useAppearance, type Appearance } from "@/hooks/use-appearance"
 import { cn, formatMmDdInput, isValidMmDd, normalizeMmDd } from "@/lib/utils"
+import {
+  getGeolocationPermissionState,
+  requestLocationPermissionPrompt,
+  type GeolocationPermissionState,
+} from "@/lib/location-permissions"
+import { isStandalonePwa } from "@/lib/push-environment"
 import type { SharedData } from "@/types"
 import {
   Dialog,
@@ -228,7 +234,12 @@ export default function ProfileEdit() {
   const [changePrimaryOrgId, setChangePrimaryOrgId] = useState("")
   const [changeReasonOption, setChangeReasonOption] = useState<PrimaryOrgChangeReasonId | "">("")
   const [changingPrimary, setChangingPrimary] = useState(false)
+  const [locationPermission, setLocationPermission] = useState<GeolocationPermissionState>("prompt")
   const isPrimaryLocked = Boolean(user.primary_organization_locked)
+
+  useEffect(() => {
+    void getGeolocationPermissionState().then(setLocationPermission)
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -1298,9 +1309,28 @@ export default function ProfileEdit() {
                     <div className="min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100">Nearby organization alerts</p>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Alerts are on when you use the app. Your browser may ask for location access on visit. Turn this
-                        off to stop nearby alerts.
+                        Alerts are on when you use the app. Tap below to allow location when prompted — nearby alerts
+                        need a separate location permission from notifications.
                       </p>
+                      {locationPermission !== "granted" ? (
+                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300/90">
+                          Location:{" "}
+                          {locationPermission === "denied"
+                            ? "blocked"
+                            : locationPermission === "unsupported"
+                              ? "unavailable on this device"
+                              : "not allowed yet"}
+                          {isStandalonePwa() ? (
+                            <>
+                              {" "}
+                              — installed apps usually only show Notifications under App permissions; enable location in
+                              Chrome for believeinunity.org (lock icon → Location → Allow).
+                            </>
+                          ) : null}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300/90">Location: allowed</p>
+                      )}
                     </div>
                     <label className="relative inline-flex shrink-0 cursor-pointer items-center self-start sm:self-center">
                       <input
@@ -1311,9 +1341,8 @@ export default function ProfileEdit() {
                           const enabled = e.target.checked
                           setData("proximity_notifications_enabled", enabled)
                           if (enabled) {
-                            void import("@/lib/location-permissions").then(({ requestLocationPermissionPrompt }) => {
-                              requestLocationPermissionPrompt()
-                            })
+                            requestLocationPermissionPrompt()
+                            void getGeolocationPermissionState().then(setLocationPermission)
                           }
                         }}
                       />

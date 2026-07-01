@@ -113,7 +113,7 @@ Schedule::command('believe-points:release-processing')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
-Schedule::command('believe-points:reconcile-bridge-reserve')
+Schedule::command('believe-points:reconcile-settlement')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 

@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\Transaction;
+use App\Support\UnifiedLedgerBpStatus;
 use App\Support\UnifiedLedgerType;
 
 /**
@@ -226,6 +227,31 @@ class UnifiedLedgerFlatFileMapper
         $walletAmount = UnifiedLedgerWalletAmountResolver::resolve($t);
 
         if ($ledgerType === UnifiedLedgerType::BRP && $walletAmount !== null) {
+            $points = round(abs($walletAmount), 2);
+            $brpStatus = UnifiedLedgerBpStatus::normalize((string) ($t->bp_status ?? $meta['brp_status'] ?? $meta['bp_status'] ?? ''));
+
+            if ($brpStatus === UnifiedLedgerBpStatus::PROCESSING) {
+                return [
+                    'credit' => $walletAmount > 0 ? $points : null,
+                    'debit' => $walletAmount < 0 ? $points : null,
+                    'processing' => $walletAmount > 0 ? $points : null,
+                    'available' => null,
+                    'balance_after' => $walletAmount > 0 ? $points : null,
+                    'wallet_amount' => $walletAmount,
+                ];
+            }
+
+            if ($brpStatus === UnifiedLedgerBpStatus::AVAILABLE) {
+                return [
+                    'credit' => $walletAmount > 0 ? $points : null,
+                    'debit' => $walletAmount < 0 ? $points : null,
+                    'processing' => null,
+                    'available' => $walletAmount > 0 ? $points : null,
+                    'balance_after' => $walletAmount > 0 ? $points : null,
+                    'wallet_amount' => $walletAmount,
+                ];
+            }
+
             return [
                 'credit' => $walletAmount > 0 ? abs($walletAmount) : null,
                 'debit' => $walletAmount < 0 ? abs($walletAmount) : null,

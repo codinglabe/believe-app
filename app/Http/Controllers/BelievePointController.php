@@ -9,6 +9,7 @@ use App\Models\BelievePointPurchase;
 use App\Models\BelievePointWalletTransfer;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\BelievePointPurchaseSettlementReconciliationService;
 use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointPurchaseSettlementStatusService;
 use App\Services\BelievePointsPaymentMethodSyncService;
@@ -55,6 +56,7 @@ class BelievePointController extends Controller
         $maxPurchaseAmount = (float) AdminSetting::get('believe_points_max_purchase', 10000.00);
 
         // Release any Processing BP whose hold period has ended (also runs on schedule).
+        BelievePointPurchaseSettlementReconciliationService::reconcilePendingPurchasesForUser($user);
         BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
         $user->refresh();
 
@@ -696,7 +698,7 @@ class BelievePointController extends Controller
                         $message .= ' You earned '.number_format($rp, 0).' BRP (Believe Reward Points).';
                     }
                     if (! $purchase->points_released) {
-                        $message .= ' Your BP is in Processing balance until platform settlement completes, then becomes Available for wallet and marketplace use.';
+                        $message .= ' Your BP and BRP stay in Processing until platform settlement completes, then become Available.';
                     }
 
                     return redirect()->route('believe-points.index')->with('success', $message);

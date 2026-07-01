@@ -19,6 +19,7 @@ import {
   type GeolocationPermissionState,
 } from "@/lib/location-permissions"
 import { postProximityLocation } from "@/lib/proximity-location-api"
+import { isStandalonePwa } from "@/lib/push-environment"
 import { requestLocationPermission } from "@/lib/request-location-permission"
 
 type AuthUser = {
@@ -211,7 +212,9 @@ export default function LocationPermissionPrompt() {
       if (result.status === "denied") {
         setPermission("denied")
         setError(
-          "Location access was blocked. Open your browser or phone settings, find this site, and allow location — especially if you installed the app to your home screen.",
+          isStandalonePwa()
+            ? "Location was blocked. Installed apps often only list Notifications under App permissions — location is separate. Open believeinunity.org in Chrome, tap the lock icon in the address bar, set Location to Allow, then reopen the app."
+            : "Location access was blocked. Open your browser settings, find this site, and allow location.",
         )
         return
       }
@@ -268,7 +271,9 @@ export default function LocationPermissionPrompt() {
               these alerts and is not shared publicly.
             </p>
             <p className="mt-2 text-xs text-white/50">
-              If you installed the app, tap the button below — your phone will ask for permission.
+              {isStandalonePwa()
+                ? "Tap Allow below — your phone will show a second prompt. Location may not appear under App permissions like Notifications; that is normal for installed web apps."
+                : "If you installed the app, tap the button below — your phone will ask for permission."}
             </p>
 
             {error ? <p className="mt-4 text-sm text-amber-200">{error}</p> : null}
@@ -285,7 +290,9 @@ export default function LocationPermissionPrompt() {
                 </Button>
               ) : (
                 <p className="flex-1 text-sm text-white/70">
-                  Location is blocked in settings. Enable it for this website, then reload the page.
+                  {isStandalonePwa()
+                    ? "Location is blocked. Open believeinunity.org in Chrome (not the home-screen icon), tap the lock icon → Location → Allow, then reopen the app."
+                    : "Location is blocked in settings. Enable it for this website, then reload the page."}
                 </p>
               )}
               <Button
