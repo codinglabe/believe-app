@@ -113,6 +113,7 @@ Schedule::command('believe-points:release-processing')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// Local APP_ENV: reconcile-settlement is Stripe-only unless run with --with-bridge
 Schedule::command('believe-points:reconcile-settlement')
     ->everyFiveMinutes()
     ->withoutOverlapping();

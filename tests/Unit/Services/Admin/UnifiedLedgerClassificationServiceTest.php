@@ -42,7 +42,7 @@ class UnifiedLedgerClassificationServiceTest extends TestCase
 
         $present = UnifiedLedgerClassificationService::presentForTransaction($transaction);
 
-        $this->assertSame('BP', $present['ledger_type_label']);
+        $this->assertSame('Believe Points (BP)', $present['ledger_type_label']);
         $this->assertSame('Processing', $present['bp_status_label']);
         $this->assertSame('N/A', $present['brp_activity_label']);
         $this->assertSame('Kenneth Matthews', $present['current_owner']);

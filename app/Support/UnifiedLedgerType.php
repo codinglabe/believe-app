@@ -19,6 +19,15 @@ final class UnifiedLedgerType
     public static function label(string $type): string
     {
         return match ($type) {
+            self::BP => 'Believe Points (BP)',
+            self::BRP => 'Believe Reward Points (BRP)',
+            default => 'Money (USD)',
+        };
+    }
+
+    public static function shortLabel(string $type): string
+    {
+        return match ($type) {
             self::BP => 'BP',
             self::BRP => 'BRP',
             default => 'Money',
