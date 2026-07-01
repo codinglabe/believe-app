@@ -1213,8 +1213,6 @@ export default function TransactionLedger({
                           const cur = row.currency || "USD"
                           const typeDisplay = ledgerRowTypeDisplay(row)
                           const u = row.unified_ledger
-                          const ledgerStatus = u?.display_status ?? row.status
-                          const ledgerStatusLabel = u?.display_status_label ?? row.status
                           const grossDisplayPlain = u != null ? u.gross_amount : rep?.gross_amount
                           const netDisplayPlain = u != null ? u.net_amount : rep?.net_to_organization ?? null
                           const stripeFeeAmt = u != null ? u.stripe_fee_amount : rep?.stripe_fee ?? 0
@@ -1326,11 +1324,11 @@ export default function TransactionLedger({
                                 <span
                                   className={cn(
                                     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold capitalize leading-none",
-                                    statusClass(ledgerStatus),
+                                    statusClass(row.status),
                                   )}
                                 >
-                                  {statusIcon(ledgerStatus)}
-                                  <span className="leading-none">{ledgerStatusLabel}</span>
+                                  {statusIcon(row.status)}
+                                  <span className="leading-none">{row.status}</span>
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
@@ -1347,9 +1345,7 @@ export default function TransactionLedger({
                                     })
                                   : u?.ledger_type === "bp" && u?.bp_status_label === "Processing"
                                     ? "Pending"
-                                    : u?.ledger_type === "brp" && u?.bp_status_label === "Processing"
-                                      ? "Pending"
-                                      : "—"}
+                                    : "—"}
                               </td>
                               <td className="max-w-[10rem] truncate px-4 py-3 text-sm text-foreground" title={u?.current_owner ?? undefined}>
                                 {u?.current_owner ?? "—"}
