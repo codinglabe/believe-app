@@ -232,7 +232,7 @@ final class UnifiedLedgerTransactionWriter
                 'status' => $bpStatus === UnifiedLedgerBpStatus::PROCESSING
                     ? Transaction::STATUS_PENDING
                     : Transaction::STATUS_COMPLETED,
-                'amount' => $amount,
+                'amount' => -$amount,
                 'fee' => 0,
                 'currency' => 'BP',
                 'payment_method' => 'believe_points',
@@ -439,6 +439,9 @@ final class UnifiedLedgerTransactionWriter
                         ? 'BP Wallet Transfer Refund'
                         : 'BP Redemption',
                     'description' => self::walletTransferBpDescription($transfer),
+                    'bp_wallet_delta' => $transfer->status === BelievePointWalletTransfer::STATUS_REFUNDED
+                        ? $amount
+                        : -$amount,
                     'gross_amount' => $amount,
                     'from_type' => 'Supporter',
                     'from_name' => $user->name,

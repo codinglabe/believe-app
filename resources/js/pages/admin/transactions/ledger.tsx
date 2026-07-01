@@ -1222,6 +1222,10 @@ export default function TransactionLedger({
                           const platformPayout = u != null ? u.platform_payout_amount : rep?.platform_payout ?? null
                           const supporterPayout = u != null ? u.supporter_payout_amount : rep?.supporter_payout ?? null
                           const pointsPay = isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
+                          const walletAmt =
+                            pointsPay && u?.wallet_amount != null && !Number.isNaN(Number(u.wallet_amount))
+                              ? Number(u.wallet_amount)
+                              : row.amount
                           const processorTotal = pointsPay
                             ? 0
                             : u != null
@@ -1363,7 +1367,7 @@ export default function TransactionLedger({
                                 {partiesSummary(u)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-base font-semibold tabular-nums text-foreground">
-                                {formatAmountForLedger(pointsPay, row.amount, cur)}
+                                {formatAmountForLedger(pointsPay, walletAmt, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                                 {grossDisplayPlain != null && grossDisplayPlain !== undefined

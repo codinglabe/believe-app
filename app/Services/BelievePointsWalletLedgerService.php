@@ -76,6 +76,8 @@ final class BelievePointsWalletLedgerService
             $deltaProcessing = round((float) ($event['delta_processing'] ?? 0), 2);
             $deltaGifted = round((float) ($event['delta_gifted'] ?? 0), 2);
 
+            $prevRunning = round($available + $processing, 2);
+
             if ($deltaAvailable !== 0.0 || $deltaProcessing !== 0.0 || $deltaGifted !== 0.0) {
                 $available = round($available + $deltaAvailable, 2);
                 $processing = round($processing + $deltaProcessing, 2);
@@ -83,6 +85,8 @@ final class BelievePointsWalletLedgerService
             } else {
                 $available = round($available + $credit - $debit, 2);
             }
+
+            $newRunning = round($available + $processing, 2);
 
             $rows[] = [
                 'id' => $event['id'],
@@ -92,7 +96,7 @@ final class BelievePointsWalletLedgerService
                 'entry_type' => $event['entry_type'],
                 'debit' => $debit > 0 ? $debit : null,
                 'credit' => $credit > 0 ? $credit : null,
-                'bp_change' => $credit > 0 ? $credit : ($debit > 0 ? -$debit : 0.0),
+                'bp_change' => round($newRunning - $prevRunning, 2),
                 'processing_balance' => $processing,
                 'available_balance' => $available,
                 'gifted_balance' => $gifted,
