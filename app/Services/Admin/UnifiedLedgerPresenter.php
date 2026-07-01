@@ -1233,6 +1233,8 @@ class UnifiedLedgerPresenter
         $currency = strtoupper((string) ($t->currency ?? ''));
 
         if ($ledgerType === UnifiedLedgerType::BRP || $currency === 'BRP') {
+            $brpAmount = round(abs((float) $t->amount), 2);
+
             return [
                 'subtotal' => null,
                 'sales_tax' => null,
@@ -1243,7 +1245,7 @@ class UnifiedLedgerPresenter
                 'biu_fee' => 0,
                 'split' => 0,
                 'refund' => 0,
-                'net' => null,
+                'net' => $brpAmount > 0 ? $brpAmount : null,
                 'processor_fee' => 0,
             ];
         }
