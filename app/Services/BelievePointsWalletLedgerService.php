@@ -263,6 +263,138 @@ final class BelievePointsWalletLedgerService
         ]);
     }
 
+    public static function recordWalletTransfer(BelievePointWalletTransfer $transfer): void
+    {
+        if (! $transfer->user_id) {
+            return;
+        }
+
+        $amount = round((float) $transfer->amount, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        if (self::ledgerEntryExists(
+            $transfer->user_id,
+            BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER,
+            'believe_point_wallet_transfer_id',
+            $transfer->id,
+        )) {
+            return;
+        }
+
+        BelievePointsLedgerEntry::query()->create([
+            'user_id' => $transfer->user_id,
+            'amount' => -$amount,
+            'entry_type' => BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER,
+            'description' => 'Moved Believe Points to Believe wallet',
+            'metadata' => [
+                'believe_point_wallet_transfer_id' => $transfer->id,
+                'transaction_number' => 'bp_wallet_transfer:'.$transfer->id,
+            ],
+        ]);
+    }
+
+    public static function recordWalletTransferRefund(BelievePointWalletTransfer $transfer, ?string $reason = null): void
+    {
+        if (! $transfer->user_id) {
+            return;
+        }
+
+        $amount = round((float) $transfer->amount, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        if (self::ledgerEntryExists(
+            $transfer->user_id,
+            BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER_REFUND,
+            'believe_point_wallet_transfer_id',
+            $transfer->id,
+        )) {
+            return;
+        }
+
+        BelievePointsLedgerEntry::query()->create([
+            'user_id' => $transfer->user_id,
+            'amount' => $amount,
+            'entry_type' => BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER_REFUND,
+            'description' => 'Returned to Available BP — wallet transfer not completed',
+            'metadata' => array_filter([
+                'believe_point_wallet_transfer_id' => $transfer->id,
+                'reason' => $reason,
+                'transaction_number' => 'bp_wallet_transfer_refund:'.$transfer->id,
+            ], static fn ($v) => $v !== null && $v !== ''),
+        ]);
+    }
+
+    public static function recordDonationSpend(
+        int $userId,
+        int $donationId,
+        int $organizationId,
+        float $amount,
+        float $fromProcessing,
+        float $fromAvailable,
+    ): void {
+        $amount = round(max(0, $amount), 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        if (self::ledgerEntryExists(
+            $userId,
+            BelievePointsLedgerEntry::TYPE_DONATION_SPEND,
+            'donation_id',
+            $donationId,
+        )) {
+            return;
+        }
+
+        BelievePointsLedgerEntry::query()->create([
+            'user_id' => $userId,
+            'amount' => -$amount,
+            'entry_type' => BelievePointsLedgerEntry::TYPE_DONATION_SPEND,
+            'description' => 'Believe Points donation',
+            'metadata' => [
+                'donation_id' => $donationId,
+                'organization_id' => $organizationId,
+                'from_processing' => $fromProcessing,
+                'from_available' => $fromAvailable,
+                'transaction_number' => 'bp_donation:'.$donationId,
+            ],
+        ]);
+    }
+
+    private static function ledgerEntryExists(int $userId, string $entryType, string $metadataKey, int $referenceId): bool
+    {
+        return BelievePointsLedgerEntry::query()
+            ->where('user_id', $userId)
+            ->where('entry_type', $entryType)
+            ->where('metadata->'.$metadataKey, $referenceId)
+            ->exists();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $events
+     * @return list<array<string, mixed>>
+     */
+    private static function dedupeEventsById(array $events): array
+    {
+        $seen = [];
+        $deduped = [];
+
+        foreach ($events as $event) {
+            $id = (string) ($event['id'] ?? '');
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $deduped[] = $event;
+        }
+
+        return $deduped;
+    }
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -461,7 +593,7 @@ final class BelievePointsWalletLedgerService
             ];
         }
 
-        return $events;
+        return self::dedupeEventsById($events);
     }
 
     private static function purchaseTransactionNumber(BelievePointPurchase $purchase): string

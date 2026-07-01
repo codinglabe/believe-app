@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\BelievePointsLedgerEntry;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Models\User;
@@ -66,18 +65,14 @@ final class BelievePointsDonationSpendService
                 $recipientLocked->addBelievePoints($fromAvailable);
             }
 
-            BelievePointsLedgerEntry::query()->create([
-                'user_id' => $donorLocked->id,
-                'amount' => -$amount,
-                'entry_type' => BelievePointsLedgerEntry::TYPE_DONATION_SPEND,
-                'description' => 'Believe Points donation',
-                'metadata' => [
-                    'donation_id' => $donation->id,
-                    'organization_id' => $donation->organization_id,
-                    'from_processing' => $fromProcessing,
-                    'from_available' => $fromAvailable,
-                ],
-            ]);
+            BelievePointsWalletLedgerService::recordDonationSpend(
+                $donorLocked->id,
+                $donation->id,
+                $donation->organization_id,
+                $amount,
+                $fromProcessing,
+                $fromAvailable,
+            );
 
             UnifiedLedgerTransactionWriter::syncBpDonationSpendRow(
                 $donorLocked,
