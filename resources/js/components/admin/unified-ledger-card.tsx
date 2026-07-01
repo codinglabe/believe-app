@@ -79,6 +79,8 @@ export interface UnifiedLedgerRow {
   brp_activity_label?: string
   current_owner?: string | null
   available_at?: string | null
+  display_status?: string
+  display_status_label?: string
 }
 
 /** Believe Points: same numeric amount as points, show coin icon + pts (not USD). */

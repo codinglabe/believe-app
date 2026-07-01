@@ -2,16 +2,20 @@
 
 namespace Tests\Unit\Services\Admin;
 
+use App\Models\BelievePointPurchase;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\Admin\UnifiedLedgerClassificationService;
 use App\Support\UnifiedLedgerBpStatus;
 use App\Support\UnifiedLedgerBrpActivity;
 use App\Support\UnifiedLedgerOwner;
 use App\Support\UnifiedLedgerType;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class UnifiedLedgerClassificationServiceTest extends TestCase
 {
+    use RefreshDatabase;
     public function test_money_bp_purchase_row_classifies_as_money(): void
     {
         $transaction = new Transaction([
@@ -93,5 +97,39 @@ class UnifiedLedgerClassificationServiceTest extends TestCase
 
         $this->assertSame(UnifiedLedgerType::BRP, $classified['ledger_type']);
         $this->assertSame(UnifiedLedgerBrpActivity::REDEEMED, $classified['brp_activity_type']);
+    }
+
+    public function test_purchase_linked_brp_earn_shows_processing_until_bp_settles(): void
+    {
+        $user = User::factory()->create();
+
+        $purchase = BelievePointPurchase::query()->create([
+            'user_id' => $user->id,
+            'status' => 'completed',
+            'points' => 10,
+            'amount' => 10,
+            'reward_points_awarded' => 2,
+            'points_released' => false,
+            'payment_rail' => 'card',
+        ]);
+
+        $transaction = new Transaction([
+            'type' => 'reward',
+            'ledger_type' => UnifiedLedgerType::BRP,
+            'currency' => 'BRP',
+            'amount' => 2,
+            'status' => Transaction::STATUS_COMPLETED,
+            'bp_status' => UnifiedLedgerBpStatus::NA,
+            'brp_activity_type' => UnifiedLedgerBrpActivity::EARNED,
+            'transaction_id' => 'brp:earned:purchase:'.$purchase->id,
+            'related_id' => $purchase->id,
+            'meta' => ['source' => 'reward_point_ledger'],
+        ]);
+
+        $present = UnifiedLedgerClassificationService::presentForTransaction($transaction);
+
+        $this->assertSame('Processing', $present['bp_status_label']);
+        $this->assertSame(Transaction::STATUS_PENDING, $present['display_status']);
+        $this->assertSame('Processing', $present['display_status_label']);
     }
 }

@@ -5,7 +5,7 @@ import { Head, router, usePage } from "@inertiajs/react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -47,6 +47,7 @@ import {
 } from "@/components/account/saved-payment-method-selector"
 import { BpBalanceHero } from "@/pages/BelievePoints/components/BpBalanceHero"
 import { BpMoveToWalletPopup } from "@/pages/BelievePoints/components/BpMoveToWalletPopup"
+import { BpCardHeader, bpCardClassName, bpCardContentClassName } from "@/pages/BelievePoints/components/BpCardHeader"
 import { BpSectionHeader } from "@/pages/BelievePoints/components/BpSectionHeader"
 import { BpWalletLedger, type BpWalletLedgerPagination } from "@/pages/BelievePoints/components/BpWalletLedger"
 import {
@@ -880,20 +881,18 @@ export default function BelievePointsIndex({
 
             <Card
               id={ADD_BELIEVE_POINTS_SECTION_ID}
-              className="scroll-mt-24 gap-0 overflow-hidden border-border/60 shadow-sm"
+              className={cn("scroll-mt-24", bpCardClassName)}
             >
-              <CardHeader className="border-b bg-muted/30 px-4 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <BpSectionHeader
-                    icon={DollarSign}
-                    title="Add Believe Points"
-                    description={`Choose a payment method below. Purchased BP credits as Processing BP until settlement. Each qualifying purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per transaction.`}
-                  />
-                  <Badge variant="secondary" className="w-fit shrink-0 font-normal">
+              <BpCardHeader
+                icon={DollarSign}
+                title="Add Believe Points"
+                description={`Choose a payment method below. Purchased BP credits as Processing BP until settlement. Each qualifying purchase earns ${formatPoints(purchaseSettings.brp_award)} BRP per transaction.`}
+                trailing={
+                  <Badge variant="secondary" className="w-fit font-normal">
                     Secure checkout · Stripe
                   </Badge>
-                </div>
-              </CardHeader>
+                }
+              />
               <CardContent className="p-0">
                 <form onSubmit={handleSubmit} className="divide-y divide-border">
                   <div className="space-y-4 p-4 sm:p-6">
@@ -1385,15 +1384,13 @@ export default function BelievePointsIndex({
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border-border/60 shadow-sm">
-              <CardHeader className="border-b bg-muted/30 pb-4">
-                <BpSectionHeader
-                  icon={TrendingUp}
-                  title="Auto top-up"
-                  description="Optional — charge your saved card when balance drops below a threshold. Max once per hour."
-                />
-              </CardHeader>
-              <CardContent className="space-y-5 pt-6">
+            <Card className={bpCardClassName}>
+              <BpCardHeader
+                icon={TrendingUp}
+                title="Auto top-up"
+                description="Optional — charge your saved card when balance drops below a threshold. Max once per hour."
+              />
+              <CardContent className={cn(bpCardContentClassName, "space-y-5 pt-0")}>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   Choose a card from your saved payment methods. If charges fail, pick another card or add a new one in{" "}
                   <a href={paymentMethodsManageUrl} className="font-medium text-purple-600 underline-offset-2 hover:underline dark:text-purple-400">
@@ -1512,15 +1509,13 @@ export default function BelievePointsIndex({
           </div>
 
           <aside className="min-w-0 lg:col-span-4 lg:sticky lg:top-6 lg:self-start">
-            <Card className="gap-0 overflow-hidden border-border/60 shadow-sm">
-              <CardHeader className="border-b bg-muted/30 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <History className="h-5 w-5 text-purple-600" />
-                  Recent activity
-                </CardTitle>
-                <CardDescription>Purchases and wallet transfers</CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
+            <Card className={bpCardClassName}>
+              <BpCardHeader
+                icon={History}
+                title="Recent activity"
+                description="Purchases and wallet transfers"
+              />
+              <CardContent className={bpCardContentClassName}>
                 {recentActivity.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/15 to-blue-500/15">
@@ -1685,15 +1680,13 @@ export default function BelievePointsIndex({
         </div>
 
         {walletLedger && (
-          <Card className="overflow-hidden border-border/60 shadow-sm">
-            <CardHeader className="border-b bg-muted/30 pb-4">
-              <BpSectionHeader
-                icon={History}
-                title="Wallet ledger"
-                description="Believe Point transactions only — debits, credits, and running balances that reconcile to your dashboard totals."
-              />
-            </CardHeader>
-            <CardContent className="pt-5">
+          <Card className={bpCardClassName}>
+            <BpCardHeader
+              icon={History}
+              title="Wallet ledger"
+              description="Believe Point transactions only — debits, credits, and running balances that reconcile to your dashboard totals."
+            />
+            <CardContent className={bpCardContentClassName}>
               <BpWalletLedger ledger={walletLedger} />
             </CardContent>
           </Card>

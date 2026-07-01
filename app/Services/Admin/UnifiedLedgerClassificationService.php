@@ -29,7 +29,13 @@ final class UnifiedLedgerClassificationService
     public static function classify(Transaction $transaction): array
     {
         if ($transaction->ledger_type && in_array($transaction->ledger_type, UnifiedLedgerType::all(), true)) {
+            $meta = is_array($transaction->meta) ? $transaction->meta : [];
             $bpStatus = UnifiedLedgerBpStatus::normalize($transaction->bp_status);
+
+            if ($transaction->ledger_type === UnifiedLedgerType::BRP
+                && ($bpStatus === null || $bpStatus === UnifiedLedgerBpStatus::NA)) {
+                $bpStatus = self::resolveBrpSettlementStatus($transaction, $meta) ?? UnifiedLedgerBpStatus::NA;
+            }
 
             return [
                 'ledger_type' => $transaction->ledger_type,
@@ -63,7 +69,9 @@ final class UnifiedLedgerClassificationService
      *     brp_activity_type: string|null,
      *     brp_activity_label: string,
      *     current_owner: string|null,
-     *     available_at: string|null
+     *     available_at: string|null,
+     *     display_status: string,
+     *     display_status_label: string
      * }
      */
     public static function presentForTransaction(Transaction $transaction): array
@@ -77,6 +85,8 @@ final class UnifiedLedgerClassificationService
             $availableAt = null;
         }
 
+        $displayStatus = self::resolveDisplayStatus($transaction, $classified);
+
         return [
             'ledger_type' => $classified['ledger_type'],
             'ledger_type_label' => UnifiedLedgerType::label($classified['ledger_type']),
@@ -88,6 +98,8 @@ final class UnifiedLedgerClassificationService
             'available_at' => $availableAt instanceof CarbonInterface
                 ? $availableAt->toIso8601String()
                 : null,
+            'display_status' => $displayStatus,
+            'display_status_label' => self::displayStatusLabel($displayStatus, $classified),
         ];
     }
 
@@ -168,6 +180,15 @@ final class UnifiedLedgerClassificationService
      */
     private static function inferBpStatus(string $ledgerType, Transaction $transaction, array $meta): ?string
     {
+        if ($ledgerType === UnifiedLedgerType::BRP) {
+            $raw = strtolower(trim((string) ($meta['brp_status'] ?? $meta['bp_status'] ?? $transaction->bp_status ?? '')));
+            if ($raw !== '' && ! in_array($raw, ['n/a', 'na'], true)) {
+                return UnifiedLedgerBpStatus::normalize($raw);
+            }
+
+            return self::resolveBrpSettlementStatus($transaction, $meta) ?? UnifiedLedgerBpStatus::NA;
+        }
+
         if ($ledgerType !== UnifiedLedgerType::BP) {
             return UnifiedLedgerBpStatus::NA;
         }
@@ -307,5 +328,72 @@ final class UnifiedLedgerClassificationService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array{ledger_type: string, bp_status: string|null, brp_activity_type: string|null, current_owner: string|null, available_at: CarbonInterface|null}  $classified
+     */
+    private static function resolveDisplayStatus(Transaction $transaction, array $classified): string
+    {
+        $ledgerType = $classified['ledger_type'];
+        $bpStatus = $classified['bp_status'];
+
+        if (in_array($ledgerType, [UnifiedLedgerType::BP, UnifiedLedgerType::BRP], true)
+            && $bpStatus === UnifiedLedgerBpStatus::PROCESSING) {
+            return Transaction::STATUS_PENDING;
+        }
+
+        return (string) $transaction->status;
+    }
+
+    /**
+     * @param  array{ledger_type: string, bp_status: string|null, brp_activity_type: string|null, current_owner: string|null, available_at: CarbonInterface|null}  $classified
+     */
+    private static function displayStatusLabel(string $displayStatus, array $classified): string
+    {
+        if ($displayStatus === Transaction::STATUS_PENDING
+            && in_array($classified['ledger_type'], [UnifiedLedgerType::BP, UnifiedLedgerType::BRP], true)) {
+            return 'Processing';
+        }
+
+        return ucfirst(str_replace('_', ' ', $displayStatus));
+    }
+
+    /**
+     * Purchase-linked BRP earn rows follow the same settlement window as the BP purchase.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private static function resolveBrpSettlementStatus(Transaction $transaction, array $meta): ?string
+    {
+        if (($meta['brp_activity_type'] ?? $transaction->brp_activity_type) === UnifiedLedgerBrpActivity::REDEEMED) {
+            return null;
+        }
+
+        if ((float) $transaction->amount < 0) {
+            return null;
+        }
+
+        $purchaseId = (int) ($meta['believe_point_purchase_id'] ?? 0);
+        if ($purchaseId <= 0 && $transaction->related_id && is_string($transaction->related_type)
+            && str_contains($transaction->related_type, 'BelievePointPurchase')) {
+            $purchaseId = (int) $transaction->related_id;
+        }
+        if ($purchaseId <= 0 && str_starts_with((string) ($transaction->transaction_id ?? ''), 'brp:earned:purchase:')) {
+            $purchaseId = (int) substr((string) $transaction->transaction_id, strlen('brp:earned:purchase:'));
+        }
+
+        if ($purchaseId <= 0) {
+            return null;
+        }
+
+        $purchase = BelievePointPurchase::query()->find($purchaseId);
+        if ($purchase === null || $purchase->status !== 'completed') {
+            return null;
+        }
+
+        return $purchase->points_released
+            ? UnifiedLedgerBpStatus::AVAILABLE
+            : UnifiedLedgerBpStatus::PROCESSING;
     }
 }
