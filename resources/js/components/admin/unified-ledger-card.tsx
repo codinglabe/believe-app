@@ -271,7 +271,9 @@ type Variant = "full" | "compact"
 export function UnifiedLedgerCard({ data, variant = "full", className }: { data: UnifiedLedgerRow; variant?: Variant; className?: string }) {
   const cur = data.currency || "USD"
   const usePoints = data.provider === "points"
-  const showMarkupDollars = !usePoints
+  const isBpLedger = data.ledger_type === "bp"
+  const isBrpLedger = data.ledger_type === "brp"
+  const showMarkupDollars = !isBrpLedger
 
   if (variant === "compact") {
     return (
@@ -320,11 +322,11 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               ) : (
                 <>
               <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
-                Gross {ledgerAmountNode(usePoints, data.gross_amount, cur)}
+                Gross {ledgerAmountNode(false, isBrpLedger ? null : data.gross_amount, cur)}
               </span>
               <span className="text-muted-foreground">·</span>
               <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
-                Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
+                Net {ledgerAmountNode(isBpLedger, isBrpLedger ? null : data.net_amount, cur)}
               </span>
                 </>
               )}
@@ -468,17 +470,17 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <Amount
               label="Subtotal"
-              value={ledgerAmountNode(usePoints, data.subtotal_amount, cur, true)}
+              value={ledgerAmountNode(false, isBrpLedger ? null : data.subtotal_amount, cur, true)}
               hint="Product/service price. On catalog lines: Subtotal ≈ Supplier cost + Markup."
             />
             <Amount
               label="Sales tax"
-              value={ledgerAmountNode(usePoints, data.sales_tax_amount, cur, true)}
+              value={ledgerAmountNode(false, isBrpLedger ? null : data.sales_tax_amount, cur, true)}
               hint="Sales tax (pass-through; not platform revenue)."
             />
             <Amount
               label="Shipping"
-              value={ledgerAmountNode(usePoints, data.shipping_amount, cur, true)}
+              value={ledgerAmountNode(false, isBrpLedger ? null : data.shipping_amount, cur, true)}
               hint="Delivery charge (pass-through or margin, depending on setup)."
             />
             {showMarkupDollars &&
@@ -551,7 +553,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             ) : null}
             <Amount
               label="Gross"
-              value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, !usePoints || data.wallet_amount == null)}
+              value={ledgerAmountNode(false, isBrpLedger ? null : data.gross_amount, cur, false, !usePoints || data.wallet_amount == null)}
               emphasis={!usePoints || data.wallet_amount == null}
               hint="Total paid. Gross = Subtotal + Shipping + Tax."
             />
@@ -587,14 +589,14 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             </div>
             <Amount
               label="Platform fee (BIU)"
-              value={ledgerAmountNode(usePoints, data.biu_fee_amount, cur)}
+              value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.biu_fee_amount, cur)}
               hint="Workbook example: Platform fee = Subtotal × platform % — this row shows recorded BIU / platform fee from the ledger."
             />
-            <Amount label="Split" value={ledgerAmountNode(usePoints, data.split_amount, cur, true)} />
-            <Amount label="Refund" value={ledgerAmountNode(usePoints, data.refund_amount, cur, true)} />
+            <Amount label="Split" value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.split_amount, cur, true)} />
+            <Amount label="Refund" value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.refund_amount, cur, true)} />
             <Amount
               label="Net"
-              value={ledgerAmountNode(usePoints, data.net_amount, cur, false, true)}
+              value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.net_amount, cur, false, true)}
               emphasis
               className="sm:col-span-2 md:col-span-2 lg:col-span-1"
               hint="Settled total for this row (flow-specific; not always equal to Org payout alone — see settlement rows below)."
@@ -603,22 +605,22 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <div className="col-span-full mt-1 grid min-w-0 grid-cols-1 gap-3 border-t border-border/40 pt-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Amount
                   label="Supplier payout"
-                  value={ledgerAmountNode(usePoints, data.supplier_payout_amount, cur, true)}
+                  value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.supplier_payout_amount, cur, true)}
                   hint="Merchant / cost slice (full split; fees do not reduce this when a nonprofit share exists)"
                 />
                 <Amount
                   label="Platform payout"
-                  value={ledgerAmountNode(usePoints, data.platform_payout_amount, cur, true)}
+                  value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.platform_payout_amount, cur, true)}
                   hint="BIU platform fee + split share retained"
                 />
                 <Amount
                   label="Organization payout"
-                  value={ledgerAmountNode(usePoints, data.organization_payout_amount, cur, true)}
+                  value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.organization_payout_amount, cur, true)}
                   hint="What the org receives after fees in this split. Workbook shorthand: Org payout ≈ Subtotal − processing − platform fee (fees come from payout, not charged again to the buyer)."
                 />
                 <Amount
                   label="Supporter payout"
-                  value={ledgerAmountNode(usePoints, data.supporter_payout_amount ?? null, cur, true)}
+                  value={ledgerAmountNode(usePoints, isBrpLedger ? null : data.supporter_payout_amount ?? null, cur, true)}
                   hint="Instructor / supporter share when recorded on the transaction (meta)"
                 />
               </div>

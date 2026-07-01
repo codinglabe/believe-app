@@ -188,8 +188,59 @@ function formatMoney(n: number, currency: string) {
   }
 }
 
-function formatAmountForLedger(pointsPay: boolean, n: number, currency: string, className?: string) {
-  if (pointsPay) {
+type LedgerKind = "money" | "bp" | "brp"
+
+function resolveLedgerKind(
+  u: UnifiedLedgerRow | undefined,
+  currency: string,
+  pointsPay: boolean,
+): LedgerKind {
+  if (u?.ledger_type === "brp" || currency.toUpperCase() === "BRP") {
+    return "brp"
+  }
+  if (u?.ledger_type === "bp" || pointsPay) {
+    return "bp"
+  }
+  return "money"
+}
+
+function ledgerKindFilterLabel(lt: string): string {
+  switch (lt) {
+    case "money":
+      return "Money (USD)"
+    case "bp":
+      return "Believe Points (BP)"
+    case "brp":
+      return "Believe Reward Points (BRP)"
+    default:
+      return lt
+  }
+}
+
+function formatAmountForLedger(kind: LedgerKind, n: number, currency: string, className?: string) {
+  if (kind === "brp") {
+    const sign = n > 0 ? "+" : n < 0 ? "−" : ""
+    const abs = Math.abs(n)
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center justify-end gap-1.5 tabular-nums",
+          n > 0 && "text-blue-700 dark:text-blue-300",
+          n < 0 && "text-foreground",
+          className,
+        )}
+      >
+        <Gift className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+        {sign}
+        {abs.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}{" "}
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-blue-600/90 dark:text-blue-400/90">
+          BRP
+        </span>
+      </span>
+    )
+  }
+
+  if (kind === "bp") {
     const sign = n > 0 ? "+" : n < 0 ? "−" : ""
     const abs = Math.abs(n)
     return (
@@ -201,28 +252,67 @@ function formatAmountForLedger(pointsPay: boolean, n: number, currency: string, 
           className,
         )}
       >
-        <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+        <Coins className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" aria-hidden />
         {sign}
-        {abs.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pts
+        {abs.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}{" "}
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-purple-600/90 dark:text-purple-400/90">
+          BP
+        </span>
       </span>
     )
   }
+
   return formatMoney(n, currency)
+}
+
+/** USD/commerce columns — BRP: —; BP: $ everywhere except Wallet amt + Net. */
+function formatMoneyColumnForLedger(
+  kind: LedgerKind,
+  n: number | null | undefined,
+  currency: string,
+  className?: string,
+): ReactNode {
+  if (kind === "brp") {
+    return "—"
+  }
+  if (n == null || n === undefined || Number.isNaN(Number(n))) {
+    return "—"
+  }
+  return formatAmountForLedger("money", Number(n), currency, className)
+}
+
+/** Net — BP rows show BP; BRP: —; money: USD. */
+function formatNetColumnForLedger(
+  kind: LedgerKind,
+  n: number | null | undefined,
+  currency: string,
+  className?: string,
+): ReactNode {
+  if (kind === "brp") {
+    return "—"
+  }
+  if (n == null || n === undefined || Number.isNaN(Number(n))) {
+    return "—"
+  }
+  return formatAmountForLedger(kind, Number(n), currency, className)
 }
 
 /** Workbook line amounts: prefer unified_ledger, fall back to ledger_report. */
 function ledgerReportLineAmount(
-  pointsPay: boolean,
+  kind: LedgerKind,
   u: UnifiedLedgerRow | undefined,
   rep: LedgerReport | undefined,
   key: "subtotal_amount" | "sales_tax_amount" | "shipping_amount",
   cur: string,
 ): ReactNode {
+  if (kind === "brp") {
+    return "—"
+  }
   const fromU = u != null ? u[key] : undefined
   const fromRep = rep?.[key]
   const raw = fromU !== undefined && fromU !== null ? fromU : fromRep
   if (raw === undefined || raw === null) return "—"
-  return formatAmountForLedger(pointsPay, Number(raw), cur, "text-muted-foreground")
+  return formatAmountForLedger("money", Number(raw), cur, "text-muted-foreground")
 }
 
 function ledgerSupplierName(u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined): string {
@@ -235,16 +325,16 @@ function ledgerSupplierType(u: UnifiedLedgerRow | undefined, rep: LedgerReport |
   return v != null && String(v).trim() !== "" ? String(v) : "—"
 }
 
-/** Catalog base cost (unified_ledger); hidden for Points rows (same as detail card). */
-function ledgerSupplierCostCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
-  if (pointsPay || !u) return "—"
+/** Catalog base cost (unified_ledger); BRP rows only. */
+function ledgerSupplierCostCell(kind: LedgerKind, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
+  if (kind === "brp" || !u) return "—"
   const n = u.supplier_cost_amount
   if (n === null || n === undefined || !Number.isFinite(Number(n))) return "—"
-  return formatAmountForLedger(false, Number(n), cur, "text-muted-foreground")
+  return formatAmountForLedger("money", Number(n), cur, "text-muted-foreground")
 }
 
 /** Margin % + dollar markup when present (unified_ledger). */
-function ledgerMarkupCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
+function ledgerMarkupCell(kind: LedgerKind, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
   if (!u) return "—"
   const p = u.selling_price_markup_percent
   const a = u.selling_price_markup_amount
@@ -255,7 +345,7 @@ function ledgerMarkupCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, c
         ? `${Number(p)}%`
         : `${Number(p).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
       : ""
-  if (pointsPay) {
+  if (kind === "brp") {
     return pctStr || "—"
   }
   if (a != null && a !== undefined && Number.isFinite(Number(a))) {
@@ -274,11 +364,11 @@ function ledgerMarkupCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, c
   return pctStr || "—"
 }
 
-function ledgerPlatformFeeCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined, cur: string): ReactNode {
-  if (pointsPay) return "—"
+function ledgerPlatformFeeCell(kind: LedgerKind, u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined, cur: string): ReactNode {
+  if (kind === "brp") return "—"
   const raw = u != null ? u.biu_fee_amount : rep?.biu_fee
   if (raw === undefined || raw === null) return "—"
-  return formatAmountForLedger(false, Number(raw), cur, "text-muted-foreground")
+  return formatAmountForLedger("money", Number(raw), cur, "text-muted-foreground")
 }
 
 /** Workbook-style labels (all caps in UI). */
@@ -527,6 +617,9 @@ function isDonationLedgerPointsRow(
 }
 
 function ledgerProviderDisplayLabel(u: UnifiedLedgerRow | undefined, row: LedgerRow): string {
+  if (u?.ledger_type === "brp") {
+    return "Believe Reward Points"
+  }
   if (isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)) {
     return isDonationLedgerPointsRow(u, row) ? "BIU Points" : "Believe Points"
   }
@@ -537,16 +630,22 @@ function ledgerProviderDisplayLabel(u: UnifiedLedgerRow | undefined, row: Ledger
 
 /** Payment column badge when row is paid with Believe Points (donations → BIU Points). */
 function ledgerPointsPaymentLabel(u: UnifiedLedgerRow | undefined, row: LedgerRow): string {
+  if (u?.ledger_type === "brp") {
+    return "Believe Reward Points"
+  }
   return isDonationLedgerPointsRow(u, row) ? "BIU Points" : "Believe Points"
 }
 
 function ledgerPaymentMethodIcon(
   paymentMethodLower: string,
   provider: string | undefined,
-  pointsPay: boolean,
+  kind: LedgerKind,
 ): ReactNode {
-  if (pointsPay) {
-    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  if (kind === "brp") {
+    return <Gift className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+  }
+  if (kind === "bp") {
+    return <Coins className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" aria-hidden />
   }
   if (provider === "stripe") {
     return <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
@@ -1109,7 +1208,7 @@ export default function TransactionLedger({
                   <option value="all">All ledger types</option>
                   {ledgerTypeOptions.map((lt) => (
                     <option key={lt} value={lt}>
-                      {lt === "money" ? "Money" : lt === "bp" ? "BP" : "BRP"}
+                      {ledgerKindFilterLabel(lt)}
                     </option>
                   ))}
                 </select>
@@ -1146,10 +1245,14 @@ export default function TransactionLedger({
                           <th className="min-w-[8rem] whitespace-nowrap px-4 py-3.5">Reference</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Status</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Ledger Type</th>
-                          <th className="whitespace-nowrap px-4 py-3.5">BP Status</th>
+                          <th className="whitespace-nowrap px-4 py-3.5" title="Believe Points (BP) settlement status — not used for BRP rows">
+                            BP Status
+                          </th>
                           <th className="whitespace-nowrap px-4 py-3.5">Available Date</th>
                           <th className="min-w-[8rem] whitespace-nowrap px-4 py-3.5">Current Owner</th>
-                          <th className="whitespace-nowrap px-4 py-3.5">BRP Activity</th>
+                          <th className="whitespace-nowrap px-4 py-3.5" title="Believe Reward Points (BRP) activity — Earned, Redeemed, etc.">
+                            BRP Activity
+                          </th>
                           <th className="whitespace-nowrap px-4 py-3.5">Module</th>
                           <th className="min-w-[7rem] whitespace-nowrap px-4 py-3.5">Event</th>
                           <th className="min-w-[12rem] px-4 py-3.5">From → To</th>
@@ -1222,16 +1325,17 @@ export default function TransactionLedger({
                           const platformPayout = u != null ? u.platform_payout_amount : rep?.platform_payout ?? null
                           const supporterPayout = u != null ? u.supporter_payout_amount : rep?.supporter_payout ?? null
                           const pointsPay = isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
+                          const ledgerKind = resolveLedgerKind(u, cur, pointsPay)
                           const walletAmt =
                             pointsPay && u?.wallet_amount != null && !Number.isNaN(Number(u.wallet_amount))
                               ? Number(u.wallet_amount)
                               : row.amount
-                          const processorTotal = pointsPay
-                            ? 0
-                            : u != null
+                          const processorTotal = ledgerKind === "money"
+                            ? u != null
                               ? Number(u.processor_fee_amount)
                               : Number(rep?.stripe_fee ?? 0) + Number(rep?.bridge_fee ?? 0)
-                          const processingTitle = !pointsPay
+                            : 0
+                          const processingTitle = ledgerKind === "money"
                             ? `Stripe ${formatMoney(stripeFeeAmt, cur)} · Bridge ${formatMoney(bridgeFeeAmt, cur)}`
                             : undefined
                           const supplierNameCell = ledgerSupplierName(u, rep)
@@ -1332,10 +1436,14 @@ export default function TransactionLedger({
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
-                                {u?.ledger_type_label ?? "Money"}
+                                {u?.ledger_type_label ?? "Money (USD)"}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                                {u?.bp_status_label ?? "N/A"}
+                                {ledgerKind === "brp" ? (
+                                  <span title="BP Status applies to Believe Points rows only">—</span>
+                                ) : (
+                                  u?.bp_status_label ?? "N/A"
+                                )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
                                 {u?.available_at
@@ -1343,7 +1451,7 @@ export default function TransactionLedger({
                                       dateStyle: "medium",
                                       timeStyle: "short",
                                     })
-                                  : u?.ledger_type === "bp" && u?.bp_status_label === "Processing"
+                                  : ledgerKind === "bp" && u?.bp_status_label === "Processing"
                                     ? "Pending"
                                     : "—"}
                               </td>
@@ -1351,7 +1459,13 @@ export default function TransactionLedger({
                                 {u?.current_owner ?? "—"}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                                {u?.brp_activity_label ?? "N/A"}
+                                {ledgerKind === "brp" ? (
+                                  u?.brp_activity_label && u.brp_activity_label !== "N/A"
+                                    ? u.brp_activity_label
+                                    : "—"
+                                ) : (
+                                  <span title="BRP Activity applies to Believe Reward Points rows only">—</span>
+                                )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm">
                                 {u ? (
@@ -1367,21 +1481,19 @@ export default function TransactionLedger({
                                 {partiesSummary(u)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-base font-semibold tabular-nums text-foreground">
-                                {formatAmountForLedger(pointsPay, walletAmt, cur)}
+                                {formatAmountForLedger(ledgerKind, walletAmt, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {grossDisplayPlain != null && grossDisplayPlain !== undefined
-                                  ? formatAmountForLedger(pointsPay, Number(grossDisplayPlain), cur, "text-muted-foreground")
-                                  : "—"}
+                                {formatMoneyColumnForLedger(ledgerKind, grossDisplayPlain, cur, "text-muted-foreground")}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {ledgerReportLineAmount(pointsPay, u, rep, "subtotal_amount", cur)}
+                                {ledgerReportLineAmount(ledgerKind, u, rep, "subtotal_amount", cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {ledgerReportLineAmount(pointsPay, u, rep, "shipping_amount", cur)}
+                                {ledgerReportLineAmount(ledgerKind, u, rep, "shipping_amount", cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {ledgerReportLineAmount(pointsPay, u, rep, "sales_tax_amount", cur)}
+                                {ledgerReportLineAmount(ledgerKind, u, rep, "sales_tax_amount", cur)}
                               </td>
                               <td
                                 className="max-w-[11rem] truncate px-4 py-3 text-sm text-foreground"
@@ -1407,29 +1519,33 @@ export default function TransactionLedger({
                                 )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {ledgerSupplierCostCell(pointsPay, u, cur)}
+                                {ledgerSupplierCostCell(ledgerKind, u, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {ledgerMarkupCell(pointsPay, u, cur)}
+                                {ledgerMarkupCell(ledgerKind, u, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {supplierPayout != null && supplierPayout !== undefined
-                                  ? formatAmountForLedger(pointsPay, Number(supplierPayout), cur, "text-muted-foreground")
-                                  : "—"}
+                                {formatMoneyColumnForLedger(ledgerKind, supplierPayout, cur, "text-muted-foreground")}
                               </td>
                               <td
                                 className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums"
                                 title={processingTitle}
                               >
-                                {pointsPay ? (
+                                {ledgerKind !== "money" ? (
                                   <Badge
                                     variant="outline"
                                     className={cn(
                                       "inline-flex items-center justify-start gap-1 tabular-nums text-[10px] font-medium leading-none",
-                                      providerBadgeClassTable("points"),
+                                      ledgerKind === "brp"
+                                        ? "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
+                                        : providerBadgeClassTable("points"),
                                     )}
                                   >
-                                    <Coins className="h-3 w-3 shrink-0" aria-hidden />
+                                    {ledgerKind === "brp" ? (
+                                      <Gift className="h-3 w-3 shrink-0" aria-hidden />
+                                    ) : (
+                                      <Coins className="h-3 w-3 shrink-0" aria-hidden />
+                                    )}
                                     <span className="leading-none">No Fee</span>
                                   </Badge>
                                 ) : (
@@ -1437,37 +1553,35 @@ export default function TransactionLedger({
                                 )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {ledgerPlatformFeeCell(pointsPay, u, rep, cur)}
+                                {ledgerPlatformFeeCell(ledgerKind, u, rep, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {platformPayout != null && platformPayout !== undefined
-                                  ? formatAmountForLedger(pointsPay, Number(platformPayout), cur, "text-muted-foreground")
-                                  : "—"}
+                                {formatMoneyColumnForLedger(ledgerKind, platformPayout, cur, "text-muted-foreground")}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {orgPayout != null && orgPayout !== undefined
-                                  ? formatAmountForLedger(pointsPay, Number(orgPayout), cur, "text-muted-foreground")
-                                  : "—"}
+                                {formatMoneyColumnForLedger(ledgerKind, orgPayout, cur, "text-muted-foreground")}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                                {supporterPayout != null && supporterPayout !== undefined
-                                  ? formatAmountForLedger(pointsPay, Number(supporterPayout), cur, "text-muted-foreground")
-                                  : "—"}
+                                {formatMoneyColumnForLedger(ledgerKind, supporterPayout, cur, "text-muted-foreground")}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
-                                {netDisplayPlain != null && netDisplayPlain !== undefined
-                                  ? formatAmountForLedger(pointsPay, Number(netDisplayPlain), cur)
-                                  : "—"}
+                                {formatNetColumnForLedger(ledgerKind, netDisplayPlain, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3">
-                                {pointsPay ? (
+                                {ledgerKind !== "money" ? (
                                   <span
                                     className={cn(
                                       "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
-                                      providerBadgeClassTable("points"),
+                                      ledgerKind === "brp"
+                                        ? "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
+                                        : providerBadgeClassTable("points"),
                                     )}
                                   >
-                                    <Coins className="h-4 w-4 shrink-0" aria-hidden />
+                                    {ledgerKind === "brp" ? (
+                                      <Gift className="h-4 w-4 shrink-0" aria-hidden />
+                                    ) : (
+                                      <Coins className="h-4 w-4 shrink-0" aria-hidden />
+                                    )}
                                     {ledgerProviderDisplayLabel(u, row)}
                                   </span>
                                 ) : u ? (
@@ -1489,21 +1603,21 @@ export default function TransactionLedger({
                                 <span
                                   className={cn(
                                     "inline-flex min-h-[1.5rem] items-center gap-2 text-sm leading-normal",
-                                    pointsPay ? "text-foreground" : "text-muted-foreground",
+                                    ledgerKind !== "money" ? "text-foreground" : "text-muted-foreground",
                                   )}
                                 >
                                   {ledgerPaymentMethodIcon(
                                     (row.payment_method || "").toLowerCase(),
                                     u?.provider,
-                                    pointsPay,
+                                    ledgerKind,
                                   )}
                                   <span
                                     className={cn(
                                       "whitespace-nowrap",
-                                      !pointsPay && row.payment_method && "capitalize",
+                                      ledgerKind === "money" && row.payment_method && "capitalize",
                                     )}
                                   >
-                                    {pointsPay
+                                    {ledgerKind !== "money"
                                       ? ledgerPointsPaymentLabel(u, row)
                                       : row.payment_method
                                         ? row.payment_method.replace(/_/g, " ")
