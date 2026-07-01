@@ -14,7 +14,7 @@ final class BelievePointPurchaseSettlementReconciliationService
     /**
      * @return array{examined: int, stripe_synced: int, bridge_credits_ingested: int, bridge_allocated: int, released: int}
      */
-    public static function reconcilePendingPurchases(bool $dryRun = false): array
+    public static function reconcilePendingPurchases(bool $dryRun = false, bool $stripeOnly = false): array
     {
         $stats = [
             'examined' => 0,
@@ -49,12 +49,17 @@ final class BelievePointPurchaseSettlementReconciliationService
             return $stats;
         }
 
-        $stats['bridge_credits_ingested'] = BelievePointBridgeReserveSettlementService::reconcileFromBridgeApi();
-        $stats['bridge_allocated'] = BelievePointBridgeReserveSettlementService::reallocateExistingReserveCredits();
+        if (! $stripeOnly) {
+            $stats['bridge_credits_ingested'] = BelievePointBridgeReserveSettlementService::reconcileFromBridgeApi();
+            $stats['bridge_allocated'] = BelievePointBridgeReserveSettlementService::reallocateExistingReserveCredits();
+        }
+
         $stats['released'] = BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
 
         if ($stats['stripe_synced'] > 0 || $stats['bridge_credits_ingested'] > 0 || $stats['bridge_allocated'] > 0 || $stats['released'] > 0) {
-            Log::info('Believe Points settlement reconciliation finished', $stats);
+            Log::info('Believe Points settlement reconciliation finished', array_merge($stats, [
+                'stripe_only' => $stripeOnly,
+            ]));
         }
 
         return $stats;

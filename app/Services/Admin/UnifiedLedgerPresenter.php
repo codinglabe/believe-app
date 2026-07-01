@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Admin\UnifiedLedgerClassificationService;
+use App\Support\UnifiedLedgerType;
 
 /**
  * Builds the admin "BIU unified ledger" row: combines the workbook spec (module, transaction_type,
@@ -1227,6 +1228,26 @@ class UnifiedLedgerPresenter
      */
     private function resolveAmounts(Transaction $t, array $meta, array $ledgerReport): array
     {
+        $classified = UnifiedLedgerClassificationService::classify($t);
+        $ledgerType = $classified['ledger_type'] ?? UnifiedLedgerType::MONEY;
+        $currency = strtoupper((string) ($t->currency ?? ''));
+
+        if ($ledgerType === UnifiedLedgerType::BRP || $currency === 'BRP') {
+            return [
+                'subtotal' => null,
+                'sales_tax' => null,
+                'shipping' => null,
+                'gross' => 0,
+                'stripe_fee' => 0,
+                'bridge_fee' => 0,
+                'biu_fee' => 0,
+                'split' => 0,
+                'refund' => 0,
+                'net' => null,
+                'processor_fee' => 0,
+            ];
+        }
+
         $gross = (float) ($ledgerReport['gross_amount'] ?? 0);
         $stripe = (float) ($ledgerReport['stripe_fee'] ?? 0);
         $bridge = (float) ($ledgerReport['bridge_fee'] ?? 0);
