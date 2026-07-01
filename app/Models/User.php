@@ -1280,7 +1280,7 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         if (! $allowNegativeBalance) {
-            $balance = round((float) ($this->reward_points ?? 0), 2);
+            $balance = $this->availableRewardPointsBalance();
             if ($balance < $points) {
                 return false;
             }

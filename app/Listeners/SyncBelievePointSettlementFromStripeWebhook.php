@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Services\BelievePointPurchaseSettlementReconciliationService;
 use App\Services\StripeBelievePointSettlementWebhookService;
 use Laravel\Cashier\Events\WebhookReceived;
 
@@ -17,11 +18,17 @@ class SyncBelievePointSettlementFromStripeWebhook
         }
 
         match ($type) {
-            'balance.available' => StripeBelievePointSettlementWebhookService::handleBalanceAvailable(),
+            'balance.available' => self::handleBalanceAvailable(),
             'payout.paid' => StripeBelievePointSettlementWebhookService::handlePayoutPaid($object),
             'charge.refunded' => StripeBelievePointSettlementWebhookService::handleChargeRefunded($object),
             'charge.dispute.created' => StripeBelievePointSettlementWebhookService::handleChargeDisputeCreated($object),
             default => null,
         };
+    }
+
+    private static function handleBalanceAvailable(): void
+    {
+        BelievePointPurchaseSettlementReconciliationService::reconcilePendingPurchases();
+        StripeBelievePointSettlementWebhookService::handleBalanceAvailable();
     }
 }

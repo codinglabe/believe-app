@@ -134,6 +134,8 @@ final class UnifiedLedgerTransactionWriter
                 'meta' => $meta,
             ],
         );
+
+        self::syncBrpPurchaseRewardRow($purchase);
     }
 
     public static function syncBpSettlementRow(
@@ -260,10 +262,32 @@ final class UnifiedLedgerTransactionWriter
 
     public static function syncBrpEarnedForPurchase(BelievePointPurchase $purchase, User $user, float $brp): void
     {
-        $brp = round(max(0, $brp), 2);
-        if ($brp <= 0) {
+        self::syncBrpPurchaseRewardRow($purchase);
+    }
+
+    /**
+     * BRP from a BP purchase stays Processing until the purchase settles to Available BP.
+     */
+    public static function syncBrpPurchaseRewardRow(BelievePointPurchase $purchase): void
+    {
+        $purchase->loadMissing('user');
+        $user = $purchase->user;
+        if (! $user) {
             return;
         }
+
+        $brp = round((float) ($purchase->reward_points_awarded ?? 0), 2);
+        if ($brp <= 0 || $purchase->status !== 'completed') {
+            return;
+        }
+
+        $brpStatus = self::bpStatusForPurchase($purchase);
+        $availableAt = $brpStatus === UnifiedLedgerBpStatus::AVAILABLE
+            ? (BelievePointPurchaseSettlementStatusService::settlementDate($purchase) ?? $purchase->points_available_at)
+            : null;
+        $txStatus = $brpStatus === UnifiedLedgerBpStatus::PROCESSING
+            ? Transaction::STATUS_PENDING
+            : Transaction::STATUS_COMPLETED;
 
         Transaction::query()->updateOrCreate(
             ['transaction_id' => 'brp:earned:purchase:'.$purchase->id],
@@ -273,23 +297,28 @@ final class UnifiedLedgerTransactionWriter
                 'related_type' => BelievePointPurchase::class,
                 'type' => 'reward',
                 'ledger_type' => UnifiedLedgerType::BRP,
-                'bp_status' => UnifiedLedgerBpStatus::NA,
+                'bp_status' => $brpStatus,
                 'brp_activity_type' => UnifiedLedgerBrpActivity::EARNED,
                 'current_owner' => $user->name,
-                'available_at' => null,
-                'status' => Transaction::STATUS_COMPLETED,
+                'available_at' => $availableAt,
+                'status' => $txStatus,
                 'amount' => $brp,
                 'fee' => 0,
                 'currency' => 'BRP',
                 'payment_method' => null,
-                'processed_at' => $purchase->updated_at ?? now(),
+                'processed_at' => $availableAt ?? ($purchase->updated_at ?? now()),
                 'meta' => [
-                    'source' => 'reward_point_ledger',
+                    'source' => 'believe_points_purchase_brp',
                     'ledger_type' => UnifiedLedgerType::BRP,
                     'brp_activity_type' => UnifiedLedgerBrpActivity::EARNED,
                     'believe_point_purchase_id' => $purchase->id,
+                    'intended_points' => $brp,
+                    'brp_status' => $brpStatus,
+                    'bp_status' => $brpStatus,
                     'event_name' => 'BP Purchase Participation Reward',
-                    'description' => 'Believe Reward Points earned for qualifying BP purchase',
+                    'description' => $brpStatus === UnifiedLedgerBpStatus::PROCESSING
+                        ? sprintf('Believe Reward Points earned for qualifying BP purchase (%s BRP Processing)', number_format($brp, 2))
+                        : sprintf('Believe Reward Points earned for qualifying BP purchase (%s BRP Available)', number_format($brp, 2)),
                     'from_type' => 'BIU Platform',
                     'from_name' => UnifiedLedgerOwner::PLATFORM,
                     'to_type' => 'Supporter',
@@ -302,6 +331,17 @@ final class UnifiedLedgerTransactionWriter
 
     public static function syncFromRewardPointLedger(RewardPointLedger $entry): void
     {
+        if ($entry->type === 'credit'
+            && in_array($entry->source, ['believe_points_card_purchase', 'believe_points_ach_purchase'], true)
+            && $entry->reference_id) {
+            $purchase = BelievePointPurchase::query()->find($entry->reference_id);
+            if ($purchase) {
+                self::syncBrpPurchaseRewardRow($purchase);
+
+                return;
+            }
+        }
+
         $activity = self::brpActivityForEntry($entry);
 
         $amount = round((float) $entry->points, 2);
@@ -311,10 +351,6 @@ final class UnifiedLedgerTransactionWriter
 
         $user = $entry->user;
         $reference = 'brp:ledger:'.$entry->id;
-
-        if (in_array($entry->source, ['believe_points_card_purchase', 'believe_points_ach_purchase'], true) && $entry->reference_id) {
-            $reference = 'brp:earned:purchase:'.$entry->reference_id;
-        }
 
         Transaction::query()->updateOrCreate(
             ['transaction_id' => $reference],
