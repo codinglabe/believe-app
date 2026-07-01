@@ -55,8 +55,6 @@ class UnifiedLedgerPresenter
             ? $this->resolveSupplierCostAmountFromOrder($orderForMarkup)
             : null;
 
-        $classification = UnifiedLedgerClassificationService::presentForTransaction($t);
-
         return [
             'txn_id' => $t->id,
             'datetime_iso' => $when->toIso8601String(),
@@ -88,7 +86,7 @@ class UnifiedLedgerPresenter
             'platform_payout_amount' => $sellingPayouts['platform'],
             'supporter_payout_amount' => $sellingPayouts['supporter'],
             'currency' => $t->currency ?? 'USD',
-            'status' => $classification['display_status_label'],
+            'status' => $t->status,
             'provider' => $provider,
             'reference' => $reference,
             'organization_id' => $ledgerReport['organization_id'] ?? null,
@@ -114,7 +112,7 @@ class UnifiedLedgerPresenter
             /** Sum of supplier base cost for those catalog lines: `source_cost`×qty, else line ÷ (1 + %÷100); pairs with markup (Subtotal_line ≈ Cost + Markup). */
             'supplier_cost_amount' => $supplierCostAmount,
             'wallet_amount' => UnifiedLedgerWalletAmountResolver::resolve($t),
-            ...$classification,
+            ...UnifiedLedgerClassificationService::presentForTransaction($t),
         ];
     }
 
