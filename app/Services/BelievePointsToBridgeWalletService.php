@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\BelievePointWalletTransfer;
-use App\Models\BelievePointsLedgerEntry;
 use App\Models\BridgeIntegration;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -569,32 +568,7 @@ class BelievePointsToBridgeWalletService
 
     private function recordWalletTransferLedger(BelievePointWalletTransfer $transfer): void
     {
-        if ($this->walletTransferLedgerExists($transfer->id)) {
-            return;
-        }
-
-        $this->createWalletTransferLedgerEntry($transfer->user_id, $transfer->id, (float) $transfer->amount);
-    }
-
-    private function walletTransferLedgerExists(int $transferId): bool
-    {
-        return BelievePointsLedgerEntry::query()
-            ->where('entry_type', BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER)
-            ->where('metadata->believe_point_wallet_transfer_id', $transferId)
-            ->exists();
-    }
-
-    private function createWalletTransferLedgerEntry(int $userId, int $transferId, float $amount): void
-    {
-        BelievePointsLedgerEntry::query()->create([
-            'user_id' => $userId,
-            'amount' => -$amount,
-            'entry_type' => BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER,
-            'description' => 'Moved Believe Points to Believe wallet',
-            'metadata' => [
-                'believe_point_wallet_transfer_id' => $transferId,
-            ],
-        ]);
+        BelievePointsWalletLedgerService::recordWalletTransfer($transfer);
     }
 
     /**
@@ -674,19 +648,7 @@ class BelievePointsToBridgeWalletService
             $user = User::query()->lockForUpdate()->find($locked->user_id);
             if ($user !== null) {
                 $user->increment('believe_points', (float) $locked->amount);
-
-                if ($this->walletTransferLedgerExists($locked->id)) {
-                    BelievePointsLedgerEntry::query()->create([
-                        'user_id' => $user->id,
-                        'amount' => (float) $locked->amount,
-                        'entry_type' => BelievePointsLedgerEntry::TYPE_WALLET_TRANSFER_REFUND,
-                        'description' => 'Refund: Believe Points wallet transfer failed',
-                        'metadata' => [
-                            'believe_point_wallet_transfer_id' => $locked->id,
-                            'reason' => $reason,
-                        ],
-                    ]);
-                }
+                BelievePointsWalletLedgerService::recordWalletTransferRefund($locked, $reason);
             }
 
             $locked->update([

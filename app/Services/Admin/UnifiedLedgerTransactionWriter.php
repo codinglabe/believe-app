@@ -327,6 +327,22 @@ final class UnifiedLedgerTransactionWriter
                 ],
             ],
         );
+
+        self::pruneDuplicateBrpPurchaseRows($purchase);
+    }
+
+    /**
+     * One BRP earn row per BP purchase — drop legacy brp:ledger:* duplicates.
+     */
+    private static function pruneDuplicateBrpPurchaseRows(BelievePointPurchase $purchase): void
+    {
+        $canonical = 'brp:earned:purchase:'.$purchase->id;
+
+        Transaction::query()
+            ->where('ledger_type', UnifiedLedgerType::BRP)
+            ->where('related_id', $purchase->id)
+            ->where('transaction_id', '!=', $canonical)
+            ->delete();
     }
 
     public static function syncFromRewardPointLedger(RewardPointLedger $entry): void

@@ -368,14 +368,41 @@ class BelievePointPurchaseSettlementService
                 $attrs['meta'] = array_merge($existingMeta, $attrs['meta']);
             }
             $tx->update($attrs);
+            $keepId = (int) $tx->id;
         } else {
-            Transaction::create($attrs);
+            $keepId = (int) Transaction::query()->create($attrs)->id;
         }
 
         $purchase->loadMissing('user');
         if ($purchase->user) {
             UnifiedLedgerTransactionWriter::syncBpCreditRow($purchase, $purchase->user);
         }
+
+        self::pruneDuplicateMoneyPurchaseRows($purchase, $keepId);
+    }
+
+    /**
+     * Keep a single Money ledger row per BP purchase (legacy syncs may have created extras).
+     */
+    private static function pruneDuplicateMoneyPurchaseRows(BelievePointPurchase $purchase, ?int $keepId): void
+    {
+        if ($keepId === null) {
+            return;
+        }
+
+        Transaction::query()
+            ->where('related_id', $purchase->id)
+            ->where('type', 'purchase')
+            ->where(function ($q) {
+                $q->where('related_type', BelievePointPurchase::class)
+                    ->orWhere('related_type', 'like', '%BelievePointPurchase');
+            })
+            ->where(function ($q) {
+                $q->whereNull('ledger_type')
+                    ->orWhere('ledger_type', UnifiedLedgerType::MONEY);
+            })
+            ->where('id', '!=', $keepId)
+            ->delete();
     }
 
     private static function ledgerPurchaseDescription(BelievePointPurchase $purchase): string
