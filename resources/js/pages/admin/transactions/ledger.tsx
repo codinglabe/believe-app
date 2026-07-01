@@ -265,7 +265,7 @@ function formatAmountForLedger(kind: LedgerKind, n: number, currency: string, cl
   return formatMoney(n, currency)
 }
 
-/** USD/commerce columns — BRP: —; BP: $ everywhere except Wallet amt + Net. */
+/** Commerce columns — BRP: —; BP: coins + BP; money: USD. */
 function formatMoneyColumnForLedger(
   kind: LedgerKind,
   n: number | null | undefined,
@@ -278,23 +278,22 @@ function formatMoneyColumnForLedger(
   if (n == null || n === undefined || Number.isNaN(Number(n))) {
     return "—"
   }
-  return formatAmountForLedger("money", Number(n), currency, className)
+  return formatAmountForLedger(kind, Number(n), currency, className)
 }
 
-/** Net — BP rows show BP; BRP: —; money: USD. */
+/** Net — BRP/BP rows show points; money: USD. */
 function formatNetColumnForLedger(
   kind: LedgerKind,
   n: number | null | undefined,
   currency: string,
+  fallback?: number | null,
   className?: string,
 ): ReactNode {
-  if (kind === "brp") {
+  const raw = n != null && !Number.isNaN(Number(n)) ? Number(n) : fallback
+  if (raw == null || raw === undefined || Number.isNaN(Number(raw))) {
     return "—"
   }
-  if (n == null || n === undefined || Number.isNaN(Number(n))) {
-    return "—"
-  }
-  return formatAmountForLedger(kind, Number(n), currency, className)
+  return formatAmountForLedger(kind, Number(raw), currency, className)
 }
 
 /** Workbook line amounts: prefer unified_ledger, fall back to ledger_report. */
@@ -312,7 +311,7 @@ function ledgerReportLineAmount(
   const fromRep = rep?.[key]
   const raw = fromU !== undefined && fromU !== null ? fromU : fromRep
   if (raw === undefined || raw === null) return "—"
-  return formatAmountForLedger("money", Number(raw), cur, "text-muted-foreground")
+  return formatAmountForLedger(kind, Number(raw), cur, "text-muted-foreground")
 }
 
 function ledgerSupplierName(u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined): string {
@@ -325,12 +324,12 @@ function ledgerSupplierType(u: UnifiedLedgerRow | undefined, rep: LedgerReport |
   return v != null && String(v).trim() !== "" ? String(v) : "—"
 }
 
-/** Catalog base cost (unified_ledger); BRP rows only. */
+/** Catalog base cost (unified_ledger); hidden for BRP rows. */
 function ledgerSupplierCostCell(kind: LedgerKind, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
   if (kind === "brp" || !u) return "—"
   const n = u.supplier_cost_amount
   if (n === null || n === undefined || !Number.isFinite(Number(n))) return "—"
-  return formatAmountForLedger("money", Number(n), cur, "text-muted-foreground")
+  return formatAmountForLedger(kind, Number(n), cur, "text-muted-foreground")
 }
 
 /** Margin % + dollar markup when present (unified_ledger). */
@@ -357,7 +356,9 @@ function ledgerMarkupCell(kind: LedgerKind, u: UnifiedLedgerRow | undefined, cur
             <span className="mx-0.5 text-border">·</span>
           </>
         ) : null}
-        <span className="tabular-nums text-foreground">{formatMoney(Number(a), cur)}</span>
+        <span className="tabular-nums text-foreground">
+          {kind === "bp" ? formatAmountForLedger("bp", Number(a), cur) : formatMoney(Number(a), cur)}
+        </span>
       </span>
     )
   }
@@ -368,7 +369,7 @@ function ledgerPlatformFeeCell(kind: LedgerKind, u: UnifiedLedgerRow | undefined
   if (kind === "brp") return "—"
   const raw = u != null ? u.biu_fee_amount : rep?.biu_fee
   if (raw === undefined || raw === null) return "—"
-  return formatAmountForLedger("money", Number(raw), cur, "text-muted-foreground")
+  return formatAmountForLedger(kind, Number(raw), cur, "text-muted-foreground")
 }
 
 /** Workbook-style labels (all caps in UI). */
@@ -1327,9 +1328,23 @@ export default function TransactionLedger({
                           const pointsPay = isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
                           const ledgerKind = resolveLedgerKind(u, cur, pointsPay)
                           const walletAmt =
-                            pointsPay && u?.wallet_amount != null && !Number.isNaN(Number(u.wallet_amount))
-                              ? Number(u.wallet_amount)
-                              : row.amount
+                            ledgerKind === "brp"
+                              ? u?.wallet_amount != null && !Number.isNaN(Number(u.wallet_amount))
+                                ? Number(u.wallet_amount)
+                                : Number(row.amount)
+                              : pointsPay && u?.wallet_amount != null && !Number.isNaN(Number(u.wallet_amount))
+                                ? Number(u.wallet_amount)
+                                : row.amount
+                          const netDisplayAmt =
+                            ledgerKind === "brp"
+                              ? netDisplayPlain != null && !Number.isNaN(Number(netDisplayPlain))
+                                ? Number(netDisplayPlain)
+                                : walletAmt
+                              : ledgerKind === "bp"
+                                ? netDisplayPlain != null && !Number.isNaN(Number(netDisplayPlain))
+                                  ? Number(netDisplayPlain)
+                                  : walletAmt
+                                : netDisplayPlain
                           const processorTotal = ledgerKind === "money"
                             ? u != null
                               ? Number(u.processor_fee_amount)
@@ -1565,7 +1580,7 @@ export default function TransactionLedger({
                                 {formatMoneyColumnForLedger(ledgerKind, supporterPayout, cur, "text-muted-foreground")}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
-                                {formatNetColumnForLedger(ledgerKind, netDisplayPlain, cur)}
+                                {formatNetColumnForLedger(ledgerKind, netDisplayAmt, cur, walletAmt)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3">
                                 {ledgerKind !== "money" ? (
