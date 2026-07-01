@@ -20,6 +20,9 @@ class SyncBelievePointPurchaseLedgerCommand extends Command
         BelievePointPurchase::query()->orderBy('id')->chunk(200, function ($chunk) use (&$purchaseCount) {
             foreach ($chunk as $purchase) {
                 BelievePointPurchaseSettlementService::syncAdminLedgerPurchaseRow($purchase);
+                if ((float) ($purchase->reward_points_awarded ?? 0) > 0) {
+                    \App\Services\Admin\UnifiedLedgerTransactionWriter::syncBrpPurchaseRewardRow($purchase);
+                }
                 $purchaseCount++;
             }
         });
