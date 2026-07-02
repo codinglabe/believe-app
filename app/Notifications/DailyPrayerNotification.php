@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Enums\PushNotificationModule;
 use App\Models\ContentItem;
 use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
@@ -69,13 +70,25 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
         try {
             $firebaseService = new FirebaseService();
 
+            $contentUrl = route('notifications.content.show', ['content_item' => $this->contentItem->id]);
+
             $data = [
                 'content_item_id' => (string) $this->contentItem->id,
                 'type' => $this->contentItem->type,
                 'channel' => $this->channel,
-                'click_action' => route('notifications.content.show', ['content_item' => $this->contentItem->id]),
-                'url' => route('notifications.content.show', ['content_item' => $this->contentItem->id]),
+                'click_action' => $contentUrl,
+                'url' => $contentUrl,
+                'source_type' => 'campaign',
+                'source_id' => (string) $this->contentItem->id,
+                'module_name' => PushNotificationModule::Campaigns->value,
+                'module_record_id' => $this->contentItem->id,
+                'created_by' => $this->contentItem->user_id,
+                'deep_link' => parse_url($contentUrl, PHP_URL_PATH) ?: $contentUrl,
             ];
+
+            if ($this->contentItem->organization_id) {
+                $data['organization_id'] = (string) $this->contentItem->organization_id;
+            }
 
             // Add meta data if exists
             if ($this->contentItem->meta && is_array($this->contentItem->meta)) {

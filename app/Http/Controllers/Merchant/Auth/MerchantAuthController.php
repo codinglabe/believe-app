@@ -34,6 +34,7 @@ class MerchantAuthController extends Controller
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:merchants'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'business_name' => ['nullable', 'string', 'max:255'],
+            'preferred_payout_method' => ['nullable', 'string', 'in:stripe,paypal'],
         ]);
 
         $merchant = Merchant::create([
@@ -41,6 +42,7 @@ class MerchantAuthController extends Controller
             'email' => $request->email,
             'password' => $request->password,
             'business_name' => $request->business_name,
+            'preferred_payout_method' => $request->input('preferred_payout_method'),
             'status' => 'active',
             'role' => 'merchant',
         ]);
@@ -49,7 +51,12 @@ class MerchantAuthController extends Controller
 
         Auth::guard('merchant')->login($merchant);
 
-        return redirect()->route('merchant.dashboard', [], 303);
+        $redirect = redirect()->route('merchant.dashboard', [], 303);
+        if ($request->filled('preferred_payout_method')) {
+            $redirect->with('flash', ['success' => 'Account created. Complete your payout setup under Payouts in the dashboard.']);
+        }
+
+        return $redirect;
     }
 
     /**

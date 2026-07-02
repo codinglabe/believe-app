@@ -57,20 +57,26 @@ export function isAndroidNotificationPlatform(): boolean {
 }
 
 /**
- * Prefer the sender organization's logo when available (org members send on behalf of their org).
- * On Android PWA, the manifest icon may still appear on the left; NotificationOptions.icon is the org logo.
+ * App icon on the left. Organization logo is shown via NotificationOptions.image (right).
  */
 export function resolveNotificationDisplayIcon(
-    data: Record<string, string | undefined>,
+    _data: Record<string, string | undefined>,
     origin?: string,
 ): string {
-    const orgLogo = resolveOrganizationLogoUrl(data, origin)
+    return resolveAppNotificationIcon(origin)
+}
 
-    if (orgLogo) {
-        return orgLogo
+export function resolveNotificationImageUrl(
+    data: Record<string, string | undefined>,
+    origin?: string,
+): string | undefined {
+    if (data.type === INCOMING_CALL_TYPE) {
+        const callerAvatar = data.caller_avatar?.trim()
+        return callerAvatar || undefined
     }
 
-    return resolveAppNotificationIcon(origin)
+    const orgLogo = resolveOrganizationLogoUrl(data, origin)
+    return orgLogo ?? undefined
 }
 
 export function resolveNotificationBadge(origin?: string): string {
@@ -86,6 +92,7 @@ export function buildNativeNotificationOptions(
     const clickUrl = resolvePushClickUrl(data)
     const icon = resolveNotificationDisplayIcon(data)
     const badge = resolveNotificationBadge()
+    const image = resolveNotificationImageUrl(data)
 
     const options: NotificationOptions = {
         body: body || undefined,
@@ -98,6 +105,10 @@ export function buildNativeNotificationOptions(
             url: clickUrl,
             join_url: data.join_url || clickUrl,
         },
+    }
+
+    if (image) {
+        options.image = image
     }
 
     if (data.type === UNITY_MEET_INVITATION_TYPE) {
@@ -161,6 +172,7 @@ export async function showNativePushNotification(detail: FirebaseNotificationDet
             body: options.body,
             icon: options.icon,
             badge: options.badge,
+            image: options.image,
             tag: dedupeKey,
             data: options.data,
         })

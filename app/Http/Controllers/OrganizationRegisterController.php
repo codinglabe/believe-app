@@ -256,6 +256,7 @@ class OrganizationRegisterController extends Controller
                 'selected_irs_board_member_id' => 'nullable|integer|exists:irs_board_members,id', // When multiple matches, user selects one
                 'primary_action_category_ids' => ['required', 'array', 'min:1'],
                 'primary_action_category_ids.*' => ['integer', 'distinct', Rule::exists('primary_action_categories', 'id')->where('is_active', true)],
+                'preferred_payout_method' => 'nullable|string|in:stripe,paypal',
             ]);
 
             if ($validator->fails()) {
@@ -448,6 +449,7 @@ class OrganizationRegisterController extends Controller
                 'tax_compliance_checked_at' => $taxEvaluation['checked_at'],
                 'tax_compliance_meta' => $taxEvaluation['meta'],
                 'is_compliance_locked' => $taxEvaluation['should_lock'],
+                'preferred_payout_method' => $validated['preferred_payout_method'] ?? null,
             ]);
 
             $organization->primaryActionCategories()->sync(

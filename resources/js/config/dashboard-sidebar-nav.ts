@@ -197,12 +197,6 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
                 items: [
                     {
-                        title: 'Social media',
-                        href: route('social-media.index'),
-                        icon: Facebook,
-                        role: 'organization',
-                    },
-                    {
                         title: 'Connect pages',
                         href: '/facebook/connect',
                         icon: LinkIcon,
@@ -1000,6 +994,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         href: '/email-invite',
                         icon: Mail,
                         permission: 'email.invite.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Payout settings',
+                        href: route('integrations.payout-settings'),
+                        icon: Wallet,
                         role: 'organization',
                     },
                     {

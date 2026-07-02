@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PushNotificationModule;
+use App\Models\ContentItem;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\UserPushToken;
@@ -189,15 +190,22 @@ class FirebaseService
             ],
         ];
 
-        $notificationIcon = $this->resolveNotificationIcon($fcmData);
+        $notificationIcon = url('/favicon-96x96.png');
+        $orgLogoUrl = trim((string) ($fcmData['organization_logo_url'] ?? ''));
 
         if ($deviceType === 'web') {
+            $webpushNotification = [
+                'title' => $title,
+                'body' => $body,
+                'icon' => $notificationIcon,
+            ];
+
+            if ($orgLogoUrl !== '' && ($fcmData['type'] ?? '') !== 'incoming_call') {
+                $webpushNotification['image'] = $orgLogoUrl;
+            }
+
             $message['message']['webpush'] = [
-                'notification' => [
-                    'title' => $title,
-                    'body' => $body,
-                    'icon' => $notificationIcon,
-                ],
+                'notification' => $webpushNotification,
                 'fcm_options' => [
                     'link' => $notificationUrl,
                 ],
@@ -468,6 +476,16 @@ class FirebaseService
             return (int) $data['organization_id'];
         }
 
+        if (! empty($data['content_item_id'])) {
+            $contentOrgId = ContentItem::query()
+                ->whereKey((int) $data['content_item_id'])
+                ->value('organization_id');
+
+            if ($contentOrgId) {
+                return (int) $contentOrgId;
+            }
+        }
+
         $senderId = $createdBy
             ?? (isset($data['created_by']) && (int) $data['created_by'] > 0 ? (int) $data['created_by'] : null)
             ?? (isset($data['sender_id']) && (int) $data['sender_id'] > 0 ? (int) $data['sender_id'] : null);
@@ -479,16 +497,6 @@ class FirebaseService
         $user = User::query()->find($senderId);
 
         return $user ? Organization::forAuthUser($user)?->id : null;
-    }
-
-    /**
-     * @param  array<string, string>  $fcmData
-     */
-    private function resolveNotificationIcon(array $fcmData): string
-    {
-        $orgLogo = trim((string) ($fcmData['organization_logo_url'] ?? ''));
-
-        return $orgLogo !== '' ? $orgLogo : url('/favicon-96x96.png');
     }
 
     /**
