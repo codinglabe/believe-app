@@ -678,6 +678,10 @@ class UnifiedLedgerPresenter
     private function believePointsTransactionType(Transaction $t): string
     {
         $meta = is_array($t->meta) ? $t->meta : [];
+        if ($t->ledger_type === UnifiedLedgerType::BRP
+            || ($meta['source'] ?? '') === 'believe_points_purchase_brp') {
+            return 'brp_participation_reward';
+        }
         if (($meta['source'] ?? '') === 'bp_redemption' || $t->type === 'bp_redemption') {
             return 'bp_redemption';
         }

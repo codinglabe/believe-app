@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BelievePointProcessingLot;
 use App\Models\BelievePointPurchase;
 use App\Models\User;
+use App\Services\Admin\UnifiedLedgerTransactionWriter;
 use App\Services\BelievePointsWalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -119,7 +120,7 @@ final class BelievePointProcessingLotService
      */
     public static function releaseLotsForPurchase(BelievePointPurchase $purchase): bool
     {
-        return (bool) DB::transaction(function () use ($purchase) {
+        $released = (bool) DB::transaction(function () use ($purchase) {
             /** @var BelievePointPurchase|null $lockedPurchase */
             $lockedPurchase = BelievePointPurchase::query()->lockForUpdate()->find($purchase->id);
             if ($lockedPurchase === null || $lockedPurchase->status !== 'completed' || $lockedPurchase->points_released) {
@@ -202,6 +203,15 @@ final class BelievePointProcessingLotService
 
             return true;
         });
+
+        if ($released) {
+            $fresh = $purchase->fresh(['user']);
+            if ($fresh?->user) {
+                UnifiedLedgerTransactionWriter::syncBpCreditRow($fresh, $fresh->user);
+            }
+        }
+
+        return $released;
     }
 
     public static function openProcessingTotalForUser(int $userId): float

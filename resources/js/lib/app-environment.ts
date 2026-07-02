@@ -20,11 +20,15 @@ export function isProductionAppEnv(pageProps?: { appEnv?: string }): boolean {
   return resolveAppEnv(pageProps) === "production"
 }
 
-/** Outbound Unity Call start button — controlled by UNITY_CALL_ENABLED (default: on). */
+/** Outbound Unity Call start button — off on production; elsewhere controlled by UNITY_CALL_ENABLED (default: on). */
 export function isUnityCallStartUiEnabled(pageProps?: {
   appEnv?: string
   unityCallEnabled?: boolean
 }): boolean {
+  if (isProductionAppEnv(pageProps)) {
+    return false
+  }
+
   if (typeof pageProps?.unityCallEnabled === "boolean") {
     return pageProps.unityCallEnabled
   }

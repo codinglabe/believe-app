@@ -314,6 +314,17 @@ function ledgerReportLineAmount(
   return formatAmountForLedger(kind, Number(raw), cur, "text-muted-foreground")
 }
 
+function ledgerEventLabel(u: UnifiedLedgerRow | undefined): string {
+  if (!u) {
+    return "—"
+  }
+  const eventName = u.event_name?.trim()
+  if (eventName) {
+    return eventName
+  }
+  return u.transaction_type.replace(/_/g, " ")
+}
+
 function ledgerSupplierName(u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined): string {
   const v = u?.supplier_name ?? rep?.supplier_name
   return v != null && String(v).trim() !== "" ? String(v) : "—"
@@ -1489,8 +1500,8 @@ export default function TransactionLedger({
                                   <span className="text-muted-foreground">—</span>
                                 )}
                               </td>
-                              <td className="max-w-[10rem] truncate px-4 py-3 font-mono text-sm text-foreground" title={u?.transaction_type}>
-                                {u ? u.transaction_type.replace(/_/g, " ") : "—"}
+                              <td className="max-w-[10rem] truncate px-4 py-3 text-sm text-foreground" title={ledgerEventLabel(u)}>
+                                {ledgerEventLabel(u)}
                               </td>
                               <td className="max-w-[16rem] px-4 py-3 text-sm leading-snug text-foreground" title={partiesSummary(u)}>
                                 {partiesSummary(u)}
