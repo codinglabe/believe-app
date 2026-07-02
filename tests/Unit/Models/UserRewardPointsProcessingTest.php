@@ -54,13 +54,17 @@ class UserRewardPointsProcessingTest extends TestCase
         $tx = Transaction::query()->where('transaction_id', 'brp:earned:purchase:'.$purchase->id)->first();
         $this->assertNotNull($tx);
         $this->assertSame(UnifiedLedgerBpStatus::PROCESSING, $tx->bp_status);
+        $this->assertSame(Transaction::STATUS_PENDING, $tx->status);
 
         $purchase->update(['points_released' => true, 'points_available_at' => now()]);
         UnifiedLedgerTransactionWriter::syncBrpPurchaseRewardRow($purchase->fresh());
 
+        $tx->refresh();
         $this->assertSame(
             UnifiedLedgerBpStatus::AVAILABLE,
-            $tx->fresh()->bp_status,
+            $tx->bp_status,
         );
+        $this->assertSame(Transaction::STATUS_COMPLETED, $tx->status);
+        $this->assertSame('BRP Participation Reward', $tx->meta['event_name'] ?? null);
     }
 }

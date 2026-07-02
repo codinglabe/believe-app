@@ -35,6 +35,7 @@ export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   administrative_fee: "Administrative fee",
   // Believe Points
   believe_points_purchase: "Believe Points purchase",
+  brp_participation_reward: "BRP Participation Reward",
   believe_points_wallet_transfer: "BP Redemption",
   bp_redemption: "BP Redemption",
   bridge_wallet_transfer: "Bridge Wallet Transfer",
