@@ -78,6 +78,7 @@ export interface UnifiedLedgerRow {
   bp_status_label?: string
   brp_activity_type?: string | null
   brp_activity_label?: string
+  event_name?: string | null
   current_owner?: string | null
   available_at?: string | null
 }

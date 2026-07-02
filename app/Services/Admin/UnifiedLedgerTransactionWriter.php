@@ -315,7 +315,7 @@ final class UnifiedLedgerTransactionWriter
                     'intended_points' => $brp,
                     'brp_status' => $brpStatus,
                     'bp_status' => $brpStatus,
-                    'event_name' => 'BP Purchase Participation Reward',
+                    'event_name' => 'BRP Participation Reward',
                     'description' => $brpStatus === UnifiedLedgerBpStatus::PROCESSING
                         ? sprintf('Believe Reward Points earned for qualifying BP purchase (%s BRP Processing)', number_format($brp, 2))
                         : sprintf('Believe Reward Points earned for qualifying BP purchase (%s BRP Available)', number_format($brp, 2)),
@@ -630,7 +630,7 @@ final class UnifiedLedgerTransactionWriter
         }
 
         return match ($source) {
-            'believe_points_card_purchase', 'believe_points_ach_purchase' => 'BP Purchase Participation Reward',
+            'believe_points_card_purchase', 'believe_points_ach_purchase' => 'BRP Participation Reward',
             default => 'Believe Reward Points '.UnifiedLedgerBrpActivity::label($activity),
         };
     }
