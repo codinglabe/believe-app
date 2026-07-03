@@ -246,7 +246,10 @@ export default function DonatePage({
   const [customAmount, setCustomAmount] = useState("")
   const [selectedCauseId, setSelectedCauseId] = useState<string | null>(() => {
     const primaryId = organizationFilterLock?.primary_id
-    if (!primaryId || organizationFilterLock?.locked === false) {
+    const defaultToPrimary =
+      organizationFilterLock?.donate_to_primary_default ??
+      (organizationFilterLock?.locked !== false && Boolean(primaryId))
+    if (!primaryId || !defaultToPrimary) {
       return null
     }
     const pools = [initialOrganizations, initialDonatedCauses, initialSecondaryOrganizations]
@@ -291,15 +294,20 @@ export default function DonatePage({
     defaultPaymentMethods
 
   const loadedPaymentMethodsOrgIdRef = useRef<number | null>(
-    pageProps.orgPaymentMethods && organizationFilterLock?.primary_id && organizationFilterLock?.locked !== false
+    pageProps.orgPaymentMethods &&
+    organizationFilterLock?.primary_id &&
+    (organizationFilterLock?.donate_to_primary_default ??
+      organizationFilterLock?.locked !== false)
       ? organizationFilterLock.primary_id
       : null,
   )
 
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(() => {
     const primaryId = organizationFilterLock?.primary_id
-    const primaryLocked = organizationFilterLock?.locked !== false && Boolean(primaryId)
-    return primaryLocked && !page.props.orgPaymentMethods
+    const defaultToPrimary =
+      organizationFilterLock?.donate_to_primary_default ??
+      (organizationFilterLock?.locked !== false && Boolean(primaryId))
+    return defaultToPrimary && !page.props.orgPaymentMethods
   })
 
   const currentBalance =
@@ -314,10 +322,13 @@ export default function DonatePage({
   const [isSearchingOrganizations, setIsSearchingOrganizations] = useState(false)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
-  const [donateToPrimary, setDonateToPrimary] = useState(() =>
-    Boolean(organizationFilterLock?.primary_id),
-  )
-  const primaryToggleInitializedRef = useRef(false)
+  const [donateToPrimary, setDonateToPrimary] = useState(() => {
+    if (organizationFilterLock?.donate_to_primary_default !== undefined) {
+      return organizationFilterLock.donate_to_primary_default
+    }
+    if (!organizationFilterLock?.primary_id) return false
+    return organizationFilterLock.locked !== false
+  })
 
   const effectiveLock = useMemo((): OrganizationFilterLock | null => {
     if (!organizationFilterLock) return null
@@ -330,22 +341,6 @@ export default function DonatePage({
   const listingFilterLocked = donateToPrimary && Boolean(organizationFilterLock?.primary_id)
 
   const donatePartialReloadSkipRef = useRef(true)
-
-  /** Default to primary org on first visit; `organization_id=all` only applies after the user turns the toggle off. */
-  useEffect(() => {
-    if (primaryToggleInitializedRef.current) return
-    primaryToggleInitializedRef.current = true
-    if (!organizationFilterLock?.primary_id) return
-    const orgParam = new URLSearchParams(window.location.search).get("organization_id")
-    if (orgParam !== "all") return
-    setDonateToPrimary(true)
-    router.get(route("donate"), {}, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      only: ["organizations", "donatedCauses", "organizationFilterLock", "secondaryOrganizations"],
-    })
-  }, [organizationFilterLock?.primary_id])
 
   const [name, setName] = useState(user?.name || "")
   const [email, setEmail] = useState(user?.email || "")

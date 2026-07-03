@@ -236,6 +236,7 @@ class SupporterPrimaryOrganizationService
             'primary_id' => $primaryId,
             'primary_name' => $primaryName,
             'primary_slug' => $primarySlug,
+            'donate_to_primary_default' => $this->donatePagePrimaryToggleDefault($request, $paramKey),
         ];
     }
 
@@ -254,6 +255,19 @@ class SupporterPrimaryOrganizationService
         }
 
         return (int) $value === $primaryId;
+    }
+
+    /**
+     * Donate page: primary-org toggle defaults on unless the user is browsing all orgs or another recipient.
+     */
+    public function donatePagePrimaryToggleDefault(Request $request, string $paramKey = 'organization_id'): bool
+    {
+        $primaryId = $this->defaultOrganizationFilterId($request->user());
+        if ($primaryId === null) {
+            return false;
+        }
+
+        return $this->listingUsesPrimaryOrganizationFilter($request, $paramKey, $primaryId);
     }
 
     /**

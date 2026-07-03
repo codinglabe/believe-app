@@ -1197,8 +1197,8 @@ export default function VolunteerOpportunities({
                       router.get(route("volunteer-opportunities.index"), { organization_id: "all" }, { preserveState: false })
                     }}
                   >
-                    <div>
-                      <Label htmlFor="organization-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Organization</Label>
+                  <div>
+                    <Label htmlFor="organization-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Organization</Label>
                       <SearchableOrganizationPicker
                         id="organization-filter"
                         label="Filter by organization"
@@ -1210,7 +1210,7 @@ export default function VolunteerOpportunities({
                       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         Search or scroll to load more. Only organizations with volunteer roles are listed.
                       </p>
-                    </div>
+                  </div>
                   </LockedPrimaryOrganizationFilter>
 
                   {/* Location Filters */}
