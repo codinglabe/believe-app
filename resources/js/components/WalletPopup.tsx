@@ -959,17 +959,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             return
                         }
 
-                        setTosIframeUrl(null)
+                            setTosIframeUrl(null)
 
                         const backendTosStatus =
                             typeof data.tos_status === 'string' ? data.tos_status : 'accepted'
                         setTosStatus(backendTosStatus === 'approved' ? 'approved' : 'accepted')
 
-                        showSuccessToast('Terms of Service accepted successfully')
+                                showSuccessToast('Terms of Service accepted successfully')
 
-                        setTimeout(() => {
+                            setTimeout(() => {
                             checkBridgeAndFetchBalance({ force: true })
-                        }, 1000)
+                            }, 1000)
                     } catch (error) {
                         processedTosAgreementIdsRef.current.delete(agreementId)
                         console.error('Error submitting TOS acceptance:', error)
@@ -1106,7 +1106,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             })
 
             const data = await response.json()
-
+            
             if (data.success && data.data) {
                 // Backend already returns mapped accounts in the correct format
                 // Handle nested structure: { success: true, data: { count: X, data: [...] } }
@@ -1123,7 +1123,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         status: account.active ? 'verified' : 'pending',
                     }))
                 }
-
+                
                 setExternalAccounts(accounts)
                 setHasBankAccounts(accounts.length > 0)
             } else {
@@ -1694,7 +1694,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setKybStatus(statusData.kyb_status)
                     if (statusData.kyb_status === 'approved') {
                         setTosStatus('accepted')
-                    }
+                }
                 }
                 if (statusData.tos_accepted === true) {
                     setTosStatus('accepted')
@@ -2586,8 +2586,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             checkBridgeAndFetchBalance()
                         }, 500)
                     } else {
-                        showSuccessToast('KYC data submitted successfully. Verification is pending.')
-                        setTimeout(() => {
+                    showSuccessToast('KYC data submitted successfully. Verification is pending.')
+                    setTimeout(() => {
                             void refreshKycStatusAfterSubmission()
                         }, 500)
                     }
@@ -2648,14 +2648,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: {
+                            headers: {
                     Accept: 'application/json',
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
+                                'X-CSRF-TOKEN': getCsrfToken(),
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                            cache: 'no-store',
                 body: JSON.stringify({
                     redirect_url: `${window.location.origin}${callbackPath}`,
                     endorsement,
@@ -3493,17 +3493,17 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 <Skeleton className="h-10 w-full" />
                                             </div>
                                         ) : (
-                                            <TransferFromExternal
-                                                key="transfer-from-external"
-                                                externalAccounts={externalAccounts}
-                                                selectedExternalAccount={selectedExternalAccount}
-                                                transferAmount={transferAmount}
-                                                isLoading={isLoading}
-                                                onAccountChange={setSelectedExternalAccount}
-                                                onAmountChange={setTransferAmount}
-                                                onTransfer={handleTransferFromExternal}
+                                        <TransferFromExternal
+                                            key="transfer-from-external"
+                                            externalAccounts={externalAccounts}
+                                            selectedExternalAccount={selectedExternalAccount}
+                                            transferAmount={transferAmount}
+                                            isLoading={isLoading}
+                                            onAccountChange={setSelectedExternalAccount}
+                                            onAmountChange={setTransferAmount}
+                                            onTransfer={handleTransferFromExternal}
                                                 onAddBankAccount={goToAddBankAccount}
-                                            />
+                                        />
                                         )
                                     ) : !showSuccess && actionView === 'withdraw_to_external' ? (
                                         isLoadingExternalAccounts && hasBankAccounts === null ? (
@@ -3513,22 +3513,22 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 <Skeleton className="h-10 w-full" />
                                             </div>
                                         ) : (
-                                            <WithdrawToExternal
-                                                key="withdraw-to-external"
-                                                externalAccounts={externalAccounts}
-                                                selectedExternalAccount={selectedExternalAccount}
-                                                withdrawAmount={withdrawAmount}
+                                        <WithdrawToExternal
+                                            key="withdraw-to-external"
+                                            externalAccounts={externalAccounts}
+                                            selectedExternalAccount={selectedExternalAccount}
+                                            withdrawAmount={withdrawAmount}
                                                 withdrawPaymentRail={withdrawPaymentRail}
-                                                walletBalance={walletBalance}
-                                                isLoading={isLoading}
+                                            walletBalance={walletBalance}
+                                            isLoading={isLoading}
                                                 isSandbox={isSandbox}
                                                 bankWithdrawalAvailable={bankWithdrawalAvailable}
-                                                onAccountChange={setSelectedExternalAccount}
-                                                onAmountChange={setWithdrawAmount}
+                                            onAccountChange={setSelectedExternalAccount}
+                                            onAmountChange={setWithdrawAmount}
                                                 onPaymentRailChange={setWithdrawPaymentRail}
-                                                onWithdraw={handleWithdrawToExternal}
+                                            onWithdraw={handleWithdrawToExternal}
                                                 onAddBankAccount={goToAddBankAccount}
-                                            />
+                                        />
                                         )
                                     ) : !showSuccess && actionView === 'services_menu' ? (
                                         <ServicesMenu
@@ -3645,10 +3645,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     <Skeleton className="h-12 w-full rounded-xl mb-4" />
                                                     <Skeleton className="h-3.5 w-24 mb-2" />
                                                     <div className="grid grid-cols-2 gap-2">
-                                                        {[1, 2, 3, 4].map((i) => (
+                                                    {[1, 2, 3, 4].map((i) => (
                                                             <Skeleton key={i} className="h-[68px] rounded-xl" />
-                                                        ))}
-                                                    </div>
+                                                    ))}
+                                                </div>
                                                 </div>
                                                 <ActivitySkeleton />
                                             </div>
@@ -3840,8 +3840,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             // PRIORITY: For KYC - if submitted and pending, show simple waiting screen instead of full verification screen
                                             // Check if user is a regular user (not organization)
                                             const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-                                            const isKycPending = isRegularUser &&
-                                                verificationType === 'kyc' &&
+                                            const isKycPending = isRegularUser && 
+                                                verificationType === 'kyc' && 
                                                 isBridgeKycPending(kycStatus)
                                             
                                             if (isKycPending) {
@@ -4071,18 +4071,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                             </div>
 
                                                             {(tosStatus === 'accepted' || tosStatus === 'approved') && (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'approved' && (
-                                                                <div className="space-y-2 sm:space-y-3 w-full mt-3">
+                                                                    <div className="space-y-2 sm:space-y-3 w-full mt-3">
                                                                     <BridgePersonaVerificationPanel
                                                                         verificationType={verificationType}
-                                                                        kycStatus={kycStatus}
+                                                                                            kycStatus={kycStatus}
                                                                         kybStatus={kybStatus}
-                                                                        isLoading={isLoading}
+                                                                                        isLoading={isLoading}
                                                                         isLoadingVerificationWidget={isLoadingVerificationWidget}
                                                                         onOpenVerification={() => void openBridgeVerificationWidget()}
                                                                         onRefresh={() => void checkBridgeAndFetchBalance()}
                                                                     />
-                                                                </div>
-                                                            )}
+                                                                    </div>
+                                                                )}
                                                             {tosStatus !== 'accepted' && tosStatus !== 'approved' && (
                                                                 <p className="text-xs text-amber-600 dark:text-amber-400 italic mt-3">
                                                                     Complete step 1 first

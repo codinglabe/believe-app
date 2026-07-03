@@ -291,6 +291,9 @@ export default function DonatePage({
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
   const [donateToPrimary, setDonateToPrimary] = useState(() => {
+    if (organizationFilterLock?.donate_to_primary_default !== undefined) {
+      return organizationFilterLock.donate_to_primary_default
+    }
     if (!organizationFilterLock?.primary_id) return false
     return organizationFilterLock.locked !== false
   })
