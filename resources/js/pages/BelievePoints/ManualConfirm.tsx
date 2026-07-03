@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Head, router, useForm, usePage } from "@inertiajs/react"
 import { CheckCircle, Coins } from "lucide-react"
+import { ManualPaymentInstructions } from "@/components/payments/manual-payment-instructions"
 
 interface Props {
   purchase: {
@@ -58,27 +59,11 @@ export default function BelievePointsManualConfirm({ purchase, instructions }: P
           </div>
         </div>
 
-        <div className="rounded-xl bg-purple-50/80 dark:bg-purple-900/30 p-4 mb-6 space-y-3">
-          <h2 className="font-semibold text-purple-900 dark:text-purple-100">Payment Instructions</h2>
-          {instructions.qr_image_url && (
-            <img src={instructions.qr_image_url} alt="Cash App QR" className="max-w-[200px] mx-auto rounded-lg" />
-          )}
-          {instructions.username && (
-            <p className="text-sm">Send to Venmo: <strong>{instructions.username}</strong></p>
-          )}
-          {instructions.cashtag && (
-            <p className="text-sm">Send to Cash App: <strong>{instructions.cashtag}</strong></p>
-          )}
-          {instructions.email && (
-            <p className="text-sm">Zelle email: <strong>{instructions.email}</strong></p>
-          )}
-          {instructions.phone && (
-            <p className="text-sm">Zelle phone: <strong>{instructions.phone}</strong></p>
-          )}
-          {instructions.wallet_info && (
-            <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{instructions.wallet_info}</p>
-          )}
-        </div>
+        <ManualPaymentInstructions
+          instructions={instructions}
+          paymentMethod={purchase.payment_method}
+          actionLabel="purchase"
+        />
 
         <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
           After you confirm, an admin will verify your payment and credit {purchase.points.toLocaleString()} Believe Points to your account.

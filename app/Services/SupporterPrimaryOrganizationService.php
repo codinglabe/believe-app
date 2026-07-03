@@ -214,14 +214,14 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
-     * True when the listing uses the supporter's primary org as default (no org param in URL yet).
+     * True when the listing is scoped to the supporter's primary org (default, or explicit primary org id).
      *
      * @return array{locked: bool, primary_id: ?int, primary_name: ?string, primary_slug: ?string}
      */
     public function listingFilterLockState(Request $request, string $paramKey = 'organization_id'): array
     {
         $primaryId = $this->defaultOrganizationFilterId($request->user());
-        $locked = $primaryId !== null && ! $request->has($paramKey);
+        $locked = $primaryId !== null && $this->listingUsesPrimaryOrganizationFilter($request, $paramKey, $primaryId);
 
         $primaryName = null;
         $primarySlug = null;
@@ -237,6 +237,23 @@ class SupporterPrimaryOrganizationService
             'primary_name' => $primaryName,
             'primary_slug' => $primarySlug,
         ];
+    }
+
+    /**
+     * Primary-org lock stays active when the filter param is absent or explicitly set to the primary org.
+     */
+    private function listingUsesPrimaryOrganizationFilter(Request $request, string $paramKey, int $primaryId): bool
+    {
+        if (! $request->has($paramKey)) {
+            return true;
+        }
+
+        $value = $request->input($paramKey);
+        if ($value === null || $value === '' || $value === 'all') {
+            return false;
+        }
+
+        return (int) $value === $primaryId;
     }
 
     /**

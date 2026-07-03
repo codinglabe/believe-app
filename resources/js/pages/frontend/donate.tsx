@@ -244,7 +244,21 @@ export default function DonatePage({
   const [donationMode, setDonationMode] = useState<DonationMode>("cash_points")
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
-  const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null)
+  const [selectedCauseId, setSelectedCauseId] = useState<string | null>(() => {
+    const primaryId = organizationFilterLock?.primary_id
+    if (!primaryId || organizationFilterLock?.locked === false) {
+      return null
+    }
+    const pools = [initialOrganizations, initialDonatedCauses, initialSecondaryOrganizations]
+    for (const pool of pools) {
+      const found = pool.find((cause) => cause.organization_id === primaryId)
+      if (found) return found.id
+    }
+    if (organizationFilterLock?.primary_name) {
+      return `org-${primaryId}`
+    }
+    return null
+  })
   const [paymentMethod, setPaymentMethod] = useState<DonationPaymentMethodId>('stripe_card')
   const [donorCoversProcessingFees, setDonorCoversProcessingFees] = useState(true)
   const [feePreviewRail, setFeePreviewRail] = useState<FeePreviewRail>("card")
@@ -276,7 +290,17 @@ export default function DonatePage({
     (pageProps.orgPaymentMethods as Record<string, boolean> | undefined) ??
     defaultPaymentMethods
 
-  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false)
+  const loadedPaymentMethodsOrgIdRef = useRef<number | null>(
+    pageProps.orgPaymentMethods && organizationFilterLock?.primary_id && organizationFilterLock?.locked !== false
+      ? organizationFilterLock.primary_id
+      : null,
+  )
+
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(() => {
+    const primaryId = organizationFilterLock?.primary_id
+    const primaryLocked = organizationFilterLock?.locked !== false && Boolean(primaryId)
+    return primaryLocked && !page.props.orgPaymentMethods
+  })
 
   const currentBalance =
     parseFloat(String(authUser?.donateable_believe_points ?? authUser?.believe_points ?? "0")) || 0
@@ -290,10 +314,10 @@ export default function DonatePage({
   const [isSearchingOrganizations, setIsSearchingOrganizations] = useState(false)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
-  const [donateToPrimary, setDonateToPrimary] = useState(() => {
-    if (!organizationFilterLock?.primary_id) return false
-    return organizationFilterLock.locked !== false
-  })
+  const [donateToPrimary, setDonateToPrimary] = useState(() =>
+    Boolean(organizationFilterLock?.primary_id),
+  )
+  const primaryToggleInitializedRef = useRef(false)
 
   const effectiveLock = useMemo((): OrganizationFilterLock | null => {
     if (!organizationFilterLock) return null
@@ -303,9 +327,26 @@ export default function DonatePage({
     }
   }, [organizationFilterLock, donateToPrimary])
 
-  const listingFilterLocked = donateToPrimary && Boolean(organizationFilterLock?.primary_name)
+  const listingFilterLocked = donateToPrimary && Boolean(organizationFilterLock?.primary_id)
 
   const donatePartialReloadSkipRef = useRef(true)
+
+  /** Default to primary org on first visit; `organization_id=all` only applies after the user turns the toggle off. */
+  useEffect(() => {
+    if (primaryToggleInitializedRef.current) return
+    primaryToggleInitializedRef.current = true
+    if (!organizationFilterLock?.primary_id) return
+    const orgParam = new URLSearchParams(window.location.search).get("organization_id")
+    if (orgParam !== "all") return
+    setDonateToPrimary(true)
+    router.get(route("donate"), {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      only: ["organizations", "donatedCauses", "organizationFilterLock", "secondaryOrganizations"],
+    })
+  }, [organizationFilterLock?.primary_id])
+
   const [name, setName] = useState(user?.name || "")
   const [email, setEmail] = useState(user?.email || "")
   const [phone, setPhone] = useState("")
@@ -372,10 +413,22 @@ export default function DonatePage({
 
   const hasOrgSelected = Boolean(selectedCause?.organization_id)
 
+  /** Track org id when payment methods are already present (e.g. initial server render). */
+  useEffect(() => {
+    const orgId = selectedCause?.organization_id
+    if (orgId && pageProps.orgPaymentMethods) {
+      loadedPaymentMethodsOrgIdRef.current = orgId
+      setPaymentMethodsLoading(false)
+    }
+  }, [selectedCause?.organization_id, pageProps.orgPaymentMethods])
+
   /** Load org-specific payment methods when recipient changes. */
   useEffect(() => {
     const orgId = selectedCause?.organization_id
     if (!orgId) {
+      return
+    }
+    if (loadedPaymentMethodsOrgIdRef.current === orgId) {
       return
     }
     setPaymentMethodsLoading(true)
@@ -387,7 +440,10 @@ export default function DonatePage({
         preserveState: true,
         replace: true,
         only: ["orgPaymentMethods"],
-        onFinish: () => setPaymentMethodsLoading(false),
+        onFinish: () => {
+          loadedPaymentMethodsOrgIdRef.current = orgId
+          setPaymentMethodsLoading(false)
+        },
         onCancel: () => setPaymentMethodsLoading(false),
       },
     )
@@ -485,18 +541,19 @@ export default function DonatePage({
     primaryCause?.name ?? organizationFilterLock?.primary_name ?? ""
 
   useEffect(() => {
-    if (donateToPrimaryOrganization && primaryCause) {
-      setSelectedCauseId(primaryCause.id)
+    if (donateToPrimaryOrganization && primaryCauseForDropdown) {
+      setSelectedCauseId(primaryCauseForDropdown.id)
       setIsSearchFocused(false)
     }
-  }, [donateToPrimaryOrganization, primaryCause?.id])
+  }, [donateToPrimaryOrganization, primaryCauseForDropdown?.id])
 
   const handleDonateToPrimaryToggle = (checked: boolean) => {
     setDonateToPrimary(checked)
 
     if (checked) {
-      if (primaryCause) {
-        setSelectedCauseId(primaryCause.id)
+      if (primaryCauseForDropdown) {
+        setSelectedCauseId(primaryCauseForDropdown.id)
+        loadedPaymentMethodsOrgIdRef.current = null
       }
       setSearchQuery("")
       setIsSearchFocused(false)
@@ -510,6 +567,7 @@ export default function DonatePage({
     }
 
     setSelectedCauseId(null)
+    loadedPaymentMethodsOrgIdRef.current = null
     setSearchQuery("")
     setIsSearchFocused(true)
     router.get(route("donate"), { organization_id: "all" }, {
@@ -555,12 +613,14 @@ export default function DonatePage({
   }, [selectedCause, donationMode, nonCashPreferredOrgId, organizations])
 
   const handleCauseSelect = (id: string) => {
+    loadedPaymentMethodsOrgIdRef.current = null
     setSelectedCauseId(id)
     setSearchQuery("") // Clear search query after selection
     setIsSearchFocused(false) // Hide search results
   }
 
   const handleClearCauseSelection = () => {
+    loadedPaymentMethodsOrgIdRef.current = null
     setSelectedCauseId(null)
     setSearchQuery("") // Clear search query when clearing selection
     setIsSearchFocused(true) // Show search input again

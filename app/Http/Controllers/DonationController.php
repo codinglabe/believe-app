@@ -507,7 +507,8 @@ class DonationController extends Controller
      */
     private function resolveDonatePagePaymentMethods(Request $request): ?array
     {
-        $orgId = $request->integer('organization_id');
+        $primaryOrgService = app(SupporterPrimaryOrganizationService::class);
+        $orgId = (int) ($primaryOrgService->resolveListingOrganizationFilterId($request, 'organization_id') ?? 0);
         if ($orgId <= 0) {
             return null;
         }

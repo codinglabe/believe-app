@@ -252,6 +252,10 @@ export function DonationPaymentMethods({
     !paymentMethodsLoading &&
     visibleMethods.length === 0 &&
     !showBelievePoints
+  const selectedMethodAvailable =
+    paymentMethod === "believe_points"
+      ? showBelievePoints
+      : Boolean(selectedConfig && availableMethods[selectedConfig.availabilityKey])
 
   return (
     <div className="space-y-4 p-4 sm:p-5">
@@ -369,7 +373,7 @@ export function DonationPaymentMethods({
         </section>
       )}
 
-      {hasOrgSelected && !paymentMethodsLoading && selectedConfig && SelectedIcon && paymentMethod !== "believe_points" && (
+      {hasOrgSelected && !paymentMethodsLoading && selectedMethodAvailable && selectedConfig && SelectedIcon && (
         <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 dark:border-white/10 dark:bg-white/[0.03] sm:p-4">
           <div className="flex items-start gap-2.5">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-white/10">
