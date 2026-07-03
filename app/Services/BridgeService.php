@@ -1979,8 +1979,8 @@ class BridgeService
 
             // Per Bridge API: bridge_wallet_id requires payment_rail = chain name (solana, ethereum, etc.)
             if ($paymentRail === 'bridge_wallet') {
-                return [
-                    'success' => false,
+                    return [
+                        'success' => false,
                     'error' => 'destination.payment_rail must be the wallet chain (e.g. solana, ethereum), not bridge_wallet, when using bridge_wallet_id.',
                     'error_code' => 'INVALID_PAYMENT_RAIL',
                 ];

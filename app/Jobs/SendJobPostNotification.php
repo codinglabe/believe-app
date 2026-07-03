@@ -92,6 +92,11 @@ class SendJobPostNotification implements ShouldQueue
                 'click_action' => $jobUrl,
                 'source_type' => 'job_post',
                 'source_id' => (string) $this->jobPost->id,
+                'organization_id' => (string) $this->jobPost->organization_id,
+                'module_name' => 'volunteer',
+                'module_record_id' => $this->jobPost->id,
+                'created_by' => $this->jobPost->user_id ?? $this->jobPost->organization?->user_id,
+                'deep_link' => parse_url($jobUrl, PHP_URL_PATH) ?: $jobUrl,
             ];
 
             // Send Firebase notification (logs to push_notification_logs for admin overview)
