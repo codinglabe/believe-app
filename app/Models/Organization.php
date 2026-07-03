@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Concerns\ManagesPreferredPayoutMethod;
+use App\Contracts\HasPreferredPayoutMethod;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,9 +13,9 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
-class Organization extends Model
+class Organization extends Model implements HasPreferredPayoutMethod
 {
-    use HasFactory;
+    use HasFactory, ManagesPreferredPayoutMethod;
 
     /**
      * Resolve the organization for an authenticated user: primary owner (organizations.user_id)
@@ -97,6 +99,10 @@ class Organization extends Model
         'stripe_connect_account_id',
         'stripe_connect_charges_enabled',
         'stripe_connect_payouts_enabled',
+        'preferred_payout_method',
+        'paypal_payout_email',
+        'paypal_payouts_enabled',
+        'paypal_payout_connected_at',
         'dropbox_folder_name',
         'dropbox_governance_provisioned_at',
         'authorized_signer_info',
@@ -123,6 +129,8 @@ class Organization extends Model
         'gift_card_terms_approved_at' => 'datetime',
         'stripe_connect_charges_enabled' => 'boolean',
         'stripe_connect_payouts_enabled' => 'boolean',
+        'paypal_payouts_enabled' => 'boolean',
+        'paypal_payout_connected_at' => 'datetime',
         'youtube_token_expires_at' => 'datetime',
         'dropbox_token_expires_at' => 'datetime',
         'dropbox_governance_provisioned_at' => 'datetime',
@@ -138,6 +146,21 @@ class Organization extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function entityPayouts(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(EntityPayout::class, 'payable');
+    }
+
+    public function payoutDisplayName(): string
+    {
+        return trim((string) ($this->name ?: 'Organization'));
+    }
+
+    protected function payoutContactEmailForStripe(): ?string
+    {
+        return $this->email ?: $this->platform_email ?: $this->user?->email;
     }
 
     public function primaryActionCategories(): BelongsToMany

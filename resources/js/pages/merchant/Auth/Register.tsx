@@ -15,6 +15,7 @@ export default function MerchantRegister() {
     email: '',
     password: '',
     password_confirmation: '',
+    preferred_payout_method: '' as '' | 'stripe' | 'paypal',
   })
 
   const submit: FormEventHandler = (e) => {
@@ -259,6 +260,29 @@ export default function MerchantRegister() {
                           className="mt-2 sm:mt-3 text-base"
                         />
                         <InputError message={errors.password_confirmation} />
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.45 }}
+                      >
+                        <MerchantLabel htmlFor="preferred_payout_method" className="text-sm sm:text-base font-semibold text-slate-100">
+                          Preferred payout method (optional)
+                        </MerchantLabel>
+                        <select
+                          id="preferred_payout_method"
+                          value={data.preferred_payout_method}
+                          onChange={(e) => setData('preferred_payout_method', e.target.value as '' | 'stripe' | 'paypal')}
+                          className="mt-2 sm:mt-3 flex h-11 w-full rounded-md border border-[#2563EB]/30 bg-black/50 px-3 py-2 text-sm text-white"
+                        >
+                          <option value="">Choose later in dashboard</option>
+                          <option value="stripe">Stripe Connect</option>
+                          <option value="paypal">PayPal Business</option>
+                        </select>
+                        <p className="text-xs sm:text-sm text-slate-300 mt-2">
+                          For Marketplace, Merchant Hub, Courses, and Events payouts.
+                        </p>
                       </motion.div>
 
                       <motion.div

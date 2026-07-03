@@ -50,11 +50,19 @@ class OrganizationSetupChecklistItems
         return [
             // —— System ——
             [
+                'id' => 'payout_settings',
+                'section' => self::SECTION_SYSTEM,
+                'label' => 'Payout settings',
+                'description' => 'Choose Stripe Connect or PayPal for Marketplace, Merchant Hub, Courses, and Events payouts.',
+                'route' => 'integrations.payout-settings',
+                'route_label' => 'Configure',
+            ],
+            [
                 'id' => 'integrations',
                 'section' => self::SECTION_SYSTEM,
                 'label' => 'Integrations',
                 'description' => 'Connect and manage your third-party integrations.',
-                'route' => 'integrations.stripe-connect',
+                'route' => 'integrations.payout-settings',
                 'route_label' => 'Manage',
             ],
             [
@@ -79,6 +87,14 @@ class OrganizationSetupChecklistItems
                 'label' => 'YouTube',
                 'description' => 'Connect your YouTube channel.',
                 'route' => 'integrations.youtube',
+                'route_label' => 'Connect',
+            ],
+            [
+                'id' => 'paypal_payouts',
+                'section' => self::SECTION_SYSTEM,
+                'label' => 'PayPal payouts',
+                'description' => 'Connect PayPal Business to receive payouts for selling modules.',
+                'route' => 'integrations.paypal-payouts',
                 'route_label' => 'Connect',
             ],
             [

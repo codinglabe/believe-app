@@ -79,13 +79,18 @@ function isAndroidNotificationPlatform() {
     return /android/i.test(self.navigator.userAgent);
 }
 
-/** Prefer sender organization logo when available (org members send on behalf of their org). */
+/** App icon on the left; organization logo uses NotificationOptions.image (right). */
 function resolveNotificationDisplayIcon(data) {
-    const orgLogo = resolveOrganizationLogoUrl(data);
-    if (orgLogo) {
-        return orgLogo;
-    }
     return appNotificationIconUrl();
+}
+
+function resolveNotificationImageUrl(data) {
+    if (data && data.type === INCOMING_CALL_TYPE) {
+        const callerAvatar = data.caller_avatar ? String(data.caller_avatar).trim() : "";
+        return callerAvatar || null;
+    }
+
+    return resolveOrganizationLogoUrl(data);
 }
 
 function resolveNotificationBadgeUrl() {
@@ -122,6 +127,7 @@ function buildNotificationOptions(title, body, data) {
     const tag = (data.type || "push") + ":" + (data.call_id || data.livestream_id || data.source_id || title);
     const icon = resolveNotificationDisplayIcon(data);
     const badge = resolveNotificationBadgeUrl();
+    const image = resolveNotificationImageUrl(data);
     const options = {
         body: body || undefined,
         icon: icon,
@@ -133,6 +139,10 @@ function buildNotificationOptions(title, body, data) {
             join_url: data.join_url || clickUrl,
         }),
     };
+
+    if (image) {
+        options.image = image;
+    }
 
     if (data.type === UNITY_MEET_INVITATION_TYPE) {
         options.actions = [{ action: "join", title: "Join" }];
@@ -153,9 +163,6 @@ function buildNotificationOptions(title, body, data) {
             click_action: ringUrl,
             url: ringUrl,
         });
-        if (data.caller_avatar) {
-            options.image = data.caller_avatar;
-        }
     }
 
     return options;
