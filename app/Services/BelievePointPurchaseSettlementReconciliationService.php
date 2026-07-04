@@ -12,15 +12,19 @@ use Illuminate\Support\Facades\Log;
 final class BelievePointPurchaseSettlementReconciliationService
 {
     /**
-     * @return array{examined: int, stripe_synced: int, bridge_credits_ingested: int, bridge_allocated: int, released: int}
+     * @return array{examined: int, stripe_synced: int, bridge_credits_ingested: int, bridge_allocated: int, stripe_only_prepared: int, released: int}
      */
-    public static function reconcilePendingPurchases(bool $dryRun = false, bool $stripeOnly = false): array
+    public static function reconcilePendingPurchases(bool $dryRun = false, ?bool $skipBridgeApi = null): array
     {
+        $bridgeGateEnabled = BelievePointBridgeReserveSettlementService::requiresBridgeReserveConfirmation();
+        $skipBridge = ! $bridgeGateEnabled || $skipBridgeApi === true;
+
         $stats = [
             'examined' => 0,
             'stripe_synced' => 0,
             'bridge_credits_ingested' => 0,
             'bridge_allocated' => 0,
+            'stripe_only_prepared' => 0,
             'released' => 0,
         ];
 
@@ -49,16 +53,23 @@ final class BelievePointPurchaseSettlementReconciliationService
             return $stats;
         }
 
-        if (! $stripeOnly) {
+        if ($skipBridge) {
+            $stats['stripe_only_prepared'] = BelievePointBridgeReserveSettlementService::prepareStripeOnlySettlement();
+        } else {
             $stats['bridge_credits_ingested'] = BelievePointBridgeReserveSettlementService::reconcileFromBridgeApi();
             $stats['bridge_allocated'] = BelievePointBridgeReserveSettlementService::reallocateExistingReserveCredits();
         }
 
         $stats['released'] = BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
 
-        if ($stats['stripe_synced'] > 0 || $stats['bridge_credits_ingested'] > 0 || $stats['bridge_allocated'] > 0 || $stats['released'] > 0) {
+        if ($stats['stripe_synced'] > 0
+            || $stats['bridge_credits_ingested'] > 0
+            || $stats['bridge_allocated'] > 0
+            || $stats['stripe_only_prepared'] > 0
+            || $stats['released'] > 0) {
             Log::info('Believe Points settlement reconciliation finished', array_merge($stats, [
-                'stripe_only' => $stripeOnly,
+                'bridge_gate_enabled' => $bridgeGateEnabled,
+                'skip_bridge_api' => $skipBridge,
             ]));
         }
 
@@ -88,7 +99,12 @@ final class BelievePointPurchaseSettlementReconciliationService
                 StripeBelievePointSettlementWebhookService::attemptReleaseForPurchase($purchase->fresh());
             });
 
-        BelievePointBridgeReserveSettlementService::reallocateExistingReserveCredits();
+        if (BelievePointBridgeReserveSettlementService::requiresBridgeReserveConfirmation()) {
+            BelievePointBridgeReserveSettlementService::reallocateExistingReserveCredits();
+        } else {
+            BelievePointBridgeReserveSettlementService::prepareStripeOnlySettlement();
+        }
+
         BelievePointPurchaseSettlementService::releaseDueProcessingPoints();
     }
 }

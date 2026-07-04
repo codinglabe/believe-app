@@ -6,14 +6,34 @@ use App\Models\BelievePointsLedgerEntry;
 use App\Models\Donation;
 use App\Models\PaymentTransaction;
 use App\Models\User;
+use App\Support\SupporterSubscriptionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Idempotent +5 BRP (Believe Reward Points) on successful donation.
+ * Idempotent tiered BRP (Believe Reward Points) on successful donation.
  */
 class BelievePointsRewardService
 {
+    public const DONATION_BRP_FREE = 1;
+
+    public const DONATION_BRP_PRIME = 2;
+
+    public static function donationBrpAmountForUser(?User $user): int
+    {
+        if ($user === null) {
+            return self::DONATION_BRP_FREE;
+        }
+
+        if ($user->hasNonprofitDashboardRole()) {
+            return self::DONATION_BRP_PRIME;
+        }
+
+        return SupporterSubscriptionService::currentTierSlug($user) === SupporterSubscriptionService::SLUG_PRIME
+            ? self::DONATION_BRP_PRIME
+            : self::DONATION_BRP_FREE;
+    }
+
     public static function issueDonationReward(Donation $donation): bool
     {
         if ($donation->status !== 'completed' && $donation->status !== 'active') {
@@ -45,7 +65,7 @@ class BelievePointsRewardService
                 return false;
             }
 
-            $points = PaymentTransaction::REWARD_POINTS_AMOUNT;
+            $points = self::donationBrpAmountForUser($user);
             $user->addRewardPoints(
                 $points,
                 'donation',

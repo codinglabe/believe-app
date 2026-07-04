@@ -72,8 +72,10 @@ class BelievePointsDonationPaymentService implements PaymentServiceInterface
                     'believe_points'
                 );
 
+                $brp = BelievePointsRewardService::donationBrpAmountForUser($user);
+
                 return redirect(route('donations.success').'?donation_id='.$donation->id)
-                    ->with('success', 'Donation completed successfully using Believe Points!');
+                    ->with('success', "Donation completed successfully using Believe Points! You earned +{$brp} BRP (Believe Reward Points).");
             });
         } catch (\Throwable $e) {
             $donation->update(['status' => 'failed']);

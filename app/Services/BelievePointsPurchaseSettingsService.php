@@ -71,7 +71,7 @@ final class BelievePointsPurchaseSettingsService
 
     public const DEFAULT_ACH_SETTLEMENT_BUSINESS_DAYS = 3;
 
-    public const DEFAULT_REQUIRE_BRIDGE_RESERVE = true;
+    public const DEFAULT_REQUIRE_BRIDGE_RESERVE = false;
 
     public static function brpValue(): float
     {
@@ -143,7 +143,19 @@ final class BelievePointsPurchaseSettingsService
 
     public static function requireBridgeReserveConfirmation(): bool
     {
+        if (! (bool) config('believe_points.bridge_reserve_confirmation_enabled', false)) {
+            return false;
+        }
+
         return (bool) AdminSetting::get(self::KEY_REQUIRE_BRIDGE_RESERVE, self::DEFAULT_REQUIRE_BRIDGE_RESERVE);
+    }
+
+    /**
+     * BP purchase release uses Stripe fund availability only (gate 1), not Bridge reserve matching.
+     */
+    public static function stripeOnlyPurchaseSettlement(): bool
+    {
+        return ! self::requireBridgeReserveConfirmation();
     }
 
     /**
@@ -209,6 +221,7 @@ final class BelievePointsPurchaseSettingsService
             'card_settlement_business_days' => self::cardSettlementBusinessDays(),
             'ach_settlement_business_days' => self::achSettlementBusinessDays(),
             'require_bridge_reserve_confirmation' => self::requireBridgeReserveConfirmation(),
+            'stripe_only_purchase_settlement' => self::stripeOnlyPurchaseSettlement(),
         ];
     }
 

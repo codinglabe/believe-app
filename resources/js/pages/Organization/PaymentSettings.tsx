@@ -287,7 +287,7 @@ export default function OrganizationPaymentSettings({
             <div className="text-sm">
               <p className="font-semibold text-purple-900 dark:text-purple-100">BRP reward</p>
               <p className="text-purple-800/80 dark:text-purple-200/80 mt-0.5">
-                Every successful donation gives donors <strong>+5 BRP (Believe Reward Points)</strong>, regardless of payment method.
+                Every successful donation gives donors <strong>+1 BRP (Believe Reward Points)</strong> for free members and <strong>+2 BRP</strong> for paid or Prime supporters, regardless of payment method.
               </p>
             </div>
           </div>

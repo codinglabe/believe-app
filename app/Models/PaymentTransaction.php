@@ -18,6 +18,7 @@ class PaymentTransaction extends Model
 
     public const STATUS_REJECTED = 'rejected';
 
+    /** @deprecated Legacy Believe Points purchase reward amount; donations use {@see BelievePointsRewardService::donationBrpAmountForUser()}. */
     public const REWARD_POINTS_AMOUNT = 5;
 
     protected $fillable = [

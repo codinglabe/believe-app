@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\Donation;
 use App\Models\User;
+use App\Services\Payments\BelievePointsRewardService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -37,6 +38,7 @@ class DonationConfirmationMail extends Mailable
                 'donor' => $this->donor,
                 'recipientLabel' => $this->recipientLabel,
                 'successUrl' => $this->successUrl,
+                'brpAmount' => BelievePointsRewardService::donationBrpAmountForUser($this->donor),
             ],
         );
     }
