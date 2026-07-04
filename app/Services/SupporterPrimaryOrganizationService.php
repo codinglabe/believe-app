@@ -214,14 +214,14 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
-     * True when the listing uses the supporter's primary org as default (no org param in URL yet).
+     * True when the listing is scoped to the supporter's primary org (default, or explicit primary org id).
      *
      * @return array{locked: bool, primary_id: ?int, primary_name: ?string, primary_slug: ?string}
      */
     public function listingFilterLockState(Request $request, string $paramKey = 'organization_id'): array
     {
         $primaryId = $this->defaultOrganizationFilterId($request->user());
-        $locked = $primaryId !== null && ! $request->has($paramKey);
+        $locked = $primaryId !== null && $this->listingUsesPrimaryOrganizationFilter($request, $paramKey, $primaryId);
 
         $primaryName = null;
         $primarySlug = null;
@@ -241,15 +241,10 @@ class SupporterPrimaryOrganizationService
     }
 
     /**
-     * Donate page: primary-org toggle defaults on unless the user is browsing all orgs or another recipient.
+     * Primary-org lock stays active when the filter param is absent or explicitly set to the primary org.
      */
-    public function donatePagePrimaryToggleDefault(Request $request, string $paramKey = 'organization_id'): bool
+    private function listingUsesPrimaryOrganizationFilter(Request $request, string $paramKey, int $primaryId): bool
     {
-        $primaryId = $this->defaultOrganizationFilterId($request->user());
-        if ($primaryId === null) {
-            return false;
-        }
-
         if (! $request->has($paramKey)) {
             return true;
         }
@@ -260,6 +255,19 @@ class SupporterPrimaryOrganizationService
         }
 
         return (int) $value === $primaryId;
+    }
+
+    /**
+     * Donate page: primary-org toggle defaults on unless the user is browsing all orgs or another recipient.
+     */
+    public function donatePagePrimaryToggleDefault(Request $request, string $paramKey = 'organization_id'): bool
+    {
+        $primaryId = $this->defaultOrganizationFilterId($request->user());
+        if ($primaryId === null) {
+            return false;
+        }
+
+        return $this->listingUsesPrimaryOrganizationFilter($request, $paramKey, $primaryId);
     }
 
     /**

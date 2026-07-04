@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Models\PaymentTransaction;
+use App\Services\Payments\BelievePointsRewardService;
 use App\Services\Payments\ManualDonationPaymentService;
 use App\Services\Payments\OrganizationPaymentMethodResolver;
 use App\Services\Payments\PayPalDonationPaymentService;
@@ -39,7 +40,7 @@ class DonationPaymentController extends Controller
                 'organization_name' => $organization->name,
             ],
             'instructions' => $instructions,
-            'reward_points' => PaymentTransaction::REWARD_POINTS_AMOUNT,
+            'reward_points' => BelievePointsRewardService::donationBrpAmountForUser($request->user()),
         ]);
     }
 
@@ -77,8 +78,10 @@ class DonationPaymentController extends Controller
         $success = $paypalService->captureOrder($donation, $token);
 
         if ($success) {
+            $brp = BelievePointsRewardService::donationBrpAmountForUser($request->user());
+
             return redirect(route('donations.success').'?donation_id='.$donation->id)
-                ->with('success', 'PayPal payment completed! You earned +5 BRP (Believe Reward Points).');
+                ->with('success', "PayPal payment completed! You earned +{$brp} BRP (Believe Reward Points).");
         }
 
         return redirect()->route('donate')->withErrors([

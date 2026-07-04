@@ -50,10 +50,11 @@ interface Donation {
 
 interface DonationSuccessPageProps {
     donation: Donation
-    paymentMethod?: 'stripe' | 'believe_points'
+    paymentMethod?: 'stripe' | 'believe_points' | 'paypal' | string
+    brpEarned?: number
 }
 
-export default function DonationSuccessPage({ donation, paymentMethod = 'stripe' }: DonationSuccessPageProps) {
+export default function DonationSuccessPage({ donation, paymentMethod = 'stripe', brpEarned = 0 }: DonationSuccessPageProps) {
     const formatDate = (dateString: string) => {
         const date = new Date(dateString)
         return date.toLocaleDateString('en-US', {
@@ -219,6 +220,15 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                                 </Badge>
                                             </motion.div>
                                         )}
+
+                                        {brpEarned > 0 && (
+                                            <motion.div variants={itemVariants} className="mb-6">
+                                                <div className="inline-flex items-center gap-2 rounded-full border border-purple-200/80 bg-purple-50/90 px-4 py-2 text-sm font-semibold text-purple-900 dark:border-purple-700/40 dark:bg-purple-950/40 dark:text-purple-100">
+                                                    <Sparkles className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-300" />
+                                                    You earned +{brpEarned} BRP (Believe Reward Points)
+                                                </div>
+                                            </motion.div>
+                                        )}
                                     </CardContent>
                                 </div>
                             </Card>
@@ -323,7 +333,11 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                                 Payment Method
                                             </div>
                                             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                                {paymentMethod === 'believe_points' ? 'Believe Points' : 'Credit Card (Stripe)'}
+                                                {paymentMethod === 'believe_points'
+                                                    ? 'Believe Points'
+                                                    : paymentMethod === 'paypal'
+                                                      ? 'PayPal'
+                                                      : 'Credit Card (Stripe)'}
                                             </p>
                                         </div>
 

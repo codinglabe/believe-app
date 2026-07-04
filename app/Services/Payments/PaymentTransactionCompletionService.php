@@ -6,6 +6,7 @@ use App\Enums\DonationPaymentMethod;
 use App\Enums\PaymentTransactionType;
 use App\Models\Donation;
 use App\Models\PaymentTransaction;
+use App\Models\User;
 use App\Services\DonationStripePaymentCompletion;
 use App\Services\ImpactScoreService;
 use App\Services\ManualDonationNotifier;
@@ -119,6 +120,8 @@ class PaymentTransactionCompletionService
     {
         $method = DonationPaymentMethod::tryFromInput($paymentMethod) ?? DonationPaymentMethod::StripeCard;
 
+        $donor = $donation->user_id ? User::find($donation->user_id) : null;
+
         return PaymentTransaction::create([
             'user_id' => $donation->user_id,
             'organization_id' => $donation->organization_id,
@@ -128,7 +131,7 @@ class PaymentTransactionCompletionService
             'payment_method' => $method->value,
             'amount' => $donation->amount,
             'status' => $method->isManual() ? PaymentTransaction::STATUS_PENDING : PaymentTransaction::STATUS_PROCESSING,
-            'reward_points' => PaymentTransaction::REWARD_POINTS_AMOUNT,
+            'reward_points' => BelievePointsRewardService::donationBrpAmountForUser($donor),
             'metadata' => [
                 'frequency' => $donation->frequency,
                 'care_alliance_id' => $donation->care_alliance_id,

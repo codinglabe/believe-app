@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { router, useForm } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
-import { Gift, Upload, CheckCircle } from "lucide-react"
+import { Gift, CheckCircle } from "lucide-react"
+import { ManualPaymentInstructions } from "@/components/payments/manual-payment-instructions"
 
 interface Props {
   donation: {
@@ -50,27 +51,11 @@ export default function ManualDonationConfirm({ donation, instructions, reward_p
             ${donation.amount.toFixed(2)} to <strong>{donation.organization_name}</strong>
           </p>
 
-          <div className="rounded-xl bg-purple-50/80 dark:bg-purple-900/30 p-4 mb-6 space-y-3">
-            <h2 className="font-semibold text-purple-900 dark:text-purple-100">Payment Instructions</h2>
-            {instructions.qr_image_url && (
-              <img src={instructions.qr_image_url} alt="Cash App QR" className="max-w-[200px] mx-auto rounded-lg" />
-            )}
-            {instructions.username && (
-              <p className="text-sm">Send to Venmo: <strong>{instructions.username}</strong></p>
-            )}
-            {instructions.cashtag && (
-              <p className="text-sm">Send to Cash App: <strong>{instructions.cashtag}</strong></p>
-            )}
-            {instructions.email && (
-              <p className="text-sm">Zelle email: <strong>{instructions.email}</strong></p>
-            )}
-            {instructions.phone && (
-              <p className="text-sm">Zelle phone: <strong>{instructions.phone}</strong></p>
-            )}
-            {instructions.wallet_info && (
-              <p className="text-sm text-gray-700 dark:text-white/80 whitespace-pre-wrap">{instructions.wallet_info}</p>
-            )}
-          </div>
+          <ManualPaymentInstructions
+            instructions={instructions}
+            paymentMethod={donation.payment_method}
+            actionLabel="donation"
+          />
 
           <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300 mb-6">
             <Gift className="h-4 w-4" />
