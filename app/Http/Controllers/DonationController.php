@@ -21,6 +21,7 @@ use App\Services\SupporterPrimaryOrganizationService;
 use App\Services\StripeConfigService;
 use App\Services\StripeConnectOrganizationService;
 use App\Services\StripeEnvironmentSyncService;
+use App\Services\Payments\BelievePointsRewardService;
 use App\Services\Payments\OrganizationPaymentMethodResolver;
 use App\Services\Payments\PaymentOrchestratorService;
 use App\Services\StripeProcessingFeeEstimator;
@@ -432,7 +433,7 @@ class DonationController extends Controller
             'feePreviewCheckoutTotalsByRail' => $feePreviewCheckoutTotalsByRail,
             'organizationFilterLock' => $primaryOrgService->listingFilterLockState($request, 'organization_id'),
             'primaryOrganizationLocked' => $user ? (bool) $user->primary_organization_locked : false,
-            'rewardPointsAmount' => PaymentTransaction::REWARD_POINTS_AMOUNT,
+            'rewardPointsAmount' => BelievePointsRewardService::donationBrpAmountForUser($user),
             'orgPaymentMethods' => $orgPaymentMethods,
             'defaultPaymentMethods' => [
                 'stripe_card' => false,
@@ -1159,6 +1160,7 @@ class DonationController extends Controller
                     // Status is "active" for recurring checkout — awardDonationPoints only runs for "completed".
                     if (! $alreadySettled) {
                         $this->impactScoreService->awardDonationPoints($donation->fresh());
+                        BelievePointsRewardService::issueDonationReward($donation->fresh());
                     }
                 } else {
                     // Payment is paid but no payment_intent or subscription found
@@ -1176,6 +1178,7 @@ class DonationController extends Controller
                         });
 
                         $this->impactScoreService->awardDonationPoints($donation->fresh());
+                        BelievePointsRewardService::issueDonationReward($donation->fresh());
                     }
                 }
             } else {
@@ -1191,10 +1194,7 @@ class DonationController extends Controller
             $donation->refresh();
             $donation->load(['organization', 'user', 'careAlliance:id,name,slug']);
 
-            return Inertia::render('frontend/organization/donation/success', [
-                'donation' => $donation,
-                'paymentMethod' => 'stripe',
-            ]);
+            return Inertia::render('frontend/organization/donation/success', $this->donationSuccessProps($donation, 'stripe'));
         } catch (\Exception $e) {
             return Inertia::render('frontend/organization/donation/success')->withErrors([
                 'message' => 'Error verifying payment: '.$e->getMessage(),
@@ -1309,10 +1309,7 @@ class DonationController extends Controller
     {
         if ($donation->payment_method === 'believe_points') {
             if ($donation->status === 'completed') {
-                return Inertia::render('frontend/organization/donation/success', [
-                    'donation' => $donation,
-                    'paymentMethod' => 'believe_points',
-                ]);
+                return Inertia::render('frontend/organization/donation/success', $this->donationSuccessProps($donation, 'believe_points'));
             }
 
             return redirect()->route('donate')->withErrors([
@@ -1329,10 +1326,7 @@ class DonationController extends Controller
         }
 
         if ($donation->status === 'completed' && $isStripeRail) {
-            return Inertia::render('frontend/organization/donation/success', [
-                'donation' => $donation,
-                'paymentMethod' => 'stripe',
-            ]);
+            return Inertia::render('frontend/organization/donation/success', $this->donationSuccessProps($donation, 'stripe'));
         }
 
         if (! $isPaymentIntent) {
@@ -1349,10 +1343,7 @@ class DonationController extends Controller
                 $donation->refresh();
                 $donation->load(['organization', 'user', 'careAlliance:id,name,slug']);
 
-                return Inertia::render('frontend/organization/donation/success', [
-                    'donation' => $donation,
-                    'paymentMethod' => 'stripe',
-                ]);
+                return Inertia::render('frontend/organization/donation/success', $this->donationSuccessProps($donation, 'stripe'));
             }
 
             if (in_array($intent->status, ['processing', 'requires_confirmation'], true)) {
@@ -1630,5 +1621,19 @@ class DonationController extends Controller
             'stats' => $stats,
             'filters' => ['status' => $status],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function donationSuccessProps(Donation $donation, string $paymentMethod): array
+    {
+        $donation->loadMissing(['organization', 'user', 'careAlliance:id,name,slug']);
+
+        return [
+            'donation' => $donation,
+            'paymentMethod' => $paymentMethod,
+            'brpEarned' => BelievePointsRewardService::donationBrpAmountForUser($donation->user),
+        ];
     }
 }

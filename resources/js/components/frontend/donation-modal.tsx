@@ -107,6 +107,7 @@ const METHOD_ORDER: DonationPaymentMethodId[] = [
 export default function DonationModal({ isOpen, onClose, organization }: DonationModalProps) {
   const pageProps = usePage().props as any
   const processingFeeRates: ProcessingFeeRates = pageProps.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
+  const rewardPointsAmount = Number(pageProps.donationRewardPointsAmount ?? pageProps.rewardPointsAmount ?? 1)
   const authUser = pageProps.auth?.user || null
   const flash = usePage().props
   const { showNotification } = useNotification()
@@ -470,6 +471,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
               onSavedPaymentMethodChange={setSavedPaymentMethodId}
               paymentMethodsUrl={paymentMethodsUrl}
               authUser={Boolean(authUser)}
+              rewardPointsAmount={rewardPointsAmount}
             />
           </div>
 

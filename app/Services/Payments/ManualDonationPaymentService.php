@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\PaymentTransaction;
 use App\Models\User;
 use App\Services\ManualDonationNotifier;
+use App\Services\Payments\BelievePointsRewardService;
 use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -81,9 +82,11 @@ class ManualDonationPaymentService implements PaymentServiceInterface
 
         app(ManualDonationNotifier::class)->notifyPendingReview($donation->fresh());
 
+        $brp = BelievePointsRewardService::donationBrpAmountForUser($user);
+
         return redirect()->route('donate')->with(
             'success',
-            'Payment confirmation received. The organization will verify your donation. You will be notified by email and push when it is approved.'
+            "Payment confirmation received. The organization will verify your donation. You will be notified by email and push when it is approved, and you'll receive +{$brp} BRP (Believe Reward Points)."
         );
     }
 }

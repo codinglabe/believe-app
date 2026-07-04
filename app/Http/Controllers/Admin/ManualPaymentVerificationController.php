@@ -7,6 +7,7 @@ use App\Models\BelievePointPurchase;
 use App\Models\Donation;
 use App\Models\PaymentTransaction;
 use App\Services\BelievePointPurchaseSettlementService;
+use App\Services\Payments\BelievePointsRewardService;
 use App\Services\Payments\PaymentTransactionCompletionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -91,7 +92,10 @@ class ManualPaymentVerificationController extends Controller
             $request->input('admin_notes')
         );
 
-        return back()->with('success', 'Payment approved. +5 BRP (Believe Reward Points) issued to donor.');
+        $brp = (int) ($paymentTransaction->fresh()->reward_points
+            ?? BelievePointsRewardService::donationBrpAmountForUser($donation->user));
+
+        return back()->with('success', "Payment approved. +{$brp} BRP (Believe Reward Points) issued to donor.");
     }
 
     public function reject(Request $request, PaymentTransaction $paymentTransaction): RedirectResponse

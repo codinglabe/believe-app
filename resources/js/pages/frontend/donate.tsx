@@ -224,7 +224,7 @@ export default function DonatePage({
   organizationFilterLock = null,
   primaryOrganizationLocked = false,
   secondaryOrganizations: initialSecondaryOrganizations = [],
-  rewardPointsAmount = 5,
+  rewardPointsAmount = 1,
   defaultPaymentMethods = {},
 }: DonatePageProps) {
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
@@ -1300,6 +1300,7 @@ export default function DonatePage({
                 onSavedPaymentMethodChange={setSavedPaymentMethodId}
                 paymentMethodsUrl={paymentMethodsUrl}
                 authUser={Boolean(authUser)}
+                rewardPointsAmount={rewardPointsAmount}
               />
             </motion.div>
 

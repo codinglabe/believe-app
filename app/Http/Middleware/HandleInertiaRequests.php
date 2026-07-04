@@ -9,6 +9,7 @@ use App\Models\Merchant;
 use App\Models\Organization;
 use App\Models\OrganizationProduct;
 use App\Services\BridgeVerificationService;
+use App\Services\Payments\BelievePointsRewardService;
 use App\Services\SeoService;
 use App\Services\StripeProcessingFeeEstimator;
 use App\Support\AppVersion;
@@ -363,6 +364,9 @@ class HandleInertiaRequests extends Middleware
             'merchantDomain' => config('merchant.domain'),
             'footerSettings' => $footerSettings,
             'processingFeeRates' => StripeProcessingFeeEstimator::ratesForFrontend(),
+            'donationRewardPointsAmount' => fn () => ($user instanceof \App\Models\User && ! $isLivestockDomain && ! $isMerchantDomain)
+                ? BelievePointsRewardService::donationBrpAmountForUser($user)
+                : BelievePointsRewardService::DONATION_BRP_FREE,
             'supporterSubscription' => fn () => ($user instanceof \App\Models\User && ($user->role ?? null) === 'user')
                 ? SupporterSubscriptionService::subscriptionStateForUser($user)
                 : null,

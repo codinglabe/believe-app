@@ -64,6 +64,7 @@ export interface DonationPaymentMethodsProps {
   onSavedPaymentMethodChange: (id: string | null) => void
   paymentMethodsUrl: string
   authUser: boolean
+  rewardPointsAmount?: number
 }
 
 type MethodGroup = "instant" | "manual"
@@ -232,6 +233,7 @@ export function DonationPaymentMethods({
   onSavedPaymentMethodChange,
   paymentMethodsUrl,
   authUser,
+  rewardPointsAmount = 1,
 }: DonationPaymentMethodsProps) {
   const selectMethod = (id: DonationPaymentMethodId) => {
     onPaymentMethodChange(id)
@@ -373,6 +375,12 @@ export function DonationPaymentMethods({
         </section>
       )}
 
+      {paymentMethod === "believe_points" && rewardPointsAmount > 0 && (
+        <p className="rounded-xl border border-purple-200/60 bg-purple-50/40 px-3.5 py-3 text-xs leading-relaxed text-purple-900 dark:border-purple-800/40 dark:bg-purple-950/30 dark:text-purple-100">
+          You&apos;ll earn +{rewardPointsAmount} BRP (Believe Reward Points) when this Believe Points donation completes.
+        </p>
+      )}
+
       {hasOrgSelected && !paymentMethodsLoading && selectedMethodAvailable && selectedConfig && SelectedIcon && (
         <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 dark:border-white/10 dark:bg-white/[0.03] sm:p-4">
           <div className="flex items-start gap-2.5">
@@ -451,7 +459,13 @@ export function DonationPaymentMethods({
           {isManualMethod(paymentMethod) && (
             <p className="mt-3 border-t border-amber-200/60 pt-3 text-xs leading-relaxed text-amber-900 dark:border-amber-800/40 dark:text-amber-100">
               After clicking &quot;Make My Impact&quot;, you&apos;ll get payment instructions. Transfer manually,
-              confirm, and an admin will verify — you&apos;ll receive +5 BRP.
+              confirm, and an admin will verify — you&apos;ll receive +{rewardPointsAmount} BRP.
+            </p>
+          )}
+
+          {!isManualMethod(paymentMethod) && rewardPointsAmount > 0 && (
+            <p className="mt-3 border-t border-purple-200/60 pt-3 text-xs leading-relaxed text-purple-900 dark:border-purple-800/40 dark:text-purple-100">
+              You&apos;ll earn +{rewardPointsAmount} BRP (Believe Reward Points) after your payment is confirmed.
             </p>
           )}
         </div>
