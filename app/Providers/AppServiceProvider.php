@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Listeners\AwardDailyLoginBrp;
 use App\Listeners\AwardInviteRewardPoints;
+use App\Listeners\AwardSupporterReferralBrp;
 use App\Listeners\CompleteBelievePointPurchaseFromStripeWebhook;
 use App\Listeners\GrantAiMediaStudioCreditsOnPlanSubscriptionRenewal;
 use App\Listeners\SyncBelievePointSettlementFromStripeWebhook;
@@ -15,8 +17,9 @@ use App\Models\Enrollment;
 use App\Models\FundMeDonation;
 use App\Models\JobApplication;
 use App\Models\NodeSell;
+use App\Models\Organization;
 use App\Models\Subscription as AppSubscription;
-use App\Models\User;
+use App\Models\UserFavoriteOrganization;
 use App\Notifications\Channels\FirebaseChannel;
 use App\Models\RewardPointLedger;
 use App\Observers\BelievePointPurchaseObserver;
@@ -27,6 +30,10 @@ use App\Observers\EnrollmentObserver;
 use App\Observers\FundMeDonationObserver;
 use App\Observers\JobApplicationObserver;
 use App\Observers\NodeSellObserver;
+use App\Observers\OrganizationObserver;
+use App\Observers\UserFavoriteOrganizationObserver;
+use App\Models\User;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -80,6 +87,8 @@ class AppServiceProvider extends ServiceProvider
         BelievePointWalletTransfer::observe(BelievePointWalletTransferObserver::class);
         Donation::observe(DonationObserver::class);
         Enrollment::observe(EnrollmentObserver::class);
+        Organization::observe(OrganizationObserver::class);
+        UserFavoriteOrganization::observe(UserFavoriteOrganizationObserver::class);
         JobApplication::observe(JobApplicationObserver::class);
         Cashier::useCustomerModel(User::class);
         Cashier::useSubscriptionModel(AppSubscription::class);
@@ -88,7 +97,9 @@ class AppServiceProvider extends ServiceProvider
         }
 
         // Register event listener for email verification
+        Event::listen(Login::class, AwardDailyLoginBrp::class);
         Event::listen(Verified::class, AwardInviteRewardPoints::class);
+        Event::listen(Verified::class, AwardSupporterReferralBrp::class);
 
         // Cashier Stripe webhooks: sync ledger fees from PaymentIntent metadata; Believe Points settlement
         Event::listen(WebhookReceived::class, SyncLedgerTransactionStripeFees::class);

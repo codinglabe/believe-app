@@ -8,69 +8,89 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Gift, Save, AlertCircle, CheckCircle2, Clock } from "lucide-react"
+import { Switch } from "@/components/admin/ui/switch"
+import { Badge } from "@/components/ui/badge"
+import { Gift, Save, AlertCircle, CheckCircle2, Users, DollarSign } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
+
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
-  { title: "Reward Point Management", href: "#" },
+  { title: "BRP Participation Rewards", href: "#" },
 ]
 
+interface ParticipationModule {
+  module: string
+  label: string
+  rule: string
+  enabled: boolean
+  free_award: number
+  prime_award: number
+  money_moves: boolean
+  category: "money_movement" | "participation"
+}
+
 interface PageProps {
-  rewardSettings: {
-    hourly_reward_points: number
-  }
+  participationModules: ParticipationModule[]
+  volunteerHourlyLegacyRate: number
   flash?: {
     success?: string
     error?: string
   }
 }
 
-export default function AdminRewardPointsIndex({ rewardSettings }: PageProps) {
+export default function AdminRewardPointsIndex({
+  participationModules,
+  volunteerHourlyLegacyRate,
+}: PageProps) {
   const { flash } = usePage().props as any
-  const [formData, setFormData] = useState({
-    hourly_reward_points: rewardSettings.hourly_reward_points.toString(),
-  })
+  const [modules, setModules] = useState<ParticipationModule[]>(participationModules)
+  const [legacyHourlyRate, setLegacyHourlyRate] = useState(
+    volunteerHourlyLegacyRate.toString()
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const handleChange = (field: string, value: string) => {
-    // Allow only numbers and one decimal point
-    const numericValue = value.replace(/[^0-9.]/g, '')
-    // Ensure only one decimal point
-    const parts = numericValue.split('.')
-    const formattedValue = parts.length > 2 
-      ? parts[0] + '.' + parts.slice(1).join('') 
-      : numericValue
+  const updateModule = (
+    index: number,
+    field: keyof ParticipationModule,
+    value: string | boolean
+  ) => {
+    setModules((prev) => {
+      const next = [...prev]
+      const updated = { ...next[index], [field]: value }
+      if (field === "money_moves") {
+        updated.category = value ? "money_movement" : "participation"
+      }
+      next[index] = updated
+      return next
+    })
+  }
 
-    setFormData(prev => ({
-      ...prev,
-      [field]: formattedValue
-    }))
-    
-    // Clear error for this field
-    if (errors[field]) {
-      setErrors(prev => {
-        const newErrors = { ...prev }
-        delete newErrors[field]
-        return newErrors
-      })
-    }
+  const handleAwardChange = (index: number, tier: "free_award" | "prime_award", value: string) => {
+    const numericValue = value.replace(/[^0-9.]/g, "")
+    const parts = numericValue.split(".")
+    const formattedValue =
+      parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : numericValue
+    updateModule(index, tier, formattedValue)
   }
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    const hourlyReward = parseFloat(formData.hourly_reward_points)
+    modules.forEach((mod) => {
+      const free = parseFloat(String(mod.free_award))
+      const prime = parseFloat(String(mod.prime_award))
 
-    if (!formData.hourly_reward_points || isNaN(hourlyReward) || hourlyReward < 0) {
-      newErrors.hourly_reward_points = "Please enter a valid reward point amount (minimum 0)"
-    }
-    if (hourlyReward > 10000) {
-      newErrors.hourly_reward_points = "Reward points cannot exceed 10,000 per hour"
-    }
+      if (isNaN(free) || free < 0) {
+        newErrors[`${mod.module}.free_award`] = "Enter a valid Free member BRP amount"
+      }
+      if (isNaN(prime) || prime < 0) {
+        newErrors[`${mod.module}.prime_award`] = "Enter a valid Prime member BRP amount"
+      }
+    })
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -86,50 +106,114 @@ export default function AdminRewardPointsIndex({ rewardSettings }: PageProps) {
 
     setIsSubmitting(true)
 
+    const modulesPayload: Record<
+      string,
+      { enabled: boolean; free_award: number; prime_award: number; money_moves: boolean }
+    > = {}
+    modules.forEach((mod) => {
+      modulesPayload[mod.module] = {
+        enabled: mod.enabled,
+        free_award: parseFloat(String(mod.free_award)) || 0,
+        prime_award: parseFloat(String(mod.prime_award)) || 0,
+        money_moves: mod.money_moves,
+      }
+    })
+
     router.put(
       route("admin.reward-points.update"),
       {
-        hourly_reward_points: parseFloat(formData.hourly_reward_points),
+        modules: modulesPayload,
+        volunteer_hourly_legacy_rate: parseFloat(legacyHourlyRate) || 0,
       },
       {
         onSuccess: () => {
-          showSuccessToast("Reward point settings updated successfully")
+          showSuccessToast("BRP participation settings updated successfully")
           setIsSubmitting(false)
         },
-        onError: (errors) => {
-          setErrors(errors as Record<string, string>)
-          showErrorToast("Failed to update reward point settings. Please check the errors.")
+        onError: (errs) => {
+          setErrors(errs as Record<string, string>)
+          showErrorToast("Failed to update settings. Please check the errors.")
           setIsSubmitting(false)
         },
-        onFinish: () => {
-          setIsSubmitting(false)
-        },
+        onFinish: () => setIsSubmitting(false),
       }
     )
   }
 
-  const formatPoints = (value: string): string => {
-    const num = parseFloat(value)
-    if (isNaN(num)) return "0"
-    return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(num)
-  }
+  const moneyModules = modules.filter((m) => m.money_moves)
+  const participationModulesOnly = modules.filter((m) => !m.money_moves)
+
+  const renderModuleRows = (rows: ParticipationModule[]) =>
+    rows.map((mod) => {
+      const index = modules.findIndex((m) => m.module === mod.module)
+      return (
+        <tr key={mod.module} className="border-b last:border-0">
+          <td className="p-3 align-top font-medium">{mod.label}</td>
+          <td className="p-3 align-top text-muted-foreground">{mod.rule}</td>
+          <td className="p-3 align-top">
+            <Switch
+              checked={mod.money_moves}
+              onCheckedChange={(checked) => updateModule(index, "money_moves", checked)}
+              disabled={isSubmitting}
+            />
+          </td>
+          <td className="p-3 align-top">
+            <Switch
+              checked={mod.enabled}
+              onCheckedChange={(checked) => updateModule(index, "enabled", checked)}
+              disabled={isSubmitting}
+            />
+          </td>
+          <td className="p-3 align-top">
+            <Input
+              type="text"
+              value={String(mod.free_award)}
+              onChange={(e) => handleAwardChange(index, "free_award", e.target.value)}
+              disabled={isSubmitting || !mod.enabled}
+              className={cn("h-9", errors[`${mod.module}.free_award`] && "border-red-500")}
+            />
+          </td>
+          <td className="p-3 align-top">
+            <Input
+              type="text"
+              value={String(mod.prime_award)}
+              onChange={(e) => handleAwardChange(index, "prime_award", e.target.value)}
+              disabled={isSubmitting || !mod.enabled}
+              className={cn("h-9", errors[`${mod.module}.prime_award`] && "border-red-500")}
+            />
+          </td>
+        </tr>
+      )
+    })
+
+  const tableHeader = (
+    <thead>
+      <tr className="border-b bg-muted/40 text-left">
+        <th className="p-3 font-semibold min-w-[180px]">Module</th>
+        <th className="p-3 font-semibold min-w-[200px]">Rule</th>
+        <th className="p-3 font-semibold w-[110px]">Money Moves?</th>
+        <th className="p-3 font-semibold w-[90px]">Enabled</th>
+        <th className="p-3 font-semibold w-[100px]">Free BRP</th>
+        <th className="p-3 font-semibold w-[100px]">Prime BRP</th>
+      </tr>
+    </thead>
+  )
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Reward Point Management" />
+      <Head title="BRP Participation Rewards" />
       <div className="m-3 md:m-6 space-y-6">
-        {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Reward Point Management</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Configure hourly reward points for volunteer work. Volunteers will earn reward points based on the hours they work.
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            BRP Participation Rewards
+          </h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-3xl">
+            Configure flat Believe Reward Points (BRP) per qualifying activity. Use{" "}
+            <strong>Money Moves?</strong> to separate financial settlement from community
+            participation — making reporting and auditing easier.
           </p>
         </div>
 
-        {/* Success/Error Messages */}
         {flash?.success && (
           <Alert className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -148,84 +232,86 @@ export default function AdminRewardPointsIndex({ rewardSettings }: PageProps) {
           </Alert>
         )}
 
-        {/* Reward Points Management Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Gift className="h-5 w-5" />
-              Volunteer Reward Points
+              Participation Reward Matrix
             </CardTitle>
             <CardDescription>
-              Set the reward points that volunteers will earn per hour of work. This rate will be applied to all volunteer timesheet entries.
+              Set Free and Prime BRP amounts for each module. Toggle Money Moves? to classify
+              activities for ledger reporting.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Hourly Reward Points */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 mb-4">
-                  <Clock className="h-5 w-5 text-blue-600" />
-                  <Label htmlFor="hourly_reward_points" className="text-base font-semibold">
-                    Reward Points Per Hour
-                  </Label>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold">Money Movement</h3>
+                  <Badge variant="outline" className="text-xs">
+                    {moneyModules.length} modules
+                  </Badge>
                 </div>
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Input
-                      id="hourly_reward_points"
-                      type="text"
-                      value={formData.hourly_reward_points}
-                      onChange={(e) => handleChange("hourly_reward_points", e.target.value)}
-                      className={cn(
-                        "h-12 text-lg",
-                        errors.hourly_reward_points && "border-red-500 focus-visible:ring-red-500"
-                      )}
-                      placeholder="0"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                  {errors.hourly_reward_points && (
-                    <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
-                      <AlertCircle className="h-4 w-4" />
-                      {errors.hourly_reward_points}
-                    </p>
-                  )}
-                  <p className="text-sm text-muted-foreground">
-                    Current rate: <span className="font-semibold">{formatPoints(formData.hourly_reward_points)} points per hour</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Example: If set to 10 points/hour, a volunteer working 5 hours will earn 50 reward points.
-                  </p>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    {tableHeader}
+                    <tbody>{renderModuleRows(moneyModules)}</tbody>
+                  </table>
                 </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-blue-600" />
+                  <h3 className="text-sm font-semibold">Participation</h3>
+                  <Badge variant="outline" className="text-xs">
+                    {participationModulesOnly.length} modules
+                  </Badge>
+                </div>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    {tableHeader}
+                    <tbody>{renderModuleRows(participationModulesOnly)}</tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                  Two clear categories
+                </h3>
+                <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
+                  <li>
+                    <strong>Money Movement</strong> — donations, BP purchases, marketplace, gift
+                    cards, paid courses & events
+                  </li>
+                  <li>
+                    <strong>Participation</strong> — volunteering, referrals, follows, learning,
+                    Unity Live/Meet, profile completion, daily login
+                  </li>
+                  <li>One flat reward per qualifying action — not based on dollar amount</li>
+                </ul>
               </div>
 
               <Separator />
 
-              {/* Information Section */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                  How It Works
-                </h3>
-                <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
-                  <li>Reward points are calculated automatically based on volunteer hours logged in timesheets</li>
-                  <li>The hourly rate you set here applies to all volunteer work</li>
-                  <li>Points are awarded when organizations log volunteer hours in the time sheet system</li>
-                  <li>Volunteers can view their earned reward points in their profile</li>
-                </ul>
+              <div className="space-y-2">
+                <Label htmlFor="legacy_hourly">Legacy volunteer hourly BRP (deprecated)</Label>
+                <Input
+                  id="legacy_hourly"
+                  type="text"
+                  value={legacyHourlyRate}
+                  onChange={(e) => setLegacyHourlyRate(e.target.value.replace(/[^0-9.]/g, ""))}
+                  className="max-w-xs h-10"
+                  disabled={isSubmitting}
+                />
               </div>
 
-              {/* Submit Button */}
-              <div className="flex justify-end pt-4">
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="min-w-[120px]"
-                >
+              <div className="flex justify-end pt-2">
+                <Button type="submit" disabled={isSubmitting} className="min-w-[140px]">
                   {isSubmitting ? (
-                    <>
-                      <span className="animate-spin mr-2">⏳</span>
-                      Saving...
-                    </>
+                    <>Saving...</>
                   ) : (
                     <>
                       <Save className="h-4 w-4 mr-2" />
@@ -241,4 +327,3 @@ export default function AdminRewardPointsIndex({ rewardSettings }: PageProps) {
     </AppLayout>
   )
 }
-

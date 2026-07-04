@@ -7,6 +7,8 @@ use App\Models\LevelUpQuizSession;
 use App\Models\LevelUpTrack;
 use App\Models\User;
 use App\Models\UserChallengeQuestionEvent;
+use App\Services\ParticipationActivityService;
+use App\Support\BrpParticipationModule;
 use App\Support\ChallengeLevelUp;
 use App\Support\ChallengePlayQuizMode;
 use App\Support\ProfileReligions;
@@ -463,6 +465,21 @@ class ChallengeQuestionService
             'total_elapsed_ms' => $totalMs,
             'streak_bonus_awarded' => $bonus,
         ]);
+
+        if (! $practiceMode && $total > 0) {
+            ParticipationActivityService::complete(
+                $user,
+                BrpParticipationModule::AI_LEARNING,
+                $session->id,
+                'Participation reward for completed AI learning activity',
+                [
+                    'level_up_track_slug' => $track->slug,
+                    'level_up_quiz_session_id' => $session->id,
+                    'questions_answered' => $total,
+                ],
+                referenceType: 'quiz_session',
+            );
+        }
 
         return [
             'headline' => 'Quiz Results',

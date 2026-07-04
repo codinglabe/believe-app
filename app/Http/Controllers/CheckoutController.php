@@ -1329,6 +1329,23 @@ class CheckoutController extends Controller
             }
 
             try {
+                \App\Services\ParticipationActivityService::complete(
+                    $user,
+                    \App\Support\BrpParticipationModule::MARKETPLACE_PURCHASE,
+                    $order->id,
+                    'Participation reward for marketplace purchase',
+                    ['order_id' => $order->id, 'total_amount' => (float) $order->total_amount],
+                    null,
+                    'catalog_order',
+                );
+            } catch (\Throwable $e) {
+                \Log::warning('Marketplace participation BRP failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
                 app(DigitalDeliveryService::class)->provisionCatalogFilesForOrder($order);
             } catch (\Throwable $e) {
                 \Log::warning('Digital catalog provisioning failed', [

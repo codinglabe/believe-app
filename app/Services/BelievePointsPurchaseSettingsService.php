@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\AdminSetting;
 use App\Models\User;
-use App\Support\SupporterSubscriptionService;
+use App\Support\BrpParticipationModule;
 
 /**
  * Admin-configurable settings for the Add Believe Points purchase flow only.
@@ -93,7 +93,7 @@ final class BelievePointsPurchaseSettingsService
      */
     public static function freeBrpAward(): float
     {
-        return max(0, (float) AdminSetting::get(self::KEY_FREE_BRP_AWARD, self::DEFAULT_FREE_BRP_AWARD));
+        return BrpParticipationSettingsService::freeAward(BrpParticipationModule::BP_PURCHASE);
     }
 
     /**
@@ -101,7 +101,7 @@ final class BelievePointsPurchaseSettingsService
      */
     public static function primeBrpAward(): float
     {
-        return max(0, (float) AdminSetting::get(self::KEY_PRIME_BRP_AWARD, self::DEFAULT_PRIME_BRP_AWARD));
+        return BrpParticipationSettingsService::primeAward(BrpParticipationModule::BP_PURCHASE);
     }
 
     /**
@@ -110,17 +110,7 @@ final class BelievePointsPurchaseSettingsService
      */
     public static function brpAwardForUser(?User $user): float
     {
-        if ($user === null) {
-            return self::freeBrpAward();
-        }
-
-        if ($user->hasNonprofitDashboardRole()) {
-            return self::primeBrpAward();
-        }
-
-        return SupporterSubscriptionService::currentTierSlug($user) === SupporterSubscriptionService::SLUG_PRIME
-            ? self::primeBrpAward()
-            : self::freeBrpAward();
+        return BrpParticipationSettingsService::awardForUser($user, BrpParticipationModule::BP_PURCHASE);
     }
 
     /**

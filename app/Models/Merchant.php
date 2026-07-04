@@ -28,6 +28,11 @@ class Merchant extends Authenticatable implements HasPreferredPayoutMethod
         return $this->hasMany(MarketplaceProduct::class);
     }
 
+    public function referrer(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'referrer_user_id');
+    }
+
     public function shippingAddresses(): HasMany
     {
         return $this->hasMany(MerchantShippingAddress::class);
@@ -47,6 +52,7 @@ class Merchant extends Authenticatable implements HasPreferredPayoutMethod
      * @var array<int, string>
      */
     protected $fillable = [
+        'referrer_user_id',
         'name',
         'email',
         'password',

@@ -34,10 +34,6 @@
             <span class="info-label">Payment method:</span>
             <span class="info-value">{{ $donation->payment_method === 'believe_points' ? 'Believe Points' : ucfirst(str_replace('_', ' ', (string) $donation->payment_method)) }}</span>
         </div>
-        <div class="info-row">
-            <span class="info-label">Believe Reward Points:</span>
-            <span class="info-value"><strong>+{{ $brpAmount }} BRP</strong></span>
-        </div>
         @if($donation->transaction_id)
         <div class="info-row">
             <span class="info-label">Reference:</span>

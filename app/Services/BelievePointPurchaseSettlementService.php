@@ -7,6 +7,8 @@ use App\Models\BelievePointPurchase;
 use App\Models\PaymentTransaction;
 use App\Models\Transaction;
 use App\Services\Admin\UnifiedLedgerTransactionWriter;
+use App\Services\ParticipationActivityService;
+use App\Support\BrpParticipationModule;
 use App\Support\StripeReferenceMode;
 use App\Support\UnifiedLedgerBpStatus;
 use App\Support\UnifiedLedgerBrpActivity;
@@ -51,14 +53,20 @@ class BelievePointPurchaseSettlementService
         $rewardAwarded = null;
         $rp = self::brpEarnedForPurchase($purchase);
         if ($rp > 0.0) {
-            $user->addRewardPoints(
-                $rp,
-                $isBank ? 'believe_points_ach_purchase' : 'believe_points_card_purchase',
+            $source = $isBank ? 'believe_points_ach_purchase' : 'believe_points_card_purchase';
+            ParticipationActivityService::complete(
+                $user,
+                BrpParticipationModule::BP_PURCHASE,
                 $purchase->id,
                 $isBank
                     ? 'Believe Reward Points for Believe Points purchase paid by bank (ACH)'
                     : 'Believe Reward Points for Believe Points purchase paid by card',
-                ['amount_usd' => (float) $purchase->amount, 'brp_value' => BelievePointsPurchaseSettingsService::brpValue()]
+                [
+                    'amount_usd' => (float) $purchase->amount,
+                    'brp_value' => BelievePointsPurchaseSettingsService::brpValue(),
+                    'payment_rail' => $rail,
+                ],
+                $source,
             );
             $rewardAwarded = $rp;
         }
@@ -224,6 +232,10 @@ class BelievePointPurchaseSettlementService
                 'payment_method' => $paymentMethod,
             ]);
 
+            if ($verifiedByUserId) {
+                app(ManualBelievePointPurchaseNotifier::class)->notifyApproved($purchase->fresh());
+            }
+
             return true;
         });
     }
@@ -253,6 +265,8 @@ class BelievePointPurchaseSettlementService
                     'verified_at' => now(),
                     'admin_notes' => $adminNotes,
                 ]);
+
+            app(ManualBelievePointPurchaseNotifier::class)->notifyRejected($purchase->fresh(), $adminNotes);
 
             return true;
         });

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Events\UnityLiveChatMessageSent;
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use App\Services\ParticipationActivityService;
+use App\Support\BrpParticipationModule;
 use App\Support\UnityLiveBroadcast;
 use App\Support\UnityLiveChat;
 use App\Support\UnityLiveStreamResolver;
@@ -62,6 +64,21 @@ class UnityLiveEngagementController extends Controller
         [$kind, $livestream] = $this->resolveLivestream($slug);
 
         UnityLiveViewerPresence::leave($kind, $livestream->id, $validated['sessionId']);
+
+        if ($authUser = $request->user()) {
+            ParticipationActivityService::complete(
+                $authUser,
+                BrpParticipationModule::UNITY_LIVE,
+                $livestream->id,
+                'Participation reward for Unity Live participation',
+                [
+                    'livestream_id' => $livestream->id,
+                    'slug' => $slug,
+                    'kind' => $kind,
+                ],
+                referenceType: $kind,
+            );
+        }
 
         return response()->json([
             'ok' => true,

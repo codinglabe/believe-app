@@ -3,13 +3,14 @@
 namespace App\Services;
 
 use App\Enums\GiftCardStatus;
-use App\Exceptions\GiftCardRedemptionCapacityReachedException;
 use App\Jobs\FulfillGiftCardRedemptionJob;
 use App\Mail\GiftCardPurchaseReceipt;
 use App\Models\GiftCard;
 use App\Models\Transaction;
 use App\Models\User;
-use App\Notifications\GiftCardRedemptionReadyNotification;
+use App\Notifications\GiftCardRedemptionDelayedNotification;
+use App\Support\BrpParticipationModule;
+use App\Services\ParticipationActivityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -33,7 +34,6 @@ class GiftCardRedemptionService
      * @param  array<string, mixed>  $validated
      * @param  array<string, mixed>|null  $selectedBrand
      *
-     * @throws GiftCardRedemptionCapacityReachedException
      */
     public function submit(
         User $user,
@@ -42,8 +42,6 @@ class GiftCardRedemptionService
         float $purchaseAmount,
         string $currency,
     ): GiftCard {
-        $this->assertPhazeCapacity($purchaseAmount);
-
         $pointsRequired = round($purchaseAmount, 2);
         $orderId = Str::uuid()->toString();
         $delayHours = $this->fulfillmentDelayHours();
@@ -243,17 +241,19 @@ class GiftCardRedemptionService
                 $reason = "Insufficient internal Phaze prefund balance at fulfillment. Required {$purchaseAmount}, available {$available}.";
 
                 $giftCard->update([
-                    'status' => GiftCardStatus::CapacityReached->value,
+                    'status' => GiftCardStatus::PendingFulfillment->value,
                     'failure_reason' => $reason,
                     'fulfillment_locked_at' => null,
                 ]);
 
-                $this->appendAudit($giftCard, 'capacity_reached', [
+                $this->appendAudit($giftCard, 'reserve_insufficient', [
                     'required' => $purchaseAmount,
                     'available' => $available,
                 ]);
 
-                Log::warning('Gift card fulfillment blocked — Phaze capacity reached', [
+                $this->notifyReserveDelayIfNeeded($giftCard->fresh(['user']));
+
+                Log::warning('Gift card fulfillment delayed — insufficient Phaze reserve', [
                     'gift_card_id' => $giftCard->id,
                     'required' => $purchaseAmount,
                     'available' => $available,
@@ -348,22 +348,35 @@ class GiftCardRedemptionService
         return $giftCard->fresh(['user', 'organization']);
     }
 
-    /**
-     * @throws GiftCardRedemptionCapacityReachedException
-     */
-    private function assertPhazeCapacity(float $amount): void
+    private function notifyReserveDelayIfNeeded(GiftCard $giftCard): void
     {
-        if ($this->phazeBalanceService->canAfford($amount)) {
+        $meta = $giftCard->meta ?? [];
+
+        if (! empty($meta['reserve_delay_notified_at'])) {
             return;
         }
 
-        $wallet = $this->phazeBalanceService->getWallet();
-        $available = round((float) $wallet->available_balance, 2);
+        $user = $giftCard->user;
+        if (! $user) {
+            return;
+        }
 
-        throw new GiftCardRedemptionCapacityReachedException(
-            required: round($amount, 2),
-            available: $available,
-        );
+        try {
+            $user->notify(new GiftCardRedemptionDelayedNotification($giftCard));
+        } catch (\Throwable $e) {
+            Log::error('Failed to send gift card reserve delay notification', [
+                'gift_card_id' => $giftCard->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        $giftCard->update([
+            'meta' => array_merge($meta, [
+                'reserve_delay_notified_at' => now()->toIso8601String(),
+            ]),
+        ]);
     }
 
     private function hasCompletedPhazeFulfillment(GiftCard $giftCard): bool
@@ -387,7 +400,28 @@ class GiftCardRedemptionService
         ]);
 
         $this->finalizeTransaction($giftCard);
+        $this->awardParticipationBrp($giftCard->fresh(['user']));
         $this->sendFulfillmentNotifications($giftCard->fresh(['user', 'organization']));
+    }
+
+    private function awardParticipationBrp(GiftCard $giftCard): void
+    {
+        $user = $giftCard->user;
+        if ($user === null) {
+            return;
+        }
+
+        ParticipationActivityService::complete(
+            $user,
+            BrpParticipationModule::GIFT_CARD_PURCHASE,
+            $giftCard->id,
+            'Participation reward for gift card purchase',
+            [
+                'gift_card_id' => $giftCard->id,
+                'amount' => (float) $giftCard->amount,
+                'brand' => $giftCard->brand_name ?? $giftCard->brand,
+            ],
+        );
     }
 
     /**
@@ -449,6 +483,7 @@ class GiftCardRedemptionService
         ]);
 
         $this->finalizeTransaction($giftCard->fresh());
+        $this->awardParticipationBrp($giftCard->fresh(['user']));
         $this->sendFulfillmentNotifications($giftCard->fresh(['user', 'organization']));
     }
 
