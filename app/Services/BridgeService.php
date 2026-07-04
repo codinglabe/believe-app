@@ -611,7 +611,7 @@ class BridgeService
     ): array {
         $query = [];
 
-            if ($endorsement) {
+        if ($endorsement) {
             $query['endorsement'] = $endorsement;
         }
 
@@ -634,6 +634,49 @@ class BridgeService
     }
 
     /**
+     * Fresh hosted Persona URL for an existing Bridge customer (short-lived — do not cache long-term).
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/customers/retrieve-a-hosted-kyc-link-for-an-existing-customer
+     * @see https://apidocs.bridge.xyz/platform/cards/overview/kyc
+     */
+    public function refreshHostedVerificationLink(
+        string $customerId,
+        ?string $endorsement = null,
+        ?string $redirectUri = null,
+    ): array {
+        $customerId = trim($customerId);
+        if ($customerId === '') {
+            return ['success' => false, 'error' => 'Missing Bridge customer ID.'];
+        }
+
+        $customerResult = $this->getCustomer($customerId);
+        if ($this->isCustomerInaccessibleError($customerResult)) {
+            return [
+                'success' => false,
+                'error' => 'Bridge customer not found for this account.',
+                'error_code' => 'bridge_customer_stale',
+                'status' => $customerResult['status'] ?? 404,
+                'response' => $customerResult['response'] ?? [],
+            ];
+        }
+
+        $linkResult = $this->getCustomerKycLink($customerId, $endorsement, $redirectUri);
+        $url = $this->extractKycLinkUrl($linkResult);
+
+        if ($url !== null) {
+            return [
+                'success' => true,
+                'url' => $url,
+                'data' => $linkResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
+                'endorsement' => $endorsement ?? 'base',
+                'source' => 'customer_kyc_link',
+            ];
+        }
+
+        return $linkResult;
+    }
+
+    /**
      * Base wallet KYC link — GET /customers/{id}/kyc_link (no endorsement param).
      * Use this for wallet identity verification, not cards issuance.
      *
@@ -652,10 +695,9 @@ class BridgeService
             }
 
             $attemptRedirect = $attempt <= 2 ? $redirectUri : null;
-            $fetchResult = $this->getCustomerKycLink($customerId, null, $attemptRedirect);
-            $url = $this->extractKycLinkUrl($fetchResult);
+            $fetchResult = $this->refreshHostedVerificationLink($customerId, null, $attemptRedirect);
 
-            if ($url !== null) {
+            if ($fetchResult['success'] ?? false) {
                 Log::info('Base KYC link resolved via GET /customers/{id}/kyc_link', [
                     'customer_id' => $customerId,
                     'attempt' => $attempt,
@@ -663,11 +705,15 @@ class BridgeService
 
                 return [
                     'success' => true,
-                    'url' => $url,
-                    'data' => $fetchResult['data'] ?? ['url' => $url, 'kyc_link' => $url],
+                    'url' => $fetchResult['url'],
+                    'data' => $fetchResult['data'] ?? ['url' => $fetchResult['url']],
                     'source' => 'customer_kyc_link_base',
                     'endorsement' => 'base',
                 ];
+            }
+
+            if (($fetchResult['error_code'] ?? '') === 'bridge_customer_stale') {
+                return array_merge($fetchResult, ['endorsement' => 'base']);
             }
 
             if (($fetchResult['status'] ?? 0) !== 500) {
@@ -676,7 +722,8 @@ class BridgeService
             }
         }
 
-        if ($kycLinkId) {
+        // Secondary fallback: GET /kyc_links/{id} status object (new-customer flow only).
+        if ($kycLinkId && $this->customerExistsOnBridge($customerId)) {
             $linkResult = $this->getKYCLink($kycLinkId);
             $url = $this->extractKycLinkUrl($linkResult);
 
@@ -695,10 +742,11 @@ class BridgeService
                 ];
             }
         }
-            
-            return [
-                'success' => false, 
+
+        return [
+            'success' => false,
             'error' => is_array($result) ? ($result['error'] ?? 'Failed to get base KYC link') : 'Failed to get base KYC link',
+            'error_code' => $result['error_code'] ?? null,
             'endorsement' => 'base',
         ];
     }
@@ -732,6 +780,13 @@ class BridgeService
         $this->ensureCustomerHasCardsEndorsement($customerId);
 
         $customerResult = $this->getCustomer($customerId);
+        if ($this->isCustomerInaccessibleError($customerResult)) {
+            return array_merge($customerResult, [
+                'error_code' => 'bridge_customer_stale',
+                'endorsement' => 'cards',
+            ]);
+        }
+
         $customerData = $customerResult['data'] ?? [];
         $baseApproved = $this->getBaseEndorsementInfo($customerData)['approved'] ?? false;
 
