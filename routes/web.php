@@ -134,6 +134,7 @@ use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
+use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;
@@ -144,6 +145,8 @@ use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
 use App\Http\Controllers\Organization\OrganizationPaymentSettingsController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationPayPalPayoutController;
+use App\Http\Controllers\OrganizationPayoutSettingsController;
 use App\Http\Controllers\OrganizationStripeConnectController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PaymentMethodSettingController;
@@ -2329,6 +2332,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::get('/stripe-connect/start', [OrganizationStripeConnectController::class, 'start'])->name('stripe-connect.start');
     Route::get('/stripe-connect/return', [OrganizationStripeConnectController::class, 'onboardingReturn'])->name('stripe-connect.return');
     Route::get('/stripe-connect/refresh', [OrganizationStripeConnectController::class, 'onboardingRefresh'])->name('stripe-connect.refresh');
+
+    Route::get('/payout-settings', [OrganizationPayoutSettingsController::class, 'show'])->name('payout-settings');
+    Route::put('/payout-settings/preferred-method', [OrganizationPayoutSettingsController::class, 'updatePreferredMethod'])->name('payout-settings.preferred-method');
+
+    Route::get('/paypal-payouts', [OrganizationPayPalPayoutController::class, 'show'])->name('paypal-payouts');
+    Route::post('/paypal-payouts/connect', [OrganizationPayPalPayoutController::class, 'connect'])->name('paypal-payouts.connect');
+    Route::post('/paypal-payouts/disconnect', [OrganizationPayPalPayoutController::class, 'disconnect'])->name('paypal-payouts.disconnect');
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)

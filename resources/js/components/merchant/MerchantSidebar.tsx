@@ -82,6 +82,7 @@ const navigation: NavItem[] = [
     ],
   },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Payouts', href: '/payouts', icon: Wallet },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 

@@ -108,6 +108,17 @@ class PushNotificationLoggerTest extends TestCase
             $table->unsignedBigInteger('organization_id');
             $table->timestamps();
         });
+
+        Schema::create('content_items', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('organization_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('type')->nullable();
+            $table->string('title')->nullable();
+            $table->text('body')->nullable();
+            $table->boolean('is_approved')->default(true);
+            $table->timestamps();
+        });
     }
 
     protected function tearDown(): void
@@ -117,6 +128,7 @@ class PushNotificationLoggerTest extends TestCase
         Schema::dropIfExists('push_notification_logs');
         Schema::dropIfExists('user_push_tokens');
         Schema::dropIfExists('board_members');
+        Schema::dropIfExists('content_items');
         Schema::dropIfExists('users');
         Schema::dropIfExists('organizations');
         Mockery::close();
@@ -308,6 +320,71 @@ class PushNotificationLoggerTest extends TestCase
         $this->assertIsArray($capturedPayload);
         $this->assertStringContainsString(
             'organizations/stuttie.png',
+            (string) ($capturedPayload['organization_logo_url'] ?? ''),
+        );
+    }
+
+    public function test_send_log_includes_organization_logo_url_from_content_item(): void
+    {
+        $org = Organization::query()->create([
+            'name' => 'Prayer Org',
+            'registered_user_image' => 'organizations/prayer-org.png',
+        ]);
+
+        $contentItemId = \DB::table('content_items')->insertGetId([
+            'organization_id' => $org->id,
+            'type' => 'prayer',
+            'title' => 'Morning Prayer',
+            'body' => 'Pray with us',
+            'is_approved' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $capturedPayload = null;
+
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldReceive('sendToDevice')
+            ->once()
+            ->withArgs(function ($token, $title, $body, $payload) use (&$capturedPayload) {
+                $capturedPayload = $payload;
+
+                return $token === 'token-abc' && $title === 'Morning Prayer';
+            })
+            ->andReturn([
+                'success' => true,
+                'error_code' => null,
+                'response' => null,
+            ]);
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $log = PushNotificationLog::query()->create([
+            'module_name' => 'campaigns',
+            'notification_title' => 'Morning Prayer',
+            'audience_type' => 'user',
+            'status' => PushNotificationLogStatus::Draft,
+        ]);
+
+        PushNotificationRecipient::query()->create([
+            'push_notification_log_id' => $log->id,
+            'device_token' => 'token-abc',
+            'status' => PushNotificationRecipientStatus::Pending,
+        ]);
+
+        \App\Models\UserPushToken::query()->create([
+            'push_token' => 'token-abc',
+            'is_active' => true,
+            'status' => 'active',
+        ]);
+
+        $logger = app(PushNotificationLogger::class);
+        $logger->sendLog($log, [
+            'content_item_id' => (string) $contentItemId,
+        ]);
+
+        $this->assertIsArray($capturedPayload);
+        $this->assertStringContainsString(
+            'organizations/prayer-org.png',
             (string) ($capturedPayload['organization_logo_url'] ?? ''),
         );
     }

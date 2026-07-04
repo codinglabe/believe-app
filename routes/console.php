@@ -9,7 +9,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Schedule IRS BMF import every 72 hours (update-only mode)
-Schedule::command('irs:bmf:import --update-only --chunk=1000')
+Schedule::command('irs:bmf:import --update-only --chunk=1000 --skip-if-busy')
     ->cron('0 2 */3 * *')
     ->withoutOverlapping();
 

@@ -10,6 +10,8 @@ export type OrganizationFilterLock = {
   primary_id: number | null
   primary_name: string | null
   primary_slug?: string | null
+  /** Donate page: default ON when donating to primary org (not browse-all / other org). */
+  donate_to_primary_default?: boolean
 }
 
 type LockedPrimaryOrganizationFilterProps = {

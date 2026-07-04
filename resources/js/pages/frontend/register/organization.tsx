@@ -282,6 +282,7 @@ export default function OrganizationRegisterPage({
     referralCode: referralCode,
     invite_token: "",
     primary_action_category_ids: [] as number[],
+    preferred_payout_method: "" as "" | "stripe" | "paypal",
   })
 
   const OFFICER_TITLES = ["President", "Treasurer", "Secretary", "Director", "Executive Director", "CEO", "Other"] as const
@@ -1819,6 +1820,23 @@ export default function OrganizationRegisterPage({
                           className="h-12"
                         />
                         {errors.website && <p className="text-red-600 text-sm mt-1">{errors.website}</p>}
+                      </div>
+
+                      <div>
+                        <Label htmlFor="preferred_payout_method">Preferred payout method (optional)</Label>
+                        <select
+                          id="preferred_payout_method"
+                          value={formData.preferred_payout_method}
+                          onChange={(e) => handleInputChange("preferred_payout_method", e.target.value)}
+                          className="mt-1 flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="">Choose later in settings</option>
+                          <option value="stripe">Stripe Connect (bank payouts)</option>
+                          <option value="paypal">PayPal Business</option>
+                        </select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          For Marketplace, Merchant Hub, Courses, and Events. You can connect your account after registration. Donations are unchanged.
+                        </p>
                       </div>
 
                       <div>

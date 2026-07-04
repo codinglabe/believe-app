@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationRecipientStatus;
+use App\Models\ContentItem;
 use App\Models\Organization;
 use App\Models\PushNotificationLog;
 use App\Models\User;
@@ -565,6 +566,12 @@ class PushNotificationLogger
         }
 
         $organizationId = $log->organization_id ?? $this->resolveOrganizationIdFromSender($log->created_by);
+
+        if (! $organizationId && ! empty($payload['content_item_id'])) {
+            $organizationId = ContentItem::query()
+                ->whereKey((int) $payload['content_item_id'])
+                ->value('organization_id');
+        }
 
         if (! $organizationId) {
             return $payload;

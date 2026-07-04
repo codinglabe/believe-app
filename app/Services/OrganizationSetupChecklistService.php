@@ -107,6 +107,12 @@ class OrganizationSetupChecklistService
         $stripeStarted = filled($organization->stripe_connect_account_id);
         $stripeReady = StripeConnectOrganizationService::organizationCanAcceptDirectDonations($organization);
 
+        $paypalStarted = filled($organization->paypal_payout_email);
+        $paypalReady = (bool) $organization->paypal_payouts_enabled;
+
+        $payoutPreferenceSet = filled($organization->preferred_payout_method);
+        $payoutReady = $organization->isPayoutReady();
+
         $youtubePartial = filled($organization->youtube_channel_url ?? null)
             && ! filled($organization->youtube_access_token ?? null);
 
@@ -164,10 +170,12 @@ class OrganizationSetupChecklistService
 
         return [
             'integrations' => $this->status($integrationCount >= 2, $integrationCount === 1),
+            'payout_settings' => $this->status($payoutReady, $payoutPreferenceSet && ! $payoutReady),
             'email_invites' => $this->status($emailConnectionCount > 0, $emailInvitesSent && $emailConnectionCount === 0),
             'social_media' => $this->status($facebookConnected, $facebookPartial),
             'youtube' => $this->status(filled($organization->youtube_access_token ?? null), $youtubePartial),
             'stripe_payouts' => $this->status($stripeReady, $stripeStarted && ! $stripeReady),
+            'paypal_payouts' => $this->status($paypalReady, $paypalStarted && ! $paypalReady),
             'dropbox' => $this->status($dropboxConnected, false),
             'organization_verification' => $this->status($verificationComplete, $verificationPartial),
 
@@ -188,6 +196,9 @@ class OrganizationSetupChecklistService
         $count = 0;
 
         if (filled($organization->stripe_connect_account_id)) {
+            $count++;
+        }
+        if ((bool) $organization->paypal_payouts_enabled) {
             $count++;
         }
         if (filled($organization->dropbox_refresh_token ?? null)) {

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Concerns\ManagesPreferredPayoutMethod;
+use App\Contracts\HasPreferredPayoutMethod;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -9,9 +11,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Cashier\Billable;
 
-class Merchant extends Authenticatable
+class Merchant extends Authenticatable implements HasPreferredPayoutMethod
 {
-    use Billable, HasFactory, Notifiable;
+    use Billable, HasFactory, ManagesPreferredPayoutMethod, Notifiable;
 
     /**
      * Get all of the merchant's subscriptions.
@@ -59,6 +61,13 @@ class Merchant extends Authenticatable
         'country',
         'status',
         'role',
+        'preferred_payout_method',
+        'stripe_connect_account_id',
+        'stripe_connect_charges_enabled',
+        'stripe_connect_payouts_enabled',
+        'paypal_payout_email',
+        'paypal_payouts_enabled',
+        'paypal_payout_connected_at',
         'stripe_id',
         'pm_type',
         'pm_last_four',
@@ -86,6 +95,10 @@ class Merchant extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'stripe_connect_charges_enabled' => 'boolean',
+            'stripe_connect_payouts_enabled' => 'boolean',
+            'paypal_payouts_enabled' => 'boolean',
+            'paypal_payout_connected_at' => 'datetime',
         ];
     }
 
@@ -138,6 +151,21 @@ class Merchant extends Authenticatable
             'zip' => trim((string) ($this->zip_code ?? '')),
             'country' => $country !== '' ? $country : 'US',
         ];
+    }
+
+    public function entityPayouts(): MorphMany
+    {
+        return $this->morphMany(EntityPayout::class, 'payable');
+    }
+
+    public function payoutDisplayName(): string
+    {
+        return trim((string) ($this->business_name ?: $this->name ?: 'Merchant'));
+    }
+
+    protected function payoutContactEmailForStripe(): ?string
+    {
+        return $this->email;
     }
 
     /**

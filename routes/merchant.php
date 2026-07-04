@@ -88,6 +88,16 @@ Route::middleware(['auth:merchant'])->group(function () {
         // Settings
         Route::get('/settings', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'index'])->name('merchant.settings');
 
+        Route::prefix('payouts')->name('merchant.payouts.')->group(function () {
+            Route::get('/', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'index'])->name('index');
+            Route::patch('/preferred-method', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'updatePreferredMethod'])->name('preferred-method');
+            Route::post('/paypal/connect', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'connectPayPal'])->name('paypal.connect');
+            Route::post('/paypal/disconnect', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'disconnectPayPal'])->name('paypal.disconnect');
+            Route::get('/stripe-connect/start', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'startStripeConnect'])->name('stripe-connect.start');
+            Route::get('/stripe-connect/return', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'stripeConnectReturn'])->name('stripe-connect.return');
+            Route::get('/stripe-connect/refresh', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'stripeConnectRefresh'])->name('stripe-connect.refresh');
+        });
+
         Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
         Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
 
