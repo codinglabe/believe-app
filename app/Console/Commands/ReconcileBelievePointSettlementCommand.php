@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\BelievePointBridgeReserveSettlementService;
 use App\Services\BelievePointPurchaseSettlementReconciliationService;
 use Illuminate\Console\Command;
 
@@ -16,23 +17,27 @@ class ReconcileBelievePointSettlementCommand extends Command
     public function handle(): int
     {
         $dryRun = (bool) $this->option('dry-run');
-        $stripeOnly = app()->environment('local') && ! (bool) $this->option('with-bridge');
+        $bridgeGateEnabled = BelievePointBridgeReserveSettlementService::requiresBridgeReserveConfirmation();
+        $skipBridgeApi = app()->environment('local') && ! (bool) $this->option('with-bridge');
 
         if ($dryRun) {
             $this->warn('Dry run — no purchases will be updated.');
         }
 
-        if ($stripeOnly) {
+        if (! $bridgeGateEnabled) {
+            $this->comment('Stripe-only settlement: Bridge reserve confirmation is disabled (BP release after Stripe funds clear).');
+        } elseif ($skipBridgeApi) {
             $this->comment('Local: Stripe settlement only (skipped Bridge API). Pass --with-bridge to include Bridge.');
         }
 
-        $stats = BelievePointPurchaseSettlementReconciliationService::reconcilePendingPurchases($dryRun, $stripeOnly);
+        $stats = BelievePointPurchaseSettlementReconciliationService::reconcilePendingPurchases($dryRun, $skipBridgeApi ?: null);
 
-        if ($stripeOnly) {
+        if (! $bridgeGateEnabled || $skipBridgeApi) {
             $this->info(sprintf(
-                'Examined %d stuck purchase(s). Stripe synced: %d. Released to Available: %d.',
+                'Examined %d stuck purchase(s). Stripe synced: %d. Stripe-only prepared: %d. Released to Available: %d.',
                 $stats['examined'],
                 $stats['stripe_synced'],
+                $stats['stripe_only_prepared'],
                 $stats['released'],
             ));
         } else {

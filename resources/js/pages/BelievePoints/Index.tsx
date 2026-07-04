@@ -689,7 +689,7 @@ export default function BelievePointsIndex({
 
   const getPurchaseStatusBadge = (purchase: Purchase) => {
     if (purchase.status === "completed" && purchase.points_released === false) {
-      const requireBridge = purchaseSettings?.require_bridge_reserve_confirmation !== false
+      const requireBridge = purchaseSettings?.require_bridge_reserve_confirmation === true
       const stripeAt = purchase.stripe_funds_available_at ?? purchase.points_available_at
       const stripeReady = stripeAt ? new Date(stripeAt).getTime() <= Date.now() : false
       const bridgeReady = Boolean(purchase.bridge_reserve_confirmed_at)

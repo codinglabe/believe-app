@@ -113,10 +113,37 @@ final class BelievePointBridgeReserveSettlementService
         return BelievePointsPurchaseSettingsService::requireBridgeReserveConfirmation();
     }
 
+    public static function prepareStripeOnlySettlement(): int
+    {
+        if (self::requiresBridgeReserveConfirmation()) {
+            return 0;
+        }
+
+        $prepared = 0;
+
+        BelievePointPurchase::query()
+            ->where('status', 'completed')
+            ->where('points_released', false)
+            ->orderBy('id')
+            ->each(function (BelievePointPurchase $purchase) use (&$prepared) {
+                $hadBridgeConfirm = $purchase->bridge_reserve_confirmed_at !== null;
+
+                self::autoConfirmIfBridgeNotRequired($purchase->fresh());
+                self::syncPurchaseReleaseSchedule($purchase->fresh());
+
+                if (! $hadBridgeConfirm && $purchase->fresh()->bridge_reserve_confirmed_at !== null) {
+                    $prepared++;
+                }
+            });
+
+        return $prepared;
+    }
+
     public static function syncPurchaseReleaseSchedule(BelievePointPurchase $purchase): void
     {
         $purchase->refresh();
-        $effective = self::effectiveReleaseAt($purchase);
+        self::autoConfirmIfBridgeNotRequired($purchase);
+        $effective = self::effectiveReleaseAt($purchase->fresh());
         if ($effective === null) {
             return;
         }
@@ -300,7 +327,9 @@ final class BelievePointBridgeReserveSettlementService
                 'credited_at' => now(),
             ]);
 
-            self::allocateCreditToPurchases($credit);
+            if (self::requiresBridgeReserveConfirmation()) {
+                self::allocateCreditToPurchases($credit);
+            }
         });
     }
 
