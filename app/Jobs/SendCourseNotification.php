@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\Course;
+use App\Models\Organization;
 use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -64,7 +65,7 @@ class SendCourseNotification implements ShouldQueue
             $firebaseService = app(FirebaseService::class);
 
             foreach ($followers as $follower) {
-                $this->sendNotificationToFollower($follower, $title, $body, $courseUrl, $firebaseService);
+                $this->sendNotificationToFollower($follower, $organization, $title, $body, $courseUrl, $firebaseService);
             }
 
             Log::info('Course notifications sent successfully', [
@@ -85,7 +86,7 @@ class SendCourseNotification implements ShouldQueue
     /**
      * Send notification to individual follower
      */
-    private function sendNotificationToFollower($follower, $title, $body, $courseUrl, $firebaseService): void
+    private function sendNotificationToFollower($follower, Organization $organization, $title, $body, $courseUrl, $firebaseService): void
     {
         try {
             $data = [

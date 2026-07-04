@@ -413,6 +413,8 @@ return [
         'download_retries' => (int) env('IRS_DOWNLOAD_RETRIES', 3),
         // Job timeout: large ZIPs may need 2–4 hours. Set IRS_JOB_TIMEOUT=14400 for 4 hours.
         'job_timeout' => (int) env('IRS_JOB_TIMEOUT', 7200), // seconds per ProcessIrsZipJob (2 hours default)
+        // ProcessIrsBmfSource can run up to 3h per CSV; mark stuck uploads failed after this many hours.
+        'bmf_stale_import_hours' => (int) env('IRS_BMF_STALE_IMPORT_HOURS', 6),
         // SSL: set IRS_SSL_VERIFY=false on Windows/local if you get "cURL error 60: unable to get local issuer certificate"
         'ssl_verify' => env('IRS_SSL_VERIFY', true),
         'cafile' => env('IRS_CAFILE', null), // optional: path to cacert.pem (e.g. from https://curl.se/ca/cacert.pem)
