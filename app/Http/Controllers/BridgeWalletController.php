@@ -1389,6 +1389,21 @@ class BridgeWalletController extends Controller
             $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
 
             $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            if ($this->bridgeService->isCustomerInaccessibleError($customerResult)) {
+                $this->bridgeService->clearStaleCustomerReference(
+                    $integration,
+                    (string) $integration->bridge_customer_id,
+                    'kyc_link_customer_inaccessible',
+                );
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your wallet verification session expired. Please start Connect Wallet again.',
+                    'error_code' => 'bridge_customer_stale',
+                    'requires_wallet_restart' => true,
+                ], 409);
+            }
+
             $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
             $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
 
