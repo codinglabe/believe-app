@@ -3,9 +3,13 @@
 namespace App\Services;
 
 use App\Models\BridgeIntegration;
+use App\Models\BridgeKycKybSubmission;
 use App\Models\BridgeWallet;
+use App\Models\CardWallet;
+use App\Models\LiquidationAddress;
 use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -231,8 +235,16 @@ class BridgeService
 
                 // Handle 404 (Not Found) more gracefully - it's often expected when checking if resources exist
                 $isNotFound = $statusCode === 404;
-                $logLevel = $isNotFound ? 'warning' : 'error';
-                $logMessage = $isNotFound ? 'Bridge API Resource Not Found' : 'Bridge API Error';
+                $isInaccessibleCustomer = $this->isCustomerInaccessibleError([
+                    'status' => $statusCode,
+                    'error' => $errorMessage,
+                    'response' => is_array($body) ? $body : [],
+                    'error_code' => (string) ($body['code'] ?? $body['error_code'] ?? ''),
+                ]);
+                $logLevel = ($isNotFound || $isInaccessibleCustomer) ? 'warning' : 'error';
+                $logMessage = $isInaccessibleCustomer
+                    ? 'Bridge API customer inaccessible'
+                    : ($isNotFound ? 'Bridge API Resource Not Found' : 'Bridge API Error');
 
                 Log::{$logLevel}($logMessage, [
                     'method' => $method,
@@ -288,6 +300,94 @@ class BridgeService
     public function getCustomer(string $customerId): array
     {
         return $this->makeRequest('GET', "/customers/{$customerId}");
+    }
+
+    /**
+     * Bridge customer was deleted, offboarded, or belongs to another API environment/key.
+     */
+    public function isCustomerInaccessibleError(array $bridgeApiResult): bool
+    {
+        $status = (int) ($bridgeApiResult['status'] ?? 0);
+        $code = strtolower((string) ($bridgeApiResult['response']['code'] ?? $bridgeApiResult['error_code'] ?? ''));
+        $message = strtolower((string) ($bridgeApiResult['error'] ?? ''));
+
+        if ($status === 404 && ($code === 'not_found' || str_contains($message, 'resource not found'))) {
+            return true;
+        }
+
+        return $status === 401
+            && $code === 'not_allowed'
+            && str_contains($message, 'cannot make api request for this customer');
+    }
+
+    /**
+     * Clear a stale Bridge customer reference so Connect Wallet can be restarted cleanly.
+     */
+    public function clearStaleCustomerReference(
+        BridgeIntegration $integration,
+        string $customerId,
+        string $reason = 'inaccessible',
+    ): void {
+        $customerId = trim($customerId);
+        if ($customerId === '') {
+            return;
+        }
+
+        DB::transaction(function () use ($integration, $customerId, $reason) {
+            $integration = BridgeIntegration::query()->lockForUpdate()->find($integration->id);
+            if ($integration === null || trim((string) ($integration->bridge_customer_id ?? '')) !== $customerId) {
+                return;
+            }
+
+            BridgeWallet::query()->where('bridge_integration_id', $integration->id)->delete();
+            CardWallet::query()->where('bridge_integration_id', $integration->id)->delete();
+            LiquidationAddress::query()->where('bridge_integration_id', $integration->id)->delete();
+
+            $submissions = BridgeKycKybSubmission::query()
+                ->where('bridge_integration_id', $integration->id)
+                ->where('bridge_customer_id', $customerId)
+                ->get();
+
+            foreach ($submissions as $submission) {
+                $submissionData = $submission->submission_data ?? [];
+                if (is_string($submissionData)) {
+                    $submissionData = json_decode($submissionData, true) ?? [];
+                }
+                $submissionData['customer_cleared_at'] = now()->toIso8601String();
+                $submissionData['customer_clear_reason'] = $reason;
+                $submission->submission_data = $submissionData;
+                $submission->submission_status = 'offboarded';
+                $submission->bridge_customer_id = null;
+                $submission->save();
+            }
+
+            $metadata = $integration->bridge_metadata ?? [];
+            if (is_string($metadata)) {
+                $metadata = json_decode($metadata, true) ?? [];
+            }
+            $metadata['customer_cleared'] = true;
+            $metadata['customer_cleared_at'] = now()->toIso8601String();
+            $metadata['customer_clear_reason'] = $reason;
+            $metadata['cleared_customer_id'] = $customerId;
+
+            $integration->bridge_customer_id = null;
+            $integration->bridge_wallet_id = null;
+            $integration->kyc_status = 'not_started';
+            $integration->kyb_status = 'not_started';
+            $integration->tos_status = null;
+            $integration->tos_link_url = null;
+            $integration->kyc_link_url = null;
+            $integration->kyb_link_url = null;
+            $integration->kyc_link_id = null;
+            $integration->bridge_metadata = $metadata;
+            $integration->save();
+
+            Log::warning('Cleared stale Bridge customer reference from integration', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'reason' => $reason,
+            ]);
+        });
     }
 
     /**
@@ -3385,6 +3485,10 @@ class BridgeService
             return null;
         }
 
+        if (! $this->customerExistsOnBridge($customerId)) {
+            return null;
+        }
+
         $integration->loadMissing('primaryWallet', 'wallets');
 
         $walletId = $integration->bridge_wallet_id
@@ -3418,6 +3522,29 @@ class BridgeService
         }
 
         return $resolved;
+    }
+
+    /**
+     * Cached per-request check that a customer still exists for the active Bridge API key.
+     */
+    public function customerExistsOnBridge(string $customerId): bool
+    {
+        $customerId = trim($customerId);
+        if ($customerId === '') {
+            return false;
+        }
+
+        static $cache = [];
+
+        if (array_key_exists($customerId, $cache)) {
+            return $cache[$customerId];
+        }
+
+        $result = $this->getCustomer($customerId);
+        $exists = (bool) ($result['success'] ?? false);
+        $cache[$customerId] = $exists;
+
+        return $exists;
     }
 
     /**
