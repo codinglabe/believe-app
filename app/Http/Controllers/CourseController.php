@@ -580,13 +580,14 @@ class CourseController extends BaseController
         ]);
 
         $user = Auth::user();
+        $isPlatformAdmin = $this->isPlatformAdmin($user);
 
         $query = Course::query()
             ->with(['topic', 'eventType', 'organization', 'creator'])
             ->withCount(['enrollmentsCount as enrolled_count']);
 
-        // ✅ If user is not admin → restrict by organization
-        if ($user->role !== 'admin') {
+        // Organization / supporter accounts only see their own listings.
+        if (! $isPlatformAdmin) {
             $query->where('organization_id', $user->id);
         }
 
@@ -619,25 +620,26 @@ class CourseController extends BaseController
             $query->where('type', $filters['courses_course_type']);
         }
 
-        // 🔎 Status filter
+        // 🔎 Status filter (uses live enrollment counts, not the stale courses.enrolled column)
         if (! empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
+            $enrollmentCountSql = '(SELECT COUNT(*) FROM enrollments WHERE enrollments.course_id = courses.id AND enrollments.status IN (\'active\', \'completed\', \'pending\'))';
 
             switch ($status) {
                 case 'available':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled < max_participants')
-                        ->whereRaw('(enrolled / max_participants) < 0.8');
+                        ->whereRaw("{$enrollmentCountSql} < courses.max_participants")
+                        ->whereRaw("(CASE WHEN courses.max_participants > 0 THEN ({$enrollmentCountSql} / courses.max_participants) ELSE 0 END) < 0.8");
                     break;
                 case 'almost_full':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled < max_participants')
-                        ->whereRaw('(enrolled / max_participants) >= 0.8');
+                        ->whereRaw("{$enrollmentCountSql} < courses.max_participants")
+                        ->whereRaw("(CASE WHEN courses.max_participants > 0 THEN ({$enrollmentCountSql} / courses.max_participants) ELSE 0 END) >= 0.8");
                     break;
                 case 'full':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled >= max_participants');
+                        ->whereRaw("{$enrollmentCountSql} >= courses.max_participants");
                     break;
                 case 'started':
                     $query->where('start_date', '<', $now->toDateString());
@@ -645,8 +647,9 @@ class CourseController extends BaseController
             }
         }
 
-        $courses = $query->orderBy('start_date', 'desc')
-            ->paginate(15)
+        $courses = $query->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(10)
             ->withQueryString();
 
         // Replace enrolled count with actual count from enrollments table
@@ -659,11 +662,8 @@ class CourseController extends BaseController
         $eventTypes = EventType::generalCatalogForProps();
         $companionEventTypes = EventType::companionCatalogForProps();
 
-        // ✅ Calculate statistics only for authenticated organization
-        // For organization users, use their user_id as organization_id
-        // For admin users, they should also see their own organization's data if they have one
-        $organizationId = $user->role === 'organization' ? $user->id : ($user->organization_id ?? $user->id);
-        $statistics = $this->calculateCourseStatistics($organizationId);
+        $statisticsOrganizationId = $isPlatformAdmin ? null : (int) $user->id;
+        $statistics = $this->calculateCourseStatistics($statisticsOrganizationId);
 
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
@@ -671,16 +671,17 @@ class CourseController extends BaseController
             'companionEventTypes' => $companionEventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
+            'isPlatformAdmin' => $isPlatformAdmin,
         ]);
     }
 
     /**
      * Calculate course statistics for the admin dashboard
      */
-    private function calculateCourseStatistics($organizationId)
+    private function calculateCourseStatistics(?int $organizationId = null)
     {
         $baseQuery = Course::query();
-        if ($organizationId) {
+        if ($organizationId !== null) {
             $baseQuery->where('organization_id', $organizationId);
         }
         $now = now();
@@ -1098,13 +1099,20 @@ class CourseController extends BaseController
         // Add enrolled count to course object for frontend display
         $course->enrolled = $enrolledCount;
 
+        $showMeetingLink = $hasActiveEnrollment
+            && in_array($course->format, ['online', 'hybrid'], true);
+
+        if (! $showMeetingLink) {
+            $course->makeHidden(['meeting_link', 'host_meeting_link']);
+        }
+
         return Inertia::render('frontend/course/Show', [
             'course' => $course,
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
             'canEnroll' => $canEnroll,
-            'meetingLink' => $course->meeting_link, // Added meeting_link field
+            'meetingLink' => $showMeetingLink ? $course->meeting_link : null,
         ]);
     }
 
@@ -1114,10 +1122,7 @@ class CourseController extends BaseController
     public function adminShow(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.read');
-        // Ensure user can only view their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanViewConnectionHubCourse($course);
 
         $course->load(['topic', 'eventType', 'organization', 'creator']);
 
@@ -1171,10 +1176,7 @@ class CourseController extends BaseController
     public function adminEnrollments(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.read');
-        // Ensure user can only view their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanViewConnectionHubCourse($course);
 
         $course->load(['topic', 'eventType', 'organization', 'creator']);
 
@@ -1210,10 +1212,7 @@ class CourseController extends BaseController
     public function edit(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.edit');
-        // Ensure user can only edit their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanManageConnectionHubCourse($course);
 
         $eventTypes = EventType::generalCatalogForProps();
         $companionEventTypes = EventType::companionCatalogForProps();
@@ -1255,10 +1254,7 @@ class CourseController extends BaseController
     public function update(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.update');
-        // Ensure user can only update their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanManageConnectionHubCourse($course);
 
         $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
         $typeLabelCapital = ConnectionHubType::label($type);
@@ -1500,9 +1496,14 @@ class CourseController extends BaseController
     public function destroy(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.delete');
-        // Ensure user can only delete their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
+        $this->assertCanManageConnectionHubCourse($course);
+
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
+        if ($enrolledCount > 0) {
+            return redirect()->back()->with('error', 'Cannot delete a listing with enrolled participants.');
         }
 
         try {
@@ -1523,6 +1524,53 @@ class CourseController extends BaseController
             Log::error('Error deleting course: '.$e->getMessage());
 
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
+        }
+    }
+
+    protected function isPlatformAdmin(?\App\Models\User $user = null): bool
+    {
+        $user ??= Auth::user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasRole('admin') || (string) $user->role === 'admin';
+    }
+
+    protected function canViewConnectionHubCourse(Course $course): bool
+    {
+        $user = Auth::user();
+
+        if ($this->isPlatformAdmin($user)) {
+            return true;
+        }
+
+        return (int) $course->organization_id === (int) $user->id;
+    }
+
+    protected function canManageConnectionHubCourse(Course $course): bool
+    {
+        $user = Auth::user();
+
+        if ($this->isPlatformAdmin($user)) {
+            return false;
+        }
+
+        return (int) $course->organization_id === (int) $user->id;
+    }
+
+    protected function assertCanViewConnectionHubCourse(Course $course): void
+    {
+        if (! $this->canViewConnectionHubCourse($course)) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+    }
+
+    protected function assertCanManageConnectionHubCourse(Course $course): void
+    {
+        if (! $this->canManageConnectionHubCourse($course)) {
+            abort(403, 'Unauthorized access to this course.');
         }
     }
 

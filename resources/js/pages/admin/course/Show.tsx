@@ -1,5 +1,5 @@
 "use client"
-import { Head, Link } from "@inertiajs/react"
+import { Head, Link, usePage } from "@inertiajs/react"
 import {
   ArrowLeft,
   Users,
@@ -28,6 +28,7 @@ import { Badge } from "@/components/admin/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import AppLayout from "@/layouts/app-layout"
 import { useState } from "react"
+import type { Auth } from "@/types"
 
 interface Topic {
   id: number
@@ -113,6 +114,9 @@ interface AdminCoursesShowProps {
 }
 
 export default function AdminCoursesShow({ course, enrollmentStats, status }: AdminCoursesShowProps) {
+  const { auth } = usePage<{ auth: Auth }>().props
+  const isPlatformAdmin = auth.user.role === "admin"
+  const canManageListing = !isPlatformAdmin
   const [copied, setCopied] = useState(false)
 
   const copyToClipboard = async (text: string) => {
@@ -180,15 +184,19 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
             </div>
           </div>
           <div className="ml-auto flex gap-2">
-            <Link href={route("admin.courses.enrollments", course.slug)}>
-              <Button variant="outline">
-                <Users className="mr-2 h-4 w-4" />
-                Enrollments
-              </Button>
-            </Link>
-            <Link href={route("admin.courses.edit", course.slug)}>
-              <Button>Edit {connectionHubTypeLabel(course.type)}</Button>
-            </Link>
+            {canManageListing && (
+              <Link href={route("admin.courses.enrollments", course.slug)}>
+                <Button variant="outline">
+                  <Users className="mr-2 h-4 w-4" />
+                  Enrollments
+                </Button>
+              </Link>
+            )}
+            {canManageListing && (
+              <Link href={route("admin.courses.edit", course.slug)}>
+                <Button>Edit {connectionHubTypeLabel(course.type)}</Button>
+              </Link>
+            )}
             <Link href={`/courses/${course.slug}`} target="_blank">
               <Button variant="outline">View Public</Button>
             </Link>

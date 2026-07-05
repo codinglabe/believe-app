@@ -7,6 +7,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 import {
   Save,
   X,
@@ -1357,6 +1358,8 @@ export default function ProfileEdit() {
             </div>
           </CardContent>
         </Card>
+
+        <BrpParticipationHint module="profile_completion" variant="alert" className="mb-4" />
 
         <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-10 -mx-1 flex flex-col-reverse gap-3 border-t border-gray-200 bg-white/95 px-1 py-3 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none sm:flex-row sm:justify-end lg:bottom-auto">
           <Button

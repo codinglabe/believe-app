@@ -24,6 +24,7 @@ import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOv
 import { UnityLiveBadge } from "@/components/unity-live/UnityLiveBadge"
 import { UnityLiveOtherStreamsSidebar } from "@/components/unity-live/UnityLiveOtherStreamsSidebar"
 import { UnityLiveWatchHeader } from "@/components/unity-live/UnityLiveWatchHeader"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 import { UnityLiveHostActions } from "@/components/unity-live/UnityLiveHostActions"
 import { UnityLiveEarnRewardsBar } from "@/components/unity-live/UnityLiveEarnRewardsBar"
 import { UnityLiveStreamInfoSection } from "@/components/unity-live/UnityLiveStreamInfoSection"
@@ -208,6 +209,10 @@ export default function UnityLiveShow({
             ) : null
           }
         />
+
+        <div className="mx-auto w-full max-w-[1600px] px-4 pt-3 sm:px-6">
+          <BrpParticipationHint module="unity_live" variant="alert" />
+        </div>
 
         <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:py-6">
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_min(340px,32vw)] lg:items-start lg:gap-6">

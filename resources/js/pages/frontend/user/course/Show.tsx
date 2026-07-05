@@ -77,6 +77,7 @@ interface Course {
   created_at: string
   updated_at: string
   meeting_link: string | null
+  host_meeting_link?: string | null
   topic: Topic | null
   event_type: { id: number; name: string; category?: string } | null
   organization: Organization
@@ -208,6 +209,14 @@ export default function AdminCoursesShow({
               </div>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
+              {enrollmentStats.total_enrolled > 0 && (
+                <Link href={route("profile.course.enrollments.show", course.slug)}>
+                  <Button variant="outline" className="gap-2 border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-900/50">
+                    <Users className="h-4 w-4" />
+                    Enrollments ({enrollmentStats.total_enrolled})
+                  </Button>
+                </Link>
+              )}
               <Link href={route("profile.course.edit", course.slug)}>
                 <Button className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700">
                   <Edit className="h-4 w-4" />
@@ -389,13 +398,23 @@ export default function AdminCoursesShow({
             {recentEnrollments.length > 0 && (
               <Card className={cardShell}>
                 <CardHeader className={cardHeaderBar}>
-                  <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                    <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    Recent enrollments
-                  </CardTitle>
-                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                    Latest activity (up to 10)
-                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                        <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        Recent enrollments
+                      </CardTitle>
+                      <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                        Latest activity (up to 10)
+                      </p>
+                    </div>
+                    <Link
+                      href={route("profile.course.enrollments.show", course.slug)}
+                      className="text-sm font-medium text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+                    >
+                      View all enrollments
+                    </Link>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <ul className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -432,37 +451,65 @@ export default function AdminCoursesShow({
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {course.meeting_link && (
+            {(course.meeting_link || course.host_meeting_link) && (
               <Card className={cardShell}>
                 <CardHeader className={cardHeaderBar}>
                   <CardTitle className="flex items-center gap-2 text-lg font-semibold">
                     <ExternalLink className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    Meeting link
+                    Unity Meet
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-                    <div className="mb-3 break-all font-mono text-xs text-muted-foreground">{course.meeting_link}</div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => copyToClipboard(course.meeting_link!)}
-                      >
-                        <Copy className="mr-2 h-4 w-4" />
-                        {copied ? "Copied!" : "Copy"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                        onClick={() => window.open(course.meeting_link!, "_blank")}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Open
-                      </Button>
+                  {course.host_meeting_link ? (
+                    <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                      <div className="mb-2 text-xs font-medium text-muted-foreground">Host link</div>
+                      <div className="mb-3 break-all font-mono text-xs text-muted-foreground">{course.host_meeting_link}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => copyToClipboard(course.host_meeting_link!)}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          {copied ? "Copied!" : "Copy host"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                          onClick={() => window.open(course.host_meeting_link!, "_blank")}
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Open host
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
+                  {course.meeting_link ? (
+                    <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                      <div className="mb-2 text-xs font-medium text-muted-foreground">Join link</div>
+                      <div className="mb-3 break-all font-mono text-xs text-muted-foreground">{course.meeting_link}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => copyToClipboard(course.meeting_link!)}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          {copied ? "Copied!" : "Copy join"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                          onClick={() => window.open(course.meeting_link!, "_blank")}
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Open join
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             )}

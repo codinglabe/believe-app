@@ -2058,10 +2058,12 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
     Route::post('/profile/my-enrollments/notification-preferences', [EnrollmentController::class, 'updateNotificationPreferences'])->name('enrollments.notification-preferences');
     Route::get('/profile/course', [FrontendCourseController::class, 'adminIndex'])->name('profile.course.index');
+    Route::get('/profile/course/enrollments', [FrontendCourseController::class, 'allEnrollments'])->name('profile.course.enrollments')->middleware('permission:course.read');
     Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create')->middleware('permission:course.create');
     Route::post('/profile/course/unity-meet/prepare', [CourseUnityMeetController::class, 'prepare'])->name('profile.course.unity-meet.prepare')->middleware('permission:course.create');
     Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store')->middleware('permission:course.create');
     Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show')->middleware('permission:course.read'); // Added this line
+    Route::get('/profile/course/{course:slug}/enrollments', [FrontendCourseController::class, 'adminEnrollments'])->name('profile.course.enrollments.show')->middleware('permission:course.read');
     Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit')->middleware('permission:course.edit');
 
     // Frontend User Events Routes

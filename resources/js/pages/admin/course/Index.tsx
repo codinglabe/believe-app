@@ -127,17 +127,21 @@ interface Props {
     courses_topic: string
   }
   statistics: Statistics
+  isPlatformAdmin?: boolean
 }
 
 export default function CoursesIndex({
+  auth,
   courses,
   eventTypes,
   companionEventTypes = [],
   filters,
   statistics,
+  isPlatformAdmin: isPlatformAdminProp,
 }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
+  const isPlatformAdmin = isPlatformAdminProp ?? auth.user.role === "admin"
 
   // Filter states
   const [coursesSearch, setCoursesSearch] = useState(filters.courses_search || "")
@@ -383,7 +387,9 @@ export default function CoursesIndex({
               Connection Hub
             </h1>
             <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-              Manage Connection Hub listings and track enrollment
+              {isPlatformAdmin
+                ? "View and manage Connection Hub listings from all organizations and supporters"
+                : "Manage your Connection Hub listings and track enrollment"}
             </p>
           </div>
           <div className="animate-in slide-in-from-right duration-700">
@@ -523,6 +529,7 @@ export default function CoursesIndex({
                   <option value="companion">Companion</option>
                   <option value="learning">Learning</option>
                   <option value="events">Meetups</option>
+                  <option value="earning">Earning</option>
                 </select>
                 {/* Topic filter — courses and events both use event types */}
                 {coursesCourseType ? (
@@ -694,23 +701,27 @@ export default function CoursesIndex({
                                 </Button>
                               </Link>
                             </PermissionButton>
-                            <PermissionButton permission="course.edit">
-                              <Link href={route("admin.courses.edit", course.slug)}>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <Edit className="h-4 w-4" />
+                            {!isPlatformAdmin && (
+                              <PermissionButton permission="course.edit">
+                                <Link href={route("admin.courses.edit", course.slug)}>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </Link>
+                              </PermissionButton>
+                            )}
+                            {!isPlatformAdmin && course.enrolled === 0 && (
+                              <PermissionButton permission="course.delete">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                  onClick={() => openDeleteModal(course.slug, course.name)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
-                              </Link>
-                            </PermissionButton>
-                            <PermissionButton permission="course.delete">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                                onClick={() => openDeleteModal(course.slug, course.name)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </PermissionButton>
+                              </PermissionButton>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -727,70 +738,82 @@ export default function CoursesIndex({
             </div>
 
             {/* Laravel Pagination */}
-            {courses.last_page > 1 && (
-              <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between pt-6 sm:pt-8">
+            {courses.total > 0 && (
+              <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between border-t border-gray-100 pt-6 sm:pt-8 dark:border-gray-800">
                 <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
                   Showing <span className="font-medium text-gray-900 dark:text-white">{courses.from || 0}</span> to{" "}
                   <span className="font-medium text-gray-900 dark:text-white">{courses.to || 0}</span> of{" "}
-                  <span className="font-medium text-gray-900 dark:text-white">{courses.total}</span> courses
-                </div>
-                <div className="flex items-center justify-center space-x-1 sm:space-x-2">
-                  {/* Previous Button */}
-                  {courses.prev_page_url && (
-                    <Link href={courses.prev_page_url}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
-                      >
-                        <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
-                    </Link>
+                  <span className="font-medium text-gray-900 dark:text-white">{courses.total}</span> listings
+                  {courses.last_page > 1 && (
+                    <span className="text-gray-500 dark:text-gray-500">
+                      {" "}
+                      · Page {courses.current_page} of {courses.last_page}
+                    </span>
                   )}
-
-                  {/* Page Numbers */}
-                  {getNumericLinks(courses.links).map((link, index) => (
-                    <div key={index}>
-                      {link.url ? (
-                        <Link href={link.url}>
-                          <Button
-                            variant={link.active ? "default" : "outline"}
-                            size="sm"
-                            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-110 ${
-                              link.active
-                                ? "bg-blue-600 text-white shadow-lg scale-110"
-                                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md"
-                            }`}
-                          >
-                            {link.label}
-                          </Button>
-                        </Link>
-                      ) : (
+                </div>
+                {courses.last_page > 1 && (
+                  <div className="flex items-center justify-center space-x-1 sm:space-x-2">
+                    {courses.prev_page_url ? (
+                      <Link href={courses.prev_page_url} preserveScroll preserveState>
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled
-                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                          className="h-9 gap-1 rounded-full px-3 sm:px-4"
                         >
-                          {link.label}
+                          <ChevronLeft className="h-4 w-4" />
+                          Previous
                         </Button>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Next Button */}
-                  {courses.next_page_url && (
-                    <Link href={courses.next_page_url}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
-                      >
-                        <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Link>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled className="h-9 gap-1 rounded-full px-3 sm:px-4">
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
                       </Button>
-                    </Link>
-                  )}
-                </div>
+                    )}
+
+                    <div className="hidden sm:flex items-center space-x-1">
+                      {getNumericLinks(courses.links).map((link, index) => (
+                        <div key={index}>
+                          {link.url ? (
+                            <Link href={link.url} preserveScroll preserveState>
+                              <Button
+                                variant={link.active ? "default" : "outline"}
+                                size="sm"
+                                className={`h-9 w-9 rounded-full text-xs font-medium ${
+                                  link.active ? "bg-blue-600 text-white shadow-md" : ""
+                                }`}
+                              >
+                                {link.label}
+                              </Button>
+                            </Link>
+                          ) : (
+                            <Button variant="outline" size="sm" disabled className="h-9 w-9 rounded-full text-xs">
+                              {link.label}
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {courses.next_page_url ? (
+                      <Link href={courses.next_page_url} preserveScroll preserveState>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 gap-1 rounded-full px-3 sm:px-4"
+                        >
+                          Next
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled className="h-9 gap-1 rounded-full px-3 sm:px-4">
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

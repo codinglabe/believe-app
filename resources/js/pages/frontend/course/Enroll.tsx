@@ -24,12 +24,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Link, useForm, usePage } from "@inertiajs/react"
 import { type FormEventHandler, useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
+import { courseEnrollmentBrpModule } from "@/lib/brp-participation"
 
 interface Course {
   id: number
   name: string
   slug: string
   description: string
+  type?: string
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -85,6 +88,7 @@ export default function FrontendCourseEnroll({ course }: Props) {
 
   const pointsRequired = course.pricing_type === "paid" && course.course_fee ? parseFloat(course.course_fee.toString()) || 0 : 0
   const hasEnoughPoints = currentBalance >= pointsRequired
+  const enrollmentBrpModule = courseEnrollmentBrpModule(course)
 
   const availableSpots = course.max_participants - course.enrolled
 
@@ -259,6 +263,10 @@ export default function FrontendCourseEnroll({ course }: Props) {
                           </div>
                           {errors.terms_accepted && <p className="text-sm text-red-600">{errors.terms_accepted}</p>}
                         </div>
+
+                        {enrollmentBrpModule && (
+                          <BrpParticipationHint module={enrollmentBrpModule} variant="alert" />
+                        )}
 
                         {/* Submit Button */}
                         <Button

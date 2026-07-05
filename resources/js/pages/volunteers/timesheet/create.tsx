@@ -11,6 +11,7 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { ArrowLeft, Save, Award } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
+import BrpParticipationHint from '@/components/brp/BrpParticipationHint';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -386,6 +387,12 @@ export default function Create({ volunteers }: Props) {
                                     </div>
                                 </div>
                             )}
+
+                            <BrpParticipationHint
+                                module="volunteer"
+                                variant="alert"
+                                message="The volunteer earns BRP (Believe Reward Points) when this activity is saved."
+                            />
 
                             <div className="flex justify-end gap-4 pt-4">
                                 <Link href="/volunteers/timesheet">

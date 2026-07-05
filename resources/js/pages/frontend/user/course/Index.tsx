@@ -32,6 +32,7 @@ import {
   GraduationCap,
   Filter,
   Sparkles,
+  UserCheck,
 } from "lucide-react"
 import { showSuccessToast } from "@/lib/toast"
 import type { Auth } from "@/types"
@@ -416,15 +417,27 @@ export default function CoursesIndex({
                 </p>
               </div>
             </div>
-            <Link href={route("profile.course.create")} preserveScroll preserveState>
-              <Button
-                size="lg"
-                className="w-full min-w-[200px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-lg shadow-purple-500/20 transition hover:from-purple-700 hover:to-blue-700 hover:shadow-xl sm:w-auto"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Create listing
-              </Button>
-            </Link>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Link href={route("profile.course.create")} preserveScroll preserveState>
+                <Button
+                  size="lg"
+                  className="w-full min-w-[200px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-lg shadow-purple-500/20 transition hover:from-purple-700 hover:to-blue-700 hover:shadow-xl sm:w-auto"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Create listing
+                </Button>
+              </Link>
+              <Link href={route("profile.course.enrollments")} preserveScroll preserveState>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full min-w-[200px] border-purple-200 bg-white/80 text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:bg-gray-900/50 dark:text-purple-300 dark:hover:bg-purple-950/40 sm:w-auto"
+                >
+                  <UserCheck className="mr-2 h-5 w-5" />
+                  Enrolled
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -726,14 +739,16 @@ export default function CoursesIndex({
                                   Edit
                                 </Button>
                               </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-9 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40"
-                                onClick={() => openDeleteModal(course.slug, course.name)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {course.enrolled === 0 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40"
+                                  onClick={() => openDeleteModal(course.slug, course.name)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </div>
 
