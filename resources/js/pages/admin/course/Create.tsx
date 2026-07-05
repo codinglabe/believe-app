@@ -337,7 +337,7 @@ export default function NonprofitCoursesCreate() {
             <h1 className="text-2xl font-bold">Create {connectionHubTypeLabel(data.type)}</h1>
             <p className="text-sm text-muted-foreground">
               {isEventsHubType(data.type)
-                ? "Create an event for your community"
+                ? "Create a meetup for your community"
                 : "Share knowledge and empower your community"}
             </p>
             </div>
@@ -385,7 +385,7 @@ export default function NonprofitCoursesCreate() {
                         <SelectContent>
                           <SelectItem value="companion">Companion</SelectItem>
                           <SelectItem value="learning">Learning</SelectItem>
-                          <SelectItem value="events">Events</SelectItem>
+                          <SelectItem value="events">{connectionHubTypeLabel("events")}</SelectItem>
                         </SelectContent>
                       </Select>
                       {hubTypeLocked && (

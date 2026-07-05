@@ -22,7 +22,7 @@ import { Badge } from "@/components/admin/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
-import { connectionHubTypeLabel, type ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
   id: number
@@ -340,7 +340,9 @@ export default function AdminCoursesShow({
 
                 {course.learning_outcomes.length > 0 && (
                   <div>
-                    <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Learning outcomes</h3>
+                    <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+                      {!isEventsHubType(course.type ?? "companion") ? "Learning outcomes" : "Meetup outcomes"}
+                    </h3>
                     <ul className="list-inside list-disc space-y-1 text-muted-foreground">
                       {course.learning_outcomes.map((outcome, index) => (
                         <li key={index}>{outcome}</li>

@@ -494,7 +494,7 @@ export default function AdminCoursesEdit() {
                         <SelectContent>
                           <SelectItem value="companion">Companion</SelectItem>
                           <SelectItem value="learning">Learning</SelectItem>
-                          <SelectItem value="events">Events</SelectItem>
+                          <SelectItem value="events">{connectionHubTypeLabel("events")}</SelectItem>
                           {data.type === "earning" && (
                             <SelectItem value="earning">Earning</SelectItem>
                           )}

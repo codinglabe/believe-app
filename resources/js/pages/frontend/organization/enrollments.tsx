@@ -129,7 +129,7 @@ export default function OrganizationEnrollmentsPage({
 
   return (
     <FrontendLayout>
-      <PageHead title="Course Enrollments" description="View and manage enrollments for your organization's courses and events." />
+      <PageHead title="Course Enrollments" description="View and manage enrollments for your organization's Connection Hub listings." />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto px-4 py-8">
           {/* Header */}
@@ -145,7 +145,7 @@ export default function OrganizationEnrollmentsPage({
               Enrollments - {organization.name}
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              View all enrolled users for courses and events
+              View all enrolled users for Connection Hub listings
             </p>
           </div>
 

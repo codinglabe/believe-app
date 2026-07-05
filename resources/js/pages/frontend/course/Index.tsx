@@ -530,7 +530,7 @@ export default function FrontendCoursesListPage({
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                 <Input
                   type="text"
-                  placeholder="Search courses, events, topics, organizations..."
+                  placeholder="Search listings, topics, organizations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className={inputClass}
@@ -629,7 +629,7 @@ export default function FrontendCoursesListPage({
                         <option value="all">All Types</option>
                         <option value="companion">Companion</option>
                         <option value="learning">Learning</option>
-                        <option value="events">Events</option>
+                        <option value="events">Meetups</option>
                       </select>
                     </div>
 
@@ -833,9 +833,9 @@ export default function FrontendCoursesListPage({
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center dark:border-slate-800 dark:bg-slate-900/40">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No courses found</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No listings found</h3>
               <p className="mt-2 max-w-md mx-auto text-sm text-slate-600 dark:text-slate-400">
-                Try adjusting your search or filters to find courses and events.
+                Try adjusting your search or filters to find Connection Hub listings.
               </p>
               {hasActiveFilters && (
                 <Button

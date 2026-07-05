@@ -255,7 +255,7 @@ class FrontendCourseController extends BaseController
         $type = $request->input('type', ConnectionHubType::COMPANION);
         $typeLabelCapital = ConnectionHubType::label($type);
         $typeLabel = strtolower($typeLabelCapital);
-        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'meetup' : 'learning';
 
         $validated = $request->validate(array_merge([
             'name' => 'required|string|max:255|unique:courses,name',
@@ -353,10 +353,10 @@ class FrontendCourseController extends BaseController
             'language.in' => 'Please select a valid language.',
             'target_audience.required' => 'Target audience is required.',
             'target_audience.max' => 'Target audience may not be greater than 255 characters.',
-            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
-            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
-            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
-            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Meetup outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Meetup outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one meetup outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each meetup outcome may not be greater than 255 characters.',
             'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
             'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
             'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
@@ -643,7 +643,7 @@ class FrontendCourseController extends BaseController
         $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
         $typeLabelCapital = ConnectionHubType::label($type);
         $typeLabel = strtolower($typeLabelCapital);
-        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'meetup' : 'learning';
 
         $validated = $request->validate(array_merge([
             'name' => [
@@ -724,10 +724,10 @@ class FrontendCourseController extends BaseController
             'language.in' => 'Please select a valid language.',
             'target_audience.required' => 'Target audience is required.',
             'target_audience.max' => 'Target audience may not be greater than 255 characters.',
-            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
-            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
-            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
-            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Meetup outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Meetup outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one meetup outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each meetup outcome may not be greater than 255 characters.',
             'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
             'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
             'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
