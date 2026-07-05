@@ -63,6 +63,22 @@ final class EnrollmentLedgerService
         ], static fn ($v) => $v !== null && $v !== '');
     }
 
+    /**
+     * Sale base locked on the enrollment record — not the course's current list price.
+     */
+    public static function resolvedSaleAmount(Enrollment $enrollment, Course $course): float
+    {
+        if (($course->pricing_type ?? '') === 'free' || (string) ($enrollment->payment_method ?? '') === 'free') {
+            return 0.0;
+        }
+
+        if ($enrollment->amount_paid !== null && $enrollment->amount_paid !== '') {
+            return round(max(0, (float) $enrollment->amount_paid), 2);
+        }
+
+        return round(max(0, (float) ($course->course_fee ?? 0)), 2);
+    }
+
     public static function syncTransaction(Transaction $transaction, Enrollment $enrollment, ?Course $course = null): void
     {
         $course ??= $enrollment->course;
@@ -70,15 +86,20 @@ final class EnrollmentLedgerService
             return;
         }
 
+        $saleAmount = self::resolvedSaleAmount($enrollment, $course);
         $meta = array_merge(
             is_array($transaction->meta) ? $transaction->meta : [],
             self::metaFor($course, $enrollment),
         );
+        if ($saleAmount > 0) {
+            $meta = array_merge($meta, BiuPlatformFeeService::ledgerMetaSlice($saleAmount));
+        }
 
         $updates = [
             'ledger_type' => UnifiedLedgerType::MONEY,
             'bp_status' => UnifiedLedgerBpStatus::NA,
             'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
+            'amount' => $saleAmount,
             'meta' => $meta,
         ];
 
@@ -189,7 +210,7 @@ final class EnrollmentLedgerService
         $isFree = ($course->pricing_type ?? '') === 'free'
             || (string) ($enrollment->payment_method ?? '') === 'free';
         $isBelievePoints = (string) ($enrollment->payment_method ?? '') === 'believe_points';
-        $amount = round(max(0, (float) ($enrollment->amount_paid ?? $course->course_fee ?? 0)), 2);
+        $saleAmount = self::resolvedSaleAmount($enrollment, $course);
         $baseMeta = self::metaFor($course, $enrollment);
         $processedAt = $enrollment->enrolled_at ?? now();
 
@@ -210,15 +231,13 @@ final class EnrollmentLedgerService
         }
 
         if ($isBelievePoints) {
-            $pointsRequired = $amount > 0 ? $amount : round((float) ($course->course_fee ?? 0), 2);
-
             return [
                 'user_id' => $user->id,
                 'related_id' => $enrollment->id,
                 'related_type' => Enrollment::class,
                 'type' => 'purchase',
                 'status' => Transaction::STATUS_COMPLETED,
-                'amount' => $pointsRequired,
+                'amount' => $saleAmount,
                 'fee' => 0,
                 'currency' => 'USD',
                 'payment_method' => 'believe_points',
@@ -226,16 +245,15 @@ final class EnrollmentLedgerService
                     $baseMeta,
                     [
                         'pricing_type' => 'paid',
-                        'believe_points_used' => $pointsRequired,
+                        'believe_points_used' => $saleAmount,
                     ],
-                    BiuPlatformFeeService::ledgerMetaSlice($pointsRequired)
+                    BiuPlatformFeeService::ledgerMetaSlice($saleAmount)
                 ),
                 'processed_at' => $processedAt,
             ];
         }
 
         $isPaid = in_array($enrollment->status, ['active', 'completed'], true);
-        $feeAmount = (float) ($course->course_fee ?? $amount);
 
         return [
             'user_id' => $user->id,
@@ -243,7 +261,7 @@ final class EnrollmentLedgerService
             'related_type' => Enrollment::class,
             'type' => 'purchase',
             'status' => $isPaid ? Transaction::STATUS_COMPLETED : Transaction::STATUS_PENDING,
-            'amount' => $feeAmount,
+            'amount' => $saleAmount,
             'fee' => 0,
             'currency' => 'USD',
             'payment_method' => $enrollment->payment_method ?: 'stripe',
@@ -252,7 +270,7 @@ final class EnrollmentLedgerService
                 $baseMeta,
                 ['pricing_type' => 'paid'],
                 CourseEnrollmentCheckoutItems::stripeMetadataSlice($course),
-                BiuPlatformFeeService::ledgerMetaSlice($feeAmount)
+                BiuPlatformFeeService::ledgerMetaSlice($saleAmount)
             ),
             'processed_at' => $isPaid ? $processedAt : null,
         ];
@@ -288,7 +306,10 @@ final class EnrollmentLedgerService
         }
 
         $orgCtx = self::organizationContext($course);
-        $gross = round(max(0, (float) ($enrollment->amount_paid ?? $t->amount)), 2);
+        $gross = self::resolvedSaleAmount($enrollment, $course);
+        if ($gross <= 0) {
+            $gross = round(max(0, (float) $t->amount), 2);
+        }
         if ($gross > 0) {
             $financials['gross_amount'] = $gross;
         }

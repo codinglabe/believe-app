@@ -377,7 +377,9 @@ class EnrollmentController extends Controller
                                 'stripe_checkout_amount_total_usd' => $amountTotalUsd,
                                 'stripe_checkout_amount_tax_usd' => $amountTaxUsd,
                             ],
-                            BiuPlatformFeeService::ledgerMetaSlice((float) $enrollment->course->course_fee)
+                            BiuPlatformFeeService::ledgerMetaSlice(
+                                EnrollmentLedgerService::resolvedSaleAmount($enrollment, $enrollment->course)
+                            )
                         )
                     );
                 }
