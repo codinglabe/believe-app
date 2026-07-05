@@ -53,6 +53,13 @@ class ParticipationNotificationTest extends TestCase
         );
     }
 
+    public function test_daily_login_deep_link_uses_registered_profile_route(): void
+    {
+        $url = BrpParticipationModule::resolveDeepLink(BrpParticipationModule::DAILY_LOGIN);
+
+        $this->assertSame(route('user.profile.reward-points-ledger'), $url);
+    }
+
     private function buildBrpRewardBody(float $awarded, float $balance): string
     {
         $pointsLabel = ParticipationBrpRewardNotifier::formatPoints($awarded);

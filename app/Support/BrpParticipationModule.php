@@ -277,12 +277,12 @@ final class BrpParticipationModule
             self::EVENT_ATTENDANCE_FREE, self::EVENT_REGISTRATION_PAID, self::EVENT, self::COURSE_PURCHASE, self::COURSE => route('courses.enrollment.success'),
             self::MARKETPLACE_PURCHASE => route('marketplace.index'),
             self::GIFT_CARD_PURCHASE, self::BP_PURCHASE => route('believe-points.index'),
-            self::ORGANIZATION_FOLLOW => route('profile.favorites'),
+            self::ORGANIZATION_FOLLOW => route('user.profile.favorites'),
             self::AI_LEARNING => route('challenge-level-up.index'),
             self::UNITY_LIVE => route('unity-live.index'),
             self::UNITY_MEET => route('livestreams.supporter.index'),
-            self::PROFILE_COMPLETION, self::DAILY_LOGIN => route('profile.reward-points-ledger'),
-            default => route('profile.reward-points-ledger'),
+            self::PROFILE_COMPLETION, self::DAILY_LOGIN => route('user.profile.reward-points-ledger'),
+            default => route('user.profile.reward-points-ledger'),
         };
     }
 

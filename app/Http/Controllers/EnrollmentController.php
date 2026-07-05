@@ -6,6 +6,7 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Services\EnrollmentLedgerService;
 use App\Support\CourseEnrollmentCheckoutItems;
 use App\Support\EnrollmentNotificationVia;
 use App\Support\StripeAutomaticTax;
@@ -125,7 +126,7 @@ class EnrollmentController extends Controller
                 ]);
 
                 // Create transaction record for free enrollment
-                Transaction::record([
+                $tx = Transaction::record([
                     'user_id' => $user->id,
                     'related_id' => $enrollment->id,
                     'related_type' => Enrollment::class,
@@ -135,14 +136,10 @@ class EnrollmentController extends Controller
                     'fee' => 0,
                     'currency' => 'USD',
                     'payment_method' => 'free',
-                    'meta' => [
-                        'course_id' => $course->id,
-                        'course_name' => $course->name,
-                        'enrollment_id' => $enrollment->enrollment_id,
-                        'pricing_type' => 'free',
-                    ],
+                    'meta' => EnrollmentLedgerService::metaFor($course, $enrollment),
                     'processed_at' => now(),
                 ]);
+                EnrollmentLedgerService::syncTransaction($tx, $enrollment, $course);
 
                 // Update course enrolled count
                 $course->increment('enrolled');
@@ -189,25 +186,27 @@ class EnrollmentController extends Controller
                     ]);
 
                     // Create transaction record
-                    Transaction::record([
+                    $tx = Transaction::record([
                         'user_id' => $user->id,
                         'related_id' => $enrollment->id,
                         'related_type' => Enrollment::class,
-                        'type' => 'purchase',
+                        'type' => 'enrollment',
                         'status' => Transaction::STATUS_COMPLETED,
                         'amount' => $course->course_fee,
                         'fee' => 0,
                         'currency' => 'USD',
                         'payment_method' => 'believe_points',
-                        'meta' => array_merge([
-                            'course_id' => $course->id,
-                            'course_name' => $course->name,
-                            'enrollment_id' => $enrollment->enrollment_id,
-                            'pricing_type' => 'paid',
-                            'believe_points_used' => $pointsRequired,
-                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
+                        'meta' => array_merge(
+                            EnrollmentLedgerService::metaFor($course, $enrollment),
+                            [
+                                'pricing_type' => 'paid',
+                                'believe_points_used' => $pointsRequired,
+                            ],
+                            BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)
+                        ),
                         'processed_at' => now(),
                     ]);
+                    EnrollmentLedgerService::syncTransaction($tx, $enrollment->fresh(), $course);
 
                     // Update course enrolled count
                     $course->increment('enrolled');
@@ -223,20 +222,21 @@ class EnrollmentController extends Controller
                     'user_id' => $user->id,
                     'related_id' => $enrollment->id,
                     'related_type' => Enrollment::class,
-                    'type' => 'purchase',
+                    'type' => 'enrollment',
                     'status' => Transaction::STATUS_PENDING,
                     'amount' => $course->course_fee,
                     'fee' => 0,
                     'currency' => 'USD',
                     'payment_method' => 'stripe',
-                    'meta' => array_merge([
-                        'course_id' => $course->id,
-                        'course_name' => $course->name,
-                        'enrollment_id' => $enrollment->enrollment_id,
-                        'pricing_type' => 'paid',
-                    ], CourseEnrollmentCheckoutItems::stripeMetadataSlice($course), BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
+                    'meta' => array_merge(
+                        EnrollmentLedgerService::metaFor($course, $enrollment),
+                        ['pricing_type' => 'paid'],
+                        CourseEnrollmentCheckoutItems::stripeMetadataSlice($course),
+                        BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)
+                    ),
                     'processed_at' => null,
                 ]);
+                EnrollmentLedgerService::syncTransaction($transaction, $enrollment, $course);
 
                 $lineItems = CourseEnrollmentCheckoutItems::lineItems($course, $user);
 
@@ -346,15 +346,17 @@ class EnrollmentController extends Controller
                 'user',
             ])->findOrFail($session->metadata->enrollment_id);
 
-            // Update enrollment with Stripe payment info
-            $enrollment->update([
-                'transaction_id' => $session->payment_intent,
-                'payment_method' => $session->payment_method_types[0] ?? 'card',
-                'status' => 'active',
-                'enrolled_at' => now(),
-            ]);
+            $paymentIntentId = is_string($session->payment_intent)
+                ? $session->payment_intent
+                : (string) ($session->payment_intent->id ?? '');
 
-            // Update transaction record with payment details
+            $sessionMeta = [];
+            foreach ((array) ($session->metadata ?? []) as $key => $value) {
+                if ($value !== null && $value !== '') {
+                    $sessionMeta[(string) $key] = (string) $value;
+                }
+            }
+
             if (isset($session->metadata->transaction_id)) {
                 $transaction = Transaction::find($session->metadata->transaction_id);
                 if ($transaction) {
@@ -363,26 +365,40 @@ class EnrollmentController extends Controller
                         ? round(((int) $session->total_details->amount_tax) / 100, 2)
                         : null;
 
-                    $transaction->update([
-                        'status' => Transaction::STATUS_COMPLETED,
-                        'meta' => array_merge(
-                            $transaction->meta ?? [],
+                    EnrollmentLedgerService::completeFromStripeCheckout(
+                        $transaction,
+                        $paymentIntentId,
+                        $sessionMeta,
+                        array_merge(
                             [
                                 'stripe_session_id' => $session->id,
-                                'stripe_payment_intent' => $session->payment_intent,
+                                'stripe_payment_intent' => $paymentIntentId,
                                 'payment_status' => $session->payment_status,
                                 'stripe_checkout_amount_total_usd' => $amountTotalUsd,
                                 'stripe_checkout_amount_tax_usd' => $amountTaxUsd,
                             ],
-                            BiuPlatformFeeService::ledgerMetaSlice((float) $enrollment->course->course_fee)
-                        ),
-                        'processed_at' => now(),
-                    ]);
+                            BiuPlatformFeeService::ledgerMetaSlice(
+                                EnrollmentLedgerService::resolvedSaleAmount($enrollment, $enrollment->course)
+                            )
+                        )
+                    );
                 }
+            } elseif (in_array($enrollment->status, ['pending', 'failed'], true)) {
+                $enrollment->update([
+                    'transaction_id' => $paymentIntentId,
+                    'payment_method' => $session->payment_method_types[0] ?? 'card',
+                    'status' => 'active',
+                    'enrolled_at' => now(),
+                ]);
+                $enrollment->course->increment('enrolled');
             }
 
-            // Update course enrolled count
-            $enrollment->course->increment('enrolled');
+            $enrollment->refresh()->load([
+                'course.organization',
+                'course.topic',
+                'course.eventType',
+                'user',
+            ]);
 
             DB::commit();
 
@@ -470,7 +486,7 @@ class EnrollmentController extends Controller
             ]);
 
             // Create cancellation transaction record
-            Transaction::record([
+            $cancelTx = Transaction::record([
                 'user_id' => $user->id,
                 'related_id' => $enrollment->id,
                 'related_type' => Enrollment::class,
@@ -480,15 +496,16 @@ class EnrollmentController extends Controller
                 'fee' => 0,
                 'currency' => 'USD',
                 'payment_method' => $enrollment->payment_method,
-                'meta' => [
-                    'course_id' => $course->id,
-                    'course_name' => $course->name,
-                    'enrollment_id' => $enrollment->enrollment_id,
-                    'original_amount' => $enrollment->amount_paid,
-                    'cancellation_reason' => 'user_requested',
-                ],
+                'meta' => array_merge(
+                    EnrollmentLedgerService::metaFor($course, $enrollment),
+                    [
+                        'original_amount' => $enrollment->amount_paid,
+                        'cancellation_reason' => 'user_requested',
+                    ]
+                ),
                 'processed_at' => now(),
             ]);
+            EnrollmentLedgerService::syncTransaction($cancelTx, $enrollment, $course);
 
             // Decrease course enrolled count
             $course->decrement('enrolled');
@@ -545,7 +562,7 @@ class EnrollmentController extends Controller
                 ]);
 
                 // Create refund transaction record
-                Transaction::record([
+                $refundTx = Transaction::record([
                     'user_id' => $user->id,
                     'related_id' => $enrollment->id,
                     'related_type' => Enrollment::class,
@@ -556,16 +573,17 @@ class EnrollmentController extends Controller
                     'currency' => 'USD',
                     'payment_method' => 'stripe',
                     'transaction_id' => $refund->id,
-                    'meta' => [
-                        'course_id' => $course->id,
-                        'course_name' => $course->name,
-                        'enrollment_id' => $enrollment->enrollment_id,
-                        'original_payment_intent' => $enrollment->transaction_id,
-                        'stripe_refund_id' => $refund->id,
-                        'refund_reason' => 'requested_by_customer',
-                    ],
+                    'meta' => array_merge(
+                        EnrollmentLedgerService::metaFor($course, $enrollment),
+                        [
+                            'original_payment_intent' => $enrollment->transaction_id,
+                            'stripe_refund_id' => $refund->id,
+                            'refund_reason' => 'requested_by_customer',
+                        ]
+                    ),
                     'processed_at' => now(),
                 ]);
+                EnrollmentLedgerService::syncTransaction($refundTx, $enrollment, $course);
             }
 
             $enrollment->update([

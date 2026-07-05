@@ -17,6 +17,7 @@ use App\Models\Plan;
 use App\Models\Raffle;
 use App\Models\ServiceOrder;
 use App\Models\Transaction;
+use App\Support\ConnectionHubType;
 use App\Support\UnifiedLedgerType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -66,6 +67,7 @@ final class LedgerListFilters
             'gift_card',
             'marketplace',
             'servicehub',
+            'connection_hub',
             'course',
             'merchant_hub',
             'supporter_subscription',
@@ -77,6 +79,30 @@ final class LedgerListFilters
             'believe_points',
             'wallet',
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function connectionHubTypeOptions(): array
+    {
+        return ConnectionHubType::VALUES;
+    }
+
+    public static function applyConnectionHubType(Builder $query, string $hubType): void
+    {
+        $hubType = strtolower(trim($hubType));
+        if (! in_array($hubType, ConnectionHubType::VALUES, true)) {
+            return;
+        }
+
+        $query->where(function (Builder $enrollmentQ) {
+            self::whereMatchesEnrollmentModule($enrollmentQ);
+        });
+        $query->where(function (Builder $hubQ) use ($hubType) {
+            $hubQ->where('meta->connection_hub_type', $hubType)
+                ->orWhere('meta->course_type', $hubType);
+        });
     }
 
     public static function applyOrganization(Builder $query, int $organizationId): void
@@ -91,6 +117,33 @@ final class LedgerListFilters
                     $q2->where('related_type', Organization::class)
                         ->where('related_id', $organizationId);
                 });
+
+            if (Schema::hasTable('enrollments') && Schema::hasTable('courses') && Schema::hasTable('organizations')) {
+                $q->orWhere(function (Builder $enrollmentQ) use ($organizationId) {
+                    $enrollmentQ->where(function (Builder $typeQ) {
+                        $typeQ->where('related_type', Enrollment::class)
+                            ->orWhere('related_type', 'like', '%Enrollment');
+                    })->whereExists(function ($sub) use ($organizationId) {
+                        $sub->from('enrollments')
+                            ->join('courses', 'courses.id', '=', 'enrollments.course_id')
+                            ->join('organizations', 'organizations.user_id', '=', 'courses.organization_id')
+                            ->whereColumn('enrollments.id', 'transactions.related_id')
+                            ->where('organizations.id', $organizationId);
+                    });
+                });
+            }
+
+            if (Schema::hasTable('courses') && Schema::hasTable('organizations')) {
+                $q->orWhere(function (Builder $courseMetaQ) use ($organizationId) {
+                    $courseMetaQ->whereNotNull('meta->course_id')
+                        ->whereExists(function ($sub) use ($organizationId) {
+                            $sub->from('courses')
+                                ->join('organizations', 'organizations.user_id', '=', 'courses.organization_id')
+                                ->where('organizations.id', $organizationId)
+                                ->whereRaw(self::courseIdEqualsMetaCourseIdExpr());
+                        });
+                });
+            }
 
             if (Schema::hasTable('donations')) {
                 $q->orWhereExists(function ($sub) use ($organizationId) {
@@ -134,7 +187,7 @@ final class LedgerListFilters
             'fundme' => self::scopeFundme(self::withRefundPayoutExclusion($query)),
             'donation' => self::scopeDonation(self::withRefundPayoutExclusion($query)),
             'servicehub' => self::scopeServicehub(self::withRefundPayoutExclusion($query)),
-            'course' => self::scopeCourse(self::withRefundPayoutExclusion($query)),
+            'connection_hub', 'course' => self::scopeConnectionHub(self::withRefundPayoutExclusion($query)),
             'merchant_hub' => self::scopeMerchantHub(self::withRefundPayoutExclusion($query)),
             'supporter_subscription' => self::scopeSupporterSubscription(self::withRefundPayoutExclusion($query)),
             'organization_subscription' => self::scopeOrganizationSubscription(self::withRefundPayoutExclusion($query)),
@@ -252,11 +305,44 @@ final class LedgerListFilters
         });
     }
 
-    private static function scopeCourse(Builder $query): void
+    private static function scopeConnectionHub(Builder $query): void
     {
         $query->where(function (Builder $q) {
-            $q->where('related_type', Enrollment::class)
-                ->orWhereNotNull('meta->enrollment_id');
+            self::whereMatchesEnrollmentModule($q);
+        });
+    }
+
+    /**
+     * @deprecated Use scopeConnectionHub — kept as alias for legacy filter value `course`.
+     */
+    private static function scopeCourse(Builder $query): void
+    {
+        self::scopeConnectionHub($query);
+    }
+
+    /**
+     * Connection Hub course / event enrollment rows (including legacy meta-only links).
+     */
+    private static function whereMatchesEnrollmentModule(Builder $query): void
+    {
+        $query->where('related_type', Enrollment::class)
+            ->orWhere('related_type', 'like', '%Enrollment')
+            ->orWhere('meta->source', 'course_enrollment')
+            ->orWhereNotNull('meta->enrollment_record_id')
+            ->orWhereNotNull('meta->enrollment_id');
+    }
+
+    /**
+     * Paid Connection Hub enrollments are stored as type `purchase`; free as `enrollment`.
+     */
+    public static function applyEnrollmentWalletType(Builder $query): void
+    {
+        $query->where(function (Builder $q) {
+            $q->where('type', 'enrollment')
+                ->orWhere(function (Builder $purchase) {
+                    $purchase->where('type', 'purchase');
+                    self::whereMatchesEnrollmentModule($purchase);
+                });
         });
     }
 
@@ -387,8 +473,7 @@ final class LedgerListFilters
                                 ->orWhereNotNull('meta->service_order_id');
                         })
                         ->whereNot(function (Builder $en) {
-                            $en->where('related_type', Enrollment::class)
-                                ->orWhereNotNull('meta->enrollment_id');
+                            self::whereMatchesEnrollmentModule($en);
                         })
                         ->whereNot(function (Builder $ca) {
                             $ca->where('related_type', CareAllianceDonation::class)
@@ -417,8 +502,7 @@ final class LedgerListFilters
                                 ->orWhereNotNull('meta->service_order_id');
                         })
                         ->whereNot(function (Builder $en) {
-                            $en->where('related_type', Enrollment::class)
-                                ->orWhereNotNull('meta->enrollment_id');
+                            self::whereMatchesEnrollmentModule($en);
                         })
                         ->whereNot(function (Builder $ca) {
                             $ca->where('related_type', CareAllianceDonation::class)
@@ -451,5 +535,15 @@ final class LedgerListFilters
         }
 
         return 'donations.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(transactions.meta, \'$.donation_id\')) AS UNSIGNED)';
+    }
+
+    private static function courseIdEqualsMetaCourseIdExpr(): string
+    {
+        $driver = Schema::getConnection()->getDriverName();
+        if ($driver === 'sqlite') {
+            return 'courses.id = CAST(json_extract(transactions.meta, \'$.course_id\') AS INTEGER)';
+        }
+
+        return 'courses.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(transactions.meta, \'$.course_id\')) AS UNSIGNED)';
     }
 }

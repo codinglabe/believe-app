@@ -25,6 +25,11 @@ export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   // Marketplace / checkout
   gift_card_purchase: "Gift card purchase",
   enrollment: "Enrollment",
+  event_registration: "Meetup registration",
+  course_enrollment: "Course enrollment",
+  companion_enrollment: "Companion enrollment",
+  earning_enrollment: "Earning enrollment",
+  connection_hub_enrollment: "Connection Hub enrollment",
   free: "Free",
   paid: "Paid",
   cancellation: "Cancellation",

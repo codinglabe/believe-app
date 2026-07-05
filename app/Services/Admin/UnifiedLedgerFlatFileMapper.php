@@ -422,6 +422,7 @@ class UnifiedLedgerFlatFileMapper
             'gift_card' => 'Gift card',
             'servicehub' => 'Service Hub',
             'course' => 'Course',
+            'connection_hub' => 'Connection Hub',
             'merchant_hub' => 'Merchant Hub',
             'organization_subscription' => 'Org sub',
             'supporter_subscription' => 'Supporter sub',
