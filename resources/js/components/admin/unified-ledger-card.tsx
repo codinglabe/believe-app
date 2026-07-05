@@ -79,6 +79,8 @@ export interface UnifiedLedgerRow {
   brp_activity_type?: string | null
   brp_activity_label?: string
   event_name?: string | null
+  connection_hub_type?: string | null
+  connection_hub_type_label?: string | null
   current_owner?: string | null
   available_at?: string | null
 }

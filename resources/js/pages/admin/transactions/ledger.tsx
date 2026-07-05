@@ -5,6 +5,7 @@ import { Head, Link, router } from "@inertiajs/react"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import type { UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
 import { transactionTypeBadgeClass, transactionTypeDisplayLabel } from "@/lib/transaction-type-labels"
+import { connectionHubTypeLabel } from "@/lib/connection-hub-type"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
@@ -154,10 +155,12 @@ interface Props {
     module: string
     period: string
     ledger_type: string
+    connection_hub_type: string
   }
   typeOptions: string[]
   statusOptions: string[]
   moduleOptions: string[]
+  connectionHubTypeOptions: string[]
   ledgerTypeOptions: string[]
   /** Selected org label when URL has organization_id (combobox display before open). */
   ledgerOrganizationInitial: Array<{ value: string; label: string }>
@@ -525,7 +528,8 @@ function moduleTableLabel(m: string) {
     marketplace: "Marketplace",
     gift_card: "Gift card",
     servicehub: "Service Hub",
-    course: "Course / Event",
+    connection_hub: "Connection Hub",
+    course: "Connection Hub",
     merchant_hub: "Merchant Hub",
     organization_subscription: "Org sub",
     supporter_subscription: "Supporter sub",
@@ -535,6 +539,16 @@ function moduleTableLabel(m: string) {
     adjustment: "Adjustment",
   }
   return map[m] ?? m.replace(/_/g, " ")
+}
+
+function moduleCellLabel(u: UnifiedLedgerRow | undefined): string {
+  if (!u) return "—"
+  const base = moduleTableLabel(u.module)
+  const hubType = u.connection_hub_type_label?.trim()
+  if ((u.module === "connection_hub" || u.module === "course") && hubType) {
+    return `${base} · ${hubType}`
+  }
+  return base
 }
 
 function supplierTypeBadgeClassTable(supplierType: string) {
@@ -756,7 +770,8 @@ function moduleLabel(key: string): string {
     marketplace: "Marketplace",
     gift_card: "Gift card",
     servicehub: "Service hub",
-    course: "Course / Event",
+    connection_hub: "Connection Hub",
+    course: "Connection Hub",
     merchant_hub: "Merchant hub",
     organization_subscription: "Organization subscription",
     supporter_subscription: "Supporter subscription",
@@ -786,6 +801,7 @@ export default function TransactionLedger({
   typeOptions,
   statusOptions,
   moduleOptions,
+  connectionHubTypeOptions,
   ledgerTypeOptions,
   ledgerOrganizationInitial,
 }: Props) {
@@ -799,6 +815,7 @@ export default function TransactionLedger({
   const [module, setModule] = useState(filters.module ?? "all")
   const [period, setPeriod] = useState(filters.period ?? "all")
   const [ledgerType, setLedgerType] = useState(filters.ledger_type ?? "all")
+  const [connectionHubType, setConnectionHubType] = useState(filters.connection_hub_type ?? "all")
   const skipSearchDebounceOnce = useRef(true)
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: number | null; ref: string }>({
     open: false,
@@ -821,12 +838,13 @@ export default function TransactionLedger({
     if (module && module !== "all") params.module = module
     if (period && period !== "all") params.period = period
     if (ledgerType && ledgerType !== "all") params.ledger_type = ledgerType
+    if (connectionHubType && connectionHubType !== "all") params.connection_hub_type = connectionHubType
     return params
   }
 
   const orgPickerBaseParams = useMemo(
     () => ledgerQueryParams(),
-    [search, type, status, perPage, organizationId, module, period, ledgerType],
+    [search, type, status, perPage, organizationId, module, period, ledgerType, connectionHubType],
   )
 
   /** Export URL; `router.visit` sends X-Inertia → server returns 409 + `Inertia::location` → full GET downloads XLSX. */
@@ -834,7 +852,7 @@ export default function TransactionLedger({
     const qs = new URLSearchParams(ledgerQueryParams()).toString()
     const base = route("admin.transactions.ledger.export")
     return qs ? `${base}?${qs}` : base
-  }, [search, type, status, perPage, organizationId, module, period, ledgerType])
+  }, [search, type, status, perPage, organizationId, module, period, ledgerType, connectionHubType])
 
   useEffect(() => {
     if (skipSearchDebounceOnce.current) {
@@ -862,6 +880,7 @@ export default function TransactionLedger({
     if (module && module !== "all") params.module = module
     if (period && period !== "all") params.period = period
     if (ledgerType && ledgerType !== "all") params.ledger_type = ledgerType
+    if (connectionHubType && connectionHubType !== "all") params.connection_hub_type = connectionHubType
 
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
@@ -881,6 +900,7 @@ export default function TransactionLedger({
     if (module && module !== "all") params.module = module
     if (period && period !== "all") params.period = period
     if (ledgerType && ledgerType !== "all") params.ledger_type = ledgerType
+    if (connectionHubType && connectionHubType !== "all") params.connection_hub_type = connectionHubType
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
       preserveScroll: true,
@@ -888,15 +908,17 @@ export default function TransactionLedger({
     })
   }
 
-  const applyLedgerFilter = (patch: Partial<{ organizationId: string; module: string; period: string; ledgerType: string }>) => {
+  const applyLedgerFilter = (patch: Partial<{ organizationId: string; module: string; period: string; ledgerType: string; connectionHubType: string }>) => {
     const nextOrg = patch.organizationId ?? organizationId
     const nextMod = patch.module ?? module
     const nextPeriod = patch.period ?? period
     const nextLedgerType = patch.ledgerType ?? ledgerType
+    const nextConnectionHubType = patch.connectionHubType ?? connectionHubType
     if (patch.organizationId !== undefined) setOrganizationId(patch.organizationId)
     if (patch.module !== undefined) setModule(patch.module)
     if (patch.period !== undefined) setPeriod(patch.period)
     if (patch.ledgerType !== undefined) setLedgerType(patch.ledgerType)
+    if (patch.connectionHubType !== undefined) setConnectionHubType(patch.connectionHubType)
 
     const params: Record<string, string> = {}
     if (search.trim()) params.search = search.trim()
@@ -907,6 +929,7 @@ export default function TransactionLedger({
     if (nextMod && nextMod !== "all") params.module = nextMod
     if (nextPeriod && nextPeriod !== "all") params.period = nextPeriod
     if (nextLedgerType && nextLedgerType !== "all") params.ledger_type = nextLedgerType
+    if (nextConnectionHubType && nextConnectionHubType !== "all") params.connection_hub_type = nextConnectionHubType
 
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
@@ -1205,6 +1228,26 @@ export default function TransactionLedger({
                   ))}
                 </select>
               </div>
+              <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-1">
+                <Label htmlFor="ledger-connection-hub-type" className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Connection Hub type
+                </Label>
+                <select
+                  id="ledger-connection-hub-type"
+                  aria-label="Filter by Connection Hub listing type"
+                  title="Connection Hub type"
+                  value={connectionHubType}
+                  onChange={(e) => applyLedgerFilter({ connectionHubType: e.target.value })}
+                  className={filterSelectClass}
+                >
+                  <option value="all">All hub types</option>
+                  {connectionHubTypeOptions.map((hubType) => (
+                    <option key={hubType} value={hubType}>
+                      {connectionHubTypeLabel(hubType)}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="min-w-0 space-y-1">
                 <Label htmlFor="ledger-type" className="text-xs uppercase tracking-wide text-muted-foreground">
                   Ledger type
@@ -1495,7 +1538,7 @@ export default function TransactionLedger({
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm">
                                 {u ? (
-                                  <span className="font-medium text-foreground">{moduleTableLabel(u.module)}</span>
+                                  <span className="font-medium text-foreground">{moduleCellLabel(u)}</span>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
                                 )}

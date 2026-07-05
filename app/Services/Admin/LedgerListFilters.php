@@ -17,6 +17,7 @@ use App\Models\Plan;
 use App\Models\Raffle;
 use App\Models\ServiceOrder;
 use App\Models\Transaction;
+use App\Support\ConnectionHubType;
 use App\Support\UnifiedLedgerType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -66,6 +67,7 @@ final class LedgerListFilters
             'gift_card',
             'marketplace',
             'servicehub',
+            'connection_hub',
             'course',
             'merchant_hub',
             'supporter_subscription',
@@ -77,6 +79,28 @@ final class LedgerListFilters
             'believe_points',
             'wallet',
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function connectionHubTypeOptions(): array
+    {
+        return ConnectionHubType::VALUES;
+    }
+
+    public static function applyConnectionHubType(Builder $query, string $hubType): void
+    {
+        $hubType = strtolower(trim($hubType));
+        if (! in_array($hubType, ConnectionHubType::VALUES, true)) {
+            return;
+        }
+
+        self::whereMatchesEnrollmentModule($query);
+        $query->where(function (Builder $hubQ) use ($hubType) {
+            $hubQ->where('meta->connection_hub_type', $hubType)
+                ->orWhere('meta->course_type', $hubType);
+        });
     }
 
     public static function applyOrganization(Builder $query, int $organizationId): void
@@ -161,7 +185,7 @@ final class LedgerListFilters
             'fundme' => self::scopeFundme(self::withRefundPayoutExclusion($query)),
             'donation' => self::scopeDonation(self::withRefundPayoutExclusion($query)),
             'servicehub' => self::scopeServicehub(self::withRefundPayoutExclusion($query)),
-            'course' => self::scopeCourse(self::withRefundPayoutExclusion($query)),
+            'connection_hub', 'course' => self::scopeConnectionHub(self::withRefundPayoutExclusion($query)),
             'merchant_hub' => self::scopeMerchantHub(self::withRefundPayoutExclusion($query)),
             'supporter_subscription' => self::scopeSupporterSubscription(self::withRefundPayoutExclusion($query)),
             'organization_subscription' => self::scopeOrganizationSubscription(self::withRefundPayoutExclusion($query)),
@@ -279,11 +303,19 @@ final class LedgerListFilters
         });
     }
 
-    private static function scopeCourse(Builder $query): void
+    private static function scopeConnectionHub(Builder $query): void
     {
         $query->where(function (Builder $q) {
             self::whereMatchesEnrollmentModule($q);
         });
+    }
+
+    /**
+     * @deprecated Use scopeConnectionHub — kept as alias for legacy filter value `course`.
+     */
+    private static function scopeCourse(Builder $query): void
+    {
+        self::scopeConnectionHub($query);
     }
 
     /**
