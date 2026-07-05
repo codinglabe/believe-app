@@ -9,7 +9,6 @@ use App\Models\Donation;
 use App\Models\User;
 use App\Notifications\DonationConfirmedForDonorNotification;
 use App\Notifications\DonationReceivedForOrganizationNotification;
-use App\Services\Payments\BelievePointsRewardService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -65,11 +64,7 @@ class DonationCompletionNotifier
         $successUrl = route('donations.success', ['donation_id' => $donation->id]);
 
         $title = 'Donation confirmed';
-        $brp = BelievePointsRewardService::donationBrpAmountForUser($donor);
-        $body = "Thank you! Your {$amountLabel} gift to {$recipientLabel} was received.";
-        if ($brp > 0) {
-            $body .= " You earned +{$brp} BRP (Believe Reward Points).";
-        }
+        $body = "Thank you for your donation! Your {$amountLabel} gift to {$recipientLabel} was received.";
 
         try {
             $donor->notify(new DonationConfirmedForDonorNotification($donation, $recipientLabel, $successUrl));

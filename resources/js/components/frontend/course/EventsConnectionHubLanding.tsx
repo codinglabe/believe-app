@@ -69,7 +69,7 @@ const WHY_EVENTS = [
   },
   {
     title: "Support Our Mission",
-    body: "Every event advances nonprofits you believe in.",
+    body: "Every meetup advances nonprofits you believe in.",
   },
 ] as const
 
@@ -134,7 +134,7 @@ export default function EventsConnectionHubLanding({
   const formatLabel =
     (course: EventsHubCourse) =>
       course.formatted_format ||
-      ({ online: "Online Event", in_person: "In Person", hybrid: "Hybrid Event" }[course.format] ?? "Event")
+      ({ online: "Online Meetup", in_person: "In Person", hybrid: "Hybrid Meetup" }[course.format] ?? "Meetup")
 
   return (
     <div className="space-y-0">
@@ -155,11 +155,11 @@ export default function EventsConnectionHubLanding({
           >
             <p className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-violet-700 dark:text-violet-300">
               <Calendar className="h-4 w-4" aria-hidden />
-              Events Hub
+              Meetups Hub
             </p>
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-[2.65rem] lg:leading-[1.12]">
               <span className="bg-gradient-to-r from-violet-800 via-fuchsia-700 to-violet-700 bg-clip-text text-transparent dark:from-violet-400 dark:via-fuchsia-300 dark:to-white">
-                Events That Connect.
+                Meetups That Connect.
               </span>
               <br />
               <span className="bg-gradient-to-r from-slate-800 via-slate-700 to-violet-800 bg-clip-text text-transparent dark:from-white dark:via-slate-100 dark:to-violet-200/90">
@@ -167,7 +167,7 @@ export default function EventsConnectionHubLanding({
               </span>
             </h1>
             <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg dark:text-slate-300">
-              Discover inspiring gatherings and create events that bring people together — online or in person.
+              Discover inspiring gatherings and create meetups that bring people together — online or in person.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button
@@ -176,7 +176,7 @@ export default function EventsConnectionHubLanding({
                 className="h-12 rounded-xl bg-[#7B5CFA] px-6 text-base font-semibold text-white shadow-lg shadow-violet-900/40 hover:bg-violet-500"
               >
                 <CalendarDays className="mr-2 h-5 w-5" aria-hidden />
-                Browse Events
+                Browse Meetups
               </Button>
               <Button
                 type="button"
@@ -186,7 +186,7 @@ export default function EventsConnectionHubLanding({
               >
                 <Link href={createHref}>
                   <Plus className="mr-2 h-5 w-5" aria-hidden />
-                  Create Event
+                  Create Meetup
                 </Link>
               </Button>
               <Button
@@ -197,7 +197,7 @@ export default function EventsConnectionHubLanding({
               >
                 <Link href={myEventsHref}>
                   <User className="mr-2 h-5 w-5" aria-hidden />
-                  My Events
+                  My Meetups
                 </Link>
               </Button>
             </div>
@@ -230,7 +230,7 @@ export default function EventsConnectionHubLanding({
                   <Smartphone className="h-10 w-10 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
                   <div className="min-w-0 text-left">
                     <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300/90">You&apos;re Invited!</p>
-                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">RSVP on Events Hub</p>
+                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">RSVP on Meetups Hub</p>
                   </div>
                 </div>
               </div>
@@ -243,7 +243,7 @@ export default function EventsConnectionHubLanding({
             transition={{ duration: 0.45, delay: 0.1 }}
             className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-md backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-900/90 dark:shadow-xl lg:mt-0"
           >
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Why Events Matter?</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Why Meetups Matter?</h2>
             <ul className="mt-5 space-y-4">
               {WHY_EVENTS.map((item) => (
                 <li key={item.title} className="flex gap-3">
@@ -268,7 +268,7 @@ export default function EventsConnectionHubLanding({
             <div className="space-y-12">
               <div>
                 <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-                  <h2 className="text-base font-bold text-slate-900 sm:text-lg dark:text-white">Explore Events by Category</h2>
+                  <h2 className="text-base font-bold text-slate-900 sm:text-lg dark:text-white">Explore Meetups by Category</h2>
                   <button
                     type="button"
                     onClick={goToFullCatalog}
@@ -300,7 +300,7 @@ export default function EventsConnectionHubLanding({
                               {row.name}
                             </span>
                             <span className="text-xs text-white/85">
-                              {formatStat(row.count)} {row.count === 1 ? "Event" : "Events"}
+                              {formatStat(row.count)} {row.count === 1 ? "Meetup" : "Meetups"}
                             </span>
                           </div>
                         </button>
@@ -309,7 +309,7 @@ export default function EventsConnectionHubLanding({
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
-                    <p className="text-sm">Categories appear when event listings are published.</p>
+                    <p className="text-sm">Categories appear when meetup listings are published.</p>
                     <button
                       type="button"
                       onClick={goToFullCatalog}
@@ -322,7 +322,7 @@ export default function EventsConnectionHubLanding({
               </div>
 
               <div>
-                <h2 className="mb-6 text-xl font-bold text-slate-900 sm:text-2xl dark:text-white">Upcoming Featured Events</h2>
+                <h2 className="mb-6 text-xl font-bold text-slate-900 sm:text-2xl dark:text-white">Upcoming Featured Meetups</h2>
                 {eventsFeaturedCourses.length > 0 ? (
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {eventsFeaturedCourses.map((course) => (
@@ -360,7 +360,7 @@ export default function EventsConnectionHubLanding({
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-500">
-                    No featured events yet. Open the full catalog to browse all listings.
+                    No featured meetups yet. Open the full catalog to browse all listings.
                   </div>
                 )}
               </div>
@@ -412,20 +412,20 @@ export default function EventsConnectionHubLanding({
                     ))
                   ) : (
                     <li className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-500">
-                      Nothing live right now. Check featured events above or open the full catalog.
+                      Nothing live right now. Check featured meetups above or open the full catalog.
                     </li>
                   )}
                 </ul>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/80 sm:p-5">
-                <h2 className="mb-3 text-base font-bold text-slate-900 sm:text-lg dark:text-white">Event Impact</h2>
+                <h2 className="mb-3 text-base font-bold text-slate-900 sm:text-lg dark:text-white">Meetup Impact</h2>
                 <div className="flex flex-nowrap gap-1.5 sm:gap-2">
                   {(
                     [
-                      { label: "Events Hosted", value: stats.events_hosted, icon: Calendar },
+                      { label: "Meetups Hosted", value: stats.events_hosted, icon: Calendar },
                       { label: "Total Attendees", value: stats.total_attendees, icon: Users },
-                      { label: "Upcoming Events", value: stats.upcoming_events, icon: CalendarDays },
+                      { label: "Upcoming Meetups", value: stats.upcoming_events, icon: CalendarDays },
                       { label: "Lives Impacted", value: stats.lives_impacted, icon: Heart },
                     ] as const
                   ).map((row) => {
@@ -460,9 +460,9 @@ export default function EventsConnectionHubLanding({
               <Calendar className="h-6 w-6 text-violet-800 dark:text-white" aria-hidden />
             </span>
             <div>
-              <p className="text-lg font-semibold text-violet-950 dark:text-white">Have an event idea?</p>
+              <p className="text-lg font-semibold text-violet-950 dark:text-white">Have a meetup idea?</p>
               <p className="mt-1 text-sm text-violet-900/90 dark:text-white/85">
-                Host workshops, fundraisers, and community moments — create your listing in minutes.
+                Connect people around shared interests — create your listing in minutes.
               </p>
             </div>
           </div>
@@ -472,7 +472,7 @@ export default function EventsConnectionHubLanding({
           >
             <Link href={createHref}>
               <Plus className="mr-2 h-5 w-5" aria-hidden />
-              Create Your Event
+              Create Your Meetup
             </Link>
           </Button>
         </div>

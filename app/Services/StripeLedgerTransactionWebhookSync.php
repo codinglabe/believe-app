@@ -52,6 +52,16 @@ final class StripeLedgerTransactionWebhookSync
                     'stripe_checkout_session_id' => $session['id'] ?? null,
                 ])
             );
+            EnrollmentLedgerService::completeFromStripeCheckout(
+                $tx->fresh(),
+                $piId,
+                $meta,
+                self::filteredMergeMeta([
+                    'stripe_session_id' => $session['id'] ?? null,
+                    'stripe_payment_intent' => $piId,
+                    'payment_status' => $session['payment_status'] ?? null,
+                ])
+            );
         }
 
         self::syncOrderStripeFeeFromPaymentIntent($piId);

@@ -52,6 +52,7 @@ class Organization extends Model implements HasPreferredPayoutMethod
 
     protected $fillable = [
         'user_id',
+        'referrer_user_id',
         'balance',
         'ein',
         'name',
@@ -146,6 +147,11 @@ class Organization extends Model implements HasPreferredPayoutMethod
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function referrer()
+    {
+        return $this->belongsTo(User::class, 'referrer_user_id');
     }
 
     public function entityPayouts(): \Illuminate\Database\Eloquent\Relations\MorphMany

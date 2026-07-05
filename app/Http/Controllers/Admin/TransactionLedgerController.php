@@ -8,6 +8,7 @@ use App\Models\BelievePointPurchase;
 use App\Models\BelievePointWalletTransfer;
 use App\Models\CareAlliance;
 use App\Models\CareAllianceDonation;
+use App\Models\Course;
 use App\Models\Donation;
 use App\Models\Enrollment;
 use App\Models\FundMeDonation;
@@ -25,6 +26,7 @@ use App\Services\Admin\LedgerListFilters;
 use App\Services\Admin\UnifiedLedgerFlatFileMapper;
 use App\Services\Admin\UnifiedLedgerPresenter;
 use App\Services\DonationProcessingFeeEstimator;
+use App\Services\EnrollmentLedgerService;
 use App\Services\GiftCardLedgerService;
 use App\Services\MarketplaceOrderLedgerService;
 use App\Services\ServiceOrderLedgerService;
@@ -331,6 +333,8 @@ class TransactionLedgerController extends Controller
      */
     private function prepareLedgerPresentation(Transaction $t): array
     {
+        $this->maybeSyncEnrollmentLedgerMeta($t);
+
         $related = $this->resolveRelatedDetails($t->related_type, $t->related_id, $t->meta);
         $donationPayload = $this->resolveDonationForLedger($t);
         $donationBadge = $donationPayload !== null;
@@ -964,6 +968,9 @@ class TransactionLedgerController extends Controller
             || ($meta['source'] ?? '') === 'believe_points_purchase_refund') {
             return 'believe_points_purchase';
         }
+        if (($meta['source'] ?? '') === 'course_enrollment') {
+            return 'enrollment';
+        }
 
         if ($rt === CareAllianceDonation::class || str_ends_with($rt, 'CareAllianceDonation')) {
             return 'care_alliance_donation';
@@ -1438,14 +1445,12 @@ class TransactionLedgerController extends Controller
                 if ($serviceOrder) {
                     $out = ServiceOrderLedgerService::mergeLedgerFinancials($serviceOrder, $t, $out);
                 }
-            } elseif ($isEnrollment) {
-                $enrollment = Enrollment::query()->with('course.creator')->find((int) $t->related_id);
-                if ($enrollment?->course) {
-                    $creator = $enrollment->course->creator;
-                    $instructorName = $creator !== null && filled($creator->name) ? (string) $creator->name : null;
-                    if ($instructorName !== null) {
-                        $out['supplier_name'] = $instructorName;
-                        $out['supplier_type'] = 'SUPPORTER';
+            } elseif ($isEnrollment || ($meta['source'] ?? '') === 'course_enrollment') {
+                $enrollmentDbId = (int) ($t->related_id ?: ($meta['enrollment_record_id'] ?? 0));
+                if ($enrollmentDbId > 0) {
+                    $enrollment = Enrollment::query()->with('course.creator', 'course.organization.organization')->find($enrollmentDbId);
+                    if ($enrollment !== null) {
+                        $out = EnrollmentLedgerService::mergeLedgerFinancials($enrollment, $t, $out);
                     }
                 }
             } elseif ($isGiftCard) {
@@ -1561,6 +1566,34 @@ class TransactionLedgerController extends Controller
                     if ($oname === null && $gc->relationLoaded('organization') && $gc->organization !== null) {
                         $oname = (string) $gc->organization->name;
                     }
+                }
+            }
+            if ($rt === Enrollment::class || str_ends_with($rt, 'Enrollment')) {
+                $enrollment = Enrollment::query()->with('course.organization.organization')->find((int) $t->related_id);
+                if ($enrollment?->course) {
+                    $orgCtx = EnrollmentLedgerService::organizationContext($enrollment->course);
+                    if ($oid < 1 && ! empty($orgCtx['organization_id'])) {
+                        $oid = (int) $orgCtx['organization_id'];
+                    }
+                    if ($oname === null && ! empty($orgCtx['organization_name'])) {
+                        $oname = (string) $orgCtx['organization_name'];
+                    }
+                }
+            }
+        }
+
+        // Polymorphic link may be missing but meta still references the course (legacy enrollment rows).
+        if (($oid < 1 || $oname === null) && ! empty($meta['course_id']) && is_numeric($meta['course_id'])) {
+            $course = Course::query()
+                ->with('organization.organization')
+                ->find((int) $meta['course_id']);
+            if ($course !== null) {
+                $orgCtx = EnrollmentLedgerService::organizationContext($course);
+                if ($oid < 1 && ! empty($orgCtx['organization_id'])) {
+                    $oid = (int) $orgCtx['organization_id'];
+                }
+                if ($oname === null && ! empty($orgCtx['organization_name'])) {
+                    $oname = (string) $orgCtx['organization_name'];
                 }
             }
         }
@@ -2394,6 +2427,35 @@ class TransactionLedgerController extends Controller
     private function displayNameLooksMissing(string $displayName): bool
     {
         return str_contains($displayName, '(record missing)') || str_contains($displayName, '(missing)');
+    }
+
+    /**
+     * Backfill ledger meta for legacy enrollment rows when the admin ledger is rendered.
+     */
+    private function maybeSyncEnrollmentLedgerMeta(Transaction $t): void
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        if (($meta['source'] ?? '') === 'course_enrollment' && ! empty($meta['organization_id'])) {
+            return;
+        }
+
+        if (! EnrollmentLedgerService::transactionIsEnrollment($t)) {
+            return;
+        }
+
+        if ($t->related_id === null || (int) $t->related_id < 1) {
+            return;
+        }
+
+        $enrollment = Enrollment::query()
+            ->with('course.organization.organization')
+            ->find((int) $t->related_id);
+        if ($enrollment?->course === null) {
+            return;
+        }
+
+        EnrollmentLedgerService::syncTransaction($t, $enrollment, $enrollment->course);
+        $t->refresh();
     }
 
     private function compactMetaHints(array $meta): ?string

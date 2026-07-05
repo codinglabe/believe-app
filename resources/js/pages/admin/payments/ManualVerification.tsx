@@ -1,6 +1,6 @@
 "use client"
 
-import { Head, router } from "@inertiajs/react"
+import { Head, router, usePage } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,7 @@ interface Props {
 }
 
 export default function ManualVerification({ transactions, filters }: Props) {
+  const { flash } = usePage<{ flash?: { success?: string; error?: string } }>().props
   const [notes, setNotes] = useState<Record<number, string>>({})
 
   const approve = (id: number) => {
@@ -55,6 +56,17 @@ export default function ManualVerification({ transactions, filters }: Props) {
           <h1 className="text-2xl font-bold">Manual Payment Verification</h1>
           <p className="text-muted-foreground">Review Cash App, Zelle, and Venmo payments pending admin approval (donations and Believe Points purchases).</p>
         </div>
+
+        {flash?.success && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+            {flash.success}
+          </div>
+        )}
+        {flash?.error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+            {flash.error}
+          </div>
+        )}
 
         <div className="flex gap-2">
           {["pending", "completed", "rejected", "all"].map((s) => (

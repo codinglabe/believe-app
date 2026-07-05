@@ -424,7 +424,7 @@ export default function FrontendCourseShow({
                           ? "Official organization listing"
                           : !isEventsHubType(course.type)
                             ? "Course instructor"
-                            : "Event organizer"}
+                            : "Meetup organizer"}
                       </p>
                     </div>
                   </CardContent>
@@ -436,7 +436,7 @@ export default function FrontendCourseShow({
                   <div className="border-b border-slate-100 px-6 py-4 dark:border-gray-800">
                     <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
                       <BookOpen className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                      {isEventsHubType(course.type) ? "About this event" : "About this listing"}
+                      {isEventsHubType(course.type) ? "About this meetup" : "About this listing"}
                     </CardTitle>
                   </div>
                   <CardContent className="p-6">
@@ -570,13 +570,13 @@ export default function FrontendCourseShow({
                           {userEnrollment.status === "active" &&
                             (!isEventsHubType(course.type)
                               ? "You're enrolled in this listing."
-                              : "You're registered for this event.")}
+                              : "You're registered for this meetup.")}
                           {userEnrollment.status === "pending" &&
                             (!isEventsHubType(course.type)
                               ? "Complete payment to confirm your spot."
                               : "Complete payment to confirm your registration.")}
                           {userEnrollment.status === "completed" &&
-                            (!isEventsHubType(course.type) ? "You've completed this listing." : "Event completed.")}
+                            (!isEventsHubType(course.type) ? "You've completed this listing." : "Meetup completed.")}
                         </p>
                       </div>
                     ) : canEnroll ? (
@@ -607,7 +607,7 @@ export default function FrontendCourseShow({
                     ) : (
                       <div className="text-center space-y-2">
                         <Button disabled className="h-11 w-full" size="lg" variant="secondary">
-                          {status === "full" && (!isEventsHubType(course.type) ? "Listing full" : "Event full")}
+                          {status === "full" && (!isEventsHubType(course.type) ? "Listing full" : "Meetup full")}
                           {status === "started" && (!isEventsHubType(course.type) ? "Already started" : "Already started")}
                           {status === "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment unavailable" : "Registration unavailable")}
@@ -618,11 +618,11 @@ export default function FrontendCourseShow({
                         </Button>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {status === "full" && "No spots available."}
-                          {status === "started" && (!isEventsHubType(course.type) ? "This listing has already started." : "This event has already started.")}
+                          {status === "started" && (!isEventsHubType(course.type) ? "This listing has already started." : "This meetup has already started.")}
                           {status === "unavailable" &&
                             (!isEventsHubType(course.type)
                               ? "You can't enroll in your own listing from this view."
-                              : "You can't register for your own event from this view.")}
+                              : "You can't register for your own meetup from this view.")}
                           {status !== "full" &&
                             status !== "started" &&
                             status !== "unavailable" &&

@@ -522,7 +522,7 @@ export default function CoursesIndex({
                   <option value="">All Types</option>
                   <option value="companion">Companion</option>
                   <option value="learning">Learning</option>
-                  <option value="events">Events</option>
+                  <option value="events">Meetups</option>
                 </select>
                 {/* Topic filter — courses and events both use event types */}
                 {coursesCourseType ? (

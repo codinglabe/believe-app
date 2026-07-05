@@ -257,6 +257,7 @@ class OrganizationRegisterController extends Controller
                 'primary_action_category_ids' => ['required', 'array', 'min:1'],
                 'primary_action_category_ids.*' => ['integer', 'distinct', Rule::exists('primary_action_categories', 'id')->where('is_active', true)],
                 'preferred_payout_method' => 'nullable|string|in:stripe,paypal',
+                'referralCode' => 'nullable|string|max:64',
             ]);
 
             if ($validator->fails()) {
@@ -363,6 +364,14 @@ class OrganizationRegisterController extends Controller
 
             $taxEvaluation = $this->taxComplianceService->evaluate($validated['tax_period'] ?? null, $validated['ein']);
 
+            $referrerUserId = null;
+            if (! empty($validated['referralCode'])) {
+                $referrer = User::where('referral_code', $validated['referralCode'])->first();
+                if ($referrer !== null) {
+                    $referrerUserId = $referrer->id;
+                }
+            }
+
             DB::beginTransaction();
 
             // Check if IRS data was edited
@@ -416,6 +425,7 @@ class OrganizationRegisterController extends Controller
 
             $organization = Organization::create([
                 'user_id' => $user->id,
+                'referrer_user_id' => $referrerUserId,
                 'ein' => $validated['ein'],
                 'name' => $validated['name'],
                 'ico' => $validated['ico'] ?? null,

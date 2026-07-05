@@ -37,7 +37,7 @@ final class ConnectionHubType
         return [
             self::COMPANION => 'Companion',
             self::LEARNING => 'Learning',
-            self::EVENTS => 'Events',
+            self::EVENTS => 'Meetups',
             self::EARNING => 'Earning',
         ];
     }

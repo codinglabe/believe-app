@@ -1,7 +1,7 @@
 "use client"
 
 import { Head, router, useForm, usePage } from "@inertiajs/react"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
@@ -10,7 +10,6 @@ import { Badge } from "@/components/frontend/ui/badge"
 import {
     Gift,
     ArrowLeft,
-    CreditCard,
     DollarSign,
     Loader2,
     CheckCircle,
@@ -102,7 +101,6 @@ export default function PurchaseDetailsPage({
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
     const [customAmount, setCustomAmount] = useState("")
     const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>("")
-    const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
 
     const { data, setData, post, processing, errors } = useForm({
         productId: brand.productId || 0,
@@ -111,13 +109,8 @@ export default function PurchaseDetailsPage({
         country: country,
         brand_name: brand.productName || '',
         currency: 'USD',
-        payment_method: paymentMethod,
+        payment_method: 'believe_points' as const,
     })
-
-    // Update form data when payment method changes
-    useEffect(() => {
-        setData('payment_method', paymentMethod)
-    }, [paymentMethod])
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-US', {
@@ -538,73 +531,36 @@ export default function PurchaseDetailsPage({
                                             </div>
                                         )}
 
-                                        {/* Payment Method Selection - Show when amount is valid and user is logged in */}
+                                        {/* Believe Points payment */}
                                         {isValidAmount && user && user.role === 'user' && (
                                             <div className="space-y-4 p-4 border rounded-lg bg-muted/50 dark:bg-gray-700/50">
-                                                <Label className="text-base font-semibold dark:text-gray-300">Payment Method</Label>
+                                                <Label className="text-base font-semibold dark:text-gray-300">Payment</Label>
 
-                                                <div className="grid grid-cols-1 gap-3">
-                                                    {/* Stripe Payment */}
-                                                    <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                                                        paymentMethod === 'stripe'
-                                                            ? 'border-primary bg-primary/10 dark:bg-primary/20'
-                                                            : 'border-input hover:border-primary/50 dark:border-gray-600 dark:hover:border-gray-500'
-                                                    }`}>
-                                                        <input
-                                                            type="radio"
-                                                            name="payment_method"
-                                                            value="stripe"
-                                                            checked={paymentMethod === 'stripe'}
-                                                            onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                                                            className="w-4 h-4 text-primary"
-                                                        />
-                                                        <CreditCard className="h-5 w-5" />
-                                                        <div className="flex-1">
-                                                            <div className="font-semibold dark:text-white">Pay with Card (Stripe)</div>
-                                                            <div className="text-sm text-muted-foreground">Secure payment via Stripe</div>
+                                                <div className="flex items-center gap-3 p-4 border-2 border-primary rounded-lg bg-primary/10 dark:bg-primary/20">
+                                                    <Coins className="h-5 w-5 text-yellow-600" />
+                                                    <div className="flex-1">
+                                                        <div className="font-semibold flex items-center gap-2 dark:text-white">
+                                                            Pay with Believe Points
+                                                            {!believePointsSufficientForSku && (
+                                                                <Badge variant="destructive" className="text-xs">
+                                                                    Insufficient
+                                                                </Badge>
+                                                            )}
                                                         </div>
-                                                    </label>
-
-                                                    {/* Believe Points Payment */}
-                                                    <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                                                        paymentMethod === 'believe_points'
-                                                            ? 'border-primary bg-primary/10 dark:bg-primary/20'
-                                                            : 'border-input hover:border-primary/50 dark:border-gray-600 dark:hover:border-gray-500'
-                                                    } ${!believePointsSufficientForSku ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                                        <input
-                                                            type="radio"
-                                                            name="payment_method"
-                                                            value="believe_points"
-                                                            checked={paymentMethod === 'believe_points'}
-                                                            onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                                                            disabled={!believePointsSufficientForSku}
-                                                            className="w-4 h-4 text-primary"
-                                                        />
-                                                        <Coins className="h-5 w-5 text-yellow-600" />
-                                                        <div className="flex-1">
-                                                            <div className="font-semibold flex items-center gap-2 dark:text-white">
-                                                                Pay with Believe Points
-                                                                {!believePointsSufficientForSku && (
-                                                                    <Badge variant="destructive" className="text-xs">
-                                                                        Insufficient
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                            <div className="text-sm text-muted-foreground">
-                                                                Available BP: {purchasedBelievePoints.toFixed(2)} points
-                                                                {giftedBelievePoints > 0 && (
-                                                                    <span className="block text-xs mt-0.5 text-amber-600 dark:text-amber-400">
-                                                                        Gifted BP ({giftedBelievePoints.toFixed(2)}) cannot be used for gift cards.
-                                                                    </span>
-                                                                )}
-                                                                {believePointsSufficientForSku && (
-                                                                    <span className="text-green-600 dark:text-green-400 ml-2 block sm:inline">
-                                                                        ({(purchasedBelievePoints - data.amount).toFixed(2)} Available BP remaining after redemption)
-                                                                    </span>
-                                                                )}
-                                                            </div>
+                                                        <div className="text-sm text-muted-foreground">
+                                                            Available BP: {purchasedBelievePoints.toFixed(2)} points
+                                                            {giftedBelievePoints > 0 && (
+                                                                <span className="block text-xs mt-0.5 text-amber-600 dark:text-amber-400">
+                                                                    Gifted BP ({giftedBelievePoints.toFixed(2)}) cannot be used for gift cards.
+                                                                </span>
+                                                            )}
+                                                            {believePointsSufficientForSku && (
+                                                                <span className="text-green-600 dark:text-green-400 ml-2 block sm:inline">
+                                                                    ({(purchasedBelievePoints - data.amount).toFixed(2)} Available BP remaining after redemption)
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                    </label>
+                                                    </div>
                                                 </div>
 
                                                 {giftedBelievePoints > 0 && (
@@ -613,12 +569,16 @@ export default function PurchaseDetailsPage({
                                                     </p>
                                                 )}
 
-                                                {paymentMethod === 'believe_points' && !believePointsSufficientForSku && (
+                                                {!believePointsSufficientForSku && (
                                                     <p className="text-sm text-destructive flex items-center gap-1">
                                                         <CheckCircle className="h-4 w-4" />
                                                         {`You need ${data.amount.toFixed(2)} Available BP but only have ${purchasedBelievePoints.toFixed(2)}.`}
                                                     </p>
                                                 )}
+
+                                                <p className="text-xs text-muted-foreground">
+                                                    Your Believe Points will be deducted immediately. Gift card issuance begins after a 72-hour waiting period.
+                                                </p>
                                             </div>
                                         )}
 
@@ -645,7 +605,7 @@ export default function PurchaseDetailsPage({
                                                 type="submit"
                                                 className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg dark:from-primary dark:to-primary/90"
                                                 size="lg"
-                                                disabled={!isValidForm || processing || !isOrganizationApproved || (paymentMethod === 'believe_points' && !believePointsSufficientForSku)}
+                                                disabled={!isValidForm || processing || !isOrganizationApproved || !believePointsSufficientForSku}
                                             >
                                                 {processing ? (
                                                     <>
@@ -657,15 +617,10 @@ export default function PurchaseDetailsPage({
                                                         <Info className="h-5 w-5 mr-2" />
                                                         Organization Approval Required
                                                     </>
-                                                ) : paymentMethod === 'believe_points' ? (
+                                                ) : (
                                                     <>
                                                         <Coins className="h-5 w-5 mr-2" />
                                                         Pay with Believe Points
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CreditCard className="h-5 w-5 mr-2" />
-                                                        Proceed to Secure Payment
                                                     </>
                                                 )}
                                             </Button>
@@ -748,32 +703,32 @@ export default function PurchaseDetailsPage({
                                 </CardContent>
                             </Card>
 
-                            {/* Secure Payment Info */}
+                            {/* Purchase info */}
                             <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-2 border-green-300 dark:border-green-700 shadow-lg">
                                 <CardHeader>
                                     <CardTitle className="text-lg flex items-center gap-2 dark:text-white">
                                         <div className="p-2 rounded-lg bg-green-600/20">
                                             <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                                         </div>
-                                        Secure Payment
+                                        How it works
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     <div className="flex items-start gap-3 text-sm">
                                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                        <span className="text-muted-foreground dark:text-gray-300">Instant delivery after payment</span>
+                                        <span className="text-muted-foreground dark:text-gray-300">Pay using Believe Points only</span>
                                     </div>
                                     <div className="flex items-start gap-3 text-sm">
                                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                        <span className="text-muted-foreground dark:text-gray-300">Secure Stripe payment processing</span>
+                                        <span className="text-muted-foreground dark:text-gray-300">BP is deducted immediately when you submit</span>
                                     </div>
                                     <div className="flex items-start gap-3 text-sm">
                                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                        <span className="text-muted-foreground dark:text-gray-300">Full refund if not satisfied</span>
+                                        <span className="text-muted-foreground dark:text-gray-300">Gift card issuance begins after a 72-hour waiting period</span>
                                     </div>
                                     <div className="flex items-start gap-3 text-sm">
                                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                        <span className="text-muted-foreground dark:text-gray-300">24/7 customer support</span>
+                                        <span className="text-muted-foreground dark:text-gray-300">You will be notified when your gift card is ready</span>
                                     </div>
                                 </CardContent>
                             </Card>

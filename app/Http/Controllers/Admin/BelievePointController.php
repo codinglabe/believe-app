@@ -8,6 +8,8 @@ use App\Models\BelievePointPurchase;
 use App\Models\BelievePointsPaymentSetting;
 use App\Services\BelievePointPurchaseSettlementStatusService;
 use App\Services\BelievePointsPurchaseSettingsService;
+use App\Services\BrpParticipationSettingsService;
+use App\Support\BrpParticipationModule;
 use App\Services\Payments\BelievePointsPaymentMethodResolver;
 use App\Support\ManualPaymentMethodSettingsValidator;
 use Illuminate\Http\Request;
@@ -113,6 +115,12 @@ class BelievePointController extends BaseController
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PROCESSING_FEE_PERCENT, $request->input('processing_fee_percent'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_FREE_BRP_AWARD, $request->input('free_brp_award'), 'float');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_PRIME_BRP_AWARD, $request->input('prime_brp_award'), 'float');
+        BrpParticipationSettingsService::setModuleSettings(
+            BrpParticipationModule::BP_PURCHASE,
+            true,
+            (float) $request->input('free_brp_award'),
+            (float) $request->input('prime_brp_award'),
+        );
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_CARD_HOLD_HOURS, $request->input('card_hold_hours'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_ACH_HOLD_HOURS, $request->input('ach_hold_hours'), 'integer');
         AdminSetting::set(BelievePointsPurchaseSettingsService::KEY_SUPPORTER_PAYS_PROCESSING_FEE, $request->boolean('supporter_pays_processing_fee'), 'boolean');

@@ -257,7 +257,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                 {course.learning_outcomes.length > 0 && (
                   <div>
                     <h3 className="font-semibold mb-2">
-                      {!isEventsHubType(course.type) ? "Learning outcomes" : "Event outcomes"}
+                      {!isEventsHubType(course.type) ? "Learning outcomes" : "Meetup outcomes"}
                     </h3>
                     <ul className="list-disc list-inside space-y-1">
                       {course.learning_outcomes.map((outcome, index) => (

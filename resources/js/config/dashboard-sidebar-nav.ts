@@ -888,6 +888,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                                 icon: Coins,
                                 role: 'admin',
                             },
+                            {
+                                title: 'Manual payment verification',
+                                href: '/admin/payments/manual',
+                                icon: FileCheck,
+                                role: 'admin',
+                            },
                         ],
                         permission: 'wallet.plan.read',
                     },

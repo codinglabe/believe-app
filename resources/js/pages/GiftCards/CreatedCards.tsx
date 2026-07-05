@@ -39,6 +39,8 @@ interface GiftCard {
     status: string
     created_at: string
     purchased_at: string | null
+    scheduled_fulfillment_at?: string | null
+    failure_reason?: string | null
     payment_method?: string | null
     user?: {
         id: number
@@ -291,7 +293,7 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">
-                                {giftCards.data.filter(c => c.status === 'active').length}
+                                {giftCards.data.filter(c => c.status === 'active' || c.status === 'completed').length}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Currently active
@@ -356,6 +358,11 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                             {card.voucher && (
                                                 <p className="text-xs text-muted-foreground font-mono pl-13">
                                                     Voucher: {card.voucher}
+                                                </p>
+                                            )}
+                                            {card.status === 'pending_fulfillment' && card.failure_reason && (
+                                                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 pl-13">
+                                                    Issuance delayed — awaiting gift card reserve availability.
                                                 </p>
                                             )}
                                         </div>

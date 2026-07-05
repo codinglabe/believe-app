@@ -1,5 +1,5 @@
 /**
- * Connection Hub hero secondary actions (Teach / My Learning, Create / My Events).
+ * Connection Hub hero secondary actions (Teach / My Learning, Create / My Meetups).
  * Organization accounts use admin courses & events; supporters use public create + enrollments.
  */
 export type ConnectionHubAuthUser = {
@@ -61,7 +61,7 @@ export function connectionHubTeachButtonHref(
   return appendConnectionHubListingTypeQuery(base, listingType)
 }
 
-/** Logged-in “my learning / my events” destination; `null` when guest. */
+/** Logged-in “my learning / my meetups” destination; `null` when guest. */
 export function connectionHubMyButtonHref(auth: ConnectionHubAuth | undefined): string | null {
   const user = auth?.user
   if (!user) {

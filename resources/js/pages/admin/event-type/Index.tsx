@@ -276,7 +276,7 @@ export default function EventTypesIndex() {
                 <DialogContent className="sm:max-w-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
                     <DialogHeader>
                         <DialogTitle>New event type</DialogTitle>
-                        <DialogDescription>Add a catalog entry for courses and events.</DialogDescription>
+                        <DialogDescription>Add a catalog entry for Connection Hub listings.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
                         <div>

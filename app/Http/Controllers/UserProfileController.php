@@ -644,6 +644,19 @@ class UserProfileController extends Controller
             app(\App\Services\CauseGroupChatService::class)->ensureForUserAndCategoryIds($user, $ids);
         }
 
+        if ($isSupporter) {
+            $user->refresh();
+            if (\App\Services\SupporterProfileCompletionService::isComplete($user)) {
+                \App\Services\ParticipationActivityService::complete(
+                    $user,
+                    \App\Support\BrpParticipationModule::PROFILE_COMPLETION,
+                    $user->id,
+                    'Participation reward for completing your supporter profile',
+                    ['user_id' => $user->id],
+                );
+            }
+        }
+
         return to_route('user.profile.edit')->with('success', 'Profile updated successfully!');
     }
 

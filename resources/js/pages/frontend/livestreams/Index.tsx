@@ -322,7 +322,7 @@ export default function SupporterLivestreamsIndex({
               meetings={connectionHubMeetings}
               compact
               title="Connection Hub meetings"
-              description="Unity Meet sessions from your Companion, Learning, and Events listings."
+              description="Unity Meet sessions from your Companion, Learning, and Meetups listings."
             />
 
             <Card className="mt-6 border-border bg-card">

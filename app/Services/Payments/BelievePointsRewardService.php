@@ -6,7 +6,8 @@ use App\Models\BelievePointsLedgerEntry;
 use App\Models\Donation;
 use App\Models\PaymentTransaction;
 use App\Models\User;
-use App\Support\SupporterSubscriptionService;
+use App\Services\ParticipationBrpAwardService;
+use App\Support\BrpParticipationModule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -15,23 +16,9 @@ use Illuminate\Support\Facades\Log;
  */
 class BelievePointsRewardService
 {
-    public const DONATION_BRP_FREE = 1;
-
-    public const DONATION_BRP_PRIME = 2;
-
-    public static function donationBrpAmountForUser(?User $user): int
+    public static function donationBrpAmountForUser(?User $user): float
     {
-        if ($user === null) {
-            return self::DONATION_BRP_FREE;
-        }
-
-        if ($user->hasNonprofitDashboardRole()) {
-            return self::DONATION_BRP_PRIME;
-        }
-
-        return SupporterSubscriptionService::currentTierSlug($user) === SupporterSubscriptionService::SLUG_PRIME
-            ? self::DONATION_BRP_PRIME
-            : self::DONATION_BRP_FREE;
+        return ParticipationBrpAwardService::previewAmount($user, BrpParticipationModule::DONATION);
     }
 
     public static function issueDonationReward(Donation $donation): bool
@@ -66,17 +53,18 @@ class BelievePointsRewardService
             }
 
             $points = self::donationBrpAmountForUser($user);
-            $user->addRewardPoints(
-                $points,
-                'donation',
+            ParticipationBrpAwardService::award(
+                $user,
+                BrpParticipationModule::DONATION,
                 $donation->id,
-                'Reward for completed donation',
+                'Participation reward for completed donation',
                 [
                     'donation_id' => $donation->id,
                     'organization_id' => $donation->organization_id,
                     'payment_method' => $donation->payment_method,
                     'payment_transaction_id' => $paymentTx?->id,
-                ]
+                ],
+                'donation',
             );
 
             $donation->update(['reward_points_issued' => true]);

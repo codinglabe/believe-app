@@ -12,7 +12,9 @@ use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
 use App\Services\ShippoService;
 use App\Services\StripeProcessingFeeEstimator;
-use App\Support\MarketplacePickup;
+use App\Services\ParticipationActivityService;
+use App\Services\ParticipationBrpAwardService;
+use App\Support\BrpParticipationModule;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,8 +27,6 @@ use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class MerchantRedemptionController extends Controller
 {
-    private const REFERRAL_POINTS = 500;
-
     public function __construct(private readonly ShippoService $shippoService) {}
 
     /**
@@ -89,16 +89,19 @@ class MerchantRedemptionController extends Controller
             ['referral_redemption_id' => $newRedemptionId],
             [
                 'referrer_user_id' => $referrer->id,
-                'points_awarded' => self::REFERRAL_POINTS,
+                'points_awarded' => ParticipationBrpAwardService::previewAmount($referrer, BrpParticipationModule::MERCHANT_REFERRAL),
             ]
         );
         if ($reward->wasRecentlyCreated) {
-            $referrer->addRewardPoints(
-                self::REFERRAL_POINTS,
-                'merchant_hub_referral',
+            $pointsAwarded = ParticipationBrpAwardService::previewAmount($referrer, BrpParticipationModule::MERCHANT_REFERRAL);
+            ParticipationActivityService::complete(
+                $referrer,
+                BrpParticipationModule::MERCHANT_REFERRAL,
                 $newRedemptionId,
-                'Referral reward: someone purchased via your share link',
-                ['referral_redemption_id' => $newRedemptionId]
+                'Merchant referral reward: someone purchased via your share link',
+                ['referral_redemption_id' => $newRedemptionId],
+                'merchant_hub_referral',
+                'merchant_hub_redemption',
             );
             Transaction::create([
                 'user_id' => $referrer->id,
@@ -111,14 +114,35 @@ class MerchantRedemptionController extends Controller
                 'currency' => 'USD',
                 'payment_method' => 'referral',
                 'meta' => [
-                    'points_awarded' => self::REFERRAL_POINTS,
+                    'points_awarded' => $pointsAwarded,
                     'referral_redemption_id' => $newRedemptionId,
-                    'description' => 'Referral reward: someone purchased via your share link',
+                    'description' => 'Merchant referral reward: someone purchased via your share link',
                 ],
                 'processed_at' => now(),
             ]);
         }
         session()->forget('merchant_hub_ref');
+    }
+
+    private function awardMarketplacePurchaseBrp(MerchantHubOfferRedemption $redemption): void
+    {
+        $buyer = $redemption->user;
+        if ($buyer === null) {
+            return;
+        }
+
+        ParticipationActivityService::complete(
+            $buyer,
+            BrpParticipationModule::MARKETPLACE_PURCHASE,
+            $redemption->id,
+            'Participation reward for merchant hub purchase',
+            [
+                'redemption_id' => $redemption->id,
+                'offer_id' => $redemption->merchant_hub_offer_id,
+            ],
+            null,
+            'merchant_hub_redemption',
+        );
     }
 
     /**
@@ -874,6 +898,7 @@ class MerchantRedemptionController extends Controller
 
             DB::commit();
             $this->awardReferralIfApplicable((int) $redemption->id, (int) $user->id);
+            $this->awardMarketplacePurchaseBrp($redemption->fresh(['user']));
             $shareLink = $redemption->share_token
                 ? url()->route('merchant-hub.offer.show.ref', ['id' => $offer->id, 'refCode' => $redemption->share_token])
                 : null;
@@ -992,6 +1017,7 @@ class MerchantRedemptionController extends Controller
             }
             DB::commit();
             $this->awardReferralIfApplicable((int) $redemption->id, (int) $redemption->user_id);
+            $this->awardMarketplacePurchaseBrp($redemption->fresh(['user']));
 
             return redirect()->route('merchant-hub.redemption.confirmed', $redemption->receipt_code);
         } catch (\Exception $e) {

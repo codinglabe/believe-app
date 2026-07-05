@@ -459,6 +459,9 @@ class UnifiedLedgerPresenter
         }
 
         // Meta keys (often set when related_type is null).
+        if (($meta['source'] ?? '') === 'course_enrollment') {
+            return 'course';
+        }
         if (! empty($meta['order_id'])) {
             return 'marketplace';
         }
@@ -1198,12 +1201,19 @@ class UnifiedLedgerPresenter
     {
         $meta = is_array($t->meta) ? $t->meta : [];
 
-        foreach (['event_name', 'event_title'] as $key) {
+        foreach (['event_name', 'event_title', 'course_name'] as $key) {
             if (! empty($meta[$key]) && is_string($meta[$key])) {
                 $value = trim($meta[$key]);
                 if ($value !== '') {
                     return $value;
                 }
+            }
+        }
+
+        if (! empty($meta['course_id']) && is_numeric($meta['course_id'])) {
+            $courseName = \App\Models\Course::query()->whereKey((int) $meta['course_id'])->value('name');
+            if (is_string($courseName) && trim($courseName) !== '') {
+                return trim($courseName);
             }
         }
 

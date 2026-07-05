@@ -122,7 +122,7 @@ class SeoService
                 'search' => ['title' => 'Search', 'description' => 'Search supporters, organizations, and posts. Find people and causes that match your interests.'],
                 'organizations' => ['title' => 'Organizations', 'description' => 'Browse verified nonprofits by cause, location, and name. Find organizations to support and donate to.'],
                 'marketplace' => ['title' => 'Marketplace', 'description' => 'Discover products from verified nonprofits. Shop and support causes you care about.'],
-                'courses' => ['title' => 'Connection Hub', 'description' => 'Discover courses and events from verified nonprofits in Connection Hub. Learn new skills, attend workshops, and join community events—online or in person.'],
+                'courses' => ['title' => 'Connection Hub', 'description' => 'Discover companion, learning, and meetup listings from verified nonprofits in Connection Hub. Connect around shared interests, gain new skills, and join gatherings—online or in person.'],
                 'all_events' => ['title' => 'All Events', 'description' => 'Discover and join events from nonprofits. Find upcoming, ongoing, and past events by location, type, and date.'],
                 'terms_of_service' => ['title' => 'Terms of Service', 'description' => 'Read the terms of service for using our platform. Understand your rights and responsibilities when donating and engaging with nonprofits.'],
                 'privacy_policy' => ['title' => 'Privacy Policy', 'description' => 'Learn how we collect, use, and protect your personal information. Your privacy matters to us.'],

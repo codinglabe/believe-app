@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Merchant\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
+use App\Models\User;
+use App\Services\ParticipationActivityService;
+use App\Support\BrpParticipationModule;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,9 +38,19 @@ class MerchantAuthController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'business_name' => ['nullable', 'string', 'max:255'],
             'preferred_payout_method' => ['nullable', 'string', 'in:stripe,paypal'],
+            'referralCode' => ['nullable', 'string', 'max:64'],
         ]);
 
+        $referrerUserId = null;
+        if ($request->filled('referralCode')) {
+            $referrer = User::where('referral_code', $request->input('referralCode'))->first();
+            if ($referrer !== null) {
+                $referrerUserId = $referrer->id;
+            }
+        }
+
         $merchant = Merchant::create([
+            'referrer_user_id' => $referrerUserId,
             'name' => $request->name,
             'email' => $request->email,
             'password' => $request->password,
@@ -48,6 +61,24 @@ class MerchantAuthController extends Controller
         ]);
 
         event(new Registered($merchant));
+
+        if ($referrerUserId !== null) {
+            $referrer = User::find($referrerUserId);
+            if ($referrer !== null) {
+                ParticipationActivityService::complete(
+                    $referrer,
+                    BrpParticipationModule::MERCHANT_REFERRAL,
+                    $merchant->id,
+                    'Merchant referral reward: referred merchant registered',
+                    [
+                        'merchant_id' => $merchant->id,
+                        'merchant_email' => $merchant->email,
+                    ],
+                    'merchant_referral',
+                    'merchant_signup',
+                );
+            }
+        }
 
         Auth::guard('merchant')->login($merchant);
 

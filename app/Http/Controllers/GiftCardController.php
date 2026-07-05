@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Exceptions\GiftCardRedemptionCapacityReachedException;
 use App\Exceptions\InsufficientPhazeBalanceException;
 use App\Models\GiftCard;
 use App\Models\Organization;
@@ -457,7 +456,7 @@ class GiftCardController extends Controller
             'country' => 'required|string',
             'brand_name' => 'required|string',
             'currency' => 'nullable|string|size:3',
-            'payment_method' => 'nullable|string|in:stripe,believe_points',
+            'payment_method' => 'nullable|string|in:believe_points',
         ]);
 
         try {
@@ -528,7 +527,22 @@ class GiftCardController extends Controller
 
             $purchaseAmount = $validated['amount'];
             $currency = $validated['currency'] ?? 'USD';
-            $paymentMethod = $validated['payment_method'] ?? 'stripe';
+            $paymentMethod = $validated['payment_method'] ?? 'believe_points';
+
+            if ($paymentMethod !== 'believe_points') {
+                DB::rollBack();
+
+                if ($isInertiaRequest) {
+                    return back()->withErrors([
+                        'payment_method' => 'Gift cards can only be purchased using Believe Points.',
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gift cards can only be purchased using Believe Points.',
+                ], 422);
+            }
 
             // Get organization
             $organization = \App\Models\Organization::findOrFail($validated['organization_id']);
@@ -548,150 +562,62 @@ class GiftCardController extends Controller
                 ], 403);
             }
 
-            $phazeBalanceResponse = null;
-            if ($paymentMethod !== 'believe_points') {
-                $phazeBalanceResponse = $this->rejectIfInsufficientPhazeBalance($purchaseAmount, $isInertiaRequest);
-                if ($phazeBalanceResponse !== null) {
-                    DB::rollBack();
+            $pointsRequired = $purchaseAmount;
+            $user->refresh();
 
-                    return $phazeBalanceResponse;
-                }
-            }
-
-            // Handle Believe Points payment (delayed Phaze fulfillment)
-            if ($paymentMethod === 'believe_points') {
-                $pointsRequired = $purchaseAmount;
-                $user->refresh();
-
-                if ($user->currentBelievePoints() < $pointsRequired) {
-                    DB::rollBack();
-                    $have = $user->currentBelievePoints();
-                    $message = "Insufficient Believe Points. You need {$pointsRequired} Available BP but only have {$have}.";
-
-                    if ($isInertiaRequest) {
-                        return back()->withErrors([
-                            'payment_method' => $message,
-                        ]);
-                    }
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $message,
-                    ], 400);
-                }
-
-                try {
-                    $giftCard = $this->giftCardRedemptionService->submit(
-                        $user,
-                        $validated,
-                        $selectedBrand,
-                        $purchaseAmount,
-                        $currency,
-                    );
-                } catch (GiftCardRedemptionCapacityReachedException $e) {
-                    DB::rollBack();
-
-                    if ($isInertiaRequest) {
-                        return back()->withErrors([
-                            'payment_method' => $e->userMessage(),
-                            'error' => $e->userTitle(),
-                        ]);
-                    }
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $e->userMessage(),
-                        'title' => $e->userTitle(),
-                    ], 503);
-                } catch (\RuntimeException $e) {
-                    DB::rollBack();
-
-                    if ($isInertiaRequest) {
-                        return back()->withErrors([
-                            'payment_method' => $e->getMessage(),
-                        ]);
-                    }
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $e->getMessage(),
-                    ], 400);
-                }
-
-                DB::commit();
-
-                $this->giftCardRedemptionService->scheduleFulfillmentJob($giftCard);
-
-                if ($isInertiaRequest) {
-                    return redirect()->route('gift-cards.success', ['gift_card_id' => $giftCard->id])
-                        ->with('success', 'Gift card redemption submitted successfully.');
-                }
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Gift card redemption submitted successfully.',
-                    'redirect' => route('gift-cards.success', ['gift_card_id' => $giftCard->id]),
-                ]);
-            }
-
-            if (empty(config('services.stripe.secret'))) {
+            if ($user->currentBelievePoints() < $pointsRequired) {
                 DB::rollBack();
-                Log::error('Gift card purchase: Stripe secret key is not configured.');
+                $have = $user->currentBelievePoints();
+                $message = "Insufficient Believe Points. You need {$pointsRequired} Available BP but only have {$have}.";
 
                 if ($isInertiaRequest) {
                     return back()->withErrors([
-                        'error' => 'Payments are not configured. Please try again later or contact support.',
+                        'payment_method' => $message,
                     ]);
                 }
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Payments are not configured. Please contact support.',
-                ], 503);
+                    'message' => $message,
+                ], 400);
             }
 
-            // Create Stripe checkout session (default payment method)
-            $session = StripeSession::create([
-                'payment_method_types' => ['card'],
-                'line_items' => [[
-                    'price_data' => [
-                        'currency' => strtolower($currency),
-                        'product_data' => [
-                            'name' => $validated['brand_name'].' Gift Card',
-                            'description' => 'Gift Card Purchase for '.$organization->name,
-                        ],
-                        'unit_amount' => StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $purchaseAmount, 'card'),
-                    ],
-                    'quantity' => 1,
-                ]],
-                'mode' => 'payment',
-                'customer_email' => $user->email,
-                'success_url' => route('gift-cards.success').'?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => route('gift-cards.index'),
-                'metadata' => [
-                    'user_id' => $user->id,
-                    'organization_id' => $validated['organization_id'],
-                    'product_id' => $validated['productId'],
-                    'purchase_amount' => $purchaseAmount,
-                    'brand_name' => $validated['brand_name'],
-                    'country' => $validated['country'],
-                    'currency' => $currency,
-                    'type' => 'gift_card_purchase',
-                ],
-            ]);
+            try {
+                $giftCard = $this->giftCardRedemptionService->submit(
+                    $user,
+                    $validated,
+                    $selectedBrand,
+                    $purchaseAmount,
+                    $currency,
+                );
+            } catch (\RuntimeException $e) {
+                DB::rollBack();
+
+                if ($isInertiaRequest) {
+                    return back()->withErrors([
+                        'payment_method' => $e->getMessage(),
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 400);
+            }
 
             DB::commit();
 
-            // Check if this is an Inertia request
-            if ($request->header('X-Inertia')) {
-                // For Inertia requests, redirect to Stripe checkout
-                return Inertia::location($session->url);
+            $this->giftCardRedemptionService->scheduleFulfillmentJob($giftCard);
+
+            if ($isInertiaRequest) {
+                return redirect()->route('gift-cards.success', ['gift_card_id' => $giftCard->id])
+                    ->with('success', 'Gift card redemption submitted successfully.');
             }
 
-            // For non-Inertia requests (API), return JSON
             return response()->json([
                 'success' => true,
-                'url' => $session->url,
+                'message' => 'Gift card redemption submitted successfully.',
+                'redirect' => route('gift-cards.success', ['gift_card_id' => $giftCard->id]),
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {

@@ -7,6 +7,8 @@ use App\Models\JobApplication;
 use App\Models\AdminSetting;
 use App\Models\VolunteerAssessment;
 use App\Services\ImpactScoreService;
+use App\Services\ParticipationActivityService;
+use App\Support\BrpParticipationModule;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -272,9 +274,11 @@ class VolunteerTimesheetController extends BaseController
                     $jobApplication->save();
                 }
             } else {
-                // Only award regular reward points if no assessment
+                // Legacy hourly BRP (deprecated — participation flat award below)
                 $this->awardRewardPoints($jobApplication->user, $validated['hours']);
             }
+
+            $this->awardVolunteerParticipationBrp($timesheet, $jobApplication->user);
             
             // Award impact points
             $this->impactScoreService->awardVolunteerPoints($timesheet);
@@ -617,6 +621,10 @@ class VolunteerTimesheetController extends BaseController
                     $jobApplication->metadata = $metadata;
                     $jobApplication->save();
                 }
+
+                if ($validated['status'] === 'approved') {
+                    $this->awardVolunteerParticipationBrp($timesheet, $volunteerUser);
+                }
             }
         });
 
@@ -726,6 +734,28 @@ class VolunteerTimesheetController extends BaseController
 
         return redirect()->route('volunteers.timesheet.index')
             ->with('success', 'Time sheet entry deleted successfully.');
+    }
+
+    /**
+     * Flat participation BRP for a completed volunteer activity (timesheet entry).
+     */
+    private function awardVolunteerParticipationBrp(VolunteerTimesheet $timesheet, $user): void
+    {
+        if ($user === null) {
+            return;
+        }
+
+        ParticipationActivityService::complete(
+            $user,
+            BrpParticipationModule::VOLUNTEER,
+            $timesheet->id,
+            'Participation reward for volunteer activity',
+            [
+                'timesheet_id' => $timesheet->id,
+                'hours' => (float) ($timesheet->hours ?? 0),
+                'job_application_id' => $timesheet->job_application_id,
+            ],
+        );
     }
 
     /**

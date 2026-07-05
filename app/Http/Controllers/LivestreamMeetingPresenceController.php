@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use App\Services\ParticipationActivityService;
+use App\Support\BrpParticipationModule;
 use App\Support\LivestreamMeetingPresence;
 use App\Support\UnityLiveBroadcast;
 use Illuminate\Http\JsonResponse;
@@ -76,6 +78,21 @@ class LivestreamMeetingPresenceController extends Controller
 
         LivestreamMeetingPresence::leave($kind, $livestream->id, $validated['sessionId']);
         UnityLiveBroadcast::notifyHostDashboard($livestream, 'participant_left');
+
+        if ($authUser = $request->user()) {
+            ParticipationActivityService::complete(
+                $authUser,
+                BrpParticipationModule::UNITY_MEET,
+                $livestream->id,
+                'Participation reward for Unity Meet participation',
+                [
+                    'livestream_id' => $livestream->id,
+                    'room_name' => $roomName,
+                    'kind' => $kind,
+                ],
+                referenceType: $kind,
+            );
+        }
 
         return response()->json(['ok' => true]);
     }

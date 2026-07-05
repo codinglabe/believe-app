@@ -47,7 +47,7 @@ type Props = {
 export default function ConnectionHubMeetingsList({
   meetings,
   title = "Connection Hub meetings",
-  description = "Scheduled Unity Meet sessions from your Companion, Learning, and Events listings.",
+  description = "Scheduled Unity Meet sessions from your Companion, Learning, and Meetups listings.",
   emptyMessage = "No Connection Hub meetings scheduled yet.",
   showHostLink = true,
   compact = false,

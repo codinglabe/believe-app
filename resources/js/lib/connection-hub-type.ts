@@ -5,7 +5,7 @@ export type ConnectionHubType = (typeof CONNECTION_HUB_TYPES)[number]
 const LABELS: Record<ConnectionHubType, string> = {
   companion: "Companion",
   learning: "Learning",
-  events: "Events",
+  events: "Meetups",
   earning: "Earning",
 }
 
@@ -13,7 +13,7 @@ export function connectionHubTypeLabel(type: string): string {
   return LABELS[type as ConnectionHubType] ?? type
 }
 
-/** Registration-style copy (formerly "event"). */
+/** Registration-style copy for meetups (Connection Hub type `events`). */
 export function isEventsHubType(type: string): boolean {
   return type === "events"
 }

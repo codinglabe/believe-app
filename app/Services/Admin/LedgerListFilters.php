@@ -92,6 +92,33 @@ final class LedgerListFilters
                         ->where('related_id', $organizationId);
                 });
 
+            if (Schema::hasTable('enrollments') && Schema::hasTable('courses') && Schema::hasTable('organizations')) {
+                $q->orWhere(function (Builder $enrollmentQ) use ($organizationId) {
+                    $enrollmentQ->where(function (Builder $typeQ) {
+                        $typeQ->where('related_type', Enrollment::class)
+                            ->orWhere('related_type', 'like', '%Enrollment');
+                    })->whereExists(function ($sub) use ($organizationId) {
+                        $sub->from('enrollments')
+                            ->join('courses', 'courses.id', '=', 'enrollments.course_id')
+                            ->join('organizations', 'organizations.user_id', '=', 'courses.organization_id')
+                            ->whereColumn('enrollments.id', 'transactions.related_id')
+                            ->where('organizations.id', $organizationId);
+                    });
+                });
+            }
+
+            if (Schema::hasTable('courses') && Schema::hasTable('organizations')) {
+                $q->orWhere(function (Builder $courseMetaQ) use ($organizationId) {
+                    $courseMetaQ->whereNotNull('meta->course_id')
+                        ->whereExists(function ($sub) use ($organizationId) {
+                            $sub->from('courses')
+                                ->join('organizations', 'organizations.user_id', '=', 'courses.organization_id')
+                                ->where('organizations.id', $organizationId)
+                                ->whereRaw(self::courseIdEqualsMetaCourseIdExpr());
+                        });
+                });
+            }
+
             if (Schema::hasTable('donations')) {
                 $q->orWhereExists(function ($sub) use ($organizationId) {
                     $sub->from('donations')
@@ -255,9 +282,19 @@ final class LedgerListFilters
     private static function scopeCourse(Builder $query): void
     {
         $query->where(function (Builder $q) {
-            $q->where('related_type', Enrollment::class)
-                ->orWhereNotNull('meta->enrollment_id');
+            self::whereMatchesEnrollmentModule($q);
         });
+    }
+
+    /**
+     * Connection Hub course / event enrollment rows (including legacy meta-only links).
+     */
+    private static function whereMatchesEnrollmentModule(Builder $query): void
+    {
+        $query->where('related_type', Enrollment::class)
+            ->orWhere('related_type', 'like', '%Enrollment')
+            ->orWhere('meta->source', 'course_enrollment')
+            ->orWhereNotNull('meta->enrollment_id');
     }
 
     private static function scopeMerchantHub(Builder $query): void
@@ -387,8 +424,7 @@ final class LedgerListFilters
                                 ->orWhereNotNull('meta->service_order_id');
                         })
                         ->whereNot(function (Builder $en) {
-                            $en->where('related_type', Enrollment::class)
-                                ->orWhereNotNull('meta->enrollment_id');
+                            self::whereMatchesEnrollmentModule($en);
                         })
                         ->whereNot(function (Builder $ca) {
                             $ca->where('related_type', CareAllianceDonation::class)
@@ -417,8 +453,7 @@ final class LedgerListFilters
                                 ->orWhereNotNull('meta->service_order_id');
                         })
                         ->whereNot(function (Builder $en) {
-                            $en->where('related_type', Enrollment::class)
-                                ->orWhereNotNull('meta->enrollment_id');
+                            self::whereMatchesEnrollmentModule($en);
                         })
                         ->whereNot(function (Builder $ca) {
                             $ca->where('related_type', CareAllianceDonation::class)
@@ -451,5 +486,15 @@ final class LedgerListFilters
         }
 
         return 'donations.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(transactions.meta, \'$.donation_id\')) AS UNSIGNED)';
+    }
+
+    private static function courseIdEqualsMetaCourseIdExpr(): string
+    {
+        $driver = Schema::getConnection()->getDriverName();
+        if ($driver === 'sqlite') {
+            return 'courses.id = CAST(json_extract(transactions.meta, \'$.course_id\') AS INTEGER)';
+        }
+
+        return 'courses.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(transactions.meta, \'$.course_id\')) AS UNSIGNED)';
     }
 }
