@@ -119,8 +119,10 @@ class TransactionLedgerController extends Controller
                 'module' => $request->filled('module') ? $request->string('module')->toString() : 'all',
                 'period' => $request->filled('period') ? $request->string('period')->toString() : 'all',
                 'ledger_type' => $request->filled('ledger_type') ? $request->string('ledger_type')->toString() : 'all',
+                'connection_hub_type' => $request->filled('connection_hub_type') ? $request->string('connection_hub_type')->toString() : 'all',
             ],
             'moduleOptions' => LedgerListFilters::moduleOptions(),
+            'connectionHubTypeOptions' => LedgerListFilters::connectionHubTypeOptions(),
             'ledgerTypeOptions' => LedgerListFilters::ledgerTypeOptions(),
             'ledgerOrganizationInitial' => $organizationFilterActive && $orgId > 0
                 ? [
@@ -250,8 +252,12 @@ class TransactionLedgerController extends Controller
                     $id = (int) $s;
                     $q->orWhere('related_id', $id)
                         ->orWhere('meta->donation_id', $id)
-                        ->orWhere('meta->care_alliance_donation_id', $id);
+                        ->orWhere('meta->care_alliance_donation_id', $id)
+                        ->orWhere('meta->enrollment_record_id', $id)
+                        ->orWhere('meta->course_id', $id);
                 }
+                $q->orWhere('meta->enrollment_id', 'like', '%'.$s.'%')
+                    ->orWhere('meta->course_name', 'like', '%'.$s.'%');
                 $q->orWhereHas('user', function ($uq) use ($s) {
                     $uq->where('name', 'like', '%'.$s.'%')
                         ->orWhere('email', 'like', '%'.$s.'%');
@@ -287,6 +293,10 @@ class TransactionLedgerController extends Controller
 
         if ($request->filled('ledger_type') && $request->string('ledger_type') !== 'all') {
             LedgerListFilters::applyLedgerType($query, $request->string('ledger_type')->toString());
+        }
+
+        if ($request->filled('connection_hub_type') && $request->string('connection_hub_type') !== 'all') {
+            LedgerListFilters::applyConnectionHubType($query, $request->string('connection_hub_type')->toString());
         }
 
         return [$query, $organizationFilterActive, $orgId];

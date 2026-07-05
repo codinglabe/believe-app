@@ -12,6 +12,8 @@ use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Admin\UnifiedLedgerClassificationService;
+use App\Services\EnrollmentLedgerService;
+use App\Support\ConnectionHubType;
 use App\Support\UnifiedLedgerType;
 
 /**
@@ -46,6 +48,7 @@ class UnifiedLedgerPresenter
         $subscriber = $this->resolveSubscriberContact($parties, $t, $donationPayload);
         $when = $t->processed_at ?? $t->created_at;
         $orderForMarkup = $this->resolveOrderForSellingPriceMarkup($t);
+        $connectionHubType = $this->resolveConnectionHubType($t);
         $sellingPriceMarkupPercent = $orderForMarkup !== null
             ? $this->resolveSellingPriceMarkupPercentFromOrder($orderForMarkup)
             : null;
@@ -100,6 +103,10 @@ class UnifiedLedgerPresenter
             'merchant_name' => $this->resolveMerchantName($t, $module, $parties),
             'campaign_name' => $this->resolveCampaignName($t, $module, $donationPayload, $related),
             'event_name' => $this->resolveEventName($t),
+            'connection_hub_type' => $connectionHubType,
+            'connection_hub_type_label' => $connectionHubType !== null && $connectionHubType !== ''
+                ? ConnectionHubType::label($connectionHubType)
+                : null,
             'supplier_name' => isset($ledgerReport['supplier_name']) && $ledgerReport['supplier_name'] !== ''
                 ? (string) $ledgerReport['supplier_name']
                 : null,
@@ -281,14 +288,14 @@ class UnifiedLedgerPresenter
                         ? 'organization_subscription'
                         : 'marketplace')),
             'service_order' => 'servicehub',
-            'enrollment' => 'course',
+            'enrollment' => 'connection_hub',
             'plan_subscription', 'wallet_plan_subscription' => 'supporter_subscription',
             'gift_card' => 'gift_card',
             'raffle' => 'marketplace',
             'merchant_hub_redemption', 'merchant_hub_referral' => 'merchant_hub',
             'commission' => $this->moduleForCommission($t),
             'ledger_unclassified' => match ($base) {
-                'Enrollment' => 'course',
+                'Enrollment' => 'connection_hub',
                 'Plan' => 'supporter_subscription',
                 'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
@@ -297,7 +304,7 @@ class UnifiedLedgerPresenter
                 default => $this->moduleFromMetaOrType($t, $ledgerReport),
             },
             default => match ($base) {
-                'Enrollment' => 'course',
+                'Enrollment' => 'connection_hub',
                 'Plan' => 'supporter_subscription',
                 'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
@@ -458,9 +465,13 @@ class UnifiedLedgerPresenter
             return 'gift_card';
         }
 
+        if (EnrollmentLedgerService::transactionIsEnrollment($t)) {
+            return 'connection_hub';
+        }
+
         // Meta keys (often set when related_type is null).
         if (($meta['source'] ?? '') === 'course_enrollment') {
-            return 'course';
+            return 'connection_hub';
         }
         if (! empty($meta['order_id'])) {
             return 'marketplace';
@@ -469,7 +480,7 @@ class UnifiedLedgerPresenter
             return 'servicehub';
         }
         if (! empty($meta['enrollment_id'])) {
-            return 'course';
+            return 'connection_hub';
         }
         if (! empty($meta['care_alliance_donation_id'])) {
             return 'campaign';
@@ -512,7 +523,7 @@ class UnifiedLedgerPresenter
                 return 'marketplace';
             }
             if (str_ends_with($rt, 'Enrollment')) {
-                return 'course';
+                return 'connection_hub';
             }
             if ($base === 'Plan') {
                 return 'supporter_subscription';
@@ -665,7 +676,7 @@ class UnifiedLedgerPresenter
             'gift_card' => 'gift_card_purchase',
             'marketplace' => 'marketplace_sale',
             'servicehub' => 'service_payment',
-            'course' => 'course_enrollment',
+            'connection_hub', 'course' => $this->connectionHubTransactionType($t),
             'merchant_hub' => 'merchant_hub_sale',
             'supporter_subscription' => 'supporter_subscription_paid',
             'organization_subscription' => 'organization_subscription_paid',
@@ -1233,6 +1244,40 @@ class UnifiedLedgerPresenter
         }
 
         return null;
+    }
+
+    private function resolveConnectionHubType(Transaction $t): ?string
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        foreach (['connection_hub_type', 'course_type'] as $key) {
+            $raw = strtolower(trim((string) ($meta[$key] ?? '')));
+            if ($raw !== '' && in_array($raw, ConnectionHubType::VALUES, true)) {
+                return $raw;
+            }
+        }
+
+        if (! empty($meta['course_id']) && is_numeric($meta['course_id'])) {
+            $type = \App\Models\Course::query()->whereKey((int) $meta['course_id'])->value('type');
+            if (is_string($type)) {
+                $raw = strtolower(trim($type));
+                if ($raw !== '' && in_array($raw, ConnectionHubType::VALUES, true)) {
+                    return $raw;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function connectionHubTransactionType(Transaction $t): string
+    {
+        return match ($this->resolveConnectionHubType($t)) {
+            ConnectionHubType::EVENTS => 'event_registration',
+            ConnectionHubType::LEARNING => 'course_enrollment',
+            ConnectionHubType::COMPANION => 'companion_enrollment',
+            ConnectionHubType::EARNING => 'earning_enrollment',
+            default => 'connection_hub_enrollment',
+        };
     }
 
     /**

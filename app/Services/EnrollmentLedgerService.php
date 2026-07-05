@@ -7,6 +7,7 @@ use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\ConnectionHubType;
 use App\Support\CourseEnrollmentCheckoutItems;
 use App\Support\UnifiedLedgerBrpActivity;
 use App\Support\UnifiedLedgerBpStatus;
@@ -44,12 +45,14 @@ final class EnrollmentLedgerService
     public static function metaFor(Course $course, Enrollment $enrollment): array
     {
         $orgCtx = self::organizationContext($course);
-        $isEvent = ($course->type ?? '') === 'events';
+        $hubType = (string) ($course->type ?? '');
+        $isEvent = ConnectionHubType::usesEventSemantics($hubType);
         $courseName = (string) $course->name;
 
         return array_filter([
             'source' => 'course_enrollment',
             'ledger_type' => UnifiedLedgerType::MONEY,
+            'connection_hub_type' => in_array($hubType, ConnectionHubType::VALUES, true) ? $hubType : null,
             'course_id' => $course->id,
             'course_name' => $courseName,
             'course_type' => $course->type,
@@ -96,6 +99,8 @@ final class EnrollmentLedgerService
         }
 
         $updates = [
+            'related_id' => $enrollment->id,
+            'related_type' => Enrollment::class,
             'ledger_type' => UnifiedLedgerType::MONEY,
             'bp_status' => UnifiedLedgerBpStatus::NA,
             'brp_activity_type' => UnifiedLedgerBrpActivity::NA,
@@ -126,6 +131,10 @@ final class EnrollmentLedgerService
                             ->orWhere('related_type', 'like', '%Enrollment');
                     })->where('related_id', $enrollment->id);
                 })->orWhere('meta->enrollment_record_id', $enrollment->id);
+
+                if ($enrollment->enrollment_id !== null && trim((string) $enrollment->enrollment_id) !== '') {
+                    $q->orWhere('meta->enrollment_id', (string) $enrollment->enrollment_id);
+                }
             })
             ->whereNotIn('type', ['refund', 'cancellation'])
             ->where('status', '!=', Transaction::STATUS_CANCELLED)
