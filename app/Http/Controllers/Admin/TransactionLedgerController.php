@@ -266,7 +266,12 @@ class TransactionLedgerController extends Controller
         }
 
         if ($request->filled('type') && $request->string('type') !== 'all') {
-            $query->where('type', $request->string('type'));
+            $type = $request->string('type')->toString();
+            if ($type === 'enrollment') {
+                LedgerListFilters::applyEnrollmentWalletType($query);
+            } else {
+                $query->where('type', $type);
+            }
         }
 
         if ($request->filled('status') && $request->string('status') !== 'all') {
@@ -2445,7 +2450,10 @@ class TransactionLedgerController extends Controller
     private function maybeSyncEnrollmentLedgerMeta(Transaction $t): void
     {
         $meta = is_array($t->meta) ? $t->meta : [];
-        if (($meta['source'] ?? '') === 'course_enrollment' && ! empty($meta['organization_id'])) {
+        if (($meta['source'] ?? '') === 'course_enrollment'
+            && ! empty($meta['organization_id'])
+            && ! empty($meta['enrollment_record_id'])
+            && self::relatedTypeIsEnrollment($t)) {
             return;
         }
 
@@ -2453,19 +2461,18 @@ class TransactionLedgerController extends Controller
             return;
         }
 
-        if ($t->related_id === null || (int) $t->related_id < 1) {
-            return;
-        }
-
-        $enrollment = Enrollment::query()
-            ->with('course.organization.organization')
-            ->find((int) $t->related_id);
+        $enrollment = EnrollmentLedgerService::resolveEnrollmentForLedgerTransaction($t);
         if ($enrollment?->course === null) {
             return;
         }
 
         EnrollmentLedgerService::syncTransaction($t, $enrollment, $enrollment->course);
         $t->refresh();
+    }
+
+    private function relatedTypeIsEnrollment(Transaction $t): bool
+    {
+        return EnrollmentLedgerService::relatedTypeIsEnrollment($t);
     }
 
     private function compactMetaHints(array $meta): ?string

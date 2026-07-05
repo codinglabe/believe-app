@@ -96,7 +96,9 @@ final class LedgerListFilters
             return;
         }
 
-        self::whereMatchesEnrollmentModule($query);
+        $query->where(function (Builder $enrollmentQ) {
+            self::whereMatchesEnrollmentModule($enrollmentQ);
+        });
         $query->where(function (Builder $hubQ) use ($hubType) {
             $hubQ->where('meta->connection_hub_type', $hubType)
                 ->orWhere('meta->course_type', $hubType);
@@ -326,7 +328,22 @@ final class LedgerListFilters
         $query->where('related_type', Enrollment::class)
             ->orWhere('related_type', 'like', '%Enrollment')
             ->orWhere('meta->source', 'course_enrollment')
+            ->orWhereNotNull('meta->enrollment_record_id')
             ->orWhereNotNull('meta->enrollment_id');
+    }
+
+    /**
+     * Paid Connection Hub enrollments are stored as type `purchase`; free as `enrollment`.
+     */
+    public static function applyEnrollmentWalletType(Builder $query): void
+    {
+        $query->where(function (Builder $q) {
+            $q->where('type', 'enrollment')
+                ->orWhere(function (Builder $purchase) {
+                    $purchase->where('type', 'purchase');
+                    self::whereMatchesEnrollmentModule($purchase);
+                });
+        });
     }
 
     private static function scopeMerchantHub(Builder $query): void

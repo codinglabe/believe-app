@@ -108,6 +108,10 @@ final class EnrollmentLedgerService
             'meta' => $meta,
         ];
 
+        if (! in_array($transaction->type, ['refund', 'cancellation'], true)) {
+            $updates['type'] = 'enrollment';
+        }
+
         $reference = trim((string) ($enrollment->transaction_id ?? ''));
         if ($reference !== ''
             && ! str_starts_with($reference, 'free_enrollment_')
@@ -123,69 +127,189 @@ final class EnrollmentLedgerService
      */
     public static function findPrimaryLedgerTransaction(Enrollment $enrollment): ?Transaction
     {
-        return Transaction::query()
-            ->where(function (Builder $q) use ($enrollment) {
-                $q->where(function (Builder $inner) use ($enrollment) {
-                    $inner->where(function (Builder $typeQ) {
-                        $typeQ->where('related_type', Enrollment::class)
-                            ->orWhere('related_type', 'like', '%Enrollment');
-                    })->where('related_id', $enrollment->id);
-                })->orWhere('meta->enrollment_record_id', $enrollment->id);
-
-                if ($enrollment->enrollment_id !== null && trim((string) $enrollment->enrollment_id) !== '') {
-                    $q->orWhere('meta->enrollment_id', (string) $enrollment->enrollment_id);
-                }
-            })
-            ->whereNotIn('type', ['refund', 'cancellation'])
-            ->where('status', '!=', Transaction::STATUS_CANCELLED)
-            ->orderBy('id')
-            ->first();
+        return self::queryPrimaryCandidates($enrollment)
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (Transaction $tx) => self::transactionBelongsToEnrollment($tx, $enrollment));
     }
 
     /**
      * Upsert the admin ledger row for a course/event enrollment (creates missing rows).
+     *
+     * @return array{transaction: Transaction|null, created: bool}
      */
-    public static function syncAdminLedgerRow(Enrollment $enrollment): ?Transaction
+    public static function syncAdminLedgerRow(Enrollment $enrollment): array
     {
         $enrollment->loadMissing('course.organization.organization', 'user');
         $course = $enrollment->course;
         $user = $enrollment->user;
         if ($course === null || $user === null) {
-            return null;
+            return ['transaction' => null, 'created' => false];
         }
 
         if (! self::shouldHaveLedgerRow($enrollment, $course)) {
-            return self::findPrimaryLedgerTransaction($enrollment);
+            return [
+                'transaction' => self::findPrimaryLedgerTransaction($enrollment),
+                'created' => false,
+            ];
         }
 
         $transaction = self::findPrimaryLedgerTransaction($enrollment);
         if ($transaction !== null) {
             self::completePendingLedgerRowIfPaid($transaction, $enrollment);
             self::syncTransaction($transaction->fresh(), $enrollment, $course);
+            self::pruneDuplicatePrimaryRows($enrollment, (int) $transaction->fresh()->id);
 
-            return $transaction->fresh();
+            return ['transaction' => $transaction->fresh(), 'created' => false];
         }
 
         $attributes = self::buildPrimaryLedgerAttributes($enrollment, $course, $user);
         if ($attributes === null) {
-            return null;
+            return ['transaction' => null, 'created' => false];
         }
 
         $transaction = Transaction::query()->create($attributes);
         self::syncTransaction($transaction, $enrollment, $course);
+        self::pruneDuplicatePrimaryRows($enrollment, (int) $transaction->fresh()->id);
 
-        return $transaction->fresh();
+        return ['transaction' => $transaction->fresh(), 'created' => true];
+    }
+
+    public static function relatedTypeIsEnrollment(Transaction $transaction): bool
+    {
+        $rt = $transaction->related_type ? ltrim((string) $transaction->related_type, '\\') : '';
+
+        return $rt === Enrollment::class || str_ends_with($rt, 'Enrollment');
+    }
+
+    public static function transactionBelongsToEnrollment(Transaction $transaction, Enrollment $enrollment): bool
+    {
+        if (self::relatedTypeIsEnrollment($transaction) && (int) $transaction->related_id > 0) {
+            return (int) $transaction->related_id === (int) $enrollment->id;
+        }
+
+        $meta = is_array($transaction->meta) ? $transaction->meta : [];
+        if ((int) ($meta['enrollment_record_id'] ?? 0) === (int) $enrollment->id) {
+            return true;
+        }
+
+        $metaEnrollmentId = trim((string) ($meta['enrollment_id'] ?? ''));
+        if ($metaEnrollmentId === '') {
+            return false;
+        }
+
+        if ($metaEnrollmentId === (string) $enrollment->id) {
+            return true;
+        }
+
+        $publicId = trim((string) ($enrollment->enrollment_id ?? ''));
+
+        return $publicId !== '' && $metaEnrollmentId === $publicId;
+    }
+
+    /**
+     * Resolve enrollment for a ledger row (polymorphic link, meta record id, or Stripe metadata).
+     */
+    public static function resolveEnrollmentForLedgerTransaction(Transaction $transaction): ?Enrollment
+    {
+        if (self::relatedTypeIsEnrollment($transaction) && (int) $transaction->related_id > 0) {
+            $enrollment = Enrollment::query()
+                ->with('course.organization.organization')
+                ->find((int) $transaction->related_id);
+            if ($enrollment !== null) {
+                return $enrollment;
+            }
+        }
+
+        $meta = is_array($transaction->meta) ? $transaction->meta : [];
+        $dbId = (int) ($meta['enrollment_record_id'] ?? 0);
+        if ($dbId < 1 && ! empty($meta['enrollment_id']) && ctype_digit((string) $meta['enrollment_id'])) {
+            $dbId = (int) $meta['enrollment_id'];
+        }
+
+        if ($dbId < 1) {
+            return null;
+        }
+
+        return Enrollment::query()
+            ->with('course.organization.organization')
+            ->find($dbId);
+    }
+
+    private static function queryPrimaryCandidates(Enrollment $enrollment): Builder
+    {
+        $publicId = trim((string) ($enrollment->enrollment_id ?? ''));
+
+        return Transaction::query()
+            ->where(function (Builder $q) use ($enrollment, $publicId) {
+                $q->where(function (Builder $inner) use ($enrollment) {
+                    $inner->where(function (Builder $typeQ) {
+                        $typeQ->where('related_type', Enrollment::class)
+                            ->orWhere('related_type', 'like', '%Enrollment');
+                    })->where('related_id', $enrollment->id);
+                })
+                    ->orWhere('meta->enrollment_record_id', $enrollment->id);
+
+                if ($publicId !== '') {
+                    $q->orWhere(function (Builder $pub) use ($publicId) {
+                        $pub->where('meta->source', 'course_enrollment')
+                            ->where('meta->enrollment_id', $publicId);
+                    });
+                }
+
+                $q->orWhere(function (Builder $stripeMeta) use ($enrollment) {
+                    $stripeMeta->where('meta->source', 'course_enrollment')
+                        ->where('meta->enrollment_id', (string) $enrollment->id);
+                });
+            })
+            ->whereNotIn('type', ['refund', 'cancellation'])
+            ->where('status', '!=', Transaction::STATUS_CANCELLED);
+    }
+
+    private static function pruneDuplicatePrimaryRows(Enrollment $enrollment, int $keepId): void
+    {
+        if ($keepId < 1) {
+            return;
+        }
+
+        $publicId = trim((string) ($enrollment->enrollment_id ?? ''));
+
+        Transaction::query()
+            ->where('id', '!=', $keepId)
+            ->whereNotIn('type', ['refund', 'cancellation'])
+            ->where(function (Builder $q) use ($enrollment, $publicId) {
+                $q->where(function (Builder $inner) use ($enrollment) {
+                    $inner->where(function (Builder $typeQ) {
+                        $typeQ->where('related_type', Enrollment::class)
+                            ->orWhere('related_type', 'like', '%Enrollment');
+                    })->where('related_id', $enrollment->id);
+                })
+                    ->orWhere('meta->enrollment_record_id', $enrollment->id);
+
+                if ($publicId !== '') {
+                    $q->orWhere('meta->enrollment_id', $publicId);
+                }
+
+                $q->orWhere('meta->enrollment_id', (string) $enrollment->id);
+            })
+            ->delete();
     }
 
     private static function shouldHaveLedgerRow(Enrollment $enrollment, Course $course): bool
     {
-        if (in_array($enrollment->status, ['active', 'completed'], true)) {
+        if (in_array($enrollment->status, ['active', 'completed', 'refunded', 'cancelled'], true)) {
             return true;
         }
 
-        return $enrollment->status === 'pending'
-            && ($course->pricing_type ?? '') === 'paid'
-            && in_array((string) ($enrollment->payment_method ?? ''), ['stripe', 'card', ''], true);
+        if ($enrollment->status === 'pending') {
+            if (($course->pricing_type ?? '') === 'free') {
+                return true;
+            }
+
+            return in_array((string) ($enrollment->payment_method ?? ''), ['stripe', 'card', 'believe_points', 'free', ''], true);
+        }
+
+        return false;
     }
 
     private static function completePendingLedgerRowIfPaid(Transaction $transaction, Enrollment $enrollment): void
@@ -244,7 +368,7 @@ final class EnrollmentLedgerService
                 'user_id' => $user->id,
                 'related_id' => $enrollment->id,
                 'related_type' => Enrollment::class,
-                'type' => 'purchase',
+                'type' => 'enrollment',
                 'status' => Transaction::STATUS_COMPLETED,
                 'amount' => $saleAmount,
                 'fee' => 0,
@@ -268,7 +392,7 @@ final class EnrollmentLedgerService
             'user_id' => $user->id,
             'related_id' => $enrollment->id,
             'related_type' => Enrollment::class,
-            'type' => 'purchase',
+            'type' => 'enrollment',
             'status' => $isPaid ? Transaction::STATUS_COMPLETED : Transaction::STATUS_PENDING,
             'amount' => $saleAmount,
             'fee' => 0,
@@ -352,13 +476,14 @@ final class EnrollmentLedgerService
 
     public static function transactionIsEnrollment(Transaction $transaction): bool
     {
-        $rt = $transaction->related_type ? ltrim((string) $transaction->related_type, '\\') : '';
+        if (self::relatedTypeIsEnrollment($transaction)) {
+            return true;
+        }
+
         $meta = is_array($transaction->meta) ? $transaction->meta : [];
 
-        return $rt === Enrollment::class
-            || str_ends_with($rt, 'Enrollment')
-            || ($meta['source'] ?? '') === 'course_enrollment'
-            || ! empty($meta['enrollment_id']);
+        return ($meta['source'] ?? '') === 'course_enrollment'
+            || ! empty($meta['enrollment_record_id']);
     }
 
     /**
