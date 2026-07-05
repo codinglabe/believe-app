@@ -6,9 +6,12 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Support\CourseEnrollmentCheckoutItems;
 use App\Support\UnifiedLedgerBrpActivity;
 use App\Support\UnifiedLedgerBpStatus;
 use App\Support\UnifiedLedgerType;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Connection Hub course / event enrollments → admin unified transaction ledger.
@@ -87,6 +90,189 @@ final class EnrollmentLedgerService
         }
 
         $transaction->update($updates);
+    }
+
+    /**
+     * Primary payment row for an enrollment (excludes refund / cancellation ledger lines).
+     */
+    public static function findPrimaryLedgerTransaction(Enrollment $enrollment): ?Transaction
+    {
+        return Transaction::query()
+            ->where(function (Builder $q) use ($enrollment) {
+                $q->where(function (Builder $inner) use ($enrollment) {
+                    $inner->where(function (Builder $typeQ) {
+                        $typeQ->where('related_type', Enrollment::class)
+                            ->orWhere('related_type', 'like', '%Enrollment');
+                    })->where('related_id', $enrollment->id);
+                })->orWhere('meta->enrollment_record_id', $enrollment->id);
+            })
+            ->whereNotIn('type', ['refund', 'cancellation'])
+            ->where('status', '!=', Transaction::STATUS_CANCELLED)
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * Upsert the admin ledger row for a course/event enrollment (creates missing rows).
+     */
+    public static function syncAdminLedgerRow(Enrollment $enrollment): ?Transaction
+    {
+        $enrollment->loadMissing('course.organization.organization', 'user');
+        $course = $enrollment->course;
+        $user = $enrollment->user;
+        if ($course === null || $user === null) {
+            return null;
+        }
+
+        if (! self::shouldHaveLedgerRow($enrollment, $course)) {
+            return self::findPrimaryLedgerTransaction($enrollment);
+        }
+
+        $transaction = self::findPrimaryLedgerTransaction($enrollment);
+        if ($transaction !== null) {
+            self::completePendingLedgerRowIfPaid($transaction, $enrollment);
+            self::syncTransaction($transaction->fresh(), $enrollment, $course);
+
+            return $transaction->fresh();
+        }
+
+        $attributes = self::buildPrimaryLedgerAttributes($enrollment, $course, $user);
+        if ($attributes === null) {
+            return null;
+        }
+
+        $transaction = Transaction::query()->create($attributes);
+        self::syncTransaction($transaction, $enrollment, $course);
+
+        return $transaction->fresh();
+    }
+
+    private static function shouldHaveLedgerRow(Enrollment $enrollment, Course $course): bool
+    {
+        if (in_array($enrollment->status, ['active', 'completed'], true)) {
+            return true;
+        }
+
+        return $enrollment->status === 'pending'
+            && ($course->pricing_type ?? '') === 'paid'
+            && in_array((string) ($enrollment->payment_method ?? ''), ['stripe', 'card', ''], true);
+    }
+
+    private static function completePendingLedgerRowIfPaid(Transaction $transaction, Enrollment $enrollment): void
+    {
+        if ($transaction->status !== Transaction::STATUS_PENDING) {
+            return;
+        }
+
+        if (! in_array($enrollment->status, ['active', 'completed'], true)) {
+            return;
+        }
+
+        $updates = [
+            'status' => Transaction::STATUS_COMPLETED,
+            'processed_at' => $enrollment->enrolled_at ?? now(),
+        ];
+
+        $reference = self::resolveExternalPaymentReference($enrollment);
+        if ($reference !== null) {
+            $updates['transaction_id'] = $reference;
+        }
+
+        $transaction->update($updates);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function buildPrimaryLedgerAttributes(Enrollment $enrollment, Course $course, User $user): ?array
+    {
+        $isFree = ($course->pricing_type ?? '') === 'free'
+            || (string) ($enrollment->payment_method ?? '') === 'free';
+        $isBelievePoints = (string) ($enrollment->payment_method ?? '') === 'believe_points';
+        $amount = round(max(0, (float) ($enrollment->amount_paid ?? $course->course_fee ?? 0)), 2);
+        $baseMeta = self::metaFor($course, $enrollment);
+        $processedAt = $enrollment->enrolled_at ?? now();
+
+        if ($isFree) {
+            return [
+                'user_id' => $user->id,
+                'related_id' => $enrollment->id,
+                'related_type' => Enrollment::class,
+                'type' => 'enrollment',
+                'status' => Transaction::STATUS_COMPLETED,
+                'amount' => 0,
+                'fee' => 0,
+                'currency' => 'USD',
+                'payment_method' => 'free',
+                'meta' => $baseMeta,
+                'processed_at' => $processedAt,
+            ];
+        }
+
+        if ($isBelievePoints) {
+            $pointsRequired = $amount > 0 ? $amount : round((float) ($course->course_fee ?? 0), 2);
+
+            return [
+                'user_id' => $user->id,
+                'related_id' => $enrollment->id,
+                'related_type' => Enrollment::class,
+                'type' => 'purchase',
+                'status' => Transaction::STATUS_COMPLETED,
+                'amount' => $pointsRequired,
+                'fee' => 0,
+                'currency' => 'USD',
+                'payment_method' => 'believe_points',
+                'meta' => array_merge(
+                    $baseMeta,
+                    [
+                        'pricing_type' => 'paid',
+                        'believe_points_used' => $pointsRequired,
+                    ],
+                    BiuPlatformFeeService::ledgerMetaSlice($pointsRequired)
+                ),
+                'processed_at' => $processedAt,
+            ];
+        }
+
+        $isPaid = in_array($enrollment->status, ['active', 'completed'], true);
+        $feeAmount = (float) ($course->course_fee ?? $amount);
+
+        return [
+            'user_id' => $user->id,
+            'related_id' => $enrollment->id,
+            'related_type' => Enrollment::class,
+            'type' => 'purchase',
+            'status' => $isPaid ? Transaction::STATUS_COMPLETED : Transaction::STATUS_PENDING,
+            'amount' => $feeAmount,
+            'fee' => 0,
+            'currency' => 'USD',
+            'payment_method' => $enrollment->payment_method ?: 'stripe',
+            'transaction_id' => self::resolveExternalPaymentReference($enrollment),
+            'meta' => array_merge(
+                $baseMeta,
+                ['pricing_type' => 'paid'],
+                CourseEnrollmentCheckoutItems::stripeMetadataSlice($course),
+                BiuPlatformFeeService::ledgerMetaSlice($feeAmount)
+            ),
+            'processed_at' => $isPaid ? $processedAt : null,
+        ];
+    }
+
+    private static function resolveExternalPaymentReference(Enrollment $enrollment): ?string
+    {
+        foreach ([$enrollment->transaction_id, $enrollment->payment_intent_id] as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref === '') {
+                continue;
+            }
+            if (str_starts_with($ref, 'free_enrollment_') || str_starts_with($ref, 'believe_points_enrollment_')) {
+                continue;
+            }
+
+            return $ref;
+        }
+
+        return null;
     }
 
     /**

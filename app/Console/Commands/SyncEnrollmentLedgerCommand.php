@@ -9,14 +9,26 @@ use Illuminate\Console\Command;
 
 class SyncEnrollmentLedgerCommand extends Command
 {
-    protected $signature = 'ledger:sync-enrollments {--limit=500 : Max enrollment transactions to sync}';
+    protected $signature = 'ledger:sync-enrollments {--limit=500 : Max enrollments to upsert}';
 
-    protected $description = 'Backfill admin ledger fields for course/event enrollment transactions';
+    protected $description = 'Upsert admin ledger rows for course/event enrollments (creates missing transactions and backfills meta)';
 
     public function handle(): int
     {
         $limit = max(1, (int) $this->option('limit'));
-        $count = 0;
+        $upserted = 0;
+        $backfilled = 0;
+
+        Enrollment::query()
+            ->with('course.organization.organization', 'user')
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->each(function (Enrollment $enrollment) use (&$upserted) {
+                if (EnrollmentLedgerService::syncAdminLedgerRow($enrollment) !== null) {
+                    $upserted++;
+                }
+            });
 
         Transaction::query()
             ->where(function ($q) {
@@ -25,21 +37,27 @@ class SyncEnrollmentLedgerCommand extends Command
                     ->orWhere('meta->source', 'course_enrollment')
                     ->orWhereNotNull('meta->enrollment_id');
             })
-            ->orderBy('id')
+            ->orderByDesc('id')
             ->limit($limit)
-            ->each(function (Transaction $transaction) use (&$count) {
+            ->each(function (Transaction $transaction) use (&$backfilled) {
+                $meta = is_array($transaction->meta) ? $transaction->meta : [];
+                $enrollmentDbId = (int) ($transaction->related_id ?: ($meta['enrollment_record_id'] ?? 0));
+                if ($enrollmentDbId < 1) {
+                    return;
+                }
+
                 $enrollment = Enrollment::query()
                     ->with('course.organization.organization')
-                    ->find($transaction->related_id);
+                    ->find($enrollmentDbId);
                 if ($enrollment === null || $enrollment->course === null) {
                     return;
                 }
 
                 EnrollmentLedgerService::syncTransaction($transaction, $enrollment, $enrollment->course);
-                $count++;
+                $backfilled++;
             });
 
-        $this->info("Synced {$count} enrollment transaction row(s) for the admin ledger.");
+        $this->info("Upserted {$upserted} enrollment ledger row(s); backfilled {$backfilled} existing transaction row(s).");
 
         return self::SUCCESS;
     }
