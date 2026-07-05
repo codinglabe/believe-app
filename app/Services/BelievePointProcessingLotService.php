@@ -144,10 +144,14 @@ final class BelievePointProcessingLotService
                 ->get();
 
             if ($lots->isEmpty()) {
+                $settlementAt = $lockedPurchase->settlement_at
+                    ?? $lockedPurchase->stripe_funds_available_at
+                    ?? $lockedPurchase->bridge_reserve_confirmed_at
+                    ?? now();
                 $lockedPurchase->update([
                     'points_released' => true,
                     'settlement_status' => BelievePointPurchaseSettlementStatusService::SETTLEMENT_AVAILABLE,
-                    'settlement_at' => $lockedPurchase->bridge_reserve_confirmed_at ?? now(),
+                    'settlement_at' => $settlementAt,
                 ]);
 
                 return true;
@@ -189,7 +193,10 @@ final class BelievePointProcessingLotService
                 BelievePointsWalletLedgerService::recordSettlement($lockedPurchase, $points);
             }
 
-            $settlementAt = $lockedPurchase->bridge_reserve_confirmed_at ?? now();
+            $settlementAt = $lockedPurchase->settlement_at
+                ?? $lockedPurchase->stripe_funds_available_at
+                ?? $lockedPurchase->bridge_reserve_confirmed_at
+                ?? now();
             $lockedPurchase->update([
                 'points_released' => true,
                 'settlement_status' => BelievePointPurchaseSettlementStatusService::SETTLEMENT_AVAILABLE,

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\ProcessIrsBmfSource;
 use App\Models\UploadedFile;
+use App\Services\IrsBmfImportMaintenanceService;
 use Illuminate\Bus\Batch;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Bus;
@@ -17,7 +18,8 @@ class ImportIrsBmf extends Command
         {--chunk=500 : Chunk size for processing}
         {--update-only : Only update existing records, do not insert new ones}
         {--source= : Specific source URL to process}
-        {--force : Force import even if another is running}';
+        {--force : Force import even if another is running}
+        {--skip-if-busy : Exit successfully when another import is already running (for scheduler)}';
 
     protected $description = 'Queue-based import of IRS Exempt Organization Business Master File';
 
@@ -32,12 +34,25 @@ class ImportIrsBmf extends Command
 
     public function handle(): int
     {
+        $reconciled = IrsBmfImportMaintenanceService::reconcileStaleImports();
+        if ($reconciled > 0) {
+            $this->warn("Reconciled {$reconciled} stale IRS BMF import(s).");
+        }
+
         $runningImport = UploadedFile::where('original_name', 'IRS_BMF_Combined.csv')
             ->whereIn('status', ['queued', 'processing'])
             ->first();
 
         if ($runningImport && ! $this->option('force')) {
-            $this->error("Another import is already running (ID: {$runningImport->id}, Status: {$runningImport->status}). Use --force to run anyway.");
+            $message = "Another import is already running (ID: {$runningImport->id}, Status: {$runningImport->status}). Use --force to run anyway.";
+
+            if ($this->option('skip-if-busy')) {
+                $this->warn($message.' Skipping scheduled run.');
+
+                return self::SUCCESS;
+            }
+
+            $this->error($message);
 
             return self::FAILURE;
         }

@@ -123,7 +123,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     payer_covers_transaction_fee: settings.payer_covers_transaction_fee ?? true,
     card_settlement_business_days: (settings.card_settlement_business_days ?? 1).toString(),
     ach_settlement_business_days: (settings.ach_settlement_business_days ?? 3).toString(),
-    require_bridge_reserve_confirmation: settings.require_bridge_reserve_confirmation ?? true,
+    require_bridge_reserve_confirmation: settings.require_bridge_reserve_confirmation ?? false,
     stripe_card_enabled: paymentSettings.stripe_card_enabled,
     stripe_ach_enabled: paymentSettings.stripe_ach_enabled,
     stripe_venmo_enabled: paymentSettings.stripe_venmo_enabled,

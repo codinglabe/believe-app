@@ -1029,13 +1029,15 @@ class BridgeWalletReadService
         }
 
         if ($customerId !== '') {
-            $accounts = $this->bridgeService->normalizeBridgeListData(
-                $this->bridgeService->getVirtualAccounts($customerId)
-            );
+            if ($this->bridgeService->customerExistsOnBridge($customerId)) {
+                $accounts = $this->bridgeService->normalizeBridgeListData(
+                    $this->bridgeService->getVirtualAccounts($customerId)
+                );
 
-            foreach ($accounts as $account) {
-                if (! empty($account['id'])) {
-                    $ids[] = (string) $account['id'];
+                foreach ($accounts as $account) {
+                    if (! empty($account['id'])) {
+                        $ids[] = (string) $account['id'];
+                    }
                 }
             }
         }
@@ -1075,7 +1077,7 @@ class BridgeWalletReadService
         }
 
         $customerId = trim((string) ($customerIdOverride ?? $integration->bridge_customer_id ?? ''));
-        if ($customerId !== '') {
+        if ($customerId !== '' && $this->bridgeService->customerExistsOnBridge($customerId)) {
             $wallets = $this->bridgeService->normalizeBridgeListData(
                 $this->bridgeService->getWallets($customerId)
             );

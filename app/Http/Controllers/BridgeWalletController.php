@@ -93,8 +93,10 @@ class BridgeWalletController extends Controller
 
             // Customer on Bridge may already be approved — skip verification UI when synced
             if ($integration && $integration->bridge_customer_id && $this->integrationVerificationApproved($integration, $isOrgUser)) {
-                $kycWidgetUrl = $integration->kyc_link_url
-                    ? $this->bridgeService->convertKycLinkToWidgetUrl($integration->kyc_link_url)
+                $verificationRedirectUri = url($isOrgUser ? '/wallet/kyb-callback' : '/wallet/kyc-callback');
+                $freshLink = $this->refreshHostedVerificationLinkForIntegration($integration, $isOrgUser, $verificationRedirectUri);
+                $kycWidgetUrl = $freshLink
+                    ? $this->bridgeService->convertKycLinkToWidgetUrl($freshLink, $request->getSchemeAndHttpHost())
                     : null;
 
                 return response()->json([
@@ -106,7 +108,7 @@ class BridgeWalletController extends Controller
                         'customer_id' => $integration->bridge_customer_id,
                         'kyc_link_id' => $integration->kyc_link_id,
                         'tos_link' => $integration->tos_link_url,
-                        'kyc_link' => $integration->kyc_link_url,
+                        'kyc_link' => $freshLink ?? $integration->kyc_link_url,
                         'kyc_widget_url' => $kycWidgetUrl,
                         'kyc_status' => $integration->kyc_status,
                         'kyb_status' => $integration->kyb_status,
@@ -117,38 +119,44 @@ class BridgeWalletController extends Controller
             }
 
             // If KYC link exists but verification may already be complete on Bridge
-            if ($integration && $integration->kyc_link_id) {
+            if ($integration && ($integration->kyc_link_id || $integration->bridge_customer_id)) {
                 if ($integration->bridge_customer_id) {
                     $this->syncIntegrationFromBridgeApi($integration, $isOrgUser);
                     $integration->refresh();
 
                     if ($this->bridgeService->isCardsEnabledOnDeveloperAccount()) {
                         $this->refreshCardsEndorsementKycLink($integration, $isOrgUser);
-                    $integration->refresh();
+                        $integration->refresh();
                     }
                 }
 
-                $kycWidgetUrl = $integration->kyc_link_url
-                    ? $this->bridgeService->convertKycLinkToWidgetUrl($integration->kyc_link_url)
-                    : null;
+                if (! $integration->bridge_customer_id) {
+                    // Stale customer cleared during sync — create a fresh Bridge KYC link below.
+                } else {
+                    $verificationRedirectUri = url($isOrgUser ? '/wallet/kyb-callback' : '/wallet/kyc-callback');
+                    $freshLink = $this->refreshHostedVerificationLinkForIntegration($integration, $isOrgUser, $verificationRedirectUri);
+                    $kycWidgetUrl = $freshLink
+                        ? $this->bridgeService->convertKycLinkToWidgetUrl($freshLink, $request->getSchemeAndHttpHost())
+                        : null;
 
-                $requiresVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
+                    $requiresVerification = ! $this->integrationVerificationApproved($integration, $isOrgUser);
 
-                return response()->json([
-                    'success' => true,
-                    'message' => $requiresVerification ? 'Please complete verification' : 'Wallet connected successfully',
-                    'data' => [
-                        'customer_id' => $integration->bridge_customer_id,
-                        'kyc_link_id' => $integration->kyc_link_id,
-                        'tos_link' => $integration->tos_link_url,
-                        'kyc_link' => $integration->kyc_link_url,
-                        'kyc_widget_url' => $kycWidgetUrl,
-                        'kyc_status' => $integration->kyc_status,
-                        'kyb_status' => $integration->kyb_status,
-                        'tos_status' => $integration->tos_status,
-                        'requires_verification' => $requiresVerification,
-                    ],
-                ]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => $requiresVerification ? 'Please complete verification' : 'Wallet connected successfully',
+                        'data' => [
+                            'customer_id' => $integration->bridge_customer_id,
+                            'kyc_link_id' => $integration->kyc_link_id,
+                            'tos_link' => $integration->tos_link_url,
+                            'kyc_link' => $freshLink ?? $integration->kyc_link_url,
+                            'kyc_widget_url' => $kycWidgetUrl,
+                            'kyc_status' => $integration->kyc_status,
+                            'kyb_status' => $integration->kyb_status,
+                            'tos_status' => $integration->tos_status,
+                            'requires_verification' => $requiresVerification,
+                        ],
+                    ]);
+                }
             }
 
             DB::beginTransaction();
@@ -1389,6 +1397,21 @@ class BridgeWalletController extends Controller
             $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
 
             $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            if ($this->bridgeService->isCustomerInaccessibleError($customerResult)) {
+                $this->bridgeService->clearStaleCustomerReference(
+                    $integration,
+                    (string) $integration->bridge_customer_id,
+                    'kyc_link_customer_inaccessible',
+                );
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your wallet verification session expired. Please start Connect Wallet again.',
+                    'error_code' => 'bridge_customer_stale',
+                    'requires_wallet_restart' => true,
+                ], 409);
+            }
+
             $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
             $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
 
@@ -1433,6 +1456,21 @@ class BridgeWalletController extends Controller
 
             if (! ($linkResult['success'] ?? false)) {
                 $isCards = $requestedEndorsement === 'cards';
+                if (($linkResult['error_code'] ?? '') === 'bridge_customer_stale') {
+                    $this->bridgeService->clearStaleCustomerReference(
+                        $integration,
+                        (string) $integration->bridge_customer_id,
+                        'kyc_link_customer_inaccessible',
+                    );
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Your wallet verification session expired. Please start Connect Wallet again.',
+                        'error_code' => 'bridge_customer_stale',
+                        'requires_wallet_restart' => true,
+                    ], 409);
+                }
+
                 Log::error($isCards ? 'Cards endorsement KYC/KYB link failed' : 'Base KYC/KYB link failed', [
                     'integration_id' => $integration->id,
                     'customer_id' => $integration->bridge_customer_id,
@@ -3556,6 +3594,20 @@ class BridgeWalletController extends Controller
             $customerId = (string) $customer['id'];
             $matchedEmail = strtolower(trim((string) ($customer['email'] ?? $emails[0])));
 
+            $verifyResult = $this->bridgeService->getCustomer($customerId);
+            if (! ($verifyResult['success'] ?? false)) {
+                if ($this->bridgeService->isCustomerInaccessibleError($verifyResult)) {
+                    Log::warning('Bridge email lookup matched a customer that is not accessible via API', [
+                        'customer_id' => $customerId,
+                        'emails' => $emails,
+                    ]);
+
+                    return null;
+                }
+            } else {
+                $customer = $verifyResult['data'];
+            }
+
             $integration = BridgeIntegration::resolveForEntity(
                 $entity->id,
                 $entityType,
@@ -3869,6 +3921,53 @@ class BridgeWalletController extends Controller
     }
 
     /**
+     * Fetch a fresh hosted Persona URL via GET /customers/{id}/kyc_link (Bridge docs: do not reuse stored URLs).
+     *
+     * @see https://apidocs.bridge.xyz/api-reference/customers/retrieve-a-hosted-kyc-link-for-an-existing-customer
+     */
+    private function refreshHostedVerificationLinkForIntegration(
+        BridgeIntegration $integration,
+        bool $isOrgUser,
+        ?string $redirectUri = null,
+    ): ?string {
+        if (empty($integration->bridge_customer_id)) {
+            return null;
+        }
+
+        $endorsement = $this->bridgeService->isCardsEnabledOnDeveloperAccount() ? 'cards' : null;
+        $result = $this->bridgeService->refreshHostedVerificationLink(
+            (string) $integration->bridge_customer_id,
+            $endorsement,
+            $redirectUri,
+        );
+
+        if (($result['error_code'] ?? '') === 'bridge_customer_stale'
+            || $this->bridgeService->isCustomerInaccessibleError($result)) {
+            $this->bridgeService->clearStaleCustomerReference(
+                $integration,
+                (string) $integration->bridge_customer_id,
+                'hosted_kyc_link_inaccessible',
+            );
+
+            return null;
+        }
+
+        if (! ($result['success'] ?? false) || empty($result['url'])) {
+            return null;
+        }
+
+        $url = (string) $result['url'];
+        if ($isOrgUser) {
+            $integration->kyb_link_url = $url;
+        } else {
+            $integration->kyc_link_url = $url;
+        }
+        $integration->save();
+
+        return $url;
+    }
+
+    /**
      * Resolve and persist GET ?endorsement=cards URL for individual KYC or business KYB.
      */
     private function refreshCardsEndorsementKycLink(
@@ -3888,6 +3987,16 @@ class BridgeWalletController extends Controller
         $preferredPhone = $this->resolveIntegratablePhoneForCards($integration);
 
         $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+        if ($this->bridgeService->isCustomerInaccessibleError($customerResult)) {
+            $this->bridgeService->clearStaleCustomerReference(
+                $integration,
+                (string) $integration->bridge_customer_id,
+                'cards_kyc_link_customer_inaccessible',
+            );
+
+            return;
+        }
+
         $baseApproved = $this->bridgeService->getBaseEndorsementInfo($customerResult['data'] ?? [])['approved'] ?? false;
         $effectiveKycLinkId = $baseApproved ? null : $kycLinkId;
 
@@ -3960,6 +4069,14 @@ class BridgeWalletController extends Controller
         try {
             $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
             if (! $customerResult['success'] || empty($customerResult['data'])) {
+                if ($this->bridgeService->isCustomerInaccessibleError($customerResult)) {
+                    $this->bridgeService->clearStaleCustomerReference(
+                        $integration,
+                        (string) $integration->bridge_customer_id,
+                        'sync_customer_inaccessible',
+                    );
+                }
+
                 return null;
             }
 

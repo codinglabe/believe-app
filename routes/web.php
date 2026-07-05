@@ -134,6 +134,7 @@ use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
+use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;

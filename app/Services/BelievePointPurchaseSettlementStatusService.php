@@ -65,8 +65,9 @@ final class BelievePointPurchaseSettlementStatusService
             return $purchase->settlement_at;
         }
 
-        if ($purchase->points_released && $purchase->bridge_reserve_confirmed_at) {
-            return $purchase->bridge_reserve_confirmed_at;
+        if ($purchase->points_released) {
+            return $purchase->stripe_funds_available_at
+                ?? $purchase->bridge_reserve_confirmed_at;
         }
 
         return null;
@@ -74,11 +75,6 @@ final class BelievePointPurchaseSettlementStatusService
 
     public static function settlementReference(BelievePointPurchase $purchase): ?string
     {
-        $bridge = trim((string) ($purchase->bridge_settlement_reference ?? ''));
-        if ($bridge !== '') {
-            return $bridge;
-        }
-
         $stripe = trim((string) ($purchase->stripe_settlement_reference ?? ''));
         if ($stripe !== '') {
             return $stripe;
@@ -87,6 +83,11 @@ final class BelievePointPurchaseSettlementStatusService
         $payout = trim((string) ($purchase->stripe_payout_id ?? ''));
         if ($payout !== '') {
             return $payout;
+        }
+
+        $bridge = trim((string) ($purchase->bridge_settlement_reference ?? ''));
+        if ($bridge !== '') {
+            return $bridge;
         }
 
         $pi = trim((string) ($purchase->stripe_payment_intent_id ?? ''));
