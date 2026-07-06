@@ -100,7 +100,7 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
                 $data['organization_id'] = (string) $organizationId;
 
                 $logoUrl = Organization::query()
-                    ->with('user:id,image,registered_user_image,user_id')
+                    ->with('user:id,image,registered_user_image')
                     ->find($organizationId)
                     ?->logoUrl();
 

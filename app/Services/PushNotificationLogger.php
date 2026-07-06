@@ -585,7 +585,7 @@ class PushNotificationLogger
         }
 
         $logoUrl = Organization::query()
-            ->with('user:id,image,registered_user_image,user_id')
+            ->with('user:id,image,registered_user_image')
             ->whereKey($organizationId)
             ->first(['id', 'registered_user_image', 'user_id'])
             ?->logoUrl();
