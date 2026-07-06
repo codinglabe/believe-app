@@ -56,6 +56,8 @@ class Course extends Model
         'volunteer_opportunities',
         'image',
         'enrolled',
+        'status',
+        'cancelled_at',
         'rating',
         'total_reviews',
         'last_updated',
@@ -81,7 +83,12 @@ class Course extends Model
         'end_date' => 'date',
         'last_updated' => 'datetime',
         'session_duration_minutes' => 'integer',
+        'cancelled_at' => 'datetime',
     ];
+
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_CANCELLED = 'cancelled';
 
     protected $appends = ['image_url', 'formatted_price', 'formatted_duration', 'formatted_format', 'formatted_program_length'];
 
@@ -221,5 +228,18 @@ class Course extends Model
             'hybrid' => 'Hybrid',
             default => ucfirst(str_replace('_', ' ', $this->format ?? '')),
         };
+    }
+
+    public function isCancelled(): bool
+    {
+        return ($this->status ?? self::STATUS_ACTIVE) === self::STATUS_CANCELLED;
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('status')
+                ->orWhere('status', self::STATUS_ACTIVE);
+        });
     }
 }

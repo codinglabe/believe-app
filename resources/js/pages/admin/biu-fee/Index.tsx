@@ -11,6 +11,8 @@ import { Coins, Save } from "lucide-react"
 
 interface Props {
   sales_platform_fee_percentage: number
+  course_platform_fee_percentage: number
+  event_platform_fee_percentage: number
   marketplace_printify_organization_fee_percentage: number
   marketplace_merchant_pool_fee_percentage: number
 }
@@ -23,11 +25,15 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 export default function AdminBiuFeeIndex({
   sales_platform_fee_percentage,
+  course_platform_fee_percentage,
+  event_platform_fee_percentage,
   marketplace_printify_organization_fee_percentage,
   marketplace_merchant_pool_fee_percentage,
 }: Props) {
   const { data, setData, put, processing, errors } = useForm({
     sales_platform_fee_percentage: String(sales_platform_fee_percentage ?? 0),
+    course_platform_fee_percentage: String(course_platform_fee_percentage ?? 0),
+    event_platform_fee_percentage: String(event_platform_fee_percentage ?? 0),
     marketplace_printify_organization_fee_percentage: String(
       marketplace_printify_organization_fee_percentage ?? 0,
     ),
@@ -40,6 +46,8 @@ export default function AdminBiuFeeIndex({
   }
 
   const salesPct = parseFloat(data.sales_platform_fee_percentage) || 0
+  const coursePct = parseFloat(data.course_platform_fee_percentage) || 0
+  const eventPct = parseFloat(data.event_platform_fee_percentage) || 0
   const printifyOrgPct = parseFloat(data.marketplace_printify_organization_fee_percentage) || 0
   const merchantPoolPct = parseFloat(data.marketplace_merchant_pool_fee_percentage) || 0
 
@@ -57,9 +65,11 @@ export default function AdminBiuFeeIndex({
             <span className="font-medium text-foreground">Marketplace checkout</span> charges supporters a platform fee on each line&apos;s subtotal: one
             rate for Printify and organization catalog goods, and another for merchant marketplace items and organization-adopted merchant pool listings.
             Mixed carts combine both.{" "}
-            <span className="font-medium text-foreground">Other sales modules</span> (Service Hub, courses, raffles, merchant hub cash) use the global sales
-            rate below. <span className="font-medium text-foreground">Gift cards</span> sell at face value with no buyer platform fee; BIU revenue is a share
-            of provider commissions (see Gift card revenue).
+            <span className="font-medium text-foreground">Connection Hub</span> courses and meetups use dedicated module rates (platform fees are never
+            refunded when a host cancels).{" "}
+            <span className="font-medium text-foreground">Other sales modules</span> (Service Hub, raffles, merchant hub cash) use the global sales rate
+            below. <span className="font-medium text-foreground">Gift cards</span> sell at face value with no buyer platform fee; BIU revenue is a share of
+            provider commissions (see Gift card revenue).
           </p>
         </div>
 
@@ -76,10 +86,70 @@ export default function AdminBiuFeeIndex({
               Marketplace Printify/org @ {printifyOrgPct}% on $60 of lines → ${((60 * printifyOrgPct) / 100).toFixed(2)}; merchant/pool @ {merchantPoolPct}%
               on $40 → ${((40 * merchantPoolPct) / 100).toFixed(2)} (total ${((60 * printifyOrgPct) / 100 + (40 * merchantPoolPct) / 100).toFixed(2)}).
             </p>
+            <p>
+              Connection Hub course @ {coursePct}% → ${((100 * coursePct) / 100).toFixed(2)} platform fee on a $100 listing fee.
+            </p>
+            <p>
+              Connection Hub meetup @ {eventPct}% → ${((100 * eventPct) / 100).toFixed(2)} platform fee on a $100 registration fee.
+            </p>
           </CardContent>
         </Card>
 
         <form onSubmit={handleSubmit} className="w-full max-w-xl space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Connection Hub — Courses</CardTitle>
+              <CardDescription>
+                Learning, companion, and earning listings. Added on top of the listing fee at checkout; not refunded if the host cancels.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="course_platform_fee_percentage">Percent (%)</Label>
+                <Input
+                  id="course_platform_fee_percentage"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  value={data.course_platform_fee_percentage}
+                  onChange={(e) => setData("course_platform_fee_percentage", e.target.value)}
+                  className="font-mono max-w-xs"
+                />
+                {errors.course_platform_fee_percentage && (
+                  <p className="text-sm text-red-600">{errors.course_platform_fee_percentage}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Connection Hub — Meetups / events</CardTitle>
+              <CardDescription>
+                Events hub registrations. Added on top of the registration fee; withheld from BP refunds when the host cancels.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="event_platform_fee_percentage">Percent (%)</Label>
+                <Input
+                  id="event_platform_fee_percentage"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  value={data.event_platform_fee_percentage}
+                  onChange={(e) => setData("event_platform_fee_percentage", e.target.value)}
+                  className="font-mono max-w-xs"
+                />
+                {errors.event_platform_fee_percentage && (
+                  <p className="text-sm text-red-600">{errors.event_platform_fee_percentage}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Marketplace — Printify &amp; organization goods</CardTitle>
@@ -139,8 +209,7 @@ export default function AdminBiuFeeIndex({
             <CardHeader>
               <CardTitle>Global sales platform fee</CardTitle>
               <CardDescription>
-                Service Hub orders, course or event fees, raffle ticket face totals, gift card purchases, merchant hub cash redemptions — not marketplace
-                cart lines.
+                Service Hub orders, raffle ticket face totals, merchant hub cash redemptions — not marketplace cart lines or Connection Hub listings.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

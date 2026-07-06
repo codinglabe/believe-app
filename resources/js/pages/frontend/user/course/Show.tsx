@@ -1,5 +1,5 @@
 "use client"
-import { Head, Link } from "@inertiajs/react"
+import { Head, Link, router } from "@inertiajs/react"
 import {
   Users,
   Calendar,
@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Sparkles,
   Edit,
+  Ban,
 } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
@@ -22,6 +23,8 @@ import { Badge } from "@/components/admin/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
+import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
+import { showSuccessToast } from "@/lib/toast"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
@@ -88,6 +91,8 @@ interface Course {
   formatted_duration: string
   formatted_program_length?: string | null
   formatted_format: string
+  status?: string | null
+  cancelled_at?: string | null
 }
 
 interface EnrollmentStats {
@@ -123,6 +128,9 @@ export default function AdminCoursesShow({
   recentEnrollments = [],
 }: AdminCoursesShowProps) {
   const [copied, setCopied] = useState(false)
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const isCancelled = course.status === "cancelled"
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -144,6 +152,8 @@ export default function AdminCoursesShow({
         return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       case "started":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+      case "cancelled":
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
     }
@@ -165,9 +175,21 @@ export default function AdminCoursesShow({
   const statCardClass =
     "rounded-xl border border-gray-200/90 bg-white p-4 shadow-sm transition hover:border-purple-200/60 hover:shadow-md dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-purple-900/50"
 
-  const statusLabel = status.replace(/_/g, " ")
+  const statusLabel = isCancelled ? "cancelled" : status.replace(/_/g, " ")
+
+  const handleCancelListing = () => {
+    setIsCancelling(true)
+    router.post(route("profile.course.cancel", course.slug), {}, {
+      onSuccess: () => {
+        setCancelModalOpen(false)
+        showSuccessToast("Listing cancelled successfully.")
+      },
+      onFinish: () => setIsCancelling(false),
+    })
+  }
 
   return (
+    <>
     <ProfileLayout title="Manage listing" description={course.name}>
       <Head title={`Manage · ${course.name}`} />
 
@@ -198,7 +220,7 @@ export default function AdminCoursesShow({
                   {course.name}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={getStatusColor(status)}>{statusLabel}</Badge>
+                  <Badge className={getStatusColor(isCancelled ? "cancelled" : status)}>{statusLabel}</Badge>
                   {course.type ? (
                     <Badge variant="secondary" className="font-normal">
                       {connectionHubTypeLabel(course.type as ConnectionHubType)}
@@ -223,6 +245,16 @@ export default function AdminCoursesShow({
                   Edit listing
                 </Button>
               </Link>
+              {!isCancelled && (
+                <Button
+                  variant="outline"
+                  className="gap-2 border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-200"
+                  onClick={() => setCancelModalOpen(true)}
+                >
+                  <Ban className="h-4 w-4" />
+                  Cancel listing
+                </Button>
+              )}
               <Link href={`/courses/${course.slug}`} target="_blank" rel="noreferrer">
                 <Button variant="outline" className="gap-2 border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-900/50">
                   <ExternalLink className="h-4 w-4" />
@@ -664,5 +696,14 @@ export default function AdminCoursesShow({
         </div>
       </div>
     </ProfileLayout>
+      <DeleteConfirmModal
+        isOpen={cancelModalOpen}
+        onClose={() => setCancelModalOpen(false)}
+        onConfirm={handleCancelListing}
+        title="Cancel listing"
+        message={`Cancel "${course.name}"? Meeting links will be disabled and enrolled supporters will receive BP refunds minus platform fees.`}
+        isLoading={isCancelling}
+      />
+    </>
   )
 }

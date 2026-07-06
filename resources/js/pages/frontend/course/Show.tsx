@@ -662,22 +662,27 @@ export default function FrontendCourseShow({
                         <Button disabled className="h-11 w-full" size="lg" variant="secondary">
                           {status === "full" && (!isEventsHubType(course.type) ? "Listing full" : "Meetup full")}
                           {status === "started" && (!isEventsHubType(course.type) ? "Already started" : "Already started")}
+                          {status === "cancelled" && "Cancelled by host"}
                           {status === "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment unavailable" : "Registration unavailable")}
                           {status !== "full" &&
                             status !== "started" &&
+                            status !== "cancelled" &&
                             status !== "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment closed" : "Registration closed")}
                         </Button>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {status === "full" && "No spots available."}
                           {status === "started" && (!isEventsHubType(course.type) ? "This listing has already started." : "This meetup has already started.")}
+                          {status === "cancelled" &&
+                            "This listing was cancelled by the host. Meeting access is disabled. Paid enrollments were refunded in Believe Points (platform fees are not refunded)."}
                           {status === "unavailable" &&
                             (!isEventsHubType(course.type)
                               ? "You can't enroll in your own listing from this view."
                               : "You can't register for your own meetup from this view.")}
                           {status !== "full" &&
                             status !== "started" &&
+                            status !== "cancelled" &&
                             status !== "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment is no longer open." : "Registration is no longer open.")}
                         </p>

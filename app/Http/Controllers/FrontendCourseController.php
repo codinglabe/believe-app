@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
+use App\Services\CourseCancellationService;
 use App\Support\ConnectionHubType;
 use App\Support\SessionDurationMinutes;
 use App\Services\SupporterPrimaryOrganizationService;
@@ -40,6 +41,7 @@ class FrontendCourseController extends BaseController
         }
 
         $courses = Course::query()
+            ->active()
             ->with(['topic', 'organization.organization', 'creator'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -715,6 +717,10 @@ class FrontendCourseController extends BaseController
     {
         $this->assertCanViewHostedCourse($course);
 
+        if ($course->isCancelled()) {
+            return redirect()->back()->with('error', 'Cancelled listings cannot be edited.');
+        }
+
         $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
         $typeLabelCapital = ConnectionHubType::label($type);
         $typeLabel = strtolower($typeLabelCapital);
@@ -1062,6 +1068,29 @@ class FrontendCourseController extends BaseController
         $course->primaryActionCategories()->sync(
             array_values(array_unique(array_filter(array_map('intval', $ids))))
         );
+    }
+
+    /**
+     * Cancel a hosted listing (host only). Refunds enrolled supporters' BP minus platform fee.
+     */
+    public function cancel(Course $course)
+    {
+        $this->assertCanViewHostedCourse($course);
+
+        if ($course->isCancelled()) {
+            return redirect()->back()->with('error', 'This listing is already cancelled.');
+        }
+
+        try {
+            app(CourseCancellationService::class)->cancelByHost($course, Auth::user());
+
+            return redirect()->route('profile.course.index')
+                ->with('success', 'Listing cancelled. Meeting links are disabled and enrolled supporters were refunded Believe Points (platform fees are not refunded).');
+        } catch (\Exception $e) {
+            Log::error('Failed to cancel Connection Hub listing: '.$e->getMessage());
+
+            return redirect()->back()->with('error', 'Failed to cancel listing. Please try again.');
+        }
     }
 
     /**

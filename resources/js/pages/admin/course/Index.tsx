@@ -82,6 +82,8 @@ interface Course {
   formatted_duration: string
   formatted_program_length?: string | null
   formatted_format: string
+  status?: string | null
+  cancelled_at?: string | null
 }
 
 interface LaravelPagination<T> {
@@ -183,6 +185,16 @@ export default function CoursesIndex({
     message: "",
   })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [cancelModal, setCancelModal] = useState<{
+    isOpen: boolean
+    slug: string | null
+    name: string
+  }>({
+    isOpen: false,
+    slug: null,
+    name: "",
+  })
+  const [isCancelling, setIsCancelling] = useState(false)
 
   // Auto-filter with debounce
   useEffect(() => {
@@ -243,6 +255,30 @@ export default function CoursesIndex({
       id: slug,
       title: "Delete Course/Event",
       message: `Are you sure you want to delete the course/event "${courseName}"? This action cannot be undone and will affect all enrolled students.`,
+    })
+  }
+
+  const openCancelModal = (slug: string, courseName: string) => {
+    setCancelModal({
+      isOpen: true,
+      slug,
+      name: courseName,
+    })
+  }
+
+  const handleCancelConfirm = () => {
+    if (!cancelModal.slug) return
+
+    setIsCancelling(true)
+    router.post(route("admin.courses.cancel", cancelModal.slug), {}, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setCancelModal({ isOpen: false, slug: null, name: "" })
+        showSuccessToast("Listing cancelled. Enrolled supporters were refunded the course price (platform fees are not refunded).")
+      },
+      onFinish: () => {
+        setIsCancelling(false)
+      },
     })
   }
 
@@ -588,6 +624,7 @@ export default function CoursesIndex({
                   <option value="almost_full">Almost Full</option>
                   <option value="full">Full</option>
                   <option value="started">Started</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
             </div>
@@ -710,7 +747,20 @@ export default function CoursesIndex({
                                 </Link>
                               </PermissionButton>
                             )}
-                            {!isPlatformAdmin && course.enrolled === 0 && (
+                            {!isPlatformAdmin && course.status !== "cancelled" && (
+                              <PermissionButton permission="course.update">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-amber-600 hover:text-amber-700"
+                                  title="Cancel listing"
+                                  onClick={() => openCancelModal(course.slug, course.name)}
+                                >
+                                  <Ban className="h-4 w-4" />
+                                </Button>
+                              </PermissionButton>
+                            )}
+                            {!isPlatformAdmin && course.enrolled === 0 && course.status !== "cancelled" && (
                               <PermissionButton permission="course.delete">
                                 <Button
                                   variant="ghost"
@@ -837,6 +887,15 @@ export default function CoursesIndex({
         title={deleteModal.title}
         message={deleteModal.message}
         isLoading={isDeleting}
+      />
+
+      <DeleteConfirmModal
+        isOpen={cancelModal.isOpen}
+        onClose={() => setCancelModal({ isOpen: false, slug: null, name: "" })}
+        onConfirm={handleCancelConfirm}
+        title="Cancel listing"
+        message={`Cancel "${cancelModal.name}"? Meeting links will be disabled and enrolled supporters will receive a Believe Points refund for the course price only (platform fees are not refunded). This cannot be undone.`}
+        isLoading={isCancelling}
       />
     </AppLayout>
   )

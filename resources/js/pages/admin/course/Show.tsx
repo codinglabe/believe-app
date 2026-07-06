@@ -1,5 +1,5 @@
 "use client"
-import { Head, Link, usePage } from "@inertiajs/react"
+import { Head, Link, router, usePage } from "@inertiajs/react"
 import {
   ArrowLeft,
   Users,
@@ -19,6 +19,7 @@ import {
   Image as ImageIcon,
   Hash,
   FileText,
+  Ban,
 } from "lucide-react"
 import type { ConnectionHubType } from "@/lib/connection-hub-type"
 import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
@@ -29,6 +30,8 @@ import { Progress } from "@/components/ui/progress"
 import AppLayout from "@/layouts/app-layout"
 import { useState } from "react"
 import type { Auth } from "@/types"
+import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
+import { showSuccessToast } from "@/lib/toast"
 
 interface Topic {
   id: number
@@ -98,6 +101,8 @@ interface Course {
   formatted_duration: string
   formatted_program_length?: string | null
   formatted_format: string
+  status?: string | null
+  cancelled_at?: string | null
 }
 
 interface EnrollmentStats {
@@ -118,6 +123,9 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
   const isPlatformAdmin = auth.user.role === "admin"
   const canManageListing = !isPlatformAdmin
   const [copied, setCopied] = useState(false)
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const isCancelled = course.status === "cancelled" || status === "cancelled"
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -139,6 +147,8 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
         return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       case "started":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+      case "cancelled":
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
     }
@@ -155,6 +165,19 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
       default:
         return <Globe className="w-5 h-5 text-gray-500" />
     }
+  }
+
+  const statusLabel = isCancelled ? "cancelled" : status.replace(/_/g, " ")
+
+  const handleCancelListing = () => {
+    setIsCancelling(true)
+    router.post(route("admin.courses.cancel", course.slug), {}, {
+      onSuccess: () => {
+        setCancelModalOpen(false)
+        showSuccessToast("Listing cancelled. Enrolled supporters were refunded the course price (platform fees are not refunded).")
+      },
+      onFinish: () => setIsCancelling(false),
+    })
   }
 
   return (
@@ -197,6 +220,16 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                 <Button>Edit {connectionHubTypeLabel(course.type)}</Button>
               </Link>
             )}
+            {canManageListing && !isCancelled && (
+              <Button
+                variant="outline"
+                className="border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-200"
+                onClick={() => setCancelModalOpen(true)}
+              >
+                <Ban className="mr-2 h-4 w-4" />
+                Cancel listing
+              </Button>
+            )}
             <Link href={`/courses/${course.slug}`} target="_blank">
               <Button variant="outline">View Public</Button>
             </Link>
@@ -216,7 +249,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                       <Badge className="bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
                         {connectionHubTypeLabel(course.type)}
                       </Badge>
-                      <Badge className={getStatusColor(status)}>{status.replace("_", " ")}</Badge>
+                      <Badge className={getStatusColor(isCancelled ? "cancelled" : status)}>{statusLabel}</Badge>
                       {!isEventsHubType(course.type) && course.topic && (
                         <Badge variant="outline">{course.topic.name}</Badge>
                       )}
@@ -640,6 +673,15 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
           </div>
         </div>
       </div>
+
+      <DeleteConfirmModal
+        isOpen={cancelModalOpen}
+        onClose={() => setCancelModalOpen(false)}
+        onConfirm={handleCancelListing}
+        title="Cancel listing"
+        message={`Cancel "${course.name}"? Meeting links will be disabled and enrolled supporters will receive a Believe Points refund for the course price only (platform fees are not refunded).`}
+        isLoading={isCancelling}
+      />
     </AppLayout>
   )
 }

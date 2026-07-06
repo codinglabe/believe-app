@@ -2079,6 +2079,7 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/raffle-tickets', [UserProfileController::class, 'raffleTickets'])->name('profile.raffle-tickets.index');
 
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
+    Route::post('/profile/course/{course:slug}/cancel', [FrontendCourseController::class, 'cancel'])->name('profile.course.cancel')->middleware('permission:course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
@@ -2092,6 +2093,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/{course:slug}/enrollments', [CourseController::class, 'adminEnrollments'])->name('enrollments')->middleware('permission:course.read');
         Route::get('/{course:slug}/edit', [CourseController::class, 'edit'])->name('edit')->middleware('permission:course.edit');
         Route::put('/{course:slug}', [CourseController::class, 'update'])->name('update')->middleware('permission:course.update');
+        Route::post('/{course:slug}/cancel', [CourseController::class, 'cancel'])->name('cancel')->middleware('permission:course.update');
         Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy')->middleware('permission:course.delete');
     });
 

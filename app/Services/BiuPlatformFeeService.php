@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\AdminSetting;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Course;
 use App\Models\Product;
+use App\Support\ConnectionHubType;
 
 /**
  * BIU platform fee % for sales modules that charge buyers (marketplace, service hub, courses, raffles, merchant hub).
@@ -37,6 +39,12 @@ final class BiuPlatformFeeService
 
     /** @deprecated Fallback only — Service Hub previously used this key */
     public const SETTING_KEY_SERVICE_HUB_LEGACY = 'service_hub_platform_fee_percentage';
+
+    /** Connection Hub learning / companion / earning listings (not meetups). */
+    public const SETTING_KEY_COURSE = 'biu_course_platform_fee_percentage';
+
+    /** Connection Hub meetups / events listings. */
+    public const SETTING_KEY_EVENT = 'biu_event_platform_fee_percentage';
 
     public static function getSalesPlatformFeePercentage(): float
     {
@@ -74,6 +82,46 @@ final class BiuPlatformFeeService
         }
 
         return self::DEFAULT_MARKETPLACE_MERCHANT_POOL_FEE_PERCENTAGE;
+    }
+
+    public static function getCoursePlatformFeePercentage(): float
+    {
+        $v = AdminSetting::get(self::SETTING_KEY_COURSE);
+        if ($v !== null && $v !== '') {
+            return max(0.0, min(100.0, (float) $v));
+        }
+
+        return self::getSalesPlatformFeePercentage();
+    }
+
+    public static function getEventPlatformFeePercentage(): float
+    {
+        $v = AdminSetting::get(self::SETTING_KEY_EVENT);
+        if ($v !== null && $v !== '') {
+            return max(0.0, min(100.0, (float) $v));
+        }
+
+        return self::getSalesPlatformFeePercentage();
+    }
+
+    public static function getConnectionHubPlatformFeePercentage(Course|string|null $courseOrType): float
+    {
+        $type = $courseOrType instanceof Course
+            ? (string) ($courseOrType->type ?? '')
+            : (string) ($courseOrType ?? '');
+
+        if (ConnectionHubType::usesEventSemantics($type)) {
+            return self::getEventPlatformFeePercentage();
+        }
+
+        return self::getCoursePlatformFeePercentage();
+    }
+
+    public static function connectionHubPlatformFeeFromAmount(Course|string|null $courseOrType, float $saleBaseUsd): float
+    {
+        $pct = self::getConnectionHubPlatformFeePercentage($courseOrType);
+
+        return round(max(0.0, $saleBaseUsd) * ($pct / 100), 2);
     }
 
     /**
@@ -229,6 +277,31 @@ final class BiuPlatformFeeService
             'biu_fee' => $pf,
             'believe_biu_fee' => $pf,
             'platform_fee' => $pf,
+        ];
+    }
+
+    /**
+     * Ledger slice for Connection Hub course / event enrollments.
+     *
+     * @return array<string, float|string>
+     */
+    public static function connectionHubLedgerMetaSlice(Course $course, float $saleBaseUsd): array
+    {
+        $pf = self::connectionHubPlatformFeeFromAmount($course, $saleBaseUsd);
+        $g = round(max(0.0, $saleBaseUsd), 2);
+        $pct = self::getConnectionHubPlatformFeePercentage($course);
+
+        return [
+            'gross_amount' => $g,
+            'subtotal' => $g,
+            'amount_gross' => $g,
+            'biu_fee' => $pf,
+            'believe_biu_fee' => $pf,
+            'platform_fee' => $pf,
+            'platform_fee_percentage' => $pct,
+            'connection_hub_fee_module' => ConnectionHubType::usesEventSemantics((string) ($course->type ?? ''))
+                ? 'event'
+                : 'course',
         ];
     }
 

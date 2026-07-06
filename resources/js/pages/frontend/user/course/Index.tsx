@@ -104,6 +104,8 @@ interface Course {
   formatted_duration: string
   formatted_program_length?: string | null
   formatted_format: string
+  status?: string | null
+  cancelled_at?: string | null
 }
 
 interface LaravelPagination<T> {
@@ -190,7 +192,17 @@ export default function CoursesIndex({
     title: "",
     message: "",
   })
+  const [cancelModal, setCancelModal] = useState<{
+    isOpen: boolean
+    slug: string | null
+    name: string
+  }>({
+    isOpen: false,
+    slug: null,
+    name: "",
+  })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   // Auto-filter with debounce
   useEffect(() => {
@@ -256,7 +268,25 @@ export default function CoursesIndex({
       isOpen: true,
       id: slug,
       title: "Delete listing",
-      message: `Are you sure you want to delete "${courseName}"? This action cannot be undone and will affect all enrolled participants.`,
+      message: `Are you sure you want to delete "${courseName}"? This action cannot be undone.`,
+    })
+  }
+
+  const openCancelModal = (slug: string, courseName: string) => {
+    setCancelModal({ isOpen: true, slug, name: courseName })
+  }
+
+  const handleCancelConfirm = () => {
+    if (!cancelModal.slug) return
+
+    setIsCancelling(true)
+    router.post(route("profile.course.cancel", cancelModal.slug), {}, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setCancelModal({ isOpen: false, slug: null, name: "" })
+        showSuccessToast("Listing cancelled. Enrolled supporters were refunded BP (platform fees are not refunded).")
+      },
+      onFinish: () => setIsCancelling(false),
     })
   }
 
@@ -739,7 +769,17 @@ export default function CoursesIndex({
                                   Edit
                                 </Button>
                               </Link>
-                              {course.enrolled === 0 && (
+                              {course.status !== "cancelled" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:hover:bg-amber-950/40"
+                                  onClick={() => openCancelModal(course.slug, course.name)}
+                                >
+                                  <Ban className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {course.enrolled === 0 && course.status !== "cancelled" && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -924,6 +964,15 @@ export default function CoursesIndex({
         title={deleteModal.title}
         message={deleteModal.message}
         isLoading={isDeleting}
+      />
+
+      <DeleteConfirmModal
+        isOpen={cancelModal.isOpen}
+        onClose={() => setCancelModal({ isOpen: false, slug: null, name: "" })}
+        onConfirm={handleCancelConfirm}
+        title="Cancel listing"
+        message={`Cancel "${cancelModal.name}"? Meeting links will be disabled and enrolled supporters will receive a Believe Points refund (platform fees are not refunded). This cannot be undone.`}
+        isLoading={isCancelling}
       />
     </ProfileLayout>
   )
