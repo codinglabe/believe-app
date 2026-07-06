@@ -36,7 +36,7 @@
         <!-- PWA Capabilities -->
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-        <meta name="apple-mobile-web-app-title" content="501c3ers">
+        <meta name="apple-mobile-web-app-title" content="Believe In Unity">
 
         {{-- Inline script to detect system dark mode preference and apply it immediately --}}
         <script>
@@ -93,6 +93,19 @@
         @inertiaHead
     </head>
     <body class="font-sans antialiased">
+        @unless($isLivestock || $isMerchant)
+            {{-- Visible without JavaScript — Google OAuth homepage verification reads raw HTML --}}
+            <noscript>
+                <div style="padding: 12px 16px; text-align: center; font-size: 14px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb;">
+                    <strong>Believe In Unity</strong> —
+                    <a href="{{ url('/privacy-policy') }}">Privacy Policy</a>
+                    ·
+                    <a href="{{ url('/terms-of-service') }}">Terms of Service</a>
+                    ·
+                    <a href="{{ url('/data-deletion') }}">Data Deletion</a>
+                </div>
+            </noscript>
+        @endunless
         @inertia
     </body>
 </html>
