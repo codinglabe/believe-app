@@ -19,12 +19,9 @@ class HomeController extends Controller
             ! is_livestock_domain()
             && ! request_is_merchant_portal($request)
             && request_is_mobile_phone_client($request)
+            && $request->user()
         ) {
-            if ($request->user()) {
-                return redirect()->to(AuthRedirectHelper::defaultRedirectForUser($request->user()));
-            }
-
-            return redirect()->route('login');
+            return redirect()->to(AuthRedirectHelper::defaultRedirectForUser($request->user()));
         }
 
         return Inertia::render('frontend/home', [

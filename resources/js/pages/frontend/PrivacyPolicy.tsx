@@ -27,9 +27,13 @@ const PrivacyPolicy = () => {
                                 Introduction
                             </h2>
                             <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                                At 501c3ers, we are committed to protecting your privacy and ensuring
+                                At Believe In Unity (501c3ers), we are committed to protecting your privacy and ensuring
                                 the security of your personal information. This Privacy Policy explains
-                                how we collect, use, store, and protect your data when you use our services.
+                                how we collect, use, store, and protect your data when you use our services at{" "}
+                                <a href="https://believeinunity.org" className="text-blue-600 hover:underline dark:text-blue-400">
+                                    believeinunity.org
+                                </a>
+                                .
                             </p>
                         </section>
 
@@ -45,6 +49,7 @@ const PrivacyPolicy = () => {
                                     <li>Name and contact information</li>
                                     <li>Organization details (if applicable)</li>
                                     <li>Facebook Page connection and related data (only if you connect a page—e.g. page list, post and schedule actions, engagement metrics)</li>
+                                    <li>YouTube / Google account connection data (only if you connect YouTube—e.g. channel metadata, OAuth tokens, uploaded video references)</li>
                                     <li>IP addresses and browser information</li>
                                     <li>Usage data and analytics</li>
                                 </ul>
@@ -140,6 +145,41 @@ const PrivacyPolicy = () => {
                             </div>
                             <p className="text-gray-600 dark:text-gray-300 text-sm mt-4">
                                 You can disconnect your Facebook Page at any time from your account or integration settings. After disconnection, we stop accessing that page and do not post or read engagement on your behalf.
+                            </p>
+                        </section>
+
+                        {/* YouTube / Google Connection */}
+                        <section className="mb-8">
+                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+                                Connecting Your YouTube Channel (Google OAuth)
+                            </h2>
+                            <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+                                If you choose to connect a YouTube channel, we use Google OAuth to access your channel only as described below. We do not sell Google user data. We use it solely to provide Believe In Unity features you request.
+                            </p>
+                            <div className="space-y-4">
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        View channel and videos (youtube.readonly)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We read your YouTube channel name, channel URL, and public video metadata so your content can appear in Unity Videos and related dashboards. We do not modify or delete your existing YouTube content with this scope.
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        Upload recordings (youtube.upload)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        When you explicitly publish a Unity Meet or livestream recording to YouTube, we upload that video to your connected channel using the title, description, and privacy setting you choose. We never upload without your action in the app.
+                                    </p>
+                                </div>
+                            </div>
+                            <p className="text-gray-600 dark:text-gray-300 text-sm mt-4">
+                                OAuth tokens are stored securely and used only to refresh access for these features. You can disconnect YouTube at any time under Integrations → YouTube or Profile → Integrations. We revoke tokens on disconnect and stop accessing your channel. See our{" "}
+                                <a href="/data-deletion" className="text-blue-600 hover:underline dark:text-blue-400">
+                                    data deletion instructions
+                                </a>{" "}
+                                for full steps.
                             </p>
                         </section>
 

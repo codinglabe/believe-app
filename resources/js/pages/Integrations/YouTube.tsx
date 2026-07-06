@@ -206,6 +206,38 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground space-y-3">
+                <p className="font-medium text-foreground">Before you connect</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    <strong>youtube.readonly</strong> — view your channel and public video metadata for Unity Videos.
+                  </li>
+                  <li>
+                    <strong>youtube.upload</strong> — upload recordings only when you choose to publish from Unity Meet or livestreams.
+                  </li>
+                </ul>
+                <p>
+                  We use Google data only to provide these features. See our{" "}
+                  <a
+                    href="/privacy-policy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Privacy Policy
+                  </a>{" "}
+                  and{" "}
+                  <a
+                    href="/data-deletion"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    data deletion instructions
+                  </a>
+                  .
+                </p>
+              </div>
               <Button
                 asChild
                 size="lg"

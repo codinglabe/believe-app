@@ -67,7 +67,54 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                2. Delete your account and other personal data
+                                2. Delete YouTube / Google connection data (in the app)
+                            </h2>
+                            <p className="mb-4 text-gray-600 dark:text-gray-300">
+                                If you connected a YouTube channel with Google OAuth, disconnecting removes stored
+                                OAuth tokens, channel URL, and upload metadata we hold for that connection.
+                            </p>
+                            <ol className="list-decimal space-y-3 pl-6 text-gray-600 dark:text-gray-300">
+                                <li>
+                                    Log in to your organization or supporter account at{' '}
+                                    <a
+                                        href="https://believeinunity.org"
+                                        className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                        believeinunity.org
+                                    </a>
+                                    .
+                                </li>
+                                <li>
+                                    Go to <strong>Integrations → YouTube</strong> (
+                                    <code className="rounded bg-gray-100 px-1 text-sm dark:bg-gray-700">
+                                        /integrations/youtube
+                                    </code>
+                                    ) or <strong>Profile → Integrations</strong> for supporters.
+                                </li>
+                                <li>
+                                    Click <strong>Disconnect</strong> on your connected channel.
+                                </li>
+                                <li>
+                                    We revoke Google OAuth access and delete stored tokens from our database.
+                                </li>
+                            </ol>
+                            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                You can also remove our app&apos;s access in your Google Account:{' '}
+                                <a
+                                    href="https://myaccount.google.com/permissions"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                    myaccount.google.com/permissions
+                                </a>
+                                . Videos already published to YouTube remain on YouTube under your Google account.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
+                                3. Delete your account and other personal data
                             </h2>
                             <p className="mb-4 text-gray-600 dark:text-gray-300">
                                 To delete your user account, profile, organization data, or other information
@@ -97,11 +144,12 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                3. What we delete
+                                4. What we delete
                             </h2>
                             <ul className="list-disc space-y-2 pl-6 text-gray-600 dark:text-gray-300">
                                 <li>Account profile information (name, email, phone where stored)</li>
                                 <li>Facebook Page connection tokens and Page metadata</li>
+                                <li>YouTube / Google OAuth tokens and connected channel metadata</li>
                                 <li>Posts created or scheduled through our app for connected Pages</li>
                                 <li>Engagement metrics we cached from Facebook for your Pages</li>
                                 <li>Other data linked to your account, unless we must retain it for legal obligations</li>
@@ -110,7 +158,7 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                4. Contact
+                                5. Contact
                             </h2>
                             <div className="rounded-lg bg-blue-50 p-6 dark:bg-blue-900/20">
                                 <p className="text-gray-700 dark:text-gray-300">
