@@ -25,6 +25,7 @@ import { LevelUpScenery } from "./level-up-scenery"
 import { fadeUp, springTransition, staggerContainer } from "./level-up-motion"
 import { QuizResultsPanel, type QuizResultPayload } from "./QuizResultsPanel"
 import { PlayQuizBackground, PlayTimerPill } from "./play-quiz-chrome"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 import {
   brandLogoGradientText,
   challengeHeroTitle,
@@ -405,6 +406,7 @@ export default function LevelUpPlay() {
                     >
                       Start
                     </Button>
+                    <BrpParticipationHint module="ai_learning" className="mt-4 justify-center text-center" />
                   </motion.div>
                 </motion.div>
               </section>

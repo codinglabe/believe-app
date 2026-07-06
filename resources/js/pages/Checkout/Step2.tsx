@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo } from "react"
 import { usePage } from "@inertiajs/react"
 import { showErrorToast, showInfoToast, showSuccessToast } from "../../lib/toast"
 import { Coins, CreditCard } from "lucide-react"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 
 interface CartItem {
   id: number
@@ -767,6 +768,13 @@ function Step2Form({
             )}
           </div>
           )}
+
+          <BrpParticipationHint
+            module="marketplace_purchase"
+            variant="alert"
+            className="mb-4"
+            message="Complete this purchase to earn BRP (Believe Reward Points) based on your membership tier."
+          />
 
           <div className="flex gap-4">
             <button

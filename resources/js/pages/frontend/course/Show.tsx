@@ -24,6 +24,9 @@ import {
   Sparkles,
   ChevronRight,
   Download,
+  Video,
+  Copy,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +38,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { usePage, Link, router } from "@inertiajs/react"
 import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 import type { ConnectionHubType } from "@/lib/connection-hub-type"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
+import { courseEnrollmentBrpModule } from "@/lib/brp-participation"
 
 interface Topic {
   id: number
@@ -129,6 +134,7 @@ interface FrontendCourseShowProps {
   enrollmentStats: EnrollmentStats
   status: string
   canEnroll: boolean
+  meetingLink?: string | null
 }
 
 function formatIconForFormat(format: string) {
@@ -150,8 +156,15 @@ export default function FrontendCourseShow({
   enrollmentStats,
   status,
   canEnroll,
+  meetingLink,
 }: FrontendCourseShowProps) {
   const { auth } = usePage().props as { auth?: { user?: unknown } }
+  const enrollmentBrpModule = courseEnrollmentBrpModule(course)
+
+  const copyMeetingLink = () => {
+    if (!meetingLink) return
+    navigator.clipboard.writeText(meetingLink)
+  }
 
   const handleEnroll = () => {
     if (!auth?.user) {
@@ -578,9 +591,45 @@ export default function FrontendCourseShow({
                           {userEnrollment.status === "completed" &&
                             (!isEventsHubType(course.type) ? "You've completed this listing." : "Meetup completed.")}
                         </p>
+                        {meetingLink &&
+                          (course.format === "online" || course.format === "hybrid") &&
+                          ["active", "pending"].includes(userEnrollment.status) && (
+                            <div className="rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-50 to-blue-50 p-4 text-left dark:border-emerald-800 dark:from-emerald-900/20 dark:to-blue-900/20">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Video className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                                  <span className="font-medium text-emerald-800 dark:text-emerald-200">
+                                    Join meeting
+                                  </span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={copyMeetingLink}
+                                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300"
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => window.open(meetingLink, "_blank")}
+                                    className="bg-emerald-600 hover:bg-emerald-700"
+                                  >
+                                    <ExternalLink className="mr-1 h-4 w-4" />
+                                    Join now
+                                  </Button>
+                                </div>
+                              </div>
+                              <p className="mt-2 break-all font-mono text-xs text-emerald-700 dark:text-emerald-300">
+                                {meetingLink}
+                              </p>
+                            </div>
+                          )}
                       </div>
                     ) : canEnroll ? (
-                      !auth?.user ? (
+                      <div className="space-y-3">
+                      {!auth?.user ? (
                         <div className="space-y-2">
                           <Button
                             onClick={handleEnroll}
@@ -603,28 +652,37 @@ export default function FrontendCourseShow({
                             {course.pricing_type === "paid" ? ` · ${course.formatted_price}` : " · Free"}
                           </span>
                         </Button>
-                      )
+                      )}
+                      {enrollmentBrpModule && (
+                        <BrpParticipationHint module={enrollmentBrpModule} />
+                      )}
+                      </div>
                     ) : (
                       <div className="text-center space-y-2">
                         <Button disabled className="h-11 w-full" size="lg" variant="secondary">
                           {status === "full" && (!isEventsHubType(course.type) ? "Listing full" : "Meetup full")}
                           {status === "started" && (!isEventsHubType(course.type) ? "Already started" : "Already started")}
+                          {status === "cancelled" && "Cancelled by host"}
                           {status === "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment unavailable" : "Registration unavailable")}
                           {status !== "full" &&
                             status !== "started" &&
+                            status !== "cancelled" &&
                             status !== "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment closed" : "Registration closed")}
                         </Button>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {status === "full" && "No spots available."}
                           {status === "started" && (!isEventsHubType(course.type) ? "This listing has already started." : "This meetup has already started.")}
+                          {status === "cancelled" &&
+                            "This listing was cancelled by the host. Meeting access is disabled. Paid enrollments were refunded in Believe Points (platform fees are not refunded)."}
                           {status === "unavailable" &&
                             (!isEventsHubType(course.type)
                               ? "You can't enroll in your own listing from this view."
                               : "You can't register for your own meetup from this view.")}
                           {status !== "full" &&
                             status !== "started" &&
+                            status !== "cancelled" &&
                             status !== "unavailable" &&
                             (!isEventsHubType(course.type) ? "Enrollment is no longer open." : "Registration is no longer open.")}
                         </p>

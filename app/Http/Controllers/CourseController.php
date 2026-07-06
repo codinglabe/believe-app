@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\PrimaryActionCategory;
 use App\Models\EventType;
 use App\Models\Topic;
+use App\Services\CourseCancellationService;
 use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
 use App\Services\SeoService;
@@ -81,6 +82,7 @@ class CourseController extends BaseController
         }
 
         $courses = Course::query()
+            ->active()
             ->with([
                 'topic',
                 'eventType',
@@ -229,6 +231,7 @@ class CourseController extends BaseController
 
             // “Live Learning Now”: listings that have started and not ended (same window as public table “Active”).
             $liveLearning = Course::query()
+                ->active()
                 ->where('type', 'learning')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where('start_date', '<=', $today)
@@ -251,6 +254,7 @@ class CourseController extends BaseController
 
             // “Featured” learning: upcoming or in date window (same logic as events hub featured strip).
             $learningFeatured = Course::query()
+                ->active()
                 ->where('type', 'learning')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where(function ($q) use ($today) {
@@ -287,6 +291,7 @@ class CourseController extends BaseController
             $learningFeaturedCourses = $learningFeatured;
 
             $learningCourseIds = Course::query()
+                ->active()
                 ->where('type', 'learning')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->pluck('id');
@@ -308,6 +313,7 @@ class CourseController extends BaseController
                 $learningStats = [
                     'active_learners' => $activeLearners,
                     'courses_available' => (int) Course::query()
+                        ->active()
                         ->where('type', 'learning')
                         ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                         ->count(),
@@ -338,6 +344,7 @@ class CourseController extends BaseController
             $today = now()->toDateString();
 
             $companionFeatured = Course::query()
+                ->active()
                 ->where('type', 'companion')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where(function ($q) use ($today) {
@@ -374,6 +381,7 @@ class CourseController extends BaseController
             $companionFeaturedCourses = $companionFeatured;
 
             $companionLive = Course::query()
+                ->active()
                 ->where('type', 'companion')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where('start_date', '<=', $today)
@@ -394,6 +402,7 @@ class CourseController extends BaseController
             $companionLiveCourses = $companionLive;
 
             $companionCourseIds = Course::query()
+                ->active()
                 ->where('type', 'companion')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->pluck('id');
@@ -444,6 +453,7 @@ class CourseController extends BaseController
             // “Featured”: upcoming or still in its date window. If none match (e.g. every event has ended),
             // fall back to the most recent event listings so the hub isn’t empty when data exists.
             $featured = Course::query()
+                ->active()
                 ->where('type', 'events')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where(function ($q) use ($today) {
@@ -480,6 +490,7 @@ class CourseController extends BaseController
             $eventsFeaturedCourses = $featured;
 
             $live = Course::query()
+                ->active()
                 ->where('type', 'events')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->where('start_date', '<=', $today)
@@ -500,6 +511,7 @@ class CourseController extends BaseController
             $eventsLiveCourses = $live;
 
             $eventCourseIds = Course::query()
+                ->active()
                 ->where('type', 'events')
                 ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                 ->pluck('id');
@@ -513,6 +525,7 @@ class CourseController extends BaseController
                 ];
             } else {
                 $upcomingEvents = (int) Course::query()
+                    ->active()
                     ->where('type', 'events')
                     ->when($listingOrgUserId !== null, fn ($q) => $q->where('organization_id', $listingOrgUserId))
                     ->where('start_date', '>', $today)
@@ -580,13 +593,14 @@ class CourseController extends BaseController
         ]);
 
         $user = Auth::user();
+        $isPlatformAdmin = $this->isPlatformAdmin($user);
 
         $query = Course::query()
             ->with(['topic', 'eventType', 'organization', 'creator'])
             ->withCount(['enrollmentsCount as enrolled_count']);
 
-        // ✅ If user is not admin → restrict by organization
-        if ($user->role !== 'admin') {
+        // Organization / supporter accounts only see their own listings.
+        if (! $isPlatformAdmin) {
             $query->where('organization_id', $user->id);
         }
 
@@ -619,34 +633,39 @@ class CourseController extends BaseController
             $query->where('type', $filters['courses_course_type']);
         }
 
-        // 🔎 Status filter
+        // 🔎 Status filter (uses live enrollment counts, not the stale courses.enrolled column)
         if (! empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
+            $enrollmentCountSql = '(SELECT COUNT(*) FROM enrollments WHERE enrollments.course_id = courses.id AND enrollments.status IN (\'active\', \'completed\', \'pending\'))';
 
             switch ($status) {
                 case 'available':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled < max_participants')
-                        ->whereRaw('(enrolled / max_participants) < 0.8');
+                        ->whereRaw("{$enrollmentCountSql} < courses.max_participants")
+                        ->whereRaw("(CASE WHEN courses.max_participants > 0 THEN ({$enrollmentCountSql} / courses.max_participants) ELSE 0 END) < 0.8");
                     break;
                 case 'almost_full':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled < max_participants')
-                        ->whereRaw('(enrolled / max_participants) >= 0.8');
+                        ->whereRaw("{$enrollmentCountSql} < courses.max_participants")
+                        ->whereRaw("(CASE WHEN courses.max_participants > 0 THEN ({$enrollmentCountSql} / courses.max_participants) ELSE 0 END) >= 0.8");
                     break;
                 case 'full':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled >= max_participants');
+                        ->whereRaw("{$enrollmentCountSql} >= courses.max_participants");
                     break;
                 case 'started':
                     $query->where('start_date', '<', $now->toDateString());
                     break;
+                case 'cancelled':
+                    $query->where('status', Course::STATUS_CANCELLED);
+                    break;
             }
         }
 
-        $courses = $query->orderBy('start_date', 'desc')
-            ->paginate(15)
+        $courses = $query->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(10)
             ->withQueryString();
 
         // Replace enrolled count with actual count from enrollments table
@@ -659,11 +678,8 @@ class CourseController extends BaseController
         $eventTypes = EventType::generalCatalogForProps();
         $companionEventTypes = EventType::companionCatalogForProps();
 
-        // ✅ Calculate statistics only for authenticated organization
-        // For organization users, use their user_id as organization_id
-        // For admin users, they should also see their own organization's data if they have one
-        $organizationId = $user->role === 'organization' ? $user->id : ($user->organization_id ?? $user->id);
-        $statistics = $this->calculateCourseStatistics($organizationId);
+        $statisticsOrganizationId = $isPlatformAdmin ? null : (int) $user->id;
+        $statistics = $this->calculateCourseStatistics($statisticsOrganizationId);
 
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
@@ -671,16 +687,17 @@ class CourseController extends BaseController
             'companionEventTypes' => $companionEventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
+            'isPlatformAdmin' => $isPlatformAdmin,
         ]);
     }
 
     /**
      * Calculate course statistics for the admin dashboard
      */
-    private function calculateCourseStatistics($organizationId)
+    private function calculateCourseStatistics(?int $organizationId = null)
     {
         $baseQuery = Course::query();
-        if ($organizationId) {
+        if ($organizationId !== null) {
             $baseQuery->where('organization_id', $organizationId);
         }
         $now = now();
@@ -1022,40 +1039,28 @@ class CourseController extends BaseController
                 : 0,
         ];
 
-        // Determine course status
-        // Combine start_date and start_time to check if course has actually started
-        // Enrollment should be available until the actual start date/time
+        // Parse start date/time for status checks and logging
         try {
-            // Extract just the date part from start_date (in case it's a datetime)
             $datePart = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
-            // Extract time part (handle both H:i and H:i:s formats)
             $timePart = $course->start_time ?? '00:00';
-            // Remove seconds if present
             if (strlen($timePart) > 5) {
                 $timePart = substr($timePart, 0, 5);
             }
-            // Combine date and time
             $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $datePart.' '.$timePart);
         } catch (\Exception $e) {
-            // Fallback: try to parse start_date as date only
             try {
                 $dateOnly = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
-                $timeOnly = substr($course->start_time ?? '00:00', 0, 5); // Get HH:mm format
+                $timeOnly = substr($course->start_time ?? '00:00', 0, 5);
                 $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $dateOnly.' '.$timeOnly);
             } catch (\Exception $e2) {
-                // Final fallback: use current time + 1 hour as default (so it's not started)
                 $startDateTime = \Carbon\Carbon::now()->addHour();
             }
         }
 
-        // Get enrollment count from enrollments table
-        $enrolledCount = Enrollment::where('course_id', $course->id)
-            ->whereIn('status', ['active', 'completed', 'pending'])
-            ->count();
-
-        // Check status - enrollment should be available until the course/event actually starts
-        // Only mark as 'started' if the start date/time has actually passed
-        if ($startDateTime->isPast()) {
+        // Determine course status
+        if ($course->isCancelled()) {
+            $status = 'cancelled';
+        } elseif ($startDateTime->isPast()) {
             $status = 'started';
         } elseif ($course->max_participants > 0 && $enrolledCount >= $course->max_participants) {
             $status = 'full';
@@ -1079,7 +1084,8 @@ class CourseController extends BaseController
         $canEnroll = ! $hasActiveEnrollment
             && $status !== 'full'
             && $status !== 'started'
-            && $status !== 'unavailable';
+            && $status !== 'unavailable'
+            && $status !== 'cancelled';
 
         // Log for debugging (remove in production)
         \Log::debug('Course Enrollment Check', [
@@ -1098,13 +1104,21 @@ class CourseController extends BaseController
         // Add enrolled count to course object for frontend display
         $course->enrolled = $enrolledCount;
 
+        $showMeetingLink = $hasActiveEnrollment
+            && ! $course->isCancelled()
+            && in_array($course->format, ['online', 'hybrid'], true);
+
+        if (! $showMeetingLink) {
+            $course->makeHidden(['meeting_link', 'host_meeting_link']);
+        }
+
         return Inertia::render('frontend/course/Show', [
             'course' => $course,
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
             'canEnroll' => $canEnroll,
-            'meetingLink' => $course->meeting_link, // Added meeting_link field
+            'meetingLink' => $showMeetingLink ? $course->meeting_link : null,
         ]);
     }
 
@@ -1114,10 +1128,7 @@ class CourseController extends BaseController
     public function adminShow(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.read');
-        // Ensure user can only view their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanViewConnectionHubCourse($course);
 
         $course->load(['topic', 'eventType', 'organization', 'creator']);
 
@@ -1137,18 +1148,7 @@ class CourseController extends BaseController
         ];
 
         // Get course status
-        $now = now();
-        $courseStart = \Carbon\Carbon::parse($course->start_date);
-
-        if ($courseStart->isPast()) {
-            $status = 'started';
-        } elseif ($enrolledCount >= $course->max_participants) {
-            $status = 'full';
-        } elseif (($enrolledCount / $course->max_participants) >= 0.8) {
-            $status = 'almost_full';
-        } else {
-            $status = 'available';
-        }
+        $status = $this->resolveConnectionHubListingStatus($course, $enrolledCount);
 
         // Get recent enrollments
         $recentEnrollments = Enrollment::where('course_id', $course->id)
@@ -1171,10 +1171,7 @@ class CourseController extends BaseController
     public function adminEnrollments(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.read');
-        // Ensure user can only view their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanViewConnectionHubCourse($course);
 
         $course->load(['topic', 'eventType', 'organization', 'creator']);
 
@@ -1210,10 +1207,7 @@ class CourseController extends BaseController
     public function edit(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.edit');
-        // Ensure user can only edit their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanManageConnectionHubCourse($course);
 
         $eventTypes = EventType::generalCatalogForProps();
         $companionEventTypes = EventType::companionCatalogForProps();
@@ -1255,10 +1249,7 @@ class CourseController extends BaseController
     public function update(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.update');
-        // Ensure user can only update their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanManageConnectionHubCourse($course);
 
         $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
         $typeLabelCapital = ConnectionHubType::label($type);
@@ -1495,14 +1486,43 @@ class CourseController extends BaseController
     }
 
     /**
+     * Cancel a hosted listing (organization host). Refunds enrolled supporters' course fee in BP; platform fees are kept.
+     */
+    public function cancel(Request $request, Course $course)
+    {
+        $this->authorizePermission($request, 'course.update');
+        $this->assertCanManageConnectionHubCourse($course);
+
+        if ($course->isCancelled()) {
+            return redirect()->back()->with('error', 'This listing is already cancelled.');
+        }
+
+        try {
+            app(CourseCancellationService::class)->cancelByHost($course, Auth::user());
+
+            return redirect()->route('admin.courses.index')
+                ->with('success', 'Listing cancelled. Meeting links are disabled and enrolled supporters were refunded the course price in Believe Points (platform fees are not refunded).');
+        } catch (\Exception $e) {
+            Log::error('Failed to cancel Connection Hub listing: '.$e->getMessage());
+
+            return redirect()->back()->with('error', 'Failed to cancel listing. Please try again.');
+        }
+    }
+
+    /**
      * Remove the specified course from storage.
      */
     public function destroy(Request $request, Course $course)
     {
         $this->authorizePermission($request, 'course.delete');
-        // Ensure user can only delete their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
+        $this->assertCanManageConnectionHubCourse($course);
+
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
+        if ($enrolledCount > 0) {
+            return redirect()->back()->with('error', 'Cannot delete a listing with enrolled participants.');
         }
 
         try {
@@ -1523,6 +1543,76 @@ class CourseController extends BaseController
             Log::error('Error deleting course: '.$e->getMessage());
 
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
+        }
+    }
+
+    protected function resolveConnectionHubListingStatus(Course $course, int $enrolledCount): string
+    {
+        if ($course->isCancelled()) {
+            return 'cancelled';
+        }
+
+        $courseStart = \Carbon\Carbon::parse($course->start_date);
+
+        if ($courseStart->isPast()) {
+            return 'started';
+        }
+
+        if ($enrolledCount >= $course->max_participants) {
+            return 'full';
+        }
+
+        if ($course->max_participants > 0 && ($enrolledCount / $course->max_participants) >= 0.8) {
+            return 'almost_full';
+        }
+
+        return 'available';
+    }
+
+    protected function isPlatformAdmin(?\App\Models\User $user = null): bool
+    {
+        $user ??= Auth::user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasRole('admin') || (string) $user->role === 'admin';
+    }
+
+    protected function canViewConnectionHubCourse(Course $course): bool
+    {
+        $user = Auth::user();
+
+        if ($this->isPlatformAdmin($user)) {
+            return true;
+        }
+
+        return (int) $course->organization_id === (int) $user->id;
+    }
+
+    protected function canManageConnectionHubCourse(Course $course): bool
+    {
+        $user = Auth::user();
+
+        if ($this->isPlatformAdmin($user)) {
+            return false;
+        }
+
+        return (int) $course->organization_id === (int) $user->id;
+    }
+
+    protected function assertCanViewConnectionHubCourse(Course $course): void
+    {
+        if (! $this->canViewConnectionHubCourse($course)) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+    }
+
+    protected function assertCanManageConnectionHubCourse(Course $course): void
+    {
+        if (! $this->canManageConnectionHubCourse($course)) {
+            abort(403, 'Unauthorized access to this course.');
         }
     }
 

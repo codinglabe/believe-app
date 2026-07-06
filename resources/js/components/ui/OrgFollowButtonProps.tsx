@@ -5,6 +5,9 @@ import toast from "react-hot-toast"
 import { router } from "@inertiajs/react"
 import { UserPlus, UserCheck, Bell, BellOff, ChevronDown } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
+import { useBrpParticipation } from "@/hooks/use-brp-participation"
+import { formatBrpPoints } from "@/lib/brp-participation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +50,8 @@ export default function OrgFollowButton({
   allianceHubOwner = false,
   careAlliancePublicId = null,
 }: OrgFollowButtonProps) {
+  const followBrp = useBrpParticipation("organization_follow")
+
   if (isOwnOrganization) return null
 
   if (allianceHubOwner) {
@@ -286,19 +291,28 @@ export default function OrgFollowButton({
   ])
 
   if (!isFollowing) {
+    const followTitle = followBrp.enabled
+      ? `Follow — earn +${formatBrpPoints(followBrp.award)} BRP`
+      : "Follow"
+
     // Subscribe Button (Not Following) - visible in both light and dark mode
     return (
+      <div className="flex flex-col items-stretch gap-1.5">
       <Button
         type="button"
         onClick={handleToggleFollow}
         variant="outline"
         size="lg"
         className="min-w-[40px] sm:min-w-0 h-9 sm:h-10 md:h-11 flex-shrink-0 justify-center sm:justify-start px-2 sm:px-3 md:px-4 border-2 bg-primary text-primary-foreground border-primary hover:bg-primary/90 hover:text-primary-foreground dark:bg-primary dark:text-primary-foreground dark:border-primary dark:hover:bg-primary/90"
-        title="Follow"
+        title={followTitle}
       >
         <UserPlus className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />
         <span className="hidden sm:inline whitespace-nowrap truncate">{isLoading ? "Loading..." : "Follow"}</span>
       </Button>
+      {followBrp.enabled && (
+        <BrpParticipationHint module="organization_follow" className="hidden sm:flex text-xs" hideLabel />
+      )}
+      </div>
     )
   }
 

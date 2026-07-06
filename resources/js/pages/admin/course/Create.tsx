@@ -284,16 +284,13 @@ export default function NonprofitCoursesCreate() {
     [setData],
   )
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Validate all required tabs before submission
+  const handleSave = () => {
     if (!validateTab("basics")) {
       setCurrentTab("basics")
       toast.error("Please complete all required fields in the Basics tab before submitting.")
       return
     }
-    
+
     if (!validateTab("schedule")) {
       setCurrentTab("schedule")
       toast.error("Please complete all required fields in the Schedule tab before submitting.")
@@ -344,7 +341,11 @@ export default function NonprofitCoursesCreate() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+          }}
+        >
           <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-6">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basics" className="flex items-center gap-2">
@@ -725,10 +726,18 @@ export default function NonprofitCoursesCreate() {
                 Cancel
               </Button>
             </Link>
-            <Button 
-              type={currentTab === "settings" ? "submit" : "button"} 
-              disabled={processing || (currentTab === "settings" && !isFormValid()) || (currentTab !== "settings" && !validateTab(currentTab))} 
-              onClick={currentTab !== "settings" ? () => {
+            <Button
+              type="button"
+              disabled={
+                processing ||
+                (currentTab === "settings" && !isFormValid()) ||
+                (currentTab !== "settings" && !validateTab(currentTab))
+              }
+              onClick={() => {
+                if (currentTab === "settings") {
+                  handleSave()
+                  return
+                }
                 if (validateTab(currentTab)) {
                   const currentIndex = tabOrder.indexOf(currentTab as (typeof tabOrder)[number])
                   if (currentIndex >= 0 && currentIndex < tabOrder.length - 1) {
@@ -737,7 +746,7 @@ export default function NonprofitCoursesCreate() {
                 } else {
                   toast.error("Please complete all required fields in the current tab before proceeding.")
                 }
-              } : undefined}
+              }}
               className="min-w-[140px]"
             >
               {processing ? (

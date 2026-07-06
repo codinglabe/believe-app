@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Course;
 use App\Models\Enrollment;
+use App\Services\CourseEnrollmentFeeService;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
@@ -75,6 +76,10 @@ final class EnrollmentLedgerService
             return 0.0;
         }
 
+        if ((string) ($enrollment->payment_method ?? '') === 'believe_points') {
+            return CourseEnrollmentFeeService::listingBaseFromEnrollment($course, $enrollment);
+        }
+
         if ($enrollment->amount_paid !== null && $enrollment->amount_paid !== '') {
             return round(max(0, (float) $enrollment->amount_paid), 2);
         }
@@ -95,7 +100,7 @@ final class EnrollmentLedgerService
             self::metaFor($course, $enrollment),
         );
         if ($saleAmount > 0) {
-            $meta = array_merge($meta, BiuPlatformFeeService::ledgerMetaSlice($saleAmount));
+            $meta = array_merge($meta, BiuPlatformFeeService::connectionHubLedgerMetaSlice($course, $saleAmount));
         }
 
         $updates = [
@@ -380,7 +385,7 @@ final class EnrollmentLedgerService
                         'pricing_type' => 'paid',
                         'believe_points_used' => $saleAmount,
                     ],
-                    BiuPlatformFeeService::ledgerMetaSlice($saleAmount)
+                    BiuPlatformFeeService::connectionHubLedgerMetaSlice($course, $saleAmount)
                 ),
                 'processed_at' => $processedAt,
             ];
@@ -403,7 +408,7 @@ final class EnrollmentLedgerService
                 $baseMeta,
                 ['pricing_type' => 'paid'],
                 CourseEnrollmentCheckoutItems::stripeMetadataSlice($course),
-                BiuPlatformFeeService::ledgerMetaSlice($saleAmount)
+                BiuPlatformFeeService::connectionHubLedgerMetaSlice($course, $saleAmount)
             ),
             'processed_at' => $isPaid ? $processedAt : null,
         ];

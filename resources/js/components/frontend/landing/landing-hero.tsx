@@ -92,6 +92,18 @@ export function LandingHero({ headline, subtitle }: LandingHeroProps) {
 
           <LandingHeroVideoModal open={videoOpen} onOpenChange={setVideoOpen} />
 
+          <p className={`mt-4 text-xs sm:text-sm ${landingTheme.bodyText}`}>
+            By using Believe In Unity you agree to our{" "}
+            <a href="/terms-of-service" className="font-medium text-purple-600 underline underline-offset-2 hover:text-purple-700 dark:text-purple-300">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a href="/privacy-policy" className="font-medium text-purple-600 underline underline-offset-2 hover:text-purple-700 dark:text-purple-300">
+              Privacy Policy
+            </a>
+            .
+          </p>
+
           <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:items-center sm:gap-3">
             <div className="flex -space-x-2 shrink-0">
               {["SM", "JT", "ML", "AK"].map((initials) => (
