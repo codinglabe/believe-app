@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationRecipientStatus;
+use App\Models\Campaign;
 use App\Models\ContentItem;
 use App\Models\Organization;
 use App\Models\PushNotificationLog;
@@ -567,6 +568,12 @@ class PushNotificationLogger
 
         $organizationId = $log->organization_id ?? $this->resolveOrganizationIdFromSender($log->created_by);
 
+        if (! $organizationId && ! empty($payload['campaign_id'])) {
+            $organizationId = Campaign::query()
+                ->whereKey((int) $payload['campaign_id'])
+                ->value('organization_id');
+        }
+
         if (! $organizationId && ! empty($payload['content_item_id'])) {
             $organizationId = ContentItem::query()
                 ->whereKey((int) $payload['content_item_id'])
@@ -578,8 +585,9 @@ class PushNotificationLogger
         }
 
         $logoUrl = Organization::query()
+            ->with('user:id,image,registered_user_image,user_id')
             ->whereKey($organizationId)
-            ->first(['id', 'registered_user_image'])
+            ->first(['id', 'registered_user_image', 'user_id'])
             ?->logoUrl();
 
         if ($logoUrl) {

@@ -528,11 +528,28 @@ class Organization extends Model implements HasPreferredPayoutMethod
 
     public function logoUrl(): ?string
     {
-        if (! $this->registered_user_image) {
-            return null;
+        $candidates = [
+            $this->registered_user_image,
+        ];
+
+        $user = $this->relationLoaded('user')
+            ? $this->user
+            : ($this->user_id ? $this->user()->first(['id', 'image', 'registered_user_image']) : null);
+
+        if ($user) {
+            $candidates[] = $user->image;
+            $candidates[] = $user->registered_user_image;
         }
 
-        return url(Storage::url($this->registered_user_image));
+        foreach ($candidates as $path) {
+            if (! filled($path)) {
+                continue;
+            }
+
+            return url(Storage::url($path));
+        }
+
+        return null;
     }
     // }
 

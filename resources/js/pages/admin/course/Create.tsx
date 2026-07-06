@@ -20,10 +20,12 @@ import {
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import ConnectionHubEnrollmentBillingField from "@/components/course/ConnectionHubEnrollmentBillingField"
+import ConnectionHubLateEnrollmentField from "@/components/course/ConnectionHubLateEnrollmentField"
 import UnityMeetCourseScheduleSection from "@/components/course/UnityMeetCourseScheduleSection"
 import { usesUnityMeet } from "@/hooks/useCourseUnityMeetPrepare"
 import type { ConnectionHubListingLockType } from "@/lib/connection-hub-hero-hrefs"
-import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, defaultAllowEnrollmentAfterStart, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
 import {
@@ -84,6 +86,8 @@ export default function NonprofitCoursesCreate() {
     unity_meet_livestream_id: "",
     pricing_type: "free",
     course_fee: "",
+    enrollment_billing_cycle: "one_time",
+    allow_enrollment_after_start: defaultAllowEnrollmentAfterStart(initialHubType),
     start_date: "",
     start_time: "",
     end_date: "",
@@ -129,6 +133,10 @@ export default function NonprofitCoursesCreate() {
     setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset topic only when hub type or catalog contents change
   }, [topicCatalogKey])
+
+  useEffect(() => {
+    setData("allow_enrollment_after_start", defaultAllowEnrollmentAfterStart(data.type))
+  }, [data.type, setData])
 
   const formattedProgramLengthPreview = useMemo(() => {
     if (!data.start_date || !data.end_date) return null
@@ -232,6 +240,7 @@ export default function NonprofitCoursesCreate() {
             "target_audience",
             "pricing_type",
             "course_fee",
+            "enrollment_billing_cycle",
             "course_delivery_type",
             "has_physical_materials",
             "pricing_structure",
@@ -244,7 +253,7 @@ export default function NonprofitCoursesCreate() {
         setCurrentTab("basics")
       } else if (
         errorFields.some((field) =>
-          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants"].includes(
+          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants", "allow_enrollment_after_start"].includes(
             field,
           ),
         )
@@ -472,6 +481,18 @@ export default function NonprofitCoursesCreate() {
                           )}
                       </div>
                     </div>
+
+                    <ConnectionHubEnrollmentBillingField
+                      hubType={data.type}
+                      pricingType={data.pricing_type}
+                      value={data.enrollment_billing_cycle}
+                      onChange={(value) => setData("enrollment_billing_cycle", value)}
+                      error={
+                        typeof errors.enrollment_billing_cycle === "string"
+                          ? errors.enrollment_billing_cycle
+                          : undefined
+                      }
+                    />
                   </div>
 
                   <BiuCourseTaxIntake
@@ -656,6 +677,17 @@ export default function NonprofitCoursesCreate() {
                         placeholder="20"
                       />
                     </div>
+
+                    <ConnectionHubLateEnrollmentField
+                      hubType={data.type}
+                      checked={Boolean(data.allow_enrollment_after_start)}
+                      onCheckedChange={(checked) => setData("allow_enrollment_after_start", checked)}
+                      error={
+                        typeof errors.allow_enrollment_after_start === "string"
+                          ? errors.allow_enrollment_after_start
+                          : undefined
+                      }
+                    />
 
                     <div className="space-y-2">
                       <label htmlFor="language" className="text-sm font-medium">

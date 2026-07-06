@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Course;
 use App\Models\Enrollment;
 use App\Support\ConnectionHubType;
+use App\Support\EnrollmentBillingCycle;
 
 /**
  * Connection Hub course / event enrollment fees (Believe Points checkout).
@@ -89,5 +90,20 @@ final class CourseEnrollmentFeeService
     public static function usesEventPlatformFee(Course $course): bool
     {
         return ConnectionHubType::usesEventSemantics((string) ($course->type ?? ''));
+    }
+
+    /**
+     * Stripe Checkout mode for paid enrollment (`payment` or `subscription`).
+     * Monthly billing is controlled per listing via {@see Course::$enrollment_billing_cycle}.
+     */
+    public static function stripeCheckoutMode(Course $course): string
+    {
+        return EnrollmentBillingCycle::usesSubscription($course) ? 'subscription' : 'payment';
+    }
+
+    /** Billing interval when {@see stripeCheckoutMode} is `subscription`; null for one-time checkout. */
+    public static function recurringBillingInterval(Course $course): ?string
+    {
+        return self::stripeCheckoutMode($course) === 'subscription' ? 'month' : null;
     }
 }

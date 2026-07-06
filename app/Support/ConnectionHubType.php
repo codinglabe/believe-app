@@ -53,6 +53,20 @@ final class ConnectionHubType
         return $type === self::EVENTS;
     }
 
+    /**
+     * Suggested default when a host creates a new listing (actual setting is stored on the course).
+     */
+    public static function defaultAllowEnrollmentAfterStart(string $type): bool
+    {
+        return in_array($type, [self::COMPANION, self::EVENTS], true);
+    }
+
+    /** @deprecated Use {@see defaultAllowEnrollmentAfterStart} for form defaults; enrollment uses {@see Course::$allow_enrollment_after_start}. */
+    public static function allowsOpenEnrollmentAfterStart(string $type): bool
+    {
+        return self::defaultAllowEnrollmentAfterStart($type);
+    }
+
     /** Normalize `?type=` from create URL; invalid or empty → null. */
     public static function normalizedListingTypeLockFromQuery(mixed $value): ?string
     {

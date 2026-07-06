@@ -9,12 +9,14 @@ use App\Models\Organization;
 use App\Models\PrimaryActionCategory;
 use App\Models\EventType;
 use App\Models\Topic;
+use App\Services\ConnectionHubEnrollmentService;
 use App\Services\CourseCancellationService;
 use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
 use App\Services\SeoService;
 use App\Services\SupporterPrimaryOrganizationService;
 use App\Support\ConnectionHubType;
+use App\Support\EnrollmentBillingCycle;
 use App\Support\SessionDurationMinutes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -789,6 +791,8 @@ class CourseController extends BaseController
             // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
             'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
+            'enrollment_billing_cycle' => EnrollmentBillingCycle::validationRule($type, (string) $request->input('pricing_type', 'free')),
+            'allow_enrollment_after_start' => 'boolean',
 
             // Schedule & Format
             'start_date' => 'required|date|after_or_equal:today',
@@ -932,6 +936,12 @@ class CourseController extends BaseController
                 // Pricing
                 'pricing_type' => $validated['pricing_type'],
                 'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+                'enrollment_billing_cycle' => EnrollmentBillingCycle::persisted(
+                    $validated['type'],
+                    $validated['pricing_type'],
+                    $validated['enrollment_billing_cycle'] ?? null
+                ),
+                'allow_enrollment_after_start' => $request->boolean('allow_enrollment_after_start'),
 
                 // Schedule & Format
                 'start_date' => $validated['start_date'],
@@ -1039,53 +1049,15 @@ class CourseController extends BaseController
                 : 0,
         ];
 
-        // Parse start date/time for status checks and logging
-        try {
-            $datePart = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
-            $timePart = $course->start_time ?? '00:00';
-            if (strlen($timePart) > 5) {
-                $timePart = substr($timePart, 0, 5);
-            }
-            $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $datePart.' '.$timePart);
-        } catch (\Exception $e) {
-            try {
-                $dateOnly = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
-                $timeOnly = substr($course->start_time ?? '00:00', 0, 5);
-                $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $dateOnly.' '.$timeOnly);
-            } catch (\Exception $e2) {
-                $startDateTime = \Carbon\Carbon::now()->addHour();
-            }
-        }
+        // Parse start date/time for logging
+        $startDateTime = ConnectionHubEnrollmentService::parseStartDateTime($course);
 
-        // Determine course status
-        if ($course->isCancelled()) {
-            $status = 'cancelled';
-        } elseif ($startDateTime->isPast()) {
-            $status = 'started';
-        } elseif ($course->max_participants > 0 && $enrolledCount >= $course->max_participants) {
-            $status = 'full';
-        } elseif ($course->max_participants > 0 && ($enrolledCount / $course->max_participants) >= 0.8) {
-            $status = 'almost_full';
-        } elseif (Auth::check() && Auth::user()->id === $course->user_id) {
-            $status = 'unavailable';
-        } else {
-            $status = 'available';
-        }
+        $status = ConnectionHubEnrollmentService::resolveListingStatus($course, $enrolledCount, $user);
 
         // User is considered enrolled only when we loaded a non-terminal enrollment above
         $hasActiveEnrollment = $userEnrollment !== null;
 
-        // Allow enrollment/registration if available and not full/started, regardless of paid/free
-        // Button should be visible and active until the actual start date/time
-        // For paid courses, users can still enroll (they'll be redirected to payment)
-        // For free courses, users can enroll directly
-        // Allow enrollment for 'available' and 'almost_full' statuses
-        // Only block if: user is enrolled, course is full, course has started, or user is creator
-        $canEnroll = ! $hasActiveEnrollment
-            && $status !== 'full'
-            && $status !== 'started'
-            && $status !== 'unavailable'
-            && $status !== 'cancelled';
+        $canEnroll = ConnectionHubEnrollmentService::canUserEnroll($course, $hasActiveEnrollment, $status);
 
         // Log for debugging (remove in production)
         \Log::debug('Course Enrollment Check', [
@@ -1276,6 +1248,8 @@ class CourseController extends BaseController
             // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
             'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
+            'enrollment_billing_cycle' => EnrollmentBillingCycle::validationRule($type, (string) $request->input('pricing_type', 'free')),
+            'allow_enrollment_after_start' => 'boolean',
 
             // Schedule & Format
             'start_date' => 'required|date',
@@ -1420,6 +1394,12 @@ class CourseController extends BaseController
                 // Pricing
                 'pricing_type' => $validated['pricing_type'],
                 'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+                'enrollment_billing_cycle' => EnrollmentBillingCycle::persisted(
+                    $validated['type'],
+                    $validated['pricing_type'],
+                    $validated['enrollment_billing_cycle'] ?? null
+                ),
+                'allow_enrollment_after_start' => $request->boolean('allow_enrollment_after_start'),
 
                 // Schedule & Format
                 'start_date' => $validated['start_date'],
@@ -1548,25 +1528,7 @@ class CourseController extends BaseController
 
     protected function resolveConnectionHubListingStatus(Course $course, int $enrolledCount): string
     {
-        if ($course->isCancelled()) {
-            return 'cancelled';
-        }
-
-        $courseStart = \Carbon\Carbon::parse($course->start_date);
-
-        if ($courseStart->isPast()) {
-            return 'started';
-        }
-
-        if ($enrolledCount >= $course->max_participants) {
-            return 'full';
-        }
-
-        if ($course->max_participants > 0 && ($enrolledCount / $course->max_participants) >= 0.8) {
-            return 'almost_full';
-        }
-
-        return 'available';
+        return ConnectionHubEnrollmentService::resolveListingStatus($course, $enrolledCount);
     }
 
     protected function isPlatformAdmin(?\App\Models\User $user = null): bool

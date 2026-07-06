@@ -29,13 +29,15 @@ import { toast } from "sonner"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState, useEffect, useMemo, useCallback } from "react"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import ConnectionHubEnrollmentBillingField from "@/components/course/ConnectionHubEnrollmentBillingField"
+import ConnectionHubLateEnrollmentField from "@/components/course/ConnectionHubLateEnrollmentField"
 import UnityMeetCourseScheduleSection from "@/components/course/UnityMeetCourseScheduleSection"
 import { usesUnityMeet } from "@/hooks/useCourseUnityMeetPrepare"
 import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
-import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, defaultAllowEnrollmentAfterStart, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 import { EventTypeTopicFields } from "@/components/event-type-topic-fields"
 import { eventTypeCatalogForHub, topicCatalogSignature } from "@/lib/event-type-catalog"
@@ -78,6 +80,8 @@ interface Course {
   description: string
   pricing_type: "free" | "paid"
   course_fee: number | null
+  enrollment_billing_cycle?: string | null
+  allow_enrollment_after_start?: boolean
   start_date: string
   start_time: string
   end_date: string | null
@@ -165,6 +169,8 @@ export default function AdminCoursesEdit() {
     // Pricing (pre-populated)
     pricing_type: course.pricing_type,
     course_fee: course.course_fee?.toString() || "",
+    enrollment_billing_cycle: course.enrollment_billing_cycle || "one_time",
+    allow_enrollment_after_start: Boolean(course.allow_enrollment_after_start),
 
     // Schedule & Format (pre-populated)
     start_date: Date.parse(course.start_date) ? course.start_date.substring(0, 10) : "",
@@ -325,6 +331,7 @@ export default function AdminCoursesEdit() {
             "primary_action_category_ids",
             "pricing_type",
             "course_fee",
+            "enrollment_billing_cycle",
             "course_delivery_type",
             "has_physical_materials",
             "pricing_structure",
@@ -337,7 +344,7 @@ export default function AdminCoursesEdit() {
         setCurrentTab("basics")
       } else if (
         errorFields.some((field) =>
-          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants"].includes(
+          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants", "allow_enrollment_after_start"].includes(
             field,
           ),
         )
@@ -662,6 +669,18 @@ export default function AdminCoursesEdit() {
                           )}
                       </div>
                     </div>
+
+                    <ConnectionHubEnrollmentBillingField
+                      hubType={data.type}
+                      pricingType={data.pricing_type}
+                      value={data.enrollment_billing_cycle}
+                      onChange={(value) => setData("enrollment_billing_cycle", value)}
+                      error={
+                        typeof errors.enrollment_billing_cycle === "string"
+                          ? errors.enrollment_billing_cycle
+                          : undefined
+                      }
+                    />
                   </div>
 
                   <BiuCourseTaxIntake
@@ -867,6 +886,17 @@ export default function AdminCoursesEdit() {
                         placeholder="20"
                       />
                     </div>
+
+                    <ConnectionHubLateEnrollmentField
+                      hubType={data.type}
+                      checked={Boolean(data.allow_enrollment_after_start)}
+                      onCheckedChange={(checked) => setData("allow_enrollment_after_start", checked)}
+                      error={
+                        typeof errors.allow_enrollment_after_start === "string"
+                          ? errors.allow_enrollment_after_start
+                          : undefined
+                      }
+                    />
 
                     <div className="space-y-2">
                       <label htmlFor="language" className="text-sm font-medium">

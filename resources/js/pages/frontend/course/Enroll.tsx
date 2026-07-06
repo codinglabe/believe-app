@@ -24,6 +24,7 @@ import { type FormEventHandler } from "react"
 import { Badge } from "@/components/ui/badge"
 import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 import { courseEnrollmentBrpModule } from "@/lib/brp-participation"
+import { enrollmentBillingCycleSuffix } from "@/lib/enrollment-billing-cycle"
 
 interface Course {
   id: number
@@ -33,6 +34,7 @@ interface Course {
   type?: string
   pricing_type: "free" | "paid"
   course_fee: number | null
+  enrollment_billing_cycle?: string | null
   start_date: string
   end_date?: string
   start_time: string
@@ -87,6 +89,8 @@ export default function FrontendCourseEnroll({ course, feeBreakdown }: Props) {
   const pointsRequired = feeBreakdown?.total_bp ?? listingFee + platformFee
   const hasEnoughPoints = currentBalance >= pointsRequired
   const enrollmentBrpModule = courseEnrollmentBrpModule(course)
+  const billingSuffix = enrollmentBillingCycleSuffix(course.enrollment_billing_cycle ?? "one_time")
+  const isMonthlyBilling = (course.enrollment_billing_cycle ?? "one_time") === "monthly"
 
   const availableSpots = course.max_participants - course.enrolled
 
@@ -129,7 +133,10 @@ export default function FrontendCourseEnroll({ course, feeBreakdown }: Props) {
                             </div>
                             <div className="flex justify-between">
                               <span>Price:</span>
-                              <span className="font-medium text-green-600">{course.formatted_price}</span>
+                              <span className="font-medium text-green-600">
+                                {course.formatted_price}
+                                {billingSuffix}
+                              </span>
                             </div>
                             <div className="flex justify-between">
                               <span>Duration:</span>
@@ -166,8 +173,10 @@ export default function FrontendCourseEnroll({ course, feeBreakdown }: Props) {
                                 </>
                               )}
                               <div className="flex justify-between border-t border-primary/10 pt-2 font-semibold">
-                                <span>Total due now</span>
-                                <span>{pointsRequired.toFixed(2)} BP</span>
+                                <span>{isMonthlyBilling ? "Total due each month" : "Total due now"}</span>
+                                <span>
+                                  {pointsRequired.toFixed(2)} BP{billingSuffix}
+                                </span>
                               </div>
                             </div>
 
@@ -251,7 +260,7 @@ export default function FrontendCourseEnroll({ course, feeBreakdown }: Props) {
                           ) : course.pricing_type === "paid" ? (
                             <>
                               <Coins className="mr-2 h-4 w-4" />
-                              Pay {pointsRequired.toFixed(2)} BP & Enroll
+                              Pay {pointsRequired.toFixed(2)} BP{billingSuffix} & Enroll
                             </>
                           ) : (
                             <>

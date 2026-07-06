@@ -61,6 +61,7 @@ final class EnrollmentLedgerService
             'enrollment_id' => $enrollment->enrollment_id,
             'enrollment_record_id' => $enrollment->id,
             'pricing_type' => $course->pricing_type,
+            'enrollment_billing_cycle' => $course->enrollment_billing_cycle,
             'organization_id' => $orgCtx['organization_id'],
             'organization_name' => $orgCtx['organization_name'],
             'description' => ($isEvent ? 'Event registration: ' : 'Course enrollment: ').$courseName,

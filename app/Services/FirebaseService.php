@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PushNotificationModule;
+use App\Models\Campaign;
 use App\Models\ContentItem;
 use App\Models\Organization;
 use App\Models\User;
@@ -474,6 +475,16 @@ class FirebaseService
     {
         if (isset($data['organization_id']) && (int) $data['organization_id'] > 0) {
             return (int) $data['organization_id'];
+        }
+
+        if (isset($data['campaign_id']) && (int) $data['campaign_id'] > 0) {
+            $campaignOrgId = Campaign::query()
+                ->whereKey((int) $data['campaign_id'])
+                ->value('organization_id');
+
+            if ($campaignOrgId) {
+                return (int) $campaignOrgId;
+            }
         }
 
         if (! empty($data['content_item_id'])) {
