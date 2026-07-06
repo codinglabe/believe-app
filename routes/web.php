@@ -2058,10 +2058,12 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
     Route::post('/profile/my-enrollments/notification-preferences', [EnrollmentController::class, 'updateNotificationPreferences'])->name('enrollments.notification-preferences');
     Route::get('/profile/course', [FrontendCourseController::class, 'adminIndex'])->name('profile.course.index');
+    Route::get('/profile/course/enrollments', [FrontendCourseController::class, 'allEnrollments'])->name('profile.course.enrollments')->middleware('permission:course.read');
     Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create')->middleware('permission:course.create');
     Route::post('/profile/course/unity-meet/prepare', [CourseUnityMeetController::class, 'prepare'])->name('profile.course.unity-meet.prepare')->middleware('permission:course.create');
     Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store')->middleware('permission:course.create');
     Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show')->middleware('permission:course.read'); // Added this line
+    Route::get('/profile/course/{course:slug}/enrollments', [FrontendCourseController::class, 'adminEnrollments'])->name('profile.course.enrollments.show')->middleware('permission:course.read');
     Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit')->middleware('permission:course.edit');
 
     // Frontend User Events Routes
@@ -2077,6 +2079,7 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/raffle-tickets', [UserProfileController::class, 'raffleTickets'])->name('profile.raffle-tickets.index');
 
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
+    Route::post('/profile/course/{course:slug}/cancel', [FrontendCourseController::class, 'cancel'])->name('profile.course.cancel')->middleware('permission:course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
@@ -2090,6 +2093,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/{course:slug}/enrollments', [CourseController::class, 'adminEnrollments'])->name('enrollments')->middleware('permission:course.read');
         Route::get('/{course:slug}/edit', [CourseController::class, 'edit'])->name('edit')->middleware('permission:course.edit');
         Route::put('/{course:slug}', [CourseController::class, 'update'])->name('update')->middleware('permission:course.update');
+        Route::post('/{course:slug}/cancel', [CourseController::class, 'cancel'])->name('cancel')->middleware('permission:course.update');
         Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy')->middleware('permission:course.delete');
     });
 

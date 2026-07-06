@@ -17,6 +17,7 @@ import {
     Coins
 } from "lucide-react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 
 interface Brand {
     brandName: string
@@ -387,6 +388,8 @@ export default function PurchasePage({ brand, stripeKey, user }: PurchaseProps) 
                                             )}
                                         </div>
                                     )}
+
+                                    <BrpParticipationHint module="gift_card_purchase" variant="alert" />
 
                                     {/* Submit Button */}
                                     <Button

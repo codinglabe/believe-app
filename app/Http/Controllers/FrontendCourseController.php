@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
+use App\Services\CourseCancellationService;
 use App\Support\ConnectionHubType;
 use App\Support\SessionDurationMinutes;
 use App\Services\SupporterPrimaryOrganizationService;
@@ -40,6 +41,7 @@ class FrontendCourseController extends BaseController
         }
 
         $courses = Course::query()
+            ->active()
             ->with(['topic', 'organization.organization', 'creator'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -120,8 +122,10 @@ class FrontendCourseController extends BaseController
 
         $query = Course::query()
             ->with(['topic', 'eventType', 'organization', 'creator'])
-            // Only show courses for the current user's organization
-            ->where('organization_id', Auth::id());
+            ->where(function ($q) {
+                $q->where('organization_id', Auth::id())
+                    ->orWhere('user_id', Auth::id());
+            });
 
         // Search functionality
         if (! empty($filters['courses_search'])) {
@@ -157,25 +161,26 @@ class FrontendCourseController extends BaseController
             $query->where('format', $filters['courses_format']);
         }
 
-        // Status filter (based on enrollment and start date)
+        // Status filter (uses live enrollment counts, not the stale courses.enrolled column)
         if (! empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
+            $enrollmentCountSql = '(SELECT COUNT(*) FROM enrollments WHERE enrollments.course_id = courses.id AND enrollments.status IN (\'active\', \'completed\', \'pending\'))';
 
             switch ($status) {
                 case 'available':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled < max_participants')
-                        ->whereRaw('(enrolled / max_participants) < 0.8');
+                        ->whereRaw("{$enrollmentCountSql} < courses.max_participants")
+                        ->whereRaw("(CASE WHEN courses.max_participants > 0 THEN ({$enrollmentCountSql} / courses.max_participants) ELSE 0 END) < 0.8");
                     break;
                 case 'almost_full':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled < max_participants')
-                        ->whereRaw('(enrolled / max_participants) >= 0.8');
+                        ->whereRaw("{$enrollmentCountSql} < courses.max_participants")
+                        ->whereRaw("(CASE WHEN courses.max_participants > 0 THEN ({$enrollmentCountSql} / courses.max_participants) ELSE 0 END) >= 0.8");
                     break;
                 case 'full':
                     $query->where('start_date', '>=', $now->toDateString())
-                        ->whereRaw('enrolled >= max_participants');
+                        ->whereRaw("{$enrollmentCountSql} >= courses.max_participants");
                     break;
                 case 'started':
                     $query->where('start_date', '<', $now->toDateString());
@@ -184,7 +189,7 @@ class FrontendCourseController extends BaseController
         }
 
         $courses = $query->orderBy('start_date', 'desc')
-            ->paginate(15)
+            ->paginate(25)
             ->withQueryString();
 
         $eventTypes = EventType::generalCatalogForProps();
@@ -207,7 +212,10 @@ class FrontendCourseController extends BaseController
      */
     private function calculateCourseStatistics($organizationId)
     {
-        $baseQuery = Course::where('organization_id', $organizationId);
+        $baseQuery = Course::query()->where(function ($q) use ($organizationId) {
+            $q->where('organization_id', $organizationId)
+                ->orWhere('user_id', $organizationId);
+        });
         $now = now();
 
         $courses = $baseQuery->withCount('activeEnrollments')->get();
@@ -542,40 +550,39 @@ class FrontendCourseController extends BaseController
      */
     public function adminShow(Course $course)
     {
-        // Ensure user can only view their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanViewHostedCourse($course);
 
         $course->load(['topic', 'eventType', 'organization', 'creator']);
 
-        // Get enrollment statistics
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
         $enrollmentStats = [
-            'total_enrolled' => $course->enrolled,
+            'total_enrolled' => $enrolledCount,
             'max_participants' => $course->max_participants,
             'enrollment_percentage' => $course->max_participants > 0
-                ? round(($course->enrolled / $course->max_participants) * 100, 1)
+                ? round(($enrolledCount / $course->max_participants) * 100, 1)
                 : 0,
-            'available_spots' => max(0, $course->max_participants - $course->enrolled),
+            'available_spots' => max(0, $course->max_participants - $enrolledCount),
         ];
 
-        // Get course status
         $now = now();
         $courseStart = \Carbon\Carbon::parse($course->start_date);
 
         if ($courseStart->isPast()) {
             $status = 'started';
-        } elseif ($course->enrolled >= $course->max_participants) {
+        } elseif ($enrolledCount >= $course->max_participants) {
             $status = 'full';
-        } elseif (($course->enrolled / $course->max_participants) >= 0.8) {
+        } elseif ($course->max_participants > 0 && ($enrolledCount / $course->max_participants) >= 0.8) {
             $status = 'almost_full';
         } else {
             $status = 'available';
         }
 
-        // Get recent enrollments
         $recentEnrollments = Enrollment::where('course_id', $course->id)
-            ->with('user')
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->with('user:id,name,email')
             ->orderBy('enrolled_at', 'desc')
             ->limit(10)
             ->get();
@@ -589,14 +596,87 @@ class FrontendCourseController extends BaseController
     }
 
     /**
+     * Display enrollments for all hosted Connection Hub listings.
+     */
+    public function allEnrollments(Request $request)
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $courses = Course::query()
+            ->where(function ($query) use ($user) {
+                $query->where('organization_id', $user->id)
+                    ->orWhere('user_id', $user->id);
+            })
+            ->with(['topic', 'eventType'])
+            ->orderBy('start_date', 'desc')
+            ->get();
+
+        $enrollmentsByCourse = [];
+        foreach ($courses as $course) {
+            $enrollments = Enrollment::where('course_id', $course->id)
+                ->whereIn('status', ['active', 'completed', 'pending'])
+                ->with('user:id,name,email')
+                ->orderBy('enrolled_at', 'desc')
+                ->get();
+
+            if ($enrollments->count() > 0) {
+                $enrollmentsByCourse[] = [
+                    'course' => $course,
+                    'enrollments' => $enrollments,
+                    'total_enrolled' => $enrollments->count(),
+                ];
+            }
+        }
+
+        return Inertia::render('frontend/user/course/AllEnrollments', [
+            'host' => [
+                'id' => $user->id,
+                'name' => $user->name,
+            ],
+            'enrollmentsByCourse' => $enrollmentsByCourse,
+        ]);
+    }
+
+    /**
+     * Display enrollments for a specific hosted listing.
+     */
+    public function adminEnrollments(Course $course)
+    {
+        $this->assertCanViewHostedCourse($course);
+
+        $course->load(['topic', 'eventType', 'organization', 'creator']);
+
+        $enrollments = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->with('user:id,name,email')
+            ->orderBy('enrolled_at', 'desc')
+            ->get();
+
+        $enrolledCount = $enrollments->count();
+
+        $enrollmentStats = [
+            'total_enrolled' => $enrolledCount,
+            'max_participants' => $course->max_participants,
+            'enrollment_percentage' => $course->max_participants > 0
+                ? round(($enrolledCount / $course->max_participants) * 100, 1)
+                : 0,
+            'available_spots' => max(0, $course->max_participants - $enrolledCount),
+        ];
+
+        return Inertia::render('frontend/user/course/Enrollments', [
+            'course' => $course,
+            'enrollments' => $enrollments,
+            'enrollmentStats' => $enrollmentStats,
+        ]);
+    }
+
+    /**
      * Show the form for editing the specified course.
      */
     public function edit(Request $request, Course $course)
     {
-        // Ensure user can only edit their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
-        }
+        $this->assertCanViewHostedCourse($course);
 
         $eventTypes = EventType::generalCatalogForProps();
         $companionEventTypes = EventType::companionCatalogForProps();
@@ -635,9 +715,10 @@ class FrontendCourseController extends BaseController
      */
     public function update(Request $request, Course $course)
     {
-        // Ensure user can only update their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
+        $this->assertCanViewHostedCourse($course);
+
+        if ($course->isCancelled()) {
+            return redirect()->back()->with('error', 'Cancelled listings cannot be edited.');
         }
 
         $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
@@ -990,13 +1071,41 @@ class FrontendCourseController extends BaseController
     }
 
     /**
+     * Cancel a hosted listing (host only). Refunds enrolled supporters' BP minus platform fee.
+     */
+    public function cancel(Course $course)
+    {
+        $this->assertCanViewHostedCourse($course);
+
+        if ($course->isCancelled()) {
+            return redirect()->back()->with('error', 'This listing is already cancelled.');
+        }
+
+        try {
+            app(CourseCancellationService::class)->cancelByHost($course, Auth::user());
+
+            return redirect()->route('profile.course.index')
+                ->with('success', 'Listing cancelled. Meeting links are disabled and enrolled supporters were refunded Believe Points (platform fees are not refunded).');
+        } catch (\Exception $e) {
+            Log::error('Failed to cancel Connection Hub listing: '.$e->getMessage());
+
+            return redirect()->back()->with('error', 'Failed to cancel listing. Please try again.');
+        }
+    }
+
+    /**
      * Remove the specified course from storage.
      */
     public function destroy(Course $course)
     {
-        // Ensure user can only delete their own organization's courses
-        if ($course->organization_id !== Auth::id()) {
-            abort(403, 'Unauthorized access to this course.');
+        $this->assertCanViewHostedCourse($course);
+
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
+        if ($enrolledCount > 0) {
+            return redirect()->back()->with('error', 'Cannot delete a listing with enrolled participants.');
         }
 
         try {
@@ -1017,6 +1126,21 @@ class FrontendCourseController extends BaseController
             Log::error('Error deleting course: '.$e->getMessage());
 
             return redirect()->back()->with('error', 'Failed to delete listing. An unexpected error occurred.');
+        }
+    }
+
+    protected function canViewHostedCourse(Course $course): bool
+    {
+        $userId = (int) Auth::id();
+
+        return (int) $course->organization_id === $userId
+            || (int) $course->user_id === $userId;
+    }
+
+    protected function assertCanViewHostedCourse(Course $course): void
+    {
+        if (! $this->canViewHostedCourse($course)) {
+            abort(403, 'Unauthorized access to this course.');
         }
     }
 }

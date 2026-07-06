@@ -6,6 +6,7 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Services\CourseEnrollmentFeeService;
 use App\Services\EnrollmentLedgerService;
 use App\Support\CourseEnrollmentCheckoutItems;
 use App\Support\EnrollmentNotificationVia;
@@ -32,6 +33,11 @@ class EnrollmentController extends Controller
 
         $user = Auth::user();
 
+        if ($course->isCancelled()) {
+            return redirect()->route('course.show', $course->slug)
+                ->with('error', 'This listing has been cancelled by the host.');
+        }
+
         // Check if user is already enrolled
         $existingEnrollment = Enrollment::where('course_id', $course->id)
             ->where('user_id', $user->id)
@@ -55,6 +61,9 @@ class EnrollmentController extends Controller
 
         return Inertia::render('frontend/course/Enroll', [
             'course' => $course,
+            'feeBreakdown' => $course->pricing_type === 'paid'
+                ? CourseEnrollmentFeeService::purchaseBreakdown($course)
+                : null,
         ]);
     }
 
@@ -67,10 +76,14 @@ class EnrollmentController extends Controller
 
         $validated = $request->validate([
             'terms_accepted' => 'required|accepted',
-            'payment_method' => 'nullable|string|in:stripe,believe_points',
         ]);
 
         $user = Auth::user();
+
+        if ($course->isCancelled()) {
+            return redirect()->route('course.show', $course->slug)
+                ->with('error', 'This listing has been cancelled by the host.');
+        }
 
         // Check if user is already enrolled
         $existingEnrollment = Enrollment::where('course_id', $course->id)
@@ -113,7 +126,7 @@ class EnrollmentController extends Controller
                 'course_id' => $course->id,
                 'status' => 'pending',
                 'amount_paid' => $course->pricing_type === 'paid' ? $course->course_fee : 0,
-                'payment_method' => $course->pricing_type === 'paid' ? 'stripe' : 'free',
+                'payment_method' => $course->pricing_type === 'paid' ? 'believe_points' : 'free',
                 'enrolled_at' => now(),
                 'enrollment_id' => $enrollmentId,
             ]);
@@ -150,115 +163,71 @@ class EnrollmentController extends Controller
                 return redirect(route('courses.enrollment.success').'?enrollment_id='.$enrollment->id)
                     ->with('success', 'Successfully enrolled in the course!');
             } else {
-                $paymentMethod = $validated['payment_method'] ?? 'stripe';
+                $feeBreakdown = CourseEnrollmentFeeService::purchaseBreakdown($course);
+                $listingFee = $feeBreakdown['course_fee'];
+                $pointsRequired = $feeBreakdown['total_bp'];
+                $platformFee = $feeBreakdown['platform_fee'];
+                $user->refresh();
 
-                // Handle Believe Points payment
-                if ($paymentMethod === 'believe_points') {
-                    $pointsRequired = $course->course_fee; // 1$ = 1 believe point
-                    $user->refresh(); // Get latest balance
-
-                    if ($user->believe_points < $pointsRequired) {
-                        DB::rollBack();
-                        if (isset($enrollment)) {
-                            $enrollment->update(['status' => 'failed']);
-                        }
-
-                        return redirect()->route('course.show', $course->slug)
-                            ->with('error', "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.");
+                if ($user->believe_points < $pointsRequired) {
+                    DB::rollBack();
+                    if (isset($enrollment)) {
+                        $enrollment->update(['status' => 'failed']);
                     }
 
-                    // Deduct points
-                    if (! $user->deductBelievePoints($pointsRequired)) {
-                        DB::rollBack();
-                        if (isset($enrollment)) {
-                            $enrollment->update(['status' => 'failed']);
-                        }
-
-                        return redirect()->route('course.show', $course->slug)
-                            ->with('error', 'Failed to deduct Believe Points. Please try again.');
-                    }
-
-                    // Complete enrollment with Believe Points
-                    $enrollment->update([
-                        'status' => 'active',
-                        'payment_method' => 'believe_points',
-                        'transaction_id' => 'believe_points_enrollment_'.$enrollment->id,
-                    ]);
-
-                    // Create transaction record
-                    $tx = Transaction::record([
-                        'user_id' => $user->id,
-                        'related_id' => $enrollment->id,
-                        'related_type' => Enrollment::class,
-                        'type' => 'enrollment',
-                        'status' => Transaction::STATUS_COMPLETED,
-                        'amount' => $course->course_fee,
-                        'fee' => 0,
-                        'currency' => 'USD',
-                        'payment_method' => 'believe_points',
-                        'meta' => array_merge(
-                            EnrollmentLedgerService::metaFor($course, $enrollment),
-                            [
-                                'pricing_type' => 'paid',
-                                'believe_points_used' => $pointsRequired,
-                            ],
-                            BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)
-                        ),
-                        'processed_at' => now(),
-                    ]);
-                    EnrollmentLedgerService::syncTransaction($tx, $enrollment->fresh(), $course);
-
-                    // Update course enrolled count
-                    $course->increment('enrolled');
-
-                    DB::commit();
-
-                    return redirect(route('courses.enrollment.success').'?enrollment_id='.$enrollment->id)
-                        ->with('success', 'Successfully enrolled in the course using Believe Points!');
+                    return redirect()->route('course.show', $course->slug)
+                        ->with('error', "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.");
                 }
 
-                // Create pending transaction record for paid enrollment (Stripe)
-                $transaction = Transaction::record([
+                if (! $user->deductBelievePoints($pointsRequired)) {
+                    DB::rollBack();
+                    if (isset($enrollment)) {
+                        $enrollment->update(['status' => 'failed']);
+                    }
+
+                    return redirect()->route('course.show', $course->slug)
+                        ->with('error', 'Failed to deduct Believe Points. Please try again.');
+                }
+
+                $enrollment->update([
+                    'status' => 'active',
+                    'payment_method' => 'believe_points',
+                    'amount_paid' => $pointsRequired,
+                    'platform_fee_paid' => $platformFee,
+                    'transaction_id' => 'believe_points_enrollment_'.$enrollment->id,
+                ]);
+
+                $tx = Transaction::record([
                     'user_id' => $user->id,
                     'related_id' => $enrollment->id,
                     'related_type' => Enrollment::class,
                     'type' => 'enrollment',
-                    'status' => Transaction::STATUS_PENDING,
-                    'amount' => $course->course_fee,
+                    'status' => Transaction::STATUS_COMPLETED,
+                    'amount' => $pointsRequired,
                     'fee' => 0,
                     'currency' => 'USD',
-                    'payment_method' => 'stripe',
+                    'payment_method' => 'believe_points',
                     'meta' => array_merge(
                         EnrollmentLedgerService::metaFor($course, $enrollment),
-                        ['pricing_type' => 'paid'],
-                        CourseEnrollmentCheckoutItems::stripeMetadataSlice($course),
-                        BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)
+                        [
+                            'pricing_type' => 'paid',
+                            'believe_points_used' => $pointsRequired,
+                            'listing_fee_bp' => $listingFee,
+                            'platform_fee_paid' => $platformFee,
+                            'platform_fee_not_refundable' => true,
+                        ],
+                        BiuPlatformFeeService::connectionHubLedgerMetaSlice($course, $listingFee)
                     ),
-                    'processed_at' => null,
+                    'processed_at' => now(),
                 ]);
-                EnrollmentLedgerService::syncTransaction($transaction, $enrollment, $course);
+                EnrollmentLedgerService::syncTransaction($tx, $enrollment->fresh(), $course);
 
-                $lineItems = CourseEnrollmentCheckoutItems::lineItems($course, $user);
-
-                $checkout = $user->checkout(
-                    $lineItems,
-                    StripeAutomaticTax::mergeCheckoutOptions([
-                        'success_url' => route('courses.enrollment.success').'?session_id={CHECKOUT_SESSION_ID}',
-                        'cancel_url' => route('courses.enrollment.cancel', $enrollment->id),
-                        'metadata' => array_merge([
-                            'enrollment_id' => (string) $enrollment->id,
-                            'transaction_id' => (string) $transaction->id,
-                            'course_id' => (string) $course->id,
-                            'user_id' => (string) $user->id,
-                            'course_fee' => (string) $course->course_fee,
-                        ], CourseEnrollmentCheckoutItems::stripeMetadataSlice($course)),
-                        'payment_method_types' => ['card'],
-                    ])
-                );
+                $course->increment('enrolled');
 
                 DB::commit();
 
-                return Inertia::location($checkout->url);
+                return redirect(route('courses.enrollment.success').'?enrollment_id='.$enrollment->id)
+                    ->with('success', 'Successfully enrolled using Believe Points!');
             }
         } catch (\Exception $e) {
             DB::rollBack();

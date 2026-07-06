@@ -1,5 +1,5 @@
 "use client"
-import { Head, Link } from "@inertiajs/react"
+import { Head, Link, router } from "@inertiajs/react"
 import {
   Users,
   Calendar,
@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Sparkles,
   Edit,
+  Ban,
 } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
@@ -22,6 +23,8 @@ import { Badge } from "@/components/admin/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
+import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
+import { showSuccessToast } from "@/lib/toast"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
@@ -77,6 +80,7 @@ interface Course {
   created_at: string
   updated_at: string
   meeting_link: string | null
+  host_meeting_link?: string | null
   topic: Topic | null
   event_type: { id: number; name: string; category?: string } | null
   organization: Organization
@@ -87,6 +91,8 @@ interface Course {
   formatted_duration: string
   formatted_program_length?: string | null
   formatted_format: string
+  status?: string | null
+  cancelled_at?: string | null
 }
 
 interface EnrollmentStats {
@@ -122,6 +128,9 @@ export default function AdminCoursesShow({
   recentEnrollments = [],
 }: AdminCoursesShowProps) {
   const [copied, setCopied] = useState(false)
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const isCancelled = course.status === "cancelled"
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -143,6 +152,8 @@ export default function AdminCoursesShow({
         return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       case "started":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+      case "cancelled":
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
     }
@@ -164,9 +175,21 @@ export default function AdminCoursesShow({
   const statCardClass =
     "rounded-xl border border-gray-200/90 bg-white p-4 shadow-sm transition hover:border-purple-200/60 hover:shadow-md dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-purple-900/50"
 
-  const statusLabel = status.replace(/_/g, " ")
+  const statusLabel = isCancelled ? "cancelled" : status.replace(/_/g, " ")
+
+  const handleCancelListing = () => {
+    setIsCancelling(true)
+    router.post(route("profile.course.cancel", course.slug), {}, {
+      onSuccess: () => {
+        setCancelModalOpen(false)
+        showSuccessToast("Listing cancelled successfully.")
+      },
+      onFinish: () => setIsCancelling(false),
+    })
+  }
 
   return (
+    <>
     <ProfileLayout title="Manage listing" description={course.name}>
       <Head title={`Manage · ${course.name}`} />
 
@@ -197,7 +220,7 @@ export default function AdminCoursesShow({
                   {course.name}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={getStatusColor(status)}>{statusLabel}</Badge>
+                  <Badge className={getStatusColor(isCancelled ? "cancelled" : status)}>{statusLabel}</Badge>
                   {course.type ? (
                     <Badge variant="secondary" className="font-normal">
                       {connectionHubTypeLabel(course.type as ConnectionHubType)}
@@ -208,12 +231,30 @@ export default function AdminCoursesShow({
               </div>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
+              {enrollmentStats.total_enrolled > 0 && (
+                <Link href={route("profile.course.enrollments.show", course.slug)}>
+                  <Button variant="outline" className="gap-2 border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-900/50">
+                    <Users className="h-4 w-4" />
+                    Enrollments ({enrollmentStats.total_enrolled})
+                  </Button>
+                </Link>
+              )}
               <Link href={route("profile.course.edit", course.slug)}>
                 <Button className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700">
                   <Edit className="h-4 w-4" />
                   Edit listing
                 </Button>
               </Link>
+              {!isCancelled && (
+                <Button
+                  variant="outline"
+                  className="gap-2 border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-200"
+                  onClick={() => setCancelModalOpen(true)}
+                >
+                  <Ban className="h-4 w-4" />
+                  Cancel listing
+                </Button>
+              )}
               <Link href={`/courses/${course.slug}`} target="_blank" rel="noreferrer">
                 <Button variant="outline" className="gap-2 border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-900/50">
                   <ExternalLink className="h-4 w-4" />
@@ -389,13 +430,23 @@ export default function AdminCoursesShow({
             {recentEnrollments.length > 0 && (
               <Card className={cardShell}>
                 <CardHeader className={cardHeaderBar}>
-                  <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                    <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    Recent enrollments
-                  </CardTitle>
-                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                    Latest activity (up to 10)
-                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                        <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        Recent enrollments
+                      </CardTitle>
+                      <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                        Latest activity (up to 10)
+                      </p>
+                    </div>
+                    <Link
+                      href={route("profile.course.enrollments.show", course.slug)}
+                      className="text-sm font-medium text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+                    >
+                      View all enrollments
+                    </Link>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <ul className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -432,37 +483,65 @@ export default function AdminCoursesShow({
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {course.meeting_link && (
+            {(course.meeting_link || course.host_meeting_link) && (
               <Card className={cardShell}>
                 <CardHeader className={cardHeaderBar}>
                   <CardTitle className="flex items-center gap-2 text-lg font-semibold">
                     <ExternalLink className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    Meeting link
+                    Unity Meet
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-                    <div className="mb-3 break-all font-mono text-xs text-muted-foreground">{course.meeting_link}</div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => copyToClipboard(course.meeting_link!)}
-                      >
-                        <Copy className="mr-2 h-4 w-4" />
-                        {copied ? "Copied!" : "Copy"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                        onClick={() => window.open(course.meeting_link!, "_blank")}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Open
-                      </Button>
+                  {course.host_meeting_link ? (
+                    <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                      <div className="mb-2 text-xs font-medium text-muted-foreground">Host link</div>
+                      <div className="mb-3 break-all font-mono text-xs text-muted-foreground">{course.host_meeting_link}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => copyToClipboard(course.host_meeting_link!)}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          {copied ? "Copied!" : "Copy host"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                          onClick={() => window.open(course.host_meeting_link!, "_blank")}
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Open host
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
+                  {course.meeting_link ? (
+                    <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                      <div className="mb-2 text-xs font-medium text-muted-foreground">Join link</div>
+                      <div className="mb-3 break-all font-mono text-xs text-muted-foreground">{course.meeting_link}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => copyToClipboard(course.meeting_link!)}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          {copied ? "Copied!" : "Copy join"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                          onClick={() => window.open(course.meeting_link!, "_blank")}
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Open join
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             )}
@@ -617,5 +696,14 @@ export default function AdminCoursesShow({
         </div>
       </div>
     </ProfileLayout>
+      <DeleteConfirmModal
+        isOpen={cancelModalOpen}
+        onClose={() => setCancelModalOpen(false)}
+        onConfirm={handleCancelListing}
+        title="Cancel listing"
+        message={`Cancel "${course.name}"? Meeting links will be disabled and enrolled supporters will receive BP refunds minus platform fees.`}
+        isLoading={isCancelling}
+      />
+    </>
   )
 }

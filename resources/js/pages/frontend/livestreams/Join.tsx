@@ -26,6 +26,7 @@ import { useLivestreamMeetingPresence } from "@/hooks/useLivestreamMeetingPresen
 import UnityMeetGiftCelebrationLayer from "@/components/meeting/UnityMeetGiftCelebrationLayer"
 import { LogOut } from "lucide-react"
 import ConnectionHubMeetingsList, { type ConnectionHubMeetingRow } from "@/components/course/ConnectionHubMeetingsList"
+import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 
 const BRAND = {
   from: "#9333ea",
@@ -195,6 +196,12 @@ export default function SupporterMeetJoin({
               <LogOut className="h-3.5 w-3.5" />
               Leave
             </Button>
+          </div>
+          <div className="shrink-0 border-b border-border bg-emerald-50/80 px-4 py-2 dark:bg-emerald-950/20">
+            <BrpParticipationHint
+              module="unity_meet"
+              message="Participate in this Unity Meet and earn BRP when you leave the session."
+            />
           </div>
           <div className="flex-1 min-h-0 relative bg-black">
             <VdoMeetingIframe src={iframeUrl} title="Meeting" />

@@ -49,8 +49,9 @@ class ParticipationBrpRewardNotifier
 
             $pointsLabel = self::formatPoints($pointsAwarded);
             $balanceLabel = self::formatPoints($currentBalance);
+            $moduleLabel = BrpParticipationModule::label($module);
             $title = 'Believe Reward Points earned';
-            $body = "🎉 Thank you for participating! You earned {$pointsLabel} BRPs. Your BRP Balance is {$balanceLabel}.";
+            $body = "🎉 You earned {$pointsLabel} BRP for {$moduleLabel}. Your BRP balance is now {$balanceLabel}.";
             $deepLink = BrpParticipationModule::resolveDeepLink($module, $metadata);
 
             try {

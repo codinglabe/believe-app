@@ -32,6 +32,7 @@ import {
   GraduationCap,
   Filter,
   Sparkles,
+  UserCheck,
 } from "lucide-react"
 import { showSuccessToast } from "@/lib/toast"
 import type { Auth } from "@/types"
@@ -103,6 +104,8 @@ interface Course {
   formatted_duration: string
   formatted_program_length?: string | null
   formatted_format: string
+  status?: string | null
+  cancelled_at?: string | null
 }
 
 interface LaravelPagination<T> {
@@ -189,7 +192,17 @@ export default function CoursesIndex({
     title: "",
     message: "",
   })
+  const [cancelModal, setCancelModal] = useState<{
+    isOpen: boolean
+    slug: string | null
+    name: string
+  }>({
+    isOpen: false,
+    slug: null,
+    name: "",
+  })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   // Auto-filter with debounce
   useEffect(() => {
@@ -255,7 +268,25 @@ export default function CoursesIndex({
       isOpen: true,
       id: slug,
       title: "Delete listing",
-      message: `Are you sure you want to delete "${courseName}"? This action cannot be undone and will affect all enrolled participants.`,
+      message: `Are you sure you want to delete "${courseName}"? This action cannot be undone.`,
+    })
+  }
+
+  const openCancelModal = (slug: string, courseName: string) => {
+    setCancelModal({ isOpen: true, slug, name: courseName })
+  }
+
+  const handleCancelConfirm = () => {
+    if (!cancelModal.slug) return
+
+    setIsCancelling(true)
+    router.post(route("profile.course.cancel", cancelModal.slug), {}, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setCancelModal({ isOpen: false, slug: null, name: "" })
+        showSuccessToast("Listing cancelled. Enrolled supporters were refunded BP (platform fees are not refunded).")
+      },
+      onFinish: () => setIsCancelling(false),
     })
   }
 
@@ -416,15 +447,27 @@ export default function CoursesIndex({
                 </p>
               </div>
             </div>
-            <Link href={route("profile.course.create")} preserveScroll preserveState>
-              <Button
-                size="lg"
-                className="w-full min-w-[200px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-lg shadow-purple-500/20 transition hover:from-purple-700 hover:to-blue-700 hover:shadow-xl sm:w-auto"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Create listing
-              </Button>
-            </Link>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Link href={route("profile.course.create")} preserveScroll preserveState>
+                <Button
+                  size="lg"
+                  className="w-full min-w-[200px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-lg shadow-purple-500/20 transition hover:from-purple-700 hover:to-blue-700 hover:shadow-xl sm:w-auto"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Create listing
+                </Button>
+              </Link>
+              <Link href={route("profile.course.enrollments")} preserveScroll preserveState>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full min-w-[200px] border-purple-200 bg-white/80 text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:bg-gray-900/50 dark:text-purple-300 dark:hover:bg-purple-950/40 sm:w-auto"
+                >
+                  <UserCheck className="mr-2 h-5 w-5" />
+                  Enrolled
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -726,14 +769,26 @@ export default function CoursesIndex({
                                   Edit
                                 </Button>
                               </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-9 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40"
-                                onClick={() => openDeleteModal(course.slug, course.name)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {course.status !== "cancelled" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:hover:bg-amber-950/40"
+                                  onClick={() => openCancelModal(course.slug, course.name)}
+                                >
+                                  <Ban className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {course.enrolled === 0 && course.status !== "cancelled" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40"
+                                  onClick={() => openDeleteModal(course.slug, course.name)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </div>
 
@@ -909,6 +964,15 @@ export default function CoursesIndex({
         title={deleteModal.title}
         message={deleteModal.message}
         isLoading={isDeleting}
+      />
+
+      <DeleteConfirmModal
+        isOpen={cancelModal.isOpen}
+        onClose={() => setCancelModal({ isOpen: false, slug: null, name: "" })}
+        onConfirm={handleCancelConfirm}
+        title="Cancel listing"
+        message={`Cancel "${cancelModal.name}"? Meeting links will be disabled and enrolled supporters will receive a Believe Points refund (platform fees are not refunded). This cannot be undone.`}
+        isLoading={isCancelling}
       />
     </ProfileLayout>
   )

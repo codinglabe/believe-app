@@ -3,6 +3,7 @@ import { Button } from '@/components/frontend/ui/button';
 import SettingsLayout from '@/layouts/settings/layout';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
+import BrpParticipationHint from '@/components/brp/BrpParticipationHint';
 
 type ReferralPageProps = {
   referral_code: string;
@@ -53,9 +54,12 @@ export default function ReferralLinkPage() {
             They can still change later with a reason (you will be notified).
           </p>
         ) : (
-          <p className="text-gray-600 dark:text-gray-300 text-sm">
-            Invite friends using your referral link. When they register, you&apos;ll both receive rewards!
-          </p>
+          <>
+            <BrpParticipationHint module="supporter_referral" variant="alert" className="mb-4" />
+            <p className="text-gray-600 dark:text-gray-300 text-sm">
+              Invite friends using your referral link. When they register, you&apos;ll both receive rewards!
+            </p>
+          </>
         )}
       </div>
     </SettingsLayout>

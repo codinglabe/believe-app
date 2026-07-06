@@ -15,6 +15,7 @@ class Enrollment extends Model
         'course_id',
         'status',
         'amount_paid',
+        'platform_fee_paid',
         'payment_intent_id',
         'payment_status',
         'refund_id',
@@ -30,6 +31,7 @@ class Enrollment extends Model
 
     protected $casts = [
         'amount_paid' => 'decimal:2',
+        'platform_fee_paid' => 'decimal:2',
         'enrolled_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
