@@ -51,7 +51,8 @@ export default function Footer() {
     copyright_text: `${new Date().getFullYear()} ${import.meta.env.VITE_APP_NAME}. All rights reserved.`,
     legal_links: [
       { title: "Privacy Policy", url: "/privacy-policy" },
-      { title: "Terms of Service", url: "/terms-of-service" }
+      { title: "Terms of Service", url: "/terms-of-service" },
+      { title: "Data Deletion", url: "/data-deletion" },
     ]
   }
 

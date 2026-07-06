@@ -27,7 +27,7 @@ const TermsOfService = () => {
                                 Agreement to Terms
                             </h2>
                             <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                                By accessing and using 501c3ers services, you accept and agree to be bound
+                                By accessing and using Believe In Unity (501c3ers) services, you accept and agree to be bound
                                 by the terms and provision of this agreement.
                             </p>
                         </section>
