@@ -24,12 +24,14 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
     protected $channel;
     protected $notifiable; // Add this property
     protected ?Campaign $campaign;
+    protected ?int $campaignId;
 
     public function __construct(ContentItem $contentItem, string $channel = 'web', ?Campaign $campaign = null)
     {
         $this->contentItem = $contentItem;
         $this->channel = $channel;
         $this->campaign = $campaign;
+        $this->campaignId = $campaign?->id;
         $this->connection = (string) config('services.firebase.queue_connection', 'sync');
     }
 
@@ -76,7 +78,13 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
 
             $contentUrl = route('notifications.content.show', ['content_item' => $this->contentItem->id]);
 
-            $organizationId = $this->campaign?->organization_id ?? $this->contentItem->organization_id;
+            $campaign = $this->resolveCampaign();
+
+            $organizationId = $campaign?->organization_id ?? $this->contentItem->organization_id;
+
+            if (! $organizationId && $this->campaignId) {
+                $organizationId = Campaign::query()->whereKey($this->campaignId)->value('organization_id');
+            }
 
             $data = [
                 'content_item_id' => (string) $this->contentItem->id,
@@ -85,15 +93,19 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
                 'click_action' => $contentUrl,
                 'url' => $contentUrl,
                 'source_type' => 'campaign',
-                'source_id' => (string) ($this->campaign?->id ?? $this->contentItem->id),
+                'source_id' => (string) ($campaign?->id ?? $this->contentItem->id),
                 'module_name' => PushNotificationModule::Campaigns->value,
-                'module_record_id' => $this->campaign?->id ?? $this->contentItem->id,
-                'created_by' => $this->campaign?->user_id ?? $this->contentItem->user_id,
+                'module_record_id' => $campaign?->id ?? $this->contentItem->id,
+                'created_by' => $campaign?->user_id ?? $this->contentItem->user_id,
                 'deep_link' => parse_url($contentUrl, PHP_URL_PATH) ?: $contentUrl,
             ];
 
-            if ($this->campaign) {
-                $data['campaign_id'] = (string) $this->campaign->id;
+            if ($campaign) {
+                $data['campaign_id'] = (string) $campaign->id;
+                $data['notification_context'] = 'organization_daily_campaign';
+            } elseif ($this->campaignId) {
+                $data['campaign_id'] = (string) $this->campaignId;
+                $data['notification_context'] = 'organization_daily_campaign';
             }
 
             if ($organizationId) {
@@ -150,6 +162,20 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
             return null;
         }
     }
+
+    private function resolveCampaign(): ?Campaign
+    {
+        if ($this->campaign) {
+            return $this->campaign;
+        }
+
+        if (! $this->campaignId) {
+            return null;
+        }
+
+        return Campaign::query()->find($this->campaignId);
+    }
+
     /**
      * Define the broadcast channels
      */

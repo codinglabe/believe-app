@@ -56,8 +56,42 @@ export function isAndroidNotificationPlatform(): boolean {
     return /android/i.test(navigator.userAgent)
 }
 
+export function isOrganizationCampaignNotification(
+    data: Record<string, string | undefined>,
+): boolean {
+    const campaignId = data.campaign_id?.trim() ?? ""
+    const moduleName = data.module_name?.trim() ?? ""
+    const sourceType = data.source_type?.trim() ?? ""
+    const context = data.notification_context?.trim() ?? ""
+
+    return (
+        campaignId !== "" ||
+        moduleName === "campaigns" ||
+        sourceType === "campaign" ||
+        context === "organization_daily_campaign"
+    )
+}
+
+export function isSystemAutomaticNotification(
+    data: Record<string, string | undefined>,
+): boolean {
+    if (isOrganizationCampaignNotification(data)) {
+        return false
+    }
+
+    const moduleName = data.module_name?.trim() ?? ""
+    const sourceType = data.source_type?.trim() ?? ""
+    const type = data.type?.trim() ?? ""
+
+    return (
+        moduleName === "daily_engagement" ||
+        sourceType === "daily_engagement" ||
+        type === "daily_engagement"
+    )
+}
+
 /**
- * App icon on the left. Organization logo uses badge on Android (header) or image on desktop.
+ * App icon on the left. Organization logo is shown via NotificationOptions.image (top-right on Android).
  */
 export function resolveNotificationDisplayIcon(
     _data: Record<string, string | undefined>,
@@ -75,7 +109,7 @@ export function resolveNotificationImageUrl(
         return callerAvatar || undefined
     }
 
-    if (isAndroidNotificationPlatform()) {
+    if (isSystemAutomaticNotification(data)) {
         return undefined
     }
 
@@ -83,17 +117,7 @@ export function resolveNotificationImageUrl(
     return orgLogo ?? undefined
 }
 
-export function resolveNotificationBadge(
-    data: Record<string, string | undefined>,
-    origin?: string,
-): string {
-    if (isAndroidNotificationPlatform()) {
-        const orgLogo = resolveOrganizationLogoUrl(data, origin)
-        if (orgLogo) {
-            return orgLogo
-        }
-    }
-
+export function resolveNotificationBadge(origin?: string): string {
     return resolveAppNotificationIcon(origin)
 }
 
@@ -105,7 +129,7 @@ export function buildNativeNotificationOptions(
     const data = detail.data ?? {}
     const clickUrl = resolvePushClickUrl(data)
     const icon = resolveNotificationDisplayIcon(data)
-    const badge = resolveNotificationBadge(data)
+    const badge = resolveNotificationBadge()
     const image = resolveNotificationImageUrl(data)
 
     const options: NotificationOptions = {

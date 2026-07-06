@@ -79,7 +79,41 @@ function isAndroidNotificationPlatform() {
     return /android/i.test(self.navigator.userAgent);
 }
 
-/** App icon on the left; organization logo uses badge on Android (header) or image on desktop. */
+function isOrganizationCampaignNotification(data) {
+    if (!data) {
+        return false;
+    }
+
+    const campaignId = data.campaign_id ? String(data.campaign_id).trim() : "";
+    const moduleName = data.module_name ? String(data.module_name).trim() : "";
+    const sourceType = data.source_type ? String(data.source_type).trim() : "";
+    const context = data.notification_context ? String(data.notification_context).trim() : "";
+
+    return (
+        campaignId !== "" ||
+        moduleName === "campaigns" ||
+        sourceType === "campaign" ||
+        context === "organization_daily_campaign"
+    );
+}
+
+function isSystemAutomaticNotification(data) {
+    if (isOrganizationCampaignNotification(data)) {
+        return false;
+    }
+
+    const moduleName = data && data.module_name ? String(data.module_name).trim() : "";
+    const sourceType = data && data.source_type ? String(data.source_type).trim() : "";
+    const type = data && data.type ? String(data.type).trim() : "";
+
+    return (
+        moduleName === "daily_engagement" ||
+        sourceType === "daily_engagement" ||
+        type === "daily_engagement"
+    );
+}
+
+/** App icon on the left; organization logo uses NotificationOptions.image (top-right on Android). */
 function resolveNotificationDisplayIcon(data) {
     return appNotificationIconUrl();
 }
@@ -90,21 +124,14 @@ function resolveNotificationImageUrl(data) {
         return callerAvatar || null;
     }
 
-    if (isAndroidNotificationPlatform()) {
+    if (isSystemAutomaticNotification(data)) {
         return null;
     }
 
     return resolveOrganizationLogoUrl(data);
 }
 
-function resolveNotificationBadgeUrl(data) {
-    if (isAndroidNotificationPlatform()) {
-        const orgLogo = resolveOrganizationLogoUrl(data);
-        if (orgLogo) {
-            return orgLogo;
-        }
-    }
-
+function resolveNotificationBadgeUrl() {
     return appNotificationIconUrl();
 }
 
@@ -137,7 +164,7 @@ function buildNotificationOptions(title, body, data) {
     const clickUrl = resolveClickUrl(data);
     const tag = (data.type || "push") + ":" + (data.call_id || data.livestream_id || data.source_id || title);
     const icon = resolveNotificationDisplayIcon(data);
-    const badge = resolveNotificationBadgeUrl(data);
+    const badge = resolveNotificationBadgeUrl();
     const image = resolveNotificationImageUrl(data);
     const options = {
         body: body || undefined,
