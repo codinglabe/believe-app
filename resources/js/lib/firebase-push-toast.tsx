@@ -57,7 +57,7 @@ export function isAndroidNotificationPlatform(): boolean {
 }
 
 /**
- * App icon on the left. Organization logo is shown via NotificationOptions.image (right).
+ * App icon on the left. Organization logo uses badge on Android (header) or image on desktop.
  */
 export function resolveNotificationDisplayIcon(
     _data: Record<string, string | undefined>,
@@ -75,11 +75,25 @@ export function resolveNotificationImageUrl(
         return callerAvatar || undefined
     }
 
+    if (isAndroidNotificationPlatform()) {
+        return undefined
+    }
+
     const orgLogo = resolveOrganizationLogoUrl(data, origin)
     return orgLogo ?? undefined
 }
 
-export function resolveNotificationBadge(origin?: string): string {
+export function resolveNotificationBadge(
+    data: Record<string, string | undefined>,
+    origin?: string,
+): string {
+    if (isAndroidNotificationPlatform()) {
+        const orgLogo = resolveOrganizationLogoUrl(data, origin)
+        if (orgLogo) {
+            return orgLogo
+        }
+    }
+
     return resolveAppNotificationIcon(origin)
 }
 
@@ -91,7 +105,7 @@ export function buildNativeNotificationOptions(
     const data = detail.data ?? {}
     const clickUrl = resolvePushClickUrl(data)
     const icon = resolveNotificationDisplayIcon(data)
-    const badge = resolveNotificationBadge()
+    const badge = resolveNotificationBadge(data)
     const image = resolveNotificationImageUrl(data)
 
     const options: NotificationOptions = {

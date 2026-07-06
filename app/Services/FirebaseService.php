@@ -202,7 +202,7 @@ class FirebaseService
             ];
 
             if ($orgLogoUrl !== '' && ($fcmData['type'] ?? '') !== 'incoming_call') {
-                $webpushNotification['image'] = $orgLogoUrl;
+                $webpushNotification['badge'] = $orgLogoUrl;
             }
 
             $message['message']['webpush'] = [

@@ -79,7 +79,7 @@ function isAndroidNotificationPlatform() {
     return /android/i.test(self.navigator.userAgent);
 }
 
-/** App icon on the left; organization logo uses NotificationOptions.image (right). */
+/** App icon on the left; organization logo uses badge on Android (header) or image on desktop. */
 function resolveNotificationDisplayIcon(data) {
     return appNotificationIconUrl();
 }
@@ -90,10 +90,21 @@ function resolveNotificationImageUrl(data) {
         return callerAvatar || null;
     }
 
+    if (isAndroidNotificationPlatform()) {
+        return null;
+    }
+
     return resolveOrganizationLogoUrl(data);
 }
 
-function resolveNotificationBadgeUrl() {
+function resolveNotificationBadgeUrl(data) {
+    if (isAndroidNotificationPlatform()) {
+        const orgLogo = resolveOrganizationLogoUrl(data);
+        if (orgLogo) {
+            return orgLogo;
+        }
+    }
+
     return appNotificationIconUrl();
 }
 
@@ -126,7 +137,7 @@ function buildNotificationOptions(title, body, data) {
     const clickUrl = resolveClickUrl(data);
     const tag = (data.type || "push") + ":" + (data.call_id || data.livestream_id || data.source_id || title);
     const icon = resolveNotificationDisplayIcon(data);
-    const badge = resolveNotificationBadgeUrl();
+    const badge = resolveNotificationBadgeUrl(data);
     const image = resolveNotificationImageUrl(data);
     const options = {
         body: body || undefined,
