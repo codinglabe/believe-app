@@ -462,4 +462,63 @@ class PushNotificationLoggerTest extends TestCase
             (string) ($capturedPayload['organization_logo_url'] ?? ''),
         );
     }
+
+    public function test_send_log_includes_organization_logo_url_for_chat_module_from_log_context(): void
+    {
+        $org = Organization::query()->create([
+            'name' => 'Stuttie Learning Inc',
+            'registered_user_image' => 'organizations/stuttie.png',
+        ]);
+
+        $capturedPayload = null;
+
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldReceive('sendToDevice')
+            ->once()
+            ->withArgs(function ($token, $title, $body, $payload) use (&$capturedPayload) {
+                $capturedPayload = $payload;
+
+                return $token === 'token-abc' && $title === 'New Message';
+            })
+            ->andReturn([
+                'success' => true,
+                'error_code' => null,
+                'response' => null,
+            ]);
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $log = PushNotificationLog::query()->create([
+            'organization_id' => $org->id,
+            'module_name' => 'chat',
+            'module_record_id' => 42,
+            'notification_title' => 'New Message',
+            'notification_body' => 'New message from Kenneth Matthews',
+            'audience_type' => 'user',
+            'status' => PushNotificationLogStatus::Draft,
+        ]);
+
+        PushNotificationRecipient::query()->create([
+            'push_notification_log_id' => $log->id,
+            'device_token' => 'token-abc',
+            'status' => PushNotificationRecipientStatus::Pending,
+        ]);
+
+        \App\Models\UserPushToken::query()->create([
+            'push_token' => 'token-abc',
+            'is_active' => true,
+            'status' => 'active',
+        ]);
+
+        $logger = app(PushNotificationLogger::class);
+        $logger->sendLog($log, [
+            'type' => 'chat_message',
+            'source_type' => 'chat',
+        ]);
+
+        $this->assertIsArray($capturedPayload);
+        $this->assertStringContainsString(
+            'organizations/stuttie.png',
+            (string) ($capturedPayload['organization_logo_url'] ?? ''),
+        );
+    }
 }

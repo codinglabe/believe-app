@@ -107,6 +107,15 @@ class SendChatMessageNotification implements ShouldQueue
     private function sendNotificationToReceiver($receiver, $title, $body, $chatUrl, $firebaseService): void
     {
         try {
+            $sender = $this->message->user;
+            if (! $sender) {
+                Log::warning('Chat message sender missing for push notification', [
+                    'message_id' => $this->message->id,
+                ]);
+
+                return;
+            }
+
             $data = [
                 'type' => 'chat_message',
                 'message_id' => (string) $this->message->id,
@@ -126,6 +135,11 @@ class SendChatMessageNotification implements ShouldQueue
             $senderOrg = Organization::forAuthUser($sender);
             if ($senderOrg) {
                 $data['organization_id'] = (string) $senderOrg->id;
+
+                $logoUrl = $senderOrg->logoUrl();
+                if ($logoUrl) {
+                    $data['organization_logo_url'] = $logoUrl;
+                }
             }
 
             // Send Firebase notification (logs to push_notification_logs for admin overview)

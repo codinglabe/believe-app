@@ -560,6 +560,8 @@ class PushNotificationLogger
      */
     private function enrichPayloadWithOrganizationLogo(PushNotificationLog $log, array $payload): array
     {
+        $payload = $this->mergeLogContextIntoPayload($log, $payload);
+
         if ($this->organizationLogoResolver->isSystemAutomaticNotification($log, $payload)) {
             unset($payload['organization_logo_url']);
 
@@ -573,5 +575,34 @@ class PushNotificationLogger
         }
 
         return $payload;
+    }
+
+    /**
+     * FCM payloads often omit module/org fields stripped during dispatch; merge log context back in.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function mergeLogContextIntoPayload(PushNotificationLog $log, array $payload): array
+    {
+        $context = [];
+
+        if ($log->module_name && empty($payload['module_name'])) {
+            $context['module_name'] = $log->module_name;
+        }
+
+        if ($log->module_record_id && empty($payload['module_record_id'])) {
+            $context['module_record_id'] = (string) $log->module_record_id;
+        }
+
+        if ($log->organization_id && empty($payload['organization_id'])) {
+            $context['organization_id'] = (string) $log->organization_id;
+        }
+
+        if ($log->created_by && empty($payload['created_by']) && empty($payload['sender_id'])) {
+            $context['created_by'] = (string) $log->created_by;
+        }
+
+        return array_merge($context, $payload);
     }
 }
