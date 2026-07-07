@@ -113,22 +113,35 @@ function isSystemAutomaticNotification(data) {
     );
 }
 
-/** App icon on the left; organization logo uses NotificationOptions.image (top-right on Android). */
+/** PWA app icon on the left (Android); org logo via `icon` shows as the right-side dynamic icon. */
 function resolveNotificationDisplayIcon(data) {
+    if (data && data.type === INCOMING_CALL_TYPE) {
+        const callerAvatar = data.caller_avatar ? String(data.caller_avatar).trim() : "";
+        if (callerAvatar) {
+            return callerAvatar;
+        }
+    }
+
+    if (isSystemAutomaticNotification(data)) {
+        return appNotificationIconUrl();
+    }
+
+    const orgLogo = resolveOrganizationLogoUrl(data);
+    if (orgLogo) {
+        return orgLogo;
+    }
+
     return appNotificationIconUrl();
 }
 
 function resolveNotificationImageUrl(data) {
+    // Do not use `image` for org logos — Android renders it as a large hero at the bottom.
     if (data && data.type === INCOMING_CALL_TYPE) {
         const callerAvatar = data.caller_avatar ? String(data.caller_avatar).trim() : "";
         return callerAvatar || null;
     }
 
-    if (isSystemAutomaticNotification(data)) {
-        return null;
-    }
-
-    return resolveOrganizationLogoUrl(data);
+    return null;
 }
 
 function resolveNotificationBadgeUrl() {

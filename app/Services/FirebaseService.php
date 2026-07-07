@@ -201,7 +201,8 @@ class FirebaseService
 
             if ($orgLogoUrl !== '' && ($fcmData['type'] ?? '') !== 'incoming_call'
                 && ! app(OrganizationLogoResolver::class)->isSystemAutomaticNotification(null, $fcmData)) {
-                $webpushNotification['image'] = $orgLogoUrl;
+                // `icon` = right-side dynamic icon on Android; `image` would show as a large hero at the bottom.
+                $webpushNotification['icon'] = $orgLogoUrl;
             }
 
             $message['message']['webpush'] = [

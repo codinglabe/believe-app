@@ -91,30 +91,42 @@ export function isSystemAutomaticNotification(
 }
 
 /**
- * App icon on the left. Organization logo is shown via NotificationOptions.image (top-right on Android).
+ * PWA app icon on the left (Android). Organization logo uses `icon` for the right-side dynamic icon.
  */
 export function resolveNotificationDisplayIcon(
-    _data: Record<string, string | undefined>,
+    data: Record<string, string | undefined>,
     origin?: string,
 ): string {
+    if (data.type === INCOMING_CALL_TYPE) {
+        const callerAvatar = data.caller_avatar?.trim()
+        if (callerAvatar) {
+            return callerAvatar
+        }
+    }
+
+    if (isSystemAutomaticNotification(data)) {
+        return resolveAppNotificationIcon(origin)
+    }
+
+    const orgLogo = resolveOrganizationLogoUrl(data, origin)
+    if (orgLogo) {
+        return orgLogo
+    }
+
     return resolveAppNotificationIcon(origin)
 }
 
 export function resolveNotificationImageUrl(
     data: Record<string, string | undefined>,
-    origin?: string,
+    _origin?: string,
 ): string | undefined {
+    // Do not use `image` for org logos — Android renders it as a large hero at the bottom.
     if (data.type === INCOMING_CALL_TYPE) {
         const callerAvatar = data.caller_avatar?.trim()
         return callerAvatar || undefined
     }
 
-    if (isSystemAutomaticNotification(data)) {
-        return undefined
-    }
-
-    const orgLogo = resolveOrganizationLogoUrl(data, origin)
-    return orgLogo ?? undefined
+    return undefined
 }
 
 export function resolveNotificationBadge(origin?: string): string {
