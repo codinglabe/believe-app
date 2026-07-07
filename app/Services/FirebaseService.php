@@ -3,8 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PushNotificationModule;
-use App\Models\ContentItem;
-use App\Models\Organization;
+use App\Services\PushNotifications\OrganizationLogoResolver;
 use App\Models\User;
 use App\Models\UserPushToken;
 use App\Models\PushNotificationLog;
@@ -200,8 +199,10 @@ class FirebaseService
                 'icon' => $notificationIcon,
             ];
 
-            if ($orgLogoUrl !== '' && ($fcmData['type'] ?? '') !== 'incoming_call') {
-                $webpushNotification['image'] = $orgLogoUrl;
+            if ($orgLogoUrl !== '' && ($fcmData['type'] ?? '') !== 'incoming_call'
+                && ! app(OrganizationLogoResolver::class)->isSystemAutomaticNotification(null, $fcmData)) {
+                // `icon` = right-side dynamic icon on Android; `image` would show as a large hero at the bottom.
+                $webpushNotification['icon'] = $orgLogoUrl;
             }
 
             $message['message']['webpush'] = [
@@ -472,31 +473,7 @@ class FirebaseService
      */
     private function resolveOrganizationId(array $data, ?int $createdBy = null): ?int
     {
-        if (isset($data['organization_id']) && (int) $data['organization_id'] > 0) {
-            return (int) $data['organization_id'];
-        }
-
-        if (! empty($data['content_item_id'])) {
-            $contentOrgId = ContentItem::query()
-                ->whereKey((int) $data['content_item_id'])
-                ->value('organization_id');
-
-            if ($contentOrgId) {
-                return (int) $contentOrgId;
-            }
-        }
-
-        $senderId = $createdBy
-            ?? (isset($data['created_by']) && (int) $data['created_by'] > 0 ? (int) $data['created_by'] : null)
-            ?? (isset($data['sender_id']) && (int) $data['sender_id'] > 0 ? (int) $data['sender_id'] : null);
-
-        if (! $senderId) {
-            return null;
-        }
-
-        $user = User::query()->find($senderId);
-
-        return $user ? Organization::forAuthUser($user)?->id : null;
+        return app(OrganizationLogoResolver::class)->resolveOrganizationIdFromPayload($data, $createdBy);
     }
 
     /**

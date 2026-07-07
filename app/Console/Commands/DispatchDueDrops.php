@@ -21,7 +21,7 @@ class DispatchDueDrops extends Command
         $now = now();
         $this->info("Current UTC time: {$now->toDateTimeString()}");
 
-        $dueDrops = ScheduledDrop::with(['campaign.selectedUsers', 'contentItem'])
+        $dueDrops = ScheduledDrop::with(['campaign.organization.user', 'campaign.selectedUsers', 'contentItem'])
             ->pending()
             ->due()
             ->limit(50)
@@ -92,7 +92,7 @@ class DispatchDueDrops extends Command
                                         ]);
                                     }
 
-                                   $user->notify(new DailyPrayerNotification($drop->contentItem, $channel));
+                                   $user->notify(new DailyPrayerNotification($drop->contentItem, $channel, $campaign));
 
 
                                     // Broadcast only for push/web channels (not for WhatsApp)

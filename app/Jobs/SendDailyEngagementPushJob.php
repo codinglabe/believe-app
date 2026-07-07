@@ -55,6 +55,7 @@ class SendDailyEngagementPushJob implements ShouldQueue
             'url' => $homeUrl,
             'source_type' => 'daily_engagement',
             'source_id' => $this->sentOn,
+            'module_name' => 'daily_engagement',
         ]);
 
         $successCount = is_array($results)

@@ -9,10 +9,12 @@ use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\Topic;
+use App\Services\ConnectionHubEnrollmentService;
 use App\Services\CourseTaxClassificationService;
 use App\Services\CourseUnityMeetService;
 use App\Services\CourseCancellationService;
 use App\Support\ConnectionHubType;
+use App\Support\EnrollmentBillingCycle;
 use App\Support\SessionDurationMinutes;
 use App\Services\SupporterPrimaryOrganizationService;
 use Illuminate\Http\Request;
@@ -299,6 +301,8 @@ class FrontendCourseController extends BaseController
 
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
             'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
+            'enrollment_billing_cycle' => EnrollmentBillingCycle::validationRule($type, (string) $request->input('pricing_type', 'free')),
+            'allow_enrollment_after_start' => 'boolean',
 
             'start_date' => 'required|date|after_or_equal:today',
             'start_time' => 'required|date_format:H:i',
@@ -428,6 +432,12 @@ class FrontendCourseController extends BaseController
 
                 'pricing_type' => $validated['pricing_type'],
                 'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+                'enrollment_billing_cycle' => EnrollmentBillingCycle::persisted(
+                    $validated['type'],
+                    $validated['pricing_type'],
+                    $validated['enrollment_billing_cycle'] ?? null
+                ),
+                'allow_enrollment_after_start' => $request->boolean('allow_enrollment_after_start'),
 
                 'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],
@@ -521,26 +531,18 @@ class FrontendCourseController extends BaseController
                 : 0,
         ];
 
-        // Determine course status
-        $now = now();
-        $courseStart = \Carbon\Carbon::parse($course->start_date);
-
-        if ($courseStart->isPast()) {
-            $status = 'started';
-        } elseif ($course->enrolled >= $course->max_participants) {
-            $status = 'full';
-        } elseif (($course->enrolled / $course->max_participants) >= 0.8) {
-            $status = 'almost_full';
-        } else {
-            $status = 'available';
-        }
+        $status = ConnectionHubEnrollmentService::resolveListingStatus($course, $course->enrolled, Auth::user());
 
         return Inertia::render('frontend/user/course/Show', [
             'course' => $course,
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
-            'canEnroll' => $userEnrollment === null && $status !== 'full' && $status !== 'started',
+            'canEnroll' => ConnectionHubEnrollmentService::canUserEnroll(
+                $course,
+                $userEnrollment !== null,
+                $status
+            ),
             'meetingLink' => $course->meeting_link, // Added meeting_link field
         ]);
     }
@@ -567,18 +569,7 @@ class FrontendCourseController extends BaseController
             'available_spots' => max(0, $course->max_participants - $enrolledCount),
         ];
 
-        $now = now();
-        $courseStart = \Carbon\Carbon::parse($course->start_date);
-
-        if ($courseStart->isPast()) {
-            $status = 'started';
-        } elseif ($enrolledCount >= $course->max_participants) {
-            $status = 'full';
-        } elseif ($course->max_participants > 0 && ($enrolledCount / $course->max_participants) >= 0.8) {
-            $status = 'almost_full';
-        } else {
-            $status = 'available';
-        }
+        $status = ConnectionHubEnrollmentService::resolveListingStatus($course, $enrolledCount);
 
         $recentEnrollments = Enrollment::where('course_id', $course->id)
             ->whereIn('status', ['active', 'completed', 'pending'])
@@ -744,6 +735,8 @@ class FrontendCourseController extends BaseController
 
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
             'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
+            'enrollment_billing_cycle' => EnrollmentBillingCycle::validationRule($type, (string) $request->input('pricing_type', 'free')),
+            'allow_enrollment_after_start' => 'boolean',
 
             'start_date' => 'required|date',
             'start_time' => 'required|date_format:H:i',
@@ -876,6 +869,12 @@ class FrontendCourseController extends BaseController
 
                 'pricing_type' => $validated['pricing_type'],
                 'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+                'enrollment_billing_cycle' => EnrollmentBillingCycle::persisted(
+                    $validated['type'],
+                    $validated['pricing_type'],
+                    $validated['enrollment_billing_cycle'] ?? null
+                ),
+                'allow_enrollment_after_start' => $request->boolean('allow_enrollment_after_start'),
 
                 'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],

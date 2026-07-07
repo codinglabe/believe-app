@@ -28,6 +28,8 @@ class Course extends Model
         'unity_meet_livestream_id',
         'pricing_type',
         'course_fee',
+        'enrollment_billing_cycle',
+        'allow_enrollment_after_start',
         'start_date',
         'start_time',
         'end_date',
@@ -84,6 +86,7 @@ class Course extends Model
         'last_updated' => 'datetime',
         'session_duration_minutes' => 'integer',
         'cancelled_at' => 'datetime',
+        'allow_enrollment_after_start' => 'boolean',
     ];
 
     public const STATUS_ACTIVE = 'active';

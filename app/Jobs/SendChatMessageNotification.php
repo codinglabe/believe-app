@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\ChatMessage;
+use App\Models\Organization;
 use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -106,8 +107,16 @@ class SendChatMessageNotification implements ShouldQueue
     private function sendNotificationToReceiver($receiver, $title, $body, $chatUrl, $firebaseService): void
     {
         try {
+            $sender = $this->message->user;
+            if (! $sender) {
+                Log::warning('Chat message sender missing for push notification', [
+                    'message_id' => $this->message->id,
+                ]);
+
+                return;
+            }
+
             $data = [
-                'content_item_id' => (string) $this->message->id,
                 'type' => 'chat_message',
                 'message_id' => (string) $this->message->id,
                 'chat_room_id' => (string) $this->message->chat_room_id,
@@ -122,6 +131,16 @@ class SendChatMessageNotification implements ShouldQueue
                 'created_by' => $this->message->user_id,
                 'deep_link' => parse_url($chatUrl, PHP_URL_PATH) ?: $chatUrl,
             ];
+
+            $senderOrg = Organization::forAuthUser($sender);
+            if ($senderOrg) {
+                $data['organization_id'] = (string) $senderOrg->id;
+
+                $logoUrl = $senderOrg->logoUrl();
+                if ($logoUrl) {
+                    $data['organization_logo_url'] = $logoUrl;
+                }
+            }
 
             // Send Firebase notification (logs to push_notification_logs for admin overview)
             $result = $firebaseService->sendToUser($receiver->id, $title, $body, $data);

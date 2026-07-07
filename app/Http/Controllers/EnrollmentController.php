@@ -6,6 +6,7 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Services\ConnectionHubEnrollmentService;
 use App\Services\CourseEnrollmentFeeService;
 use App\Services\EnrollmentLedgerService;
 use App\Support\CourseEnrollmentCheckoutItems;
@@ -106,12 +107,10 @@ class EnrollmentController extends Controller
                 ->with('error', 'This course is full.');
         }
 
-        // Check if course has started
-        $startDateTime = $this->parseDateTime($course->start_date, $course->start_time);
-
-        if ($startDateTime->isPast()) {
+        // Check if course has started (Learning / Earning / one-time listings only)
+        if (ConnectionHubEnrollmentService::enrollmentBlockedByStartDate($course)) {
             return redirect()->route('course.show', $course->slug)
-                ->with('error', 'This course has already started.');
+                ->with('error', ConnectionHubEnrollmentService::startDateEnrollmentBlockMessage($course));
         }
 
         try {

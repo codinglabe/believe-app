@@ -79,18 +79,69 @@ function isAndroidNotificationPlatform() {
     return /android/i.test(self.navigator.userAgent);
 }
 
-/** App icon on the left; organization logo uses NotificationOptions.image (right). */
+function isOrganizationCampaignNotification(data) {
+    if (!data) {
+        return false;
+    }
+
+    const campaignId = data.campaign_id ? String(data.campaign_id).trim() : "";
+    const moduleName = data.module_name ? String(data.module_name).trim() : "";
+    const sourceType = data.source_type ? String(data.source_type).trim() : "";
+    const context = data.notification_context ? String(data.notification_context).trim() : "";
+
+    return (
+        campaignId !== "" ||
+        moduleName === "campaigns" ||
+        sourceType === "campaign" ||
+        context === "organization_daily_campaign"
+    );
+}
+
+function isSystemAutomaticNotification(data) {
+    if (isOrganizationCampaignNotification(data)) {
+        return false;
+    }
+
+    const moduleName = data && data.module_name ? String(data.module_name).trim() : "";
+    const sourceType = data && data.source_type ? String(data.source_type).trim() : "";
+    const type = data && data.type ? String(data.type).trim() : "";
+
+    return (
+        moduleName === "daily_engagement" ||
+        sourceType === "daily_engagement" ||
+        type === "daily_engagement"
+    );
+}
+
+/** PWA app icon on the left (Android); org logo via `icon` shows as the right-side dynamic icon. */
 function resolveNotificationDisplayIcon(data) {
+    if (data && data.type === INCOMING_CALL_TYPE) {
+        const callerAvatar = data.caller_avatar ? String(data.caller_avatar).trim() : "";
+        if (callerAvatar) {
+            return callerAvatar;
+        }
+    }
+
+    if (isSystemAutomaticNotification(data)) {
+        return appNotificationIconUrl();
+    }
+
+    const orgLogo = resolveOrganizationLogoUrl(data);
+    if (orgLogo) {
+        return orgLogo;
+    }
+
     return appNotificationIconUrl();
 }
 
 function resolveNotificationImageUrl(data) {
+    // Do not use `image` for org logos — Android renders it as a large hero at the bottom.
     if (data && data.type === INCOMING_CALL_TYPE) {
         const callerAvatar = data.caller_avatar ? String(data.caller_avatar).trim() : "";
         return callerAvatar || null;
     }
 
-    return resolveOrganizationLogoUrl(data);
+    return null;
 }
 
 function resolveNotificationBadgeUrl() {

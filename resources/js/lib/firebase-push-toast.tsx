@@ -56,27 +56,77 @@ export function isAndroidNotificationPlatform(): boolean {
     return /android/i.test(navigator.userAgent)
 }
 
+export function isOrganizationCampaignNotification(
+    data: Record<string, string | undefined>,
+): boolean {
+    const campaignId = data.campaign_id?.trim() ?? ""
+    const moduleName = data.module_name?.trim() ?? ""
+    const sourceType = data.source_type?.trim() ?? ""
+    const context = data.notification_context?.trim() ?? ""
+
+    return (
+        campaignId !== "" ||
+        moduleName === "campaigns" ||
+        sourceType === "campaign" ||
+        context === "organization_daily_campaign"
+    )
+}
+
+export function isSystemAutomaticNotification(
+    data: Record<string, string | undefined>,
+): boolean {
+    if (isOrganizationCampaignNotification(data)) {
+        return false
+    }
+
+    const moduleName = data.module_name?.trim() ?? ""
+    const sourceType = data.source_type?.trim() ?? ""
+    const type = data.type?.trim() ?? ""
+
+    return (
+        moduleName === "daily_engagement" ||
+        sourceType === "daily_engagement" ||
+        type === "daily_engagement"
+    )
+}
+
 /**
- * App icon on the left. Organization logo is shown via NotificationOptions.image (right).
+ * PWA app icon on the left (Android). Organization logo uses `icon` for the right-side dynamic icon.
  */
 export function resolveNotificationDisplayIcon(
-    _data: Record<string, string | undefined>,
+    data: Record<string, string | undefined>,
     origin?: string,
 ): string {
+    if (data.type === INCOMING_CALL_TYPE) {
+        const callerAvatar = data.caller_avatar?.trim()
+        if (callerAvatar) {
+            return callerAvatar
+        }
+    }
+
+    if (isSystemAutomaticNotification(data)) {
+        return resolveAppNotificationIcon(origin)
+    }
+
+    const orgLogo = resolveOrganizationLogoUrl(data, origin)
+    if (orgLogo) {
+        return orgLogo
+    }
+
     return resolveAppNotificationIcon(origin)
 }
 
 export function resolveNotificationImageUrl(
     data: Record<string, string | undefined>,
-    origin?: string,
+    _origin?: string,
 ): string | undefined {
+    // Do not use `image` for org logos — Android renders it as a large hero at the bottom.
     if (data.type === INCOMING_CALL_TYPE) {
         const callerAvatar = data.caller_avatar?.trim()
         return callerAvatar || undefined
     }
 
-    const orgLogo = resolveOrganizationLogoUrl(data, origin)
-    return orgLogo ?? undefined
+    return undefined
 }
 
 export function resolveNotificationBadge(origin?: string): string {

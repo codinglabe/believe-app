@@ -4,14 +4,12 @@ namespace App\Services;
 
 use App\Enums\PushNotificationLogStatus;
 use App\Enums\PushNotificationRecipientStatus;
-use App\Models\ContentItem;
-use App\Models\Organization;
 use App\Models\PushNotificationLog;
-use App\Models\User;
 use App\Models\PushNotificationRecipient;
 use App\Models\UserPushToken;
 use App\Services\PushNotifications\FcmErrorClassifier;
 use App\Services\PushNotifications\NotificationFailureLogger;
+use App\Services\PushNotifications\OrganizationLogoResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +21,7 @@ class PushNotificationLogger
         private readonly DeviceTokenService $deviceTokenService,
         private readonly NotificationFailureLogger $failureLogger,
         private readonly FcmErrorClassifier $errorClassifier,
+        private readonly OrganizationLogoResolver $organizationLogoResolver,
     ) {}
 
     /**
@@ -561,26 +560,15 @@ class PushNotificationLogger
      */
     private function enrichPayloadWithOrganizationLogo(PushNotificationLog $log, array $payload): array
     {
-        if (! empty($payload['organization_logo_url'])) {
+        $payload = $this->mergeLogContextIntoPayload($log, $payload);
+
+        if ($this->organizationLogoResolver->isSystemAutomaticNotification($log, $payload)) {
+            unset($payload['organization_logo_url']);
+
             return $payload;
         }
 
-        $organizationId = $log->organization_id ?? $this->resolveOrganizationIdFromSender($log->created_by);
-
-        if (! $organizationId && ! empty($payload['content_item_id'])) {
-            $organizationId = ContentItem::query()
-                ->whereKey((int) $payload['content_item_id'])
-                ->value('organization_id');
-        }
-
-        if (! $organizationId) {
-            return $payload;
-        }
-
-        $logoUrl = Organization::query()
-            ->whereKey($organizationId)
-            ->first(['id', 'registered_user_image'])
-            ?->logoUrl();
+        $logoUrl = $this->organizationLogoResolver->resolveLogoUrl($log, $payload);
 
         if ($logoUrl) {
             $payload['organization_logo_url'] = $logoUrl;
@@ -589,14 +577,32 @@ class PushNotificationLogger
         return $payload;
     }
 
-    private function resolveOrganizationIdFromSender(?int $userId): ?int
+    /**
+     * FCM payloads often omit module/org fields stripped during dispatch; merge log context back in.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function mergeLogContextIntoPayload(PushNotificationLog $log, array $payload): array
     {
-        if (! $userId) {
-            return null;
+        $context = [];
+
+        if ($log->module_name && empty($payload['module_name'])) {
+            $context['module_name'] = $log->module_name;
         }
 
-        $user = User::query()->find($userId);
+        if ($log->module_record_id && empty($payload['module_record_id'])) {
+            $context['module_record_id'] = (string) $log->module_record_id;
+        }
 
-        return $user ? Organization::forAuthUser($user)?->id : null;
+        if ($log->organization_id && empty($payload['organization_id'])) {
+            $context['organization_id'] = (string) $log->organization_id;
+        }
+
+        if ($log->created_by && empty($payload['created_by']) && empty($payload['sender_id'])) {
+            $context['created_by'] = (string) $log->created_by;
+        }
+
+        return array_merge($context, $payload);
     }
 }

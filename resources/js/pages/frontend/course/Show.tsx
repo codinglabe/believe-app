@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { usePage, Link, router } from "@inertiajs/react"
 import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
+import { enrollmentBillingCycleSuffix } from "@/lib/enrollment-billing-cycle"
 import type { ConnectionHubType } from "@/lib/connection-hub-type"
 import BrpParticipationHint from "@/components/brp/BrpParticipationHint"
 import { courseEnrollmentBrpModule } from "@/lib/brp-participation"
@@ -76,6 +77,8 @@ interface Course {
   type: ConnectionHubType
   pricing_type: "free" | "paid"
   course_fee: number | null
+  enrollment_billing_cycle?: string | null
+  allow_enrollment_after_start?: boolean
   start_date: string
   start_time: string
   end_date: string | null
@@ -240,6 +243,11 @@ export default function FrontendCourseShow({
   const hasCurrentEnrollment =
     !!userEnrollment && ["active", "completed", "pending"].includes(userEnrollment.status)
 
+  const participantPriceLabel =
+    course.pricing_type === "free"
+      ? "Free"
+      : `${course.formatted_price}${enrollmentBillingCycleSuffix(course.enrollment_billing_cycle ?? "one_time")}`
+
   return (
     <FrontendLayout>
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
@@ -392,7 +400,7 @@ export default function FrontendCourseShow({
                     <Sparkles className="h-5 w-5 text-white/90" />
                     <div>
                       <p className="text-xs uppercase tracking-wide text-white/60">Price</p>
-                      <p className="text-sm font-semibold">{course.formatted_price}</p>
+                      <p className="text-sm font-semibold">{participantPriceLabel}</p>
                     </div>
                   </div>
                 </div>
@@ -546,7 +554,7 @@ export default function FrontendCourseShow({
                   <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-5 text-white">
                     <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Investment</p>
                     <p className="mt-2 text-3xl font-bold tabular-nums">
-                      {course.pricing_type === "free" ? "Free" : course.formatted_price}
+                      {participantPriceLabel}
                     </p>
                     <p className="mt-1 text-sm text-white/85">
                       {course.pricing_type === "free"
@@ -649,12 +657,19 @@ export default function FrontendCourseShow({
                         >
                           {!isEventsHubType(course.type) ? "Enroll" : "Register"} now
                           <span className="ml-2 opacity-95">
-                            {course.pricing_type === "paid" ? ` · ${course.formatted_price}` : " · Free"}
+                            {course.pricing_type === "paid" ? ` · ${participantPriceLabel}` : " · Free"}
                           </span>
                         </Button>
                       )}
                       {enrollmentBrpModule && (
                         <BrpParticipationHint module={enrollmentBrpModule} />
+                      )}
+                      {status === "in_progress" && course.allow_enrollment_after_start && (
+                        <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                          {isEventsHubType(course.type)
+                            ? "This meetup is underway — you can still register and join upcoming sessions."
+                            : "This listing is active — you can still enroll and participate."}
+                        </p>
                       )}
                       </div>
                     ) : (

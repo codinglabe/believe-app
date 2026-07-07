@@ -2483,6 +2483,7 @@ Route::prefix('admin/email-packages')
     });
 
 // Admin Service Categories Management
+// Admin
 Route::prefix('admin/service-categories')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.service-categories.')

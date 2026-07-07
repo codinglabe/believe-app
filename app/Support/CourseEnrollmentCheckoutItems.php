@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Course;
 use App\Models\User;
+use App\Services\CourseEnrollmentFeeService;
 use App\Services\CourseTaxClassificationService;
 
 /**
@@ -17,6 +18,10 @@ final class CourseEnrollmentCheckoutItems
      */
     public static function lineItems(Course $course, User $user): array
     {
+        if (CourseEnrollmentFeeService::stripeCheckoutMode($course) === 'subscription') {
+            return self::subscriptionLineItems($course, $user);
+        }
+
         $currency = strtolower($user->preferredCurrency());
         $rail = 'card';
         $classification = $course->tax_classification ?? CourseTaxClassificationService::NON_TAXABLE;
@@ -183,6 +188,35 @@ final class CourseEnrollmentCheckoutItems
         }
 
         return $out;
+    }
+
+    /**
+     * Recurring meetup/companion enrollment (monthly). Used when the host selects monthly billing on the listing.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function subscriptionLineItems(Course $course, User $user): array
+    {
+        $currency = strtolower($user->preferredCurrency());
+        $rail = 'card';
+        $interval = CourseEnrollmentFeeService::recurringBillingInterval($course) ?? 'month';
+        $courseCode = CourseStripeTaxCodeResolver::courseProductTaxCode($course);
+        $fee = (float) $course->course_fee;
+        $totalCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($fee, $rail);
+
+        return [[
+            'price_data' => [
+                'currency' => $currency,
+                'product_data' => [
+                    'name' => 'Meetup membership: '.$course->name,
+                    'tax_code' => $courseCode,
+                ],
+                'unit_amount' => $totalCents,
+                'tax_behavior' => 'exclusive',
+                'recurring' => ['interval' => $interval],
+            ],
+            'quantity' => 1,
+        ]];
     }
 
     /**

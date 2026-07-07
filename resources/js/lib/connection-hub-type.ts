@@ -18,6 +18,16 @@ export function isEventsHubType(type: string): boolean {
   return type === "events"
 }
 
+/** Suggested default for new listings; persisted value is {@code Course.allow_enrollment_after_start}. */
+export function defaultAllowEnrollmentAfterStart(type: string): boolean {
+  return type === "companion" || type === "events"
+}
+
+/** @deprecated Use course.allow_enrollment_after_start when a listing is loaded. */
+export function allowsOpenEnrollmentAfterStart(type: string): boolean {
+  return defaultAllowEnrollmentAfterStart(type)
+}
+
 export function isEnrollmentStyleHubType(type: string): boolean {
   return !isEventsHubType(type)
 }
