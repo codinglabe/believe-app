@@ -762,21 +762,38 @@ class PostController extends Controller
     }
 
     /**
+     * Public URL for a user/org profile image stored on the public disk.
+     */
+    protected function socialFeedImageUrl(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return Storage::url($path);
+    }
+
+    /**
      * Sets creator_name / creator_slug / creator_type for social feed (Care Alliance vs org vs user).
      */
     protected function hydratePostCreatorForSocialFeed(Post $post): void
     {
         if ($post->organization_id && ($org = $post->attachedOrganization) && $org->user) {
+            $imageUrl = $this->socialFeedImageUrl($org->user->image);
             $post->creator = [
                 'id' => $org->id,
                 'name' => $org->name,
                 'slug' => $org->user->slug,
-                'image' => $org->user->image,
+                'image' => $imageUrl,
             ];
             $post->creator_type = 'organization';
             $post->creator_name = $org->name;
             $post->creator_slug = $org->user->slug;
-            $post->creator_image = $org->user->image;
+            $post->creator_image = $imageUrl;
             $this->hydrateYouTubeEmbedPresentation($post);
 
             return;
@@ -789,11 +806,12 @@ class PostController extends Controller
         }
 
         $user = $post->user;
+        $userImageUrl = $this->socialFeedImageUrl($user->image);
         $post->creator = null;
         $post->creator_type = 'user';
         $post->creator_name = $user->name;
         $post->creator_slug = $user->slug;
-        $post->creator_image = $user->image;
+        $post->creator_image = $userImageUrl;
 
         $isCareAllianceAuthor = $user->role === 'care_alliance' || $user->hasRole('care_alliance');
 
@@ -810,12 +828,12 @@ class PostController extends Controller
                     'id' => $alliance->id,
                     'name' => $alliance->name,
                     'slug' => $alliance->slug,
-                    'image' => $user->image,
+                    'image' => $userImageUrl,
                 ];
                 $post->creator_type = 'care_alliance';
                 $post->creator_name = $alliance->name;
                 $post->creator_slug = $alliance->slug;
-                $post->creator_image = $user->image;
+                $post->creator_image = $userImageUrl;
             }
             $this->hydrateYouTubeEmbedPresentation($post);
 
@@ -828,11 +846,12 @@ class PostController extends Controller
                 'id' => $org->id,
                 'name' => $org->name,
                 'slug' => $user->slug,
-                'image' => $user->image,
+                'image' => $userImageUrl,
             ];
             $post->creator_type = 'organization';
             $post->creator_name = $org->name;
             $post->creator_slug = $user->slug;
+            $post->creator_image = $userImageUrl;
         }
 
         $this->hydrateYouTubeEmbedPresentation($post);

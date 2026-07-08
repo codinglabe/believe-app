@@ -2979,7 +2979,12 @@ TXT;
             }
 
             // Dispatch job to send emails (job will create email records)
-            dispatch(new SendNewsletterJob($newsletter));
+            try {
+                dispatch(new SendNewsletterJob($newsletter));
+            } catch (\Throwable $e) {
+                $newsletter->update(['status' => 'failed']);
+                throw $e;
+            }
 
             return back()->with('success', 'Newsletter is being sent to '.$targetedUsers->count().' recipients.');
         } catch (\Exception $e) {
@@ -3323,9 +3328,25 @@ TXT;
 
         try {
             // Allow manual sending for any status (including sent for "Send Again" functionality)
-            // Only prevent sending if currently in sending status
             if ($newsletter->status === 'sending') {
-                return back()->with('error', 'Newsletter is currently being sent. Please wait for it to complete.');
+                $stuckForMinutes = $newsletter->updated_at
+                    ? $newsletter->updated_at->diffInMinutes(Carbon::now('UTC'))
+                    : 0;
+
+                if ($stuckForMinutes < 5) {
+                    return back()->with('error', 'Engagement is currently being sent. Please wait a few minutes for it to complete.');
+                }
+
+                Log::warning('Recovering stuck newsletter send', [
+                    'newsletter_id' => $newsletter->id,
+                    'stuck_for_minutes' => $stuckForMinutes,
+                    'send_via' => $newsletter->send_via,
+                ]);
+
+                dispatch(new SendNewsletterJob($newsletter));
+
+                return redirect()->route('newsletter.index')
+                    ->with('success', 'Sending looked stuck — the delivery job was queued again. If the status does not change, start a queue worker: php artisan queue:work --queue=default,mail');
             }
 
             $sendVia = $newsletter->send_via ?? 'email';
@@ -3417,7 +3438,12 @@ TXT;
                 'newsletter_id' => $newsletter->id,
             ]);
 
-            dispatch(new SendNewsletterJob($newsletter));
+            try {
+                dispatch(new SendNewsletterJob($newsletter));
+            } catch (\Throwable $e) {
+                $newsletter->update(['status' => $wasSent ? 'sent' : 'failed']);
+                throw $e;
+            }
 
             // Get recipient count for message
             $recipientCount = 0;

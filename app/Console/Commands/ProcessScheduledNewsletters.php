@@ -84,7 +84,60 @@ class ProcessScheduledNewsletters extends Command
             $this->processNewsletter($newsletter);
         }
 
+        $this->recoverStuckSendingNewsletters();
+
         $this->info('Scheduled newsletters processing completed.');
+    }
+
+    /**
+     * Re-queue or finalize newsletters left in "sending" when the queue job never ran or did not close out.
+     */
+    protected function recoverStuckSendingNewsletters(): void
+    {
+        $cutoff = \Carbon\Carbon::now('UTC')->subMinutes(5);
+
+        $stuck = Newsletter::query()
+            ->where('status', 'sending')
+            ->where('updated_at', '<=', $cutoff)
+            ->get();
+
+        if ($stuck->isEmpty()) {
+            return;
+        }
+
+        $this->warn("Checking {$stuck->count()} stuck sending newsletter(s)...");
+
+        foreach ($stuck as $newsletter) {
+            $emailCount = NewsletterEmail::where('newsletter_id', $newsletter->id)->count();
+            $pendingCount = NewsletterEmail::where('newsletter_id', $newsletter->id)
+                ->where('status', 'pending')
+                ->count();
+
+            if ($emailCount > 0 && $pendingCount === 0) {
+                $processedCount = NewsletterEmail::where('newsletter_id', $newsletter->id)
+                    ->whereIn('status', ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed'])
+                    ->count();
+
+                if ($processedCount >= $emailCount) {
+                    $newsletter->update([
+                        'status' => 'sent',
+                        'sent_at' => \Carbon\Carbon::now('UTC'),
+                    ]);
+                    $this->warn("Newsletter {$newsletter->id} marked sent (recipients already processed).");
+
+                    continue;
+                }
+            }
+
+            Log::warning('Re-dispatching stuck newsletter send', [
+                'newsletter_id' => $newsletter->id,
+                'email_count' => $emailCount,
+                'pending_count' => $pendingCount,
+            ]);
+
+            dispatch(new SendNewsletterJob($newsletter));
+            $this->warn("Newsletter {$newsletter->id} re-queued.");
+        }
     }
 
     /**
