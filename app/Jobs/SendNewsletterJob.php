@@ -91,19 +91,22 @@ class SendNewsletterJob implements ShouldQueue
             }
 
             if ($pendingEmails->isEmpty()) {
-                // Check if all emails are processed
                 $processedEmails = NewsletterEmail::where('newsletter_id', $this->newsletter->id)
-                    ->whereIn('status', ['sent', 'delivered', 'bounced', 'failed'])
+                    ->whereIn('status', ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed'])
                     ->count();
 
                 if ($processedEmails >= $totalEmails) {
-                    // All emails processed (e.g. last batch already ran); sync counts then close out
                     $this->updateNewsletterStats();
                     $this->newsletter->update([
                         'status' => 'sent',
                         'sent_at' => Carbon::now('UTC'),
                     ]);
                     Log::info("Newsletter {$this->newsletter->id} completed sending to all recipients.");
+                } else {
+                    Log::warning("Newsletter {$this->newsletter->id} has no pending recipients but is not fully processed", [
+                        'total_emails' => $totalEmails,
+                        'processed_emails' => $processedEmails,
+                    ]);
                 }
 
                 return;
