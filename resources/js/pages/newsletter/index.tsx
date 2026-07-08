@@ -310,6 +310,18 @@ export default function NewsletterIndex({
         return () => window.clearTimeout(timer)
     }, [searchTerm, statusFilter])
 
+    const hasSending = newsletters.data.some((n) => n.status === "sending")
+
+    useEffect(() => {
+        if (!hasSending) {
+            return
+        }
+        const timer = window.setInterval(() => {
+            router.reload({ only: [...INERTIA_ONLY] })
+        }, 5000)
+        return () => window.clearInterval(timer)
+    }, [hasSending])
+
     const setTabOrStatus = (next: string) => {
         setStatusFilter(next)
     }
