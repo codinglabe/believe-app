@@ -2968,20 +2968,20 @@ TXT;
             'metadata' => $meta,
         ]);
 
-        // Use new targeting system to get recipients
+        // Use resolved recipient count (includes imported newsletter contacts, not only User rows)
         try {
-            $targetedUsers = $newsletter->getTargetedUsers();
-
-            if ($targetedUsers->isEmpty()) {
+            if (! $newsletter->hasSendableRecipients()) {
                 $newsletter->update(['status' => 'failed']);
 
                 return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings.');
             }
 
+            $recipientCount = $newsletter->resolvedTotalRecipientsCount();
+
             // Dispatch job to send emails (job will create email records)
             dispatch(new SendNewsletterJob($newsletter));
 
-            return back()->with('success', 'Newsletter is being sent to '.$targetedUsers->count().' recipients.');
+            return back()->with('success', 'Newsletter is being sent to '.$recipientCount.' recipients.');
         } catch (\Exception $e) {
             Log::error('Error in send method', [
                 'newsletter_id' => $newsletter->id,
@@ -3379,15 +3379,17 @@ TXT;
             ]);
 
             try {
-                $targetedUsers = $newsletter->getTargetedUsers();
-                Log::info('Got targeted users', [
+                $recipientCount = $newsletter->resolvedTotalRecipientsCount();
+                Log::info('Resolved newsletter recipients', [
                     'newsletter_id' => $newsletter->id,
-                    'targeted_users_count' => $targetedUsers->count(),
+                    'recipients_count' => $recipientCount,
+                    'target_type' => $newsletter->target_type,
+                    'organization_segment' => $newsletter->target_criteria['organization_segment'] ?? null,
                 ]);
 
-                if ($targetedUsers->isEmpty()) {
+                if (! $newsletter->hasSendableRecipients()) {
                     $newsletter->update(['status' => 'failed']);
-                    Log::warning('No targeted recipients found', [
+                    Log::warning('No sendable recipients found', [
                         'newsletter_id' => $newsletter->id,
                         'target_type' => $newsletter->target_type,
                     ]);
@@ -3395,14 +3397,12 @@ TXT;
                     return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings or add recipients.');
                 }
 
-                // Create email records for targeted users (let the job handle it, but we can pre-create for immediate feedback)
-                // Actually, let the job handle this to avoid duplicate creation
                 Log::info('Recipients determined, job will create email records', [
                     'newsletter_id' => $newsletter->id,
-                    'recipients_count' => $targetedUsers->count(),
+                    'recipients_count' => $recipientCount,
                 ]);
             } catch (\Exception $e) {
-                Log::error('Error getting targeted users', [
+                Log::error('Error resolving newsletter recipients', [
                     'newsletter_id' => $newsletter->id,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
@@ -3418,21 +3418,6 @@ TXT;
             ]);
 
             dispatch(new SendNewsletterJob($newsletter));
-
-            // Get recipient count for message
-            $recipientCount = 0;
-            try {
-                $recipientCount = $newsletter->getTargetedUsers()->count();
-            } catch (\Exception $e) {
-                Log::error('Error counting targeted users', [
-                    'newsletter_id' => $newsletter->id,
-                    'error' => $e->getMessage(),
-                ]);
-                // Use a fallback count from email records if they exist
-                $recipientCount = NewsletterEmail::where('newsletter_id', $newsletter->id)
-                    ->where('status', 'pending')
-                    ->count();
-            }
 
             $message = $wasSent ?
                 'Newsletter is being sent again to '.$recipientCount.' recipients.' :
