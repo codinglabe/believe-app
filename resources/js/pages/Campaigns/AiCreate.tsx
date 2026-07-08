@@ -3,15 +3,22 @@
 import type React from "react"
 import { Head, Link, router, useForm, usePage } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
-import { useState } from "react"
-import { Coins, Calendar, Clock, FileText, Users, MessageSquare, Radio, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Calendar, Clock, FileText, Users, MessageSquare, Radio, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react"
 import type { SharedData } from "@/types"
+import { AiChatUsageCard } from "@/components/ai-chat/AiChatUsageCard"
+import { AiTokensPurchaseModal } from "@/components/ai-chat/AiTokensPurchaseModal"
+import {
+  AiTokenPurchaseSuccessOverlay,
+  isAiCreditPurchaseFlashSuccess,
+} from "@/components/ai-chat/AiTokenPurchaseSuccessOverlay"
+import { chatPrimaryButtonClass } from "@/components/chat/chat-brand"
+import { cn } from "@/lib/utils"
 
 const route = (name: string) => {
   const routes: Record<string, string> = {
     "campaigns.ai-store": "/campaigns/ai",
     "campaigns.index": "/campaigns",
-    "credits.checkout": "/credits/checkout",
   }
   return routes[name] || "/"
 }
@@ -28,12 +35,19 @@ interface User {
 interface AiCampaignsCreateProps {
   defaultChannels: string[]
   users: User[]
-  credits: number
 }
 
-const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, users, credits: initialCredits = 0 }) => {
-  const { auth } = usePage<SharedData>().props
-  const currentCredits = auth.user.credits ?? initialCredits
+const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, users }) => {
+  const { auth, flash } = usePage<SharedData & { flash?: { success?: string } }>().props
+  const aiTokensUsed = (auth.user as { ai_tokens_used?: number }).ai_tokens_used ?? 0
+  const aiTokensIncluded = (auth.user as { ai_tokens_included?: number }).ai_tokens_included ?? 0
+  const hasAiTokensLeft = aiTokensIncluded === 0 || aiTokensUsed < aiTokensIncluded
+  const percentTokensUsed =
+    aiTokensIncluded > 0
+      ? Math.min(100, Math.round((aiTokensUsed / aiTokensIncluded) * 100))
+      : 0
+  const aiTokensRemaining =
+    aiTokensIncluded === 0 ? null : Math.max(0, aiTokensIncluded - aiTokensUsed)
   const { data, setData, errors, post, processing } = useForm({
     name: "",
     start_date: "",
@@ -48,7 +62,33 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
 
   const [userSearch, setUserSearch] = useState("")
   const [showPromptExamples, setShowPromptExamples] = useState(false)
-  const [isLoadingCredits, setIsLoadingCredits] = useState(false)
+  const [aiTokensPurchaseModalOpen, setAiTokensPurchaseModalOpen] = useState(false)
+  const [purchaseCheckoutError, setPurchaseCheckoutError] = useState<string | null>(null)
+  const [tokenPurchaseCelebration, setTokenPurchaseCelebration] = useState<{
+    id: number
+    active: boolean
+    message: string | null
+  }>({ id: 0, active: false, message: null })
+
+  useEffect(() => {
+    const success = flash?.success
+    if (!isAiCreditPurchaseFlashSuccess(success)) {
+      return
+    }
+
+    setTokenPurchaseCelebration((prev) => ({
+      id: prev.id + 1,
+      active: true,
+      message: success,
+    }))
+    setAiTokensPurchaseModalOpen(false)
+
+    const hideTimer = window.setTimeout(() => {
+      setTokenPurchaseCelebration((prev) => ({ ...prev, active: false }))
+    }, 3200)
+
+    return () => window.clearTimeout(hideTimer)
+  }, [flash?.success])
 
   const promptExamples = [
     "List 20 Daily Prayer with Bible Verses for morning motivation",
@@ -62,7 +102,7 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
     e.preventDefault()
     post(route("campaigns.ai-store"), {
       onSuccess: () => {
-        // Reload auth data to update credits in real-time
+        // Reload auth data to update token usage in real-time
         router.reload({ only: ['auth'] })
       },
     })
@@ -106,24 +146,6 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
     setShowPromptExamples(false)
   }
 
-  const handleBuyCredits = () => {
-    setIsLoadingCredits(true)
-    router.post(route("credits.checkout"), {
-      amount: 1.00, // $1
-      return_route: "campaigns.ai-create",
-    }, {
-      onError: (errors) => {
-        console.error('Failed to create checkout session:', errors)
-        setIsLoadingCredits(false)
-      },
-      onFinish: () => {
-        // Inertia will automatically redirect to Stripe checkout on success
-        // This will be called if there's an error
-        setIsLoadingCredits(false)
-      }
-    })
-  }
-
   return (
     <AppLayout>
       <Head title="Create AI Campaign" />
@@ -144,59 +166,64 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
                   </p>
                 </div>
               </div>
-              {auth.user.role === 'organization' && (
-                <div className="flex items-center gap-2 rounded-full bg-primary/10 px-3 sm:px-4 py-2 sm:py-2.5 border border-primary/20 flex-shrink-0">
-                  <Coins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
-                  <span className="text-xs sm:text-sm font-semibold text-primary whitespace-nowrap">
-                    <span className="hidden sm:inline">{(auth.user.credits ?? 0).toLocaleString()} Credits</span>
-                    <span className="sm:hidden">{(auth.user.credits ?? 0).toLocaleString()}</span>
-                  </span>
+              {auth.user.role === "organization" && (
+                <div className="w-full max-w-[17.5rem] shrink-0">
+                  <AiChatUsageCard
+                    userRole={auth.user.role}
+                    aiTokensIncluded={aiTokensIncluded}
+                    aiTokensUsed={aiTokensUsed}
+                    percentTokensUsed={percentTokensUsed}
+                    hasAiTokensLeft={hasAiTokensLeft}
+                    onAddTokens={() => setAiTokensPurchaseModalOpen(true)}
+                    addTokensDisabled={processing}
+                  />
                 </div>
               )}
             </div>
 
-            {/* Low Credits Warning (Red) - when credits <= 1000 */}
-            {auth.user.role === 'organization' && currentCredits <= 1000 && currentCredits > 0 && (
-              <div className="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-500 rounded-lg flex-shrink-0">
+            {auth.user.role === "organization" &&
+              aiTokensIncluded > 0 &&
+              aiTokensUsed >= aiTokensIncluded * 0.9 &&
+              aiTokensUsed < aiTokensIncluded && (
+              <div className="mb-4 flex-shrink-0 rounded-lg border-2 border-amber-500 bg-amber-50 p-4 dark:bg-amber-950/20">
                 <div className="flex items-center gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="flex-1">
-                    <div className="font-semibold text-red-900 dark:text-red-300 mb-1">Low Credits Warning</div>
-                    <p className="text-sm text-red-800 dark:text-red-400">
-                      You have <strong>{currentCredits.toLocaleString()}</strong> credits remaining. Top up now to continue using AI features.
+                    <div className="mb-1 font-semibold text-amber-900 dark:text-amber-300">AI tokens running low</div>
+                    <p className="text-sm text-amber-800 dark:text-amber-400">
+                      You have used <strong>{aiTokensUsed.toLocaleString()} of {aiTokensIncluded.toLocaleString()}</strong> AI tokens. Add more tokens to keep generating campaigns.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleBuyCredits}
-                    disabled={isLoadingCredits}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
-                  >
-                    <Coins className="h-4 w-4" />
-                    {isLoadingCredits ? "Processing..." : "TopUp"}
-                  </button>
                 </div>
               </div>
             )}
 
-            {currentCredits < data.content_count && (
-              <div className="flex items-start gap-3 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20">
-                <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+            {auth.user.role === "organization" && !hasAiTokensLeft && aiTokensIncluded > 0 && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-destructive" />
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-yellow-900 dark:text-yellow-300">Insufficient Credits</div>
-                  <div className="text-sm text-yellow-700 dark:text-yellow-400 mt-0.5">
-                    You need <strong>{data.content_count}</strong> credits but only have <strong>{currentCredits}</strong> available.
+                  <div className="text-sm font-medium text-destructive">AI token limit reached</div>
+                  <div className="mt-0.5 text-sm text-destructive/90">
+                    You have used all your AI tokens for this period. Each campaign uses tokens based on actual AI usage (prompt + generated content).
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={handleBuyCredits}
-                  disabled={isLoadingCredits}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 cursor-pointer"
+                  onClick={() => setAiTokensPurchaseModalOpen(true)}
+                  className={cn(
+                    chatPrimaryButtonClass,
+                    "flex flex-shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
+                  )}
                 >
-                  <Coins className="h-4 w-4" />
-                  {isLoadingCredits ? "Processing..." : "TopUp"}
+                  Add more tokens
                 </button>
+              </div>
+            )}
+
+            {purchaseCheckoutError && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-destructive" />
+                <div className="text-sm text-destructive/90">{purchaseCheckoutError}</div>
               </div>
             )}
           </div>
@@ -365,6 +392,9 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
                   placeholder="Be specific about the theme, tone, and any requirements. Example: 'Create 20 daily prayers with Bible verses for morning motivation'"
                 />
                 {errors.prompt && <div className="text-destructive text-sm mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> {errors.prompt}</div>}
+                <p className="text-xs text-muted-foreground">
+                  Each generation uses <strong>AI tokens</strong> based on actual usage (prompt + response). Your balance is shown above.
+                </p>
               </div>
             </div>
 
@@ -548,11 +578,20 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
-                      <Coins className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                      <Sparkles className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
                       <div>
-                        <div className="text-sm font-medium">Cost</div>
+                        <div className="text-sm font-medium">AI Token Usage</div>
                         <div className="text-sm text-muted-foreground">
-                          <strong>{data.content_count}</strong> credits (Remaining: <strong>{currentCredits - data.content_count}</strong>)
+                          {aiTokensIncluded > 0 ? (
+                            <>
+                              <strong>{aiTokensUsed.toLocaleString()} / {aiTokensIncluded.toLocaleString()}</strong> tokens used
+                              {aiTokensRemaining !== null && (
+                                <> · <strong>{aiTokensRemaining.toLocaleString()}</strong> remaining</>
+                              )}
+                            </>
+                          ) : (
+                            <>Uses your shared AI token balance (no cap on this plan)</>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -587,7 +626,7 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
                   data.user_ids.length === 0 ||
                   !data.start_date ||
                   data.content_count < 1 ||
-                  currentCredits < data.content_count
+                  !hasAiTokensLeft
                 }
                 className="px-8 py-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium flex items-center gap-2 shadow-sm hover:shadow-md"
               >
@@ -607,6 +646,19 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
           </form>
         </div>
       </div>
+
+      <AiTokenPurchaseSuccessOverlay
+        key={tokenPurchaseCelebration.id}
+        active={tokenPurchaseCelebration.active}
+        message={tokenPurchaseCelebration.message}
+      />
+
+      <AiTokensPurchaseModal
+        open={aiTokensPurchaseModalOpen}
+        onOpenChange={setAiTokensPurchaseModalOpen}
+        returnRoute="campaigns.ai-create"
+        onCheckoutError={(message) => setPurchaseCheckoutError(message)}
+      />
     </AppLayout>
   )
 }
