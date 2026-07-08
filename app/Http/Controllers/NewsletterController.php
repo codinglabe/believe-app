@@ -415,14 +415,184 @@ AIHTML;
 
     /**
      * @param  array<string, mixed>  $decoded
+     */
+    private function templateAiStringFromDecoded(array $decoded, array $keys): string
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $decoded)) {
+                continue;
+            }
+            $value = $decoded[$key];
+            if (is_string($value) || is_numeric($value)) {
+                $trimmed = trim((string) $value);
+
+                return $trimmed;
+            }
+        }
+
+        return '';
+    }
+
+    private function newsletterAiPlainTextFromHtml(string $html): string
+    {
+        $withBreaks = preg_replace('/<\/(p|div|h[1-6]|li|tr)>/i', "\n\n", $html) ?? $html;
+        $withBreaks = preg_replace('/<br\s*\/?>/i', "\n", $withBreaks) ?? $withBreaks;
+        $text = html_entity_decode(strip_tags($withBreaks), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace("/[ \t]+\n/", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        return trim($text);
+    }
+
+    private function newsletterAiSimpleHtmlFromPlain(string $subject, string $content): string
+    {
+        $escapedSubject = htmlspecialchars($subject, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $paragraphs = array_values(array_filter(array_map(
+            'trim',
+            preg_split('/\R{2,}/', $content) ?: []
+        )));
+        $body = '';
+        foreach ($paragraphs as $paragraph) {
+            $body .= '<p style="margin:0 0 14px 0;font-size:16px;line-height:1.6;color:#1e293b;">'
+                .nl2br(htmlspecialchars($paragraph, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
+                .'</p>';
+        }
+        if ($body === '') {
+            $body = '<p style="margin:0 0 14px 0;font-size:16px;line-height:1.6;color:#1e293b;">'
+                .nl2br(htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
+                .'</p>';
+        }
+
+        return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;"><tr><td style="padding:32px 28px;"><h1 style="margin:0 0 16px 0;font-size:26px;line-height:1.3;color:#1e293b;">'
+            .$escapedSubject
+            .'</h1>'
+            .$body
+            .'</td></tr></table>';
+    }
+
+    private function newsletterAiSuggestedNameFromSubject(string $subject): string
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $subject) ?? $subject);
+        if ($name === '') {
+            return '';
+        }
+
+        return mb_substr($name, 0, 80);
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string, 3: string} subject, content, htmlContent, suggestedName
+     */
+    private function repairTemplateAiPayload(
+        string $subject,
+        string $content,
+        string $htmlContent,
+        string $suggestedName,
+        string $outputMode
+    ): array {
+        if ($suggestedName === '' && $subject !== '') {
+            $suggestedName = $this->newsletterAiSuggestedNameFromSubject($subject);
+        }
+
+        if ($content === '' && $htmlContent !== '' && $outputMode !== 'plain') {
+            $content = $this->newsletterAiPlainTextFromHtml($htmlContent);
+        }
+
+        if ($htmlContent === '' && $content !== '' && in_array($outputMode, ['html', 'both'], true)) {
+            $htmlContent = $this->newsletterAiSimpleHtmlFromPlain($subject, $content);
+            $sanitizer = app(NewsletterAiHtmlSanitizer::class);
+            $htmlContent = $sanitizer->fixContrastIssues($htmlContent);
+            $htmlContent = $sanitizer->uniqueifyHtmlClassNames($htmlContent);
+        }
+
+        return [$subject, $content, $htmlContent, $suggestedName];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function templateAiMissingFields(
+        string $subject,
+        string $content,
+        string $htmlContent,
+        string $suggestedName,
+        string $outputMode
+    ): array {
+        $missing = [];
+        if ($suggestedName === '') {
+            $missing[] = 'suggested_name';
+        }
+        if ($subject === '') {
+            $missing[] = 'subject';
+        }
+        if ($content === '') {
+            $missing[] = 'content';
+        }
+        if (in_array($outputMode, ['html', 'both'], true) && $htmlContent === '') {
+            $missing[] = 'html_content';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @param  array<int, array{role: string, content: string}>  $messages
+     * @return array{content: string, total_tokens: int, finish_reason: ?string}
+     */
+    private function retryTemplateAiForMissingFields(
+        OpenAiService $openAiService,
+        array $messages,
+        string $assistantJson,
+        array $missing,
+        string $outputMode,
+        string $mergeVars
+    ): array {
+        $missingList = implode(', ', $missing);
+        $modeHint = match ($outputMode) {
+            'plain' => 'Return suggested_name, subject, and content. Set html_content to "".',
+            'both' => 'Return suggested_name, subject, content (full plain-text body), and html_content (full HTML body).',
+            default => 'Return suggested_name, subject, content (plain-text twin), and html_content (HTML body).',
+        };
+
+        $messages[] = ['role' => 'assistant', 'content' => $assistantJson];
+        $messages[] = ['role' => 'user', 'content' => <<<TXT
+Your previous JSON was incomplete. Missing or empty keys: {$missingList}.
+
+Return ONE corrected JSON object with ALL required keys populated with real copy (not placeholders). {$modeHint}
+Merge variables allowed: {$mergeVars}
+No markdown fences.
+TXT];
+
+        return $this->newsletterAiChatCompletionJson($openAiService, $messages);
+    }
+
+    /**
+     * @param  array<string, mixed>  $decoded
      * @return array{0: string, 1: string, 2: string, 3: string} subject, content, htmlContent, suggestedName
      */
     private function normalizeTemplateAiDecodedPayload(array $decoded, string $outputMode): array
     {
-        $subject = trim((string) ($decoded['subject'] ?? ''));
-        $content = trim((string) ($decoded['content'] ?? ''));
-        $htmlContent = trim((string) ($decoded['html_content'] ?? ''));
-        $suggestedName = trim((string) ($decoded['suggested_name'] ?? ''));
+        $subject = $this->templateAiStringFromDecoded($decoded, ['subject', 'Subject', 'title', 'email_subject']);
+        $content = $this->templateAiStringFromDecoded($decoded, [
+            'content',
+            'plain_text',
+            'plain_content',
+            'body',
+            'text',
+            'sms_body',
+        ]);
+        $htmlContent = $this->templateAiStringFromDecoded($decoded, [
+            'html_content',
+            'htmlContent',
+            'html',
+            'html_body',
+        ]);
+        $suggestedName = $this->templateAiStringFromDecoded($decoded, [
+            'suggested_name',
+            'suggestedName',
+            'template_name',
+            'name',
+        ]);
         if ($outputMode === 'plain') {
             $htmlContent = '';
         } elseif ($htmlContent !== '') {
@@ -431,7 +601,7 @@ AIHTML;
             $htmlContent = $sanitizer->uniqueifyHtmlClassNames($htmlContent);
         }
 
-        return [$subject, $content, $htmlContent, $suggestedName];
+        return $this->repairTemplateAiPayload($subject, $content, $htmlContent, $suggestedName, $outputMode);
     }
 
     /**
@@ -476,9 +646,21 @@ AIHTML;
      */
     private function normalizeNewsletterCreateAiDecodedPayload(array $decoded, string $outputMode): array
     {
-        $subject = trim((string) ($decoded['subject'] ?? ''));
-        $content = trim((string) ($decoded['content'] ?? ''));
-        $htmlContent = trim((string) ($decoded['html_content'] ?? ''));
+        $subject = $this->templateAiStringFromDecoded($decoded, ['subject', 'Subject', 'title', 'email_subject']);
+        $content = $this->templateAiStringFromDecoded($decoded, [
+            'content',
+            'plain_text',
+            'plain_content',
+            'body',
+            'text',
+            'sms_body',
+        ]);
+        $htmlContent = $this->templateAiStringFromDecoded($decoded, [
+            'html_content',
+            'htmlContent',
+            'html',
+            'html_body',
+        ]);
         if ($outputMode === 'plain') {
             $htmlContent = '';
         } elseif ($htmlContent !== '') {
@@ -486,6 +668,12 @@ AIHTML;
             $htmlContent = $sanitizer->fixContrastIssues($htmlContent);
             $htmlContent = $sanitizer->uniqueifyHtmlClassNames($htmlContent);
         }
+
+        [$subject, $content, $htmlContent] = array_slice(
+            $this->repairTemplateAiPayload($subject, $content, $htmlContent, '', $outputMode),
+            0,
+            3
+        );
 
         return [$subject, $content, $htmlContent];
     }
@@ -1313,10 +1501,11 @@ AIHTML;
         $tone = $validated['tone'] ?? 'professional';
         $outputMode = $validated['output_mode'];
         $sendVia = $validated['send_via'] ?? 'email';
-        if ($sendVia === 'sms') {
+        if ($sendVia === 'sms' || $sendVia === 'push') {
             $outputMode = 'plain';
         } elseif ($sendVia === 'both') {
-            $outputMode = 'both';
+            // Same fields as HTML mode (plain twin + HTML); SMS length is applied at send time.
+            $outputMode = 'html';
         }
 
         $typeLabels = [
@@ -1438,6 +1627,29 @@ PROMPT;
             }
 
             $incomplete = $this->templateAiPayloadIsIncomplete($subject, $content, $htmlContent, $suggestedName, $outputMode);
+            if ($incomplete !== null) {
+                $missing = $this->templateAiMissingFields($subject, $content, $htmlContent, $suggestedName, $outputMode);
+                if ($missing !== []) {
+                    $result = $this->retryTemplateAiForMissingFields(
+                        $openAiService,
+                        $messages,
+                        $result['content'],
+                        $missing,
+                        $outputMode,
+                        $mergeVars
+                    );
+                    $totalTokens += (int) ($result['total_tokens'] ?? 0);
+                    $decoded = json_decode($result['content'], true);
+                    if (is_array($decoded)) {
+                        [$subject, $content, $htmlContent, $suggestedName] = $this->normalizeTemplateAiDecodedPayload($decoded, $outputMode);
+                        if ($sendVia === 'sms') {
+                            $content = $this->clampNewsletterSmsPlainBody($content);
+                        }
+                        $incomplete = $this->templateAiPayloadIsIncomplete($subject, $content, $htmlContent, $suggestedName, $outputMode);
+                    }
+                }
+            }
+
             if ($incomplete !== null) {
                 return $this->renderNewsletterTemplateForm($formTemplate, $incomplete);
             }
@@ -1565,7 +1777,7 @@ TXT;
         if ($sendVia === 'sms' || $sendVia === 'push') {
             $outputMode = 'plain';
         } elseif ($sendVia === 'both') {
-            $outputMode = 'both';
+            $outputMode = 'html';
         }
 
         $typeLabels = [
@@ -1690,6 +1902,29 @@ PROMPT;
             }
 
             $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
+            if ($incomplete !== null) {
+                $missing = $this->templateAiMissingFields($subject, $content, $htmlContent, 'draft', $outputMode);
+                if ($missing !== []) {
+                    $result = $this->retryTemplateAiForMissingFields(
+                        $openAiService,
+                        $messages,
+                        $result['content'],
+                        $missing,
+                        $outputMode,
+                        $mergeVars
+                    );
+                    $totalTokens += (int) ($result['total_tokens'] ?? 0);
+                    $decoded = json_decode($result['content'], true);
+                    if (is_array($decoded)) {
+                        [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
+                        if ($sendVia === 'sms') {
+                            $content = $this->clampNewsletterSmsPlainBody($content);
+                        }
+                        $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
+                    }
+                }
+            }
+
             if ($incomplete !== null) {
                 return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete, $request));
             }
