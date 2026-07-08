@@ -56,6 +56,7 @@ import {
   AlertDialogTitle,
 } from '@/components/frontend/ui/alert-dialog'
 import toast from 'react-hot-toast'
+import { resolveStorageUrl } from '@/lib/storage-url'
 
 interface User {
   id: number
@@ -1213,8 +1214,9 @@ export default function SocialFeed({
               reelPost.thumbnail_url ||
               (vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : '')
             const creator = reelPost.creator_name || reelPost.user?.name || 'Creator'
-            const avatarSrc =
-              reelPost.creator_image || reelPost.creator?.image || reelPost.user?.image
+            const avatarSrc = resolveStorageUrl(
+              reelPost.creator_image || reelPost.creator?.image || reelPost.user?.image,
+            )
             return (
               <button
                 key={reelPost.id}
