@@ -52,6 +52,17 @@ class AiCampaignController extends Controller
             'content_type' => 'required|in:prayer,devotional,scripture',
         ]);
 
+        $user = auth()->user();
+        $tokensIncluded = (int) ($user->ai_tokens_included ?? 0);
+        $tokensUsed = (int) ($user->ai_tokens_used ?? 0);
+        if ($tokensIncluded > 0 && $tokensUsed >= $tokensIncluded) {
+            return back()
+                ->withErrors([
+                    'error' => 'You have used all your AI tokens for this period. Please add more tokens or upgrade your plan to continue.',
+                ])
+                ->withInput();
+        }
+
         try {
             Log::info('Starting AI content generation', [
                 'count' => $validated['content_count'],
@@ -65,8 +76,8 @@ class AiCampaignController extends Controller
             );
             $generatedContent = $result['items'] ?? $result;
             $totalTokens = (int) ($result['total_tokens'] ?? 0);
-            if ($totalTokens > 0 && auth()->check()) {
-                auth()->user()->increment('ai_tokens_used', $totalTokens);
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
             }
 
             Log::info('Content generated successfully', [
