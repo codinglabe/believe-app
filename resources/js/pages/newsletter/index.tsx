@@ -12,6 +12,7 @@ import {
     type SmsPackage,
     type SmsStats,
 } from "@/components/newsletter/sms-wallet-card"
+import { NewsletterComingSoonBadge, NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
@@ -468,43 +469,39 @@ export default function NewsletterIndex({
                             )}
 
                             {smsStats && (
-                                <div className="inline-flex items-center gap-1">
-                                    <div
-                                        className={cn(
-                                            "inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-full border bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300",
-                                            smsLowBalance ? "border-amber-500/45" : "border-white/10"
-                                        )}
-                                        title="SMS credits: included in your balance and sent so far"
-                                    >
-                                        <span className="flex shrink-0 items-center gap-1.5">
-                                            <Smartphone className="h-3.5 w-3.5 text-blue-400" aria-hidden />
-                                            <span className="text-zinc-500">SMS credits</span>
-                                        </span>
-                                        <span className="hidden h-3 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
-                                        <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                                            <span className="tabular-nums font-semibold text-white">
-                                                {smsStats.sms_included.toLocaleString()}
+                                <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300">
+                                    <Smartphone className="h-3.5 w-3.5 text-blue-400" aria-hidden />
+                                    <span className="text-zinc-500">SMS</span>
+                                    {!NEWSLETTER_SMS_ENABLED ? (
+                                        <NewsletterComingSoonBadge className="normal-case" />
+                                    ) : (
+                                        <>
+                                            <span className="hidden h-3 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
+                                            <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                                <span className="tabular-nums font-semibold text-white">
+                                                    {smsStats.sms_included.toLocaleString()}
+                                                </span>
+                                                <span className="text-zinc-500">included</span>
+                                                <span className="text-zinc-600">·</span>
+                                                <span className="tabular-nums font-semibold text-white">
+                                                    {smsStats.sms_used.toLocaleString()}
+                                                </span>
+                                                <span className="text-zinc-500">sent</span>
                                             </span>
-                                            <span className="text-zinc-500">included</span>
-                                            <span className="text-zinc-600">·</span>
-                                            <span className="tabular-nums font-semibold text-white">
-                                                {smsStats.sms_used.toLocaleString()}
-                                            </span>
-                                            <span className="text-zinc-500">sent</span>
-                                        </span>
-                                    </div>
-                                    {showBuySmsToolbar ? (
-                                        <Button
-                                            type="button"
-                                            size="icon"
-                                            className={cn("h-8 w-8 shrink-0", brandButtonClassSm)}
-                                            aria-label="Buy SMS credits"
-                                            title="Buy SMS credits"
-                                            onClick={() => setBuySmsDialogOpen(true)}
-                                        >
-                                            <ShoppingCart className="h-4 w-4" aria-hidden />
-                                        </Button>
-                                    ) : null}
+                                            {showBuySmsToolbar ? (
+                                                <Button
+                                                    type="button"
+                                                    size="icon"
+                                                    className={cn("h-8 w-8 shrink-0", brandButtonClassSm)}
+                                                    aria-label="Buy SMS credits"
+                                                    title="Buy SMS credits"
+                                                    onClick={() => setBuySmsDialogOpen(true)}
+                                                >
+                                                    <ShoppingCart className="h-4 w-4" aria-hidden />
+                                                </Button>
+                                            ) : null}
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

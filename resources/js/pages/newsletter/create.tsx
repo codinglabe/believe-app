@@ -37,6 +37,11 @@ import {
     Layers2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+    NEWSLETTER_SMS_ENABLED,
+    NewsletterComingSoonBadge,
+    isNewsletterSmsSendVia,
+} from "@/lib/newsletter-channels"
 import { NEWSLETTER_AI_TONES, type NewsletterAiTone } from "@/lib/newsletter-ai-presets"
 import type { SharedData } from "@/types"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
@@ -627,6 +632,9 @@ export default function NewsletterCreate({
     }, [newsletterCreateAiResult])
 
     const applyCommunicationKind = (kind: CommunicationKind) => {
+        if (!NEWSLETTER_SMS_ENABLED && kind === "message") {
+            return
+        }
         setCommunicationKind(kind)
         if (kind === "message") {
             setData("send_via", "sms")
@@ -640,6 +648,15 @@ export default function NewsletterCreate({
     }
 
     /** Keep UI aligned if `send_via` is push but local kind was reset (e.g. after navigation). */
+    useEffect(() => {
+        if (!NEWSLETTER_SMS_ENABLED && isNewsletterSmsSendVia(data.send_via)) {
+            setData("send_via", "email")
+            if (communicationKind === "message") {
+                setCommunicationKind("newsletter")
+            }
+        }
+    }, [communicationKind, data.send_via, setData])
+
     useEffect(() => {
         if (data.send_via === "push" && communicationKind !== "push") {
             setCommunicationKind("push")
@@ -1003,15 +1020,20 @@ export default function NewsletterCreate({
                                             ] as const
                                         ).map(({ kind, label, Icon, color }) => {
                                             const selected = communicationKind === kind
+                                            const smsDisabled = !NEWSLETTER_SMS_ENABLED && kind === "message"
                                             return (
                                             <button
                                                 key={kind}
                                                 type="button"
+                                                disabled={smsDisabled}
                                                 aria-pressed={selected}
+                                                aria-disabled={smsDisabled}
                                                 onClick={() => applyCommunicationKind(kind)}
                                                 className={cn(
                                                     "flex min-h-[3.25rem] w-full items-center gap-3 rounded-xl border p-3 text-left text-sm transition-all duration-200",
-                                                    selected
+                                                    smsDisabled
+                                                        ? "cursor-not-allowed border-white/5 bg-white/[0.02] opacity-60"
+                                                        : selected
                                                         ? "border-violet-400/80 bg-gradient-to-br from-violet-600/35 to-fuchsia-600/25 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-2 ring-violet-500/40"
                                                         : "border-white/10 bg-white/[0.03] hover:border-violet-400/35 hover:bg-white/[0.05]"
                                                 )}
@@ -1028,6 +1050,11 @@ export default function NewsletterCreate({
                                                 </span>
                                                 <span className="min-w-0 flex-1 font-semibold leading-tight text-white">
                                                     {label}
+                                                    {smsDisabled ? (
+                                                        <span className="ml-2 inline-flex align-middle">
+                                                            <NewsletterComingSoonBadge />
+                                                        </span>
+                                                    ) : null}
                                                 </span>
                                                 <span
                                                     className="flex min-w-[1.5rem] shrink-0 justify-end"
@@ -1641,12 +1668,17 @@ export default function NewsletterCreate({
                                                 ] as const
                                             ).map(({ id, label, desc, Icon, color }) => {
                                                 const selected = data.send_via === id
+                                                const smsDisabled =
+                                                    !NEWSLETTER_SMS_ENABLED && (id === "sms" || id === "both")
                                                 return (
                                                     <button
                                                         key={id}
                                                         type="button"
+                                                        disabled={smsDisabled}
                                                         aria-pressed={selected}
+                                                        aria-disabled={smsDisabled}
                                                         onClick={() => {
+                                                            if (smsDisabled) return
                                                             if (id === "push") {
                                                                 applyCommunicationKind("push")
                                                                 return
@@ -1663,7 +1695,9 @@ export default function NewsletterCreate({
                                                         }}
                                                         className={cn(
                                                             "flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm transition-all duration-200",
-                                                            selected
+                                                            smsDisabled
+                                                                ? "cursor-not-allowed border-white/5 bg-white/[0.02] opacity-60"
+                                                                : selected
                                                                 ? "border-violet-400/80 bg-gradient-to-br from-violet-600/35 to-fuchsia-600/25 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-2 ring-violet-500/40"
                                                                 : "border-white/10 bg-white/[0.03] hover:border-violet-400/35 hover:bg-white/[0.05]"
                                                         )}
@@ -1687,6 +1721,11 @@ export default function NewsletterCreate({
                                                         <span className="min-w-0 flex-1">
                                                             <span className="block font-semibold leading-tight text-white">
                                                                 {label}
+                                                                {smsDisabled ? (
+                                                                    <span className="ml-2 inline-flex align-middle">
+                                                                        <NewsletterComingSoonBadge />
+                                                                    </span>
+                                                                ) : null}
                                                             </span>
                                                             <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">
                                                                 {desc}
