@@ -1,0 +1,98 @@
+# Manual: verify production newsletter infrastructure (queue, scheduler, recent errors).
+name: Newsletter server health (production)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: newsletter-server-health-production
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: [self-hosted, believe-vps]
+
+    env:
+      DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      SSH_CONNECT_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || '72.60.226.88' }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+      APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+      SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT != '' && vars.PRODUCTION_SSH_PORT || '22' }}
+      SSH_MAX_ATTEMPTS: 10
+      SSH_RETRY_SLEEP: 8
+      SSH_USE_TCP_PROBE: false
+      SSH_USE_DEPLOY_HOST: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+          clean: true
+
+      - name: Setup SSH
+        env:
+          SSH_SELF_HOSTED: 'true'
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
+          SSH_DIR: ${{ github.workspace }}/.ssh-deploy-prod
+          DEPLOY_USER: ${{ env.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
+          SSH_CONNECT_HOST: ${{ env.SSH_CONNECT_HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          SSH_MAX_ATTEMPTS: ${{ env.SSH_MAX_ATTEMPTS }}
+          SSH_RETRY_SLEEP: ${{ env.SSH_RETRY_SLEEP }}
+          SSH_USE_TCP_PROBE: ${{ env.SSH_USE_TCP_PROBE }}
+          SSH_USE_DEPLOY_HOST: ${{ env.SSH_USE_DEPLOY_HOST }}
+          APP_URL: ${{ env.APP_URL }}
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/setup-cpanel-ssh.sh
+          bash .github/scripts/setup-cpanel-ssh.sh
+
+      - name: Queue workers, scheduler, newsletter logs
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+
+          echo "=== PHP / Laravel ==="
+          php --version | head -1
+          php artisan --version
+
+          echo ""
+          echo "=== Queue config (.env) ==="
+          grep -E '^(QUEUE_CONNECTION|REDIS_|MAIL_MAILER|MAIL_HOST)=' .env 2>/dev/null | sed 's/=.*/=***/' || echo "Could not read .env keys"
+
+          echo ""
+          echo "=== Supervisor queue workers ==="
+          if command -v supervisorctl >/dev/null 2>&1; then
+            supervisorctl status 'laravel-queue-believeinunity:*' 2>/dev/null || supervisorctl status 2>/dev/null | grep -i laravel-queue || echo "No laravel-queue programs found"
+          else
+            echo "supervisorctl not in PATH"
+          fi
+
+          echo ""
+          echo "=== Cron (schedule:run) ==="
+          crontab -l 2>/dev/null | grep -E 'schedule:run|artisan schedule' || echo "No schedule:run cron entry found"
+
+          echo ""
+          echo "=== Pending / failed queue jobs ==="
+          php artisan queue:failed 2>/dev/null | tail -15 || echo "queue:failed unavailable"
+
+          echo ""
+          echo "=== Recent newsletter log lines ==="
+          if [ -f storage/logs/laravel.log ]; then
+            grep -iE 'Newsletter sending failed|No email records|No targeted users|No recipients found|SendNewsletterJob|newsletter_contacts' storage/logs/laravel.log 2>/dev/null | tail -20 || echo "No matching newsletter errors in log"
+          else
+            echo "laravel.log not found"
+          fi
+
+          echo ""
+          echo "=== Newsletter statuses (last 10) ==="
+          php artisan tinker --execute="foreach (\\App\\Models\\Newsletter::query()->orderByDesc('id')->limit(10)->get(['id','status','subject','send_via','total_recipients']) as \$n) { echo \$n->id.' | '.\$n->status.' | '.\$n->send_via.' | rcpt='.\$n->total_recipients.' | '.mb_substr(\$n->subject,0,60).PHP_EOL; }" 2>/dev/null || echo "Could not query newsletters"
+
+          echo ""
+          echo "HEALTH_CHECK_DONE"
+          REMOTE
