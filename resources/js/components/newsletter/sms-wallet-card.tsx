@@ -25,10 +25,8 @@ import { Loader2, Mail, Smartphone, Send, Plus, ArrowLeft, Globe, CreditCard } f
 import { useEffect, useId, useState } from "react"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
-import {
-    NEWSLETTER_SMS_ENABLED,
-    NewsletterComingSoonBadge,
-} from "@/lib/newsletter-channels"
+import { NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
+import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import {
     BRAND_GRADIENT,
     brandButtonClass,

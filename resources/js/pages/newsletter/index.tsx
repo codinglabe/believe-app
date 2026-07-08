@@ -12,7 +12,8 @@ import {
     type SmsPackage,
     type SmsStats,
 } from "@/components/newsletter/sms-wallet-card"
-import { NewsletterComingSoonBadge, NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
+import { NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
+import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"

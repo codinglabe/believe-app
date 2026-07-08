@@ -14,9 +14,9 @@ import { useState } from "react"
 import { useForm, router } from "@inertiajs/react"
 import {
     NEWSLETTER_SMS_ENABLED,
-    NewsletterComingSoonBadge,
     isNewsletterSmsSendVia,
 } from "@/lib/newsletter-channels"
+import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import {
     ArrowLeft,
