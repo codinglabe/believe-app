@@ -12,6 +12,11 @@ import { ConfirmationModal } from "@/components/confirmation-modal"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useState } from "react"
 import { useForm, router } from "@inertiajs/react"
+import {
+    NEWSLETTER_SMS_ENABLED,
+    NewsletterComingSoonBadge,
+    isNewsletterSmsSendVia,
+} from "@/lib/newsletter-channels"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import {
     ArrowLeft,
@@ -141,9 +146,11 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
     const [showPreview, setShowPreview] = useState(false)
 
     const initialSendVia: "email" | "sms" | "both" =
-        newsletter.send_via === "sms" || newsletter.send_via === "both" || newsletter.send_via === "email"
-            ? newsletter.send_via
-            : "email"
+        !NEWSLETTER_SMS_ENABLED && isNewsletterSmsSendVia(newsletter.send_via)
+            ? "email"
+            : newsletter.send_via === "sms" || newsletter.send_via === "both" || newsletter.send_via === "email"
+              ? newsletter.send_via
+              : "email"
 
     const { data, setData, put, processing, errors, reset } = useForm({
         subject: newsletter.subject,
@@ -282,7 +289,9 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 <CardHeader>
                                     <CardTitle>Channel</CardTitle>
                                     <CardDescription>
-                                        SMS is plain text only. Both requires SMS plain text and HTML for email.
+                                        {NEWSLETTER_SMS_ENABLED
+                                            ? "SMS is plain text only. Both requires SMS plain text and HTML for email."
+                                            : "SMS and Email + SMS are coming soon. Use Email for now."}
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-2">
@@ -293,26 +302,37 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                                 { id: "email" as const, label: "Email", icon: Mail },
                                                 { id: "both" as const, label: "Both", icon: CheckCircle2 },
                                             ] as const
-                                        ).map(({ id, label, icon: Icon }) => (
+                                        ).map(({ id, label, icon: Icon }) => {
+                                            const smsDisabled =
+                                                !NEWSLETTER_SMS_ENABLED && (id === "sms" || id === "both")
+                                            return (
                                             <button
                                                 key={id}
                                                 type="button"
+                                                disabled={smsDisabled}
                                                 onClick={() => {
+                                                    if (smsDisabled) return
                                                     setData("send_via", id)
                                                     if (id === "sms") {
                                                         setData("html_content", "")
                                                     }
                                                 }}
                                                 className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2.5 text-xs font-medium transition-colors sm:text-sm ${
-                                                    data.send_via === id
+                                                    smsDisabled
+                                                        ? "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500"
+                                                        : data.send_via === id
                                                         ? "bg-blue-600 text-white shadow-sm dark:bg-blue-600"
                                                         : "text-gray-600 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
                                                 }`}
                                             >
                                                 <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
                                                 {label}
+                                                {smsDisabled ? (
+                                                    <NewsletterComingSoonBadge className="ml-1 normal-case" />
+                                                ) : null}
                                             </button>
-                                        ))}
+                                            )
+                                        })}
                                     </div>
                                     {errors.send_via && (
                                         <p className="text-sm text-red-600 dark:text-red-400">{errors.send_via}</p>

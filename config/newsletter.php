@@ -11,4 +11,9 @@ return [
     | Set to 0 to disable checkout (e.g. staging without Stripe product).
     */
     'pro_targeting_purchase_enabled' => filter_var(env('NEWSLETTER_PRO_TARGETING_PURCHASE_ENABLED', true), FILTER_VALIDATE_BOOL),
+
+    /*
+    | SMS channel for Engagement (Twilio). Disabled until production SMS is configured.
+    */
+    'sms_enabled' => filter_var(env('NEWSLETTER_SMS_ENABLED', false), FILTER_VALIDATE_BOOL),
 ];
