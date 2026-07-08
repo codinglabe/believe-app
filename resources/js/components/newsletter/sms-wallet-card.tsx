@@ -25,8 +25,6 @@ import { Loader2, Mail, Smartphone, Send, Plus, ArrowLeft, Globe, CreditCard } f
 import { useEffect, useId, useState } from "react"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
-import { NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
-import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import {
     BRAND_GRADIENT,
     brandButtonClass,
@@ -446,13 +444,10 @@ export function NewsletterSmsWalletCard({
                 {/* Blurb + Buy SMS */}
                 <div className="flex flex-col gap-3 border-b border-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                     <p className="max-w-3xl text-sm leading-relaxed text-zinc-400">
-                        Engagement uses your email quota.
-                        {NEWSLETTER_SMS_ENABLED
-                            ? " SMS and Email + SMS use prepaid SMS credits ($25 = 1,200 SMS)."
-                            : " SMS is coming soon."}{" "}
-                        Same balances as <span className="font-medium text-zinc-300">Email Invites</span> for email.
+                        Engagement uses your email quota; SMS and Email + SMS use prepaid SMS credits ($25 = 1,200 SMS). Same
+                        balances as <span className="font-medium text-zinc-300">Email Invites</span> for email.
                     </p>
-                    {smsStats && NEWSLETTER_SMS_ENABLED ? (
+                    {smsStats ? (
                         <Button type="button" size="sm" className={cn("shrink-0", brandButtonClassSm)} onClick={() => setBuySmsOpen(true)}>
                             Buy SMS credits
                         </Button>
@@ -550,7 +545,6 @@ export function NewsletterSmsWalletCard({
                                     >
                                         Buy email credits
                                     </Button>
-                                    {NEWSLETTER_SMS_ENABLED ? (
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -560,7 +554,6 @@ export function NewsletterSmsWalletCard({
                                     >
                                         Buy SMS credits
                                     </Button>
-                                    ) : null}
                                 </div>
                             </div>
                         )}
@@ -570,26 +563,19 @@ export function NewsletterSmsWalletCard({
                             <div className="space-y-4 rounded-xl border border-white/10 bg-zinc-950/60 p-4 sm:p-5">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
-                                        <h3 className="flex flex-wrap items-center gap-2 font-semibold text-white">
+                                        <h3 className="flex items-center gap-2 font-semibold text-white">
                                             <Smartphone className="h-4 w-4 text-blue-400" />
                                             SMS wallet
-                                            {!NEWSLETTER_SMS_ENABLED ? <NewsletterComingSoonBadge className="normal-case" /> : null}
                                         </h3>
                                         <p className="mt-0.5 text-xs text-zinc-500">
-                                            {NEWSLETTER_SMS_ENABLED
-                                                ? "Premium channel — prepaid credits (standard pack $25 = 1,200 SMS)"
-                                                : "Text messaging for Engagement is coming soon."}
+                                            Premium channel — prepaid credits (standard pack $25 = 1,200 SMS)
                                         </p>
                                     </div>
-                                    {NEWSLETTER_SMS_ENABLED ? (
-                                        <Button type="button" size="sm" className={cn("shrink-0", brandButtonClassSm)} onClick={() => setBuySmsOpen(true)}>
-                                            Buy SMS credits
-                                        </Button>
-                                    ) : null}
+                                    <Button type="button" size="sm" className={cn("shrink-0", brandButtonClassSm)} onClick={() => setBuySmsOpen(true)}>
+                                        Buy SMS credits
+                                    </Button>
                                 </div>
 
-                                {NEWSLETTER_SMS_ENABLED ? (
-                                <>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="rounded-lg border border-white/10 bg-black/30 p-3">
                                         <div className="mb-2 flex items-center gap-2">
@@ -628,12 +614,6 @@ export function NewsletterSmsWalletCard({
                                 </p>
 
                                 {renderSmsAutoRechargeControls()}
-                                </>
-                                ) : (
-                                    <p className="rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-400">
-                                        We&apos;re finishing SMS setup. Use Email or Push for Engagement until then.
-                                    </p>
-                                )}
                             </div>
                         )}
                     </div>

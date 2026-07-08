@@ -90,15 +90,6 @@ class Newsletter extends Model
     }
 
     /**
-     * Whether this newsletter has at least one recipient the send job can deliver to
-     * (verified users, org segments, or imported newsletter contacts).
-     */
-    public function hasSendableRecipients(): bool
-    {
-        return $this->resolvedTotalRecipientsCount() > 0;
-    }
-
-    /**
      * Resolve user recipients. Org-owned sends may use {@see $target_criteria} {@code organization_segment}
      * (followers, donors, volunteers); imported contacts use {@see newsletter_contacts} and are not Users here.
      */

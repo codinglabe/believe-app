@@ -2594,8 +2594,6 @@ TXT;
             $request->merge(['newsletter_template_id' => null]);
         }
 
-        $this->assertNewsletterSmsChannelAllowed($request->input('send_via'));
-
         // Custom validation for send_date based on schedule_type
         $rules = [
             'newsletter_template_id' => 'nullable|exists:newsletter_templates,id',
@@ -2944,10 +2942,6 @@ TXT;
         }
 
         $sendVia = $newsletter->send_via ?? 'email';
-        if (! config('newsletter.sms_enabled', false) && in_array($sendVia, ['sms', 'both'], true)) {
-            return back()->with('error', 'SMS is coming soon. Edit this engagement and switch to Email before sending.');
-        }
-
         $walletUser = Auth::user();
         if (! $walletUser) {
             return back()->with('error', 'You must be signed in to send.');
@@ -2974,20 +2968,20 @@ TXT;
             'metadata' => $meta,
         ]);
 
-        // Use resolved recipient count (includes imported newsletter contacts, not only User rows)
+        // Use new targeting system to get recipients
         try {
-            if (! $newsletter->hasSendableRecipients()) {
+            $targetedUsers = $newsletter->getTargetedUsers();
+
+            if ($targetedUsers->isEmpty()) {
                 $newsletter->update(['status' => 'failed']);
 
                 return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings.');
             }
 
-            $recipientCount = $newsletter->resolvedTotalRecipientsCount();
-
             // Dispatch job to send emails (job will create email records)
             dispatch(new SendNewsletterJob($newsletter));
 
-            return back()->with('success', 'Newsletter is being sent to '.$recipientCount.' recipients.');
+            return back()->with('success', 'Newsletter is being sent to '.$targetedUsers->count().' recipients.');
         } catch (\Exception $e) {
             Log::error('Error in send method', [
                 'newsletter_id' => $newsletter->id,
@@ -3107,8 +3101,6 @@ TXT;
             'newsletter_template_id' => 'nullable|exists:newsletter_templates,id',
             'send_via' => 'required|in:email,sms,both,push',
         ]);
-
-        $this->assertNewsletterSmsChannelAllowed($request->input('send_via'));
 
         if ($request->filled('newsletter_template_id')) {
             $tpl = NewsletterTemplate::findOrFail((int) $request->newsletter_template_id);
@@ -3337,10 +3329,6 @@ TXT;
             }
 
             $sendVia = $newsletter->send_via ?? 'email';
-            if (! config('newsletter.sms_enabled', false) && in_array($sendVia, ['sms', 'both'], true)) {
-                return back()->with('error', 'SMS is coming soon. Edit this engagement and switch to Email before sending.');
-            }
-
             $walletUser = Auth::user();
             if (! $walletUser) {
                 return back()->with('error', 'You must be signed in to send.');
@@ -3391,17 +3379,15 @@ TXT;
             ]);
 
             try {
-                $recipientCount = $newsletter->resolvedTotalRecipientsCount();
-                Log::info('Resolved newsletter recipients', [
+                $targetedUsers = $newsletter->getTargetedUsers();
+                Log::info('Got targeted users', [
                     'newsletter_id' => $newsletter->id,
-                    'recipients_count' => $recipientCount,
-                    'target_type' => $newsletter->target_type,
-                    'organization_segment' => $newsletter->target_criteria['organization_segment'] ?? null,
+                    'targeted_users_count' => $targetedUsers->count(),
                 ]);
 
-                if (! $newsletter->hasSendableRecipients()) {
+                if ($targetedUsers->isEmpty()) {
                     $newsletter->update(['status' => 'failed']);
-                    Log::warning('No sendable recipients found', [
+                    Log::warning('No targeted recipients found', [
                         'newsletter_id' => $newsletter->id,
                         'target_type' => $newsletter->target_type,
                     ]);
@@ -3409,12 +3395,14 @@ TXT;
                     return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings or add recipients.');
                 }
 
+                // Create email records for targeted users (let the job handle it, but we can pre-create for immediate feedback)
+                // Actually, let the job handle this to avoid duplicate creation
                 Log::info('Recipients determined, job will create email records', [
                     'newsletter_id' => $newsletter->id,
-                    'recipients_count' => $recipientCount,
+                    'recipients_count' => $targetedUsers->count(),
                 ]);
             } catch (\Exception $e) {
-                Log::error('Error resolving newsletter recipients', [
+                Log::error('Error getting targeted users', [
                     'newsletter_id' => $newsletter->id,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
@@ -3430,6 +3418,21 @@ TXT;
             ]);
 
             dispatch(new SendNewsletterJob($newsletter));
+
+            // Get recipient count for message
+            $recipientCount = 0;
+            try {
+                $recipientCount = $newsletter->getTargetedUsers()->count();
+            } catch (\Exception $e) {
+                Log::error('Error counting targeted users', [
+                    'newsletter_id' => $newsletter->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Use a fallback count from email records if they exist
+                $recipientCount = NewsletterEmail::where('newsletter_id', $newsletter->id)
+                    ->where('status', 'pending')
+                    ->count();
+            }
 
             $message = $wasSent ?
                 'Newsletter is being sent again to '.$recipientCount.' recipients.' :
@@ -3510,10 +3513,6 @@ TXT;
     public function purchaseSms(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
-
-        if (! config('newsletter.sms_enabled', false)) {
-            return back()->with('error', 'SMS purchases are coming soon.');
-        }
 
         $request->validate([
             'package_id' => 'required|exists:sms_packages,id',
@@ -3955,19 +3954,6 @@ TXT;
      * By role, Organizations, and Custom newsletter targeting (Pro): not tied to generic subscription/plan —
      * only explicit one-time purchase (newsletter_pro_targeting_purchased_at) or platform admin.
      */
-    private function assertNewsletterSmsChannelAllowed(?string $sendVia): void
-    {
-        if (config('newsletter.sms_enabled', false)) {
-            return;
-        }
-
-        if (in_array($sendVia, ['sms', 'both'], true)) {
-            throw ValidationException::withMessages([
-                'send_via' => 'SMS is coming soon. Please use Email or Push for now.',
-            ]);
-        }
-    }
-
     private function userCanUseNewsletterProTargeting(User $user): bool
     {
         if (($user->role ?? '') === 'admin') {

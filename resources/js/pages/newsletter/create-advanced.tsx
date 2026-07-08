@@ -15,8 +15,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 import { cn } from "@/lib/utils"
-import { NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
-import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getBrowserTimezone, formatDateInTimezone, convertUserTimezoneToUTC } from "@/lib/timezone-detection"
 import {
@@ -709,18 +707,8 @@ export default function CreateAdvancedNewsletter({
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="email">Email</SelectItem>
-                                            <SelectItem value="sms" disabled>
-                                                <span className="flex items-center gap-2">
-                                                    SMS (plain text)
-                                                    <NewsletterComingSoonBadge className="normal-case" />
-                                                </span>
-                                            </SelectItem>
-                                            <SelectItem value="both" disabled>
-                                                <span className="flex items-center gap-2">
-                                                    Both (SMS + email HTML)
-                                                    <NewsletterComingSoonBadge className="normal-case" />
-                                                </span>
-                                            </SelectItem>
+                                            <SelectItem value="sms">SMS (plain text)</SelectItem>
+                                            <SelectItem value="both">Both (SMS + email HTML)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     {errors.send_via && (
