@@ -15,10 +15,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 import { cn } from "@/lib/utils"
-import {
-    NEWSLETTER_SMS_ENABLED,
-    NewsletterComingSoonBadge,
-} from "@/lib/newsletter-channels"
+import { NEWSLETTER_SMS_ENABLED } from "@/lib/newsletter-channels"
+import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getBrowserTimezone, formatDateInTimezone, convertUserTimezoneToUTC } from "@/lib/timezone-detection"
 import {

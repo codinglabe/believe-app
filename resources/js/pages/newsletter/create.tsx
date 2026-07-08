@@ -39,9 +39,9 @@ import {
 import { cn } from "@/lib/utils"
 import {
     NEWSLETTER_SMS_ENABLED,
-    NewsletterComingSoonBadge,
     isNewsletterSmsSendVia,
 } from "@/lib/newsletter-channels"
+import { NewsletterComingSoonBadge } from "@/lib/newsletter-coming-soon-badge"
 import { NEWSLETTER_AI_TONES, type NewsletterAiTone } from "@/lib/newsletter-ai-presets"
 import type { SharedData } from "@/types"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
