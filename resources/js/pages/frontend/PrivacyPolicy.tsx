@@ -49,6 +49,7 @@ const PrivacyPolicy = () => {
                                     <li>Name and contact information</li>
                                     <li>Organization details (if applicable)</li>
                                     <li>Facebook Page connection and related data (only if you connect a page—e.g. page list, post and schedule actions, engagement metrics)</li>
+                                    <li>Gmail / Google Contacts connection data (only if you connect Gmail for Email Invite—e.g. contact names and emails you choose to sync, OAuth tokens)</li>
                                     <li>YouTube / Google account connection data (only if you connect YouTube—e.g. channel metadata, OAuth tokens, uploaded video references)</li>
                                     <li>IP addresses and browser information</li>
                                     <li>Usage data and analytics</li>
@@ -148,6 +149,45 @@ const PrivacyPolicy = () => {
                             </p>
                         </section>
 
+                        {/* Gmail / Google Contacts (Email Invite) */}
+                        <section className="mb-8">
+                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+                                Connecting Gmail for Email Invites (Google OAuth)
+                            </h2>
+                            <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+                                If your nonprofit chooses to connect Gmail under <strong>Email Invite</strong>, we use Google OAuth only to help you import contacts and send invitation emails you initiate. We do not sell Google user data. We do not use Gmail data for advertising or unrelated purposes.
+                            </p>
+                            <div className="space-y-4">
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        View email messages (gmail.readonly)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We use read-only Gmail access only as needed to support contact import and deliverability checks for invitations you send through Email Invite. We do not read your inbox for unrelated purposes and we do not send email on your behalf without your explicit action in the app.
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        View your contacts (contacts.readonly)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We import contact names and email addresses you choose to sync so you can invite supporters to join your organization on Believe In Unity. Imported contacts are stored only for your organization&apos;s invite workflow.
+                                    </p>
+                                </div>
+                            </div>
+                            <p className="text-gray-600 dark:text-gray-300 text-sm mt-4">
+                                OAuth tokens are stored securely and used only to refresh access for these features. You can disconnect Gmail at any time under <strong>Email Invite</strong>. We delete the connection and stored tokens from our database. See our{" "}
+                                <a href="/data-deletion" className="text-blue-600 hover:underline dark:text-blue-400">
+                                    data deletion instructions
+                                </a>{" "}
+                                for full steps. You can also remove our app&apos;s access at{" "}
+                                <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">
+                                    myaccount.google.com/permissions
+                                </a>
+                                .
+                            </p>
+                        </section>
+
                         {/* YouTube / Google Connection */}
                         <section className="mb-8">
                             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
@@ -163,6 +203,14 @@ const PrivacyPolicy = () => {
                                     </h3>
                                     <p className="text-gray-600 dark:text-gray-300 text-sm">
                                         We read your YouTube channel name, channel URL, and public video metadata so your content can appear in Unity Videos and related dashboards. We do not modify or delete your existing YouTube content with this scope.
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        Manage YouTube account (youtube.force-ssl)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We use this scope to manage live streams and channel features you start from Believe In Unity, such as Go YouTube Live and related Unity Meet workflows. We only act when you explicitly start or publish from the app.
                                     </p>
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">

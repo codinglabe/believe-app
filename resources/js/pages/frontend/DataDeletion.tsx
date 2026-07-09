@@ -10,7 +10,7 @@ export default function DataDeletion() {
         <FrontendLayout>
             <PageHead
                 title="Data Deletion Instructions"
-                description="How to request deletion of your data from Believe In Unity (501c3ers), including Facebook Page connection data."
+                description="How to request deletion of your data from Believe In Unity, including Facebook, Gmail, and YouTube connection data."
             />
             <div className="min-h-screen bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 dark:bg-gray-900">
                 <div className="mx-auto max-w-4xl">
@@ -67,7 +67,54 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                2. Delete YouTube / Google connection data (in the app)
+                                2. Delete Gmail / Google Contacts connection data (in the app)
+                            </h2>
+                            <p className="mb-4 text-gray-600 dark:text-gray-300">
+                                If you connected Gmail for Email Invite, disconnecting removes stored OAuth tokens,
+                                synced contact records tied to that connection, and stops further Gmail/Contacts access.
+                            </p>
+                            <ol className="list-decimal space-y-3 pl-6 text-gray-600 dark:text-gray-300">
+                                <li>
+                                    Log in to your organization account at{' '}
+                                    <a
+                                        href="https://believeinunity.org"
+                                        className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                        believeinunity.org
+                                    </a>
+                                    .
+                                </li>
+                                <li>
+                                    Go to <strong>Email Invite</strong> (
+                                    <code className="rounded bg-gray-100 px-1 text-sm dark:bg-gray-700">
+                                        /email-invite
+                                    </code>
+                                    ).
+                                </li>
+                                <li>
+                                    Disconnect your Gmail account from the connections list.
+                                </li>
+                                <li>
+                                    We delete the connection and stored OAuth tokens from our database.
+                                </li>
+                            </ol>
+                            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                You can also remove our app&apos;s access in your Google Account:{' '}
+                                <a
+                                    href="https://myaccount.google.com/permissions"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                    myaccount.google.com/permissions
+                                </a>
+                                .
+                            </p>
+                        </section>
+
+                        <section>
+                            <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
+                                3. Delete YouTube / Google connection data (in the app)
                             </h2>
                             <p className="mb-4 text-gray-600 dark:text-gray-300">
                                 If you connected a YouTube channel with Google OAuth, disconnecting removes stored
@@ -114,7 +161,7 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                3. Delete your account and other personal data
+                                4. Delete your account and other personal data
                             </h2>
                             <p className="mb-4 text-gray-600 dark:text-gray-300">
                                 To delete your user account, profile, organization data, or other information
@@ -144,11 +191,12 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                4. What we delete
+                                5. What we delete
                             </h2>
                             <ul className="list-disc space-y-2 pl-6 text-gray-600 dark:text-gray-300">
                                 <li>Account profile information (name, email, phone where stored)</li>
                                 <li>Facebook Page connection tokens and Page metadata</li>
+                                <li>Gmail / Google Contacts OAuth tokens and synced invite contacts for disconnected accounts</li>
                                 <li>YouTube / Google OAuth tokens and connected channel metadata</li>
                                 <li>Posts created or scheduled through our app for connected Pages</li>
                                 <li>Engagement metrics we cached from Facebook for your Pages</li>
@@ -158,7 +206,7 @@ export default function DataDeletion() {
 
                         <section>
                             <h2 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                                5. Contact
+                                6. Contact
                             </h2>
                             <div className="rounded-lg bg-blue-50 p-6 dark:bg-blue-900/20">
                                 <p className="text-gray-700 dark:text-gray-300">
