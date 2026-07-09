@@ -2,6 +2,9 @@
 # Keep the GitHub Actions self-hosted runner (believe-vps) online after reboot.
 # Run once on the VPS as believeinunity:
 #   bash /home/believeinunity/public_html/scripts/ensure-github-actions-runner.sh
+#
+# If jobs fail with "Access to the path '/home' is denied", run as root first:
+#   sudo bash /home/believeinunity/public_html/scripts/fix-github-runner-home-acl.sh
 set -euo pipefail
 
 RUNNER_USER="${RUNNER_USER:-believeinunity}"
