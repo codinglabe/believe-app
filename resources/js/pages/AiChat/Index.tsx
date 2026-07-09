@@ -606,7 +606,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
         form_data: data.form_data || {},
         users: Array.isArray(data.users) ? data.users : [],
         content_items: Array.isArray(data.content_items) ? data.content_items : [],
-        default_channels: Array.isArray(data.default_channels) ? data.default_channels : ['web', 'whatsapp'],
+        default_channels: Array.isArray(data.default_channels) ? data.default_channels : ['web', 'whatsapp', 'email'],
       } : undefined
       
       console.log('Creating assistant message:', {
@@ -1399,7 +1399,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                                         formData={message.formData.form_data || {}}
                                         users={Array.isArray(message.formData.users) ? message.formData.users : []}
                                         contentItems={Array.isArray(message.formData.content_items) ? message.formData.content_items : []}
-                                        defaultChannels={Array.isArray(message.formData.default_channels) ? message.formData.default_channels : ['web', 'whatsapp']}
+                                        defaultChannels={Array.isArray(message.formData.default_channels) ? message.formData.default_channels : ['web', 'whatsapp', 'email']}
                                         onSubmit={async (formData) => {
                                           // Create campaign via chat endpoint
                                           try {

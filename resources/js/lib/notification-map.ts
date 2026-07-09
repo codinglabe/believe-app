@@ -14,6 +14,8 @@ export interface Notification {
   type: string
   channel: string
   meta?: Record<string, any>
+  /** Short "Sent by …" line for org/person who created the notification. */
+  senderLabel?: string | null
   timestamp: string
   read?: boolean
 }
@@ -84,15 +86,35 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
     (type === DONATION_RECEIVED_TYPE ? notificationData.url ?? notificationData.click_action : null) ??
     null
 
+  const organizationName =
+    pickNonEmptyString(notificationData.organization_name) ||
+    pickNonEmptyString(notificationData.meta?.organization_name) ||
+    null
+  const organizationId =
+    notificationData.organization_id ?? notificationData.meta?.organization_id ?? null
+  const creatorName =
+    pickNonEmptyString(notificationData.creator_name) ||
+    pickNonEmptyString(notificationData.meta?.creator_name) ||
+    null
+
   const meta: Record<string, any> = {
     ...(notificationData.meta || {}),
     ...(invitationId != null ? { invitation_id: invitationId } : {}),
     ...(joinUrl ? { join_url: joinUrl } : {}),
     ...(successUrl ? { success_url: successUrl } : {}),
     ...(donationsUrl ? { donations_url: donationsUrl } : {}),
+    ...(organizationId != null ? { organization_id: organizationId } : {}),
+    ...(organizationName ? { organization_name: organizationName } : {}),
+    ...(creatorName ? { creator_name: creatorName } : {}),
+    ...(pickNonEmptyString(notificationData.host_name)
+      ? { host_name: pickNonEmptyString(notificationData.host_name) }
+      : {}),
+    ...(pickNonEmptyString(notificationData.inviter_label)
+      ? { inviter_label: pickNonEmptyString(notificationData.inviter_label) }
+      : {}),
   }
 
-  return {
+  const mapped: Notification = {
     id: String(dbNotif.id),
     title,
     body,
@@ -103,6 +125,53 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
     timestamp: createdAt,
     read: !!readAt,
   }
+  mapped.senderLabel = notificationSenderLabel(mapped, notificationData)
+
+  return mapped
+}
+
+function pickNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Best-effort short sender line for the bell/inbox metadata row.
+ * Prefers organization when present; otherwise a person (host, sender, donor, etc.).
+ */
+export function notificationSenderLabel(
+  notification: Notification,
+  rawPayload?: Record<string, any>,
+): string | null {
+  const meta = notification.meta || {}
+  const payload = rawPayload || {}
+
+  const organizationName =
+    pickNonEmptyString(meta.organization_name) ||
+    pickNonEmptyString(payload.organization_name)
+
+  if (organizationName) {
+    return `Sent by ${organizationName}`
+  }
+
+  const personName =
+    pickNonEmptyString(meta.sender_name) ||
+    pickNonEmptyString(meta.creator_name) ||
+    pickNonEmptyString(payload.creator_name) ||
+    pickNonEmptyString(payload.host_name) ||
+    pickNonEmptyString(meta.host_name) ||
+    pickNonEmptyString(payload.inviter_label) ||
+    pickNonEmptyString(meta.inviter_label) ||
+    pickNonEmptyString(meta.donor_name)
+
+  if (personName) {
+    return `Sent by ${personName}`
+  }
+
+  return null
 }
 
 /** Navigate when a donation in-app notification is opened. */

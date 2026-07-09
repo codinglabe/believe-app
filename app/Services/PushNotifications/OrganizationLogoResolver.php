@@ -186,7 +186,7 @@ class OrganizationLogoResolver
         $type = (string) ($payload['type'] ?? '');
 
         $skipSourceTypes = ['chat', 'chat_message', 'course', 'event', 'newsletter', 'daily_engagement'];
-        $skipTypes = ['chat_message', 'new_course', 'new_event', 'daily_engagement'];
+        $skipTypes = ['chat_message', 'new_course', 'new_meetup', 'new_companion', 'new_earning', 'new_event', 'daily_engagement'];
 
         if (in_array($sourceType, ['campaign'], true) || ! empty($payload['campaign_id'])) {
             return true;

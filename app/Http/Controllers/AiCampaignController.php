@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Campaign;
 use App\Models\ContentItem;
 use App\Models\User;
+use App\Jobs\SendCampaignCreatedEmails;
 use App\Services\CampaignPlanner;
 use App\Services\OpenAiService;
+use App\Support\CampaignDeliveryChannels;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -44,7 +46,7 @@ class AiCampaignController extends Controller
             'start_date' => 'required|date|after_or_equal:today',
             'send_time_local' => 'required|date_format:H:i',
             'channels' => 'required|array|min:1',
-            'channels.*' => 'in:push,whatsapp,web',
+            'channels.*' => CampaignDeliveryChannels::validationRule(),
             'user_ids' => 'required|array|min:1',
             'user_ids.*' => 'exists:users,id',
             'prompt' => 'required|string|min:10|max:1000',
@@ -126,6 +128,10 @@ class AiCampaignController extends Controller
             // Get created content items and plan campaign
             $contentItems = ContentItem::whereIn('id', $contentItemIds)->get();
             $scheduledCount = CampaignPlanner::planDailyCampaign($campaign, $contentItems);
+
+            if (CampaignDeliveryChannels::includesEmail($validated['channels'])) {
+                SendCampaignCreatedEmails::dispatch($campaign->id);
+            }
 
             Log::info('Campaign created successfully', [
                 'campaign_id' => $campaign->id,
