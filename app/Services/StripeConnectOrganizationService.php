@@ -190,7 +190,7 @@ class StripeConnectOrganizationService
         $lower = strtolower($msg);
 
         if (str_contains($lower, 'signed up for connect') || str_contains($lower, 'enable connect')) {
-            return 'Stripe Connect is not enabled on this platform’s Stripe account. The platform admin must visit https://dashboard.stripe.com/connect and complete Connect setup before organizations can onboard.';
+            return 'Stripe Connect is not enabled on this platform’s Stripe account. The platform admin must open Settings → Payment Methods → Stripe, follow the Connect setup link for your active mode, complete the one-time Stripe Connect platform profile, then click Save Settings again.';
         }
 
         if (str_contains($lower, 'no such account') || str_contains($lower, 'does not exist')) {

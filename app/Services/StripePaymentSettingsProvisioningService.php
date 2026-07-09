@@ -60,6 +60,9 @@ final class StripePaymentSettingsProvisioningService
 
         $environmentResults = [];
         $errors = [];
+        $connectPlatformStatuses = is_array($additionalConfig['stripe_connect_platform'] ?? null)
+            ? $additionalConfig['stripe_connect_platform']
+            : [];
 
         foreach (['sandbox', 'test', 'live'] as $environment) {
             $secretKey = trim((string) ($stripe->{"{$environment}_secret_key"} ?? ''));
@@ -108,9 +111,20 @@ final class StripePaymentSettingsProvisioningService
             if (! empty($result['error'])) {
                 $errors[] = ucfirst($environment).': '.$result['error'];
             }
+
+            $connectProbe = StripeConnectPlatformService::probeConnectReady($secretKey, $environment);
+            $connectPlatformStatuses[$environment] = [
+                'ready' => $connectProbe['ready'],
+                'error' => $connectProbe['error'],
+                'checked_at' => now()->toIso8601String(),
+            ];
+            if (! $connectProbe['ready']) {
+                $errors[] = ucfirst($environment).' Connect: '.($connectProbe['error'] ?? 'Stripe Connect is not ready.');
+            }
         }
 
         $additionalConfig['stripe_webhook_endpoints'] = $endpointIds;
+        $additionalConfig['stripe_connect_platform'] = $connectPlatformStatuses;
         $updates['additional_config'] = $additionalConfig;
 
         PaymentMethod::setConfig('stripe', $updates);
@@ -138,12 +152,24 @@ final class StripePaymentSettingsProvisioningService
         ));
         $keysOk = StripeConfigService::getCredentials($activeEnvironment) !== null;
         $webhookOk = $activeWebhookSecret !== '' && $activeEndpointId !== '';
+        $activeConnect = is_array($connectPlatformStatuses[$activeEnvironment] ?? null)
+            ? $connectPlatformStatuses[$activeEnvironment]
+            : null;
+        $connectReady = (bool) ($activeConnect['ready'] ?? false);
 
-        $message = $keysOk
-            ? ($webhookOk
-                ? 'Stripe saved. Webhook was created in Stripe and the signing secret is stored for Cashier.'
-                : 'Stripe keys saved, but the webhook could not be created in Stripe. '.($errors !== [] ? implode(' ', $errors) : 'Confirm APP_URL matches your public site URL, then save again.'))
-            : 'Stripe settings saved. Add publishable and secret keys for your active mode, then save again to auto-create everything.';
+        if ($keysOk && $webhookOk) {
+            $message = $connectReady
+                ? 'Stripe saved. Webhook created and Stripe Connect is ready for organization onboarding.'
+                : 'Stripe saved and webhook configured. Stripe Connect still needs one-time setup in the Stripe Dashboard'
+                    .(is_string($activeConnect['error'] ?? null) && $activeConnect['error'] !== ''
+                        ? ': '.$activeConnect['error']
+                        : '')
+                    .' Use the Connect links on this page, then save again.';
+        } elseif ($keysOk) {
+            $message = 'Stripe keys saved, but the webhook could not be created in Stripe. '.($errors !== [] ? implode(' ', $errors) : 'Confirm APP_URL matches your public site URL, then save again.');
+        } else {
+            $message = 'Stripe settings saved. Add publishable and secret keys for your active mode, then save again to auto-create everything.';
+        }
 
         if (is_array($catalogSync) && ! ($catalogSync['skipped'] ?? false)) {
             $message .= ' Plans and subscriptions were synced to Stripe for the active mode.';
