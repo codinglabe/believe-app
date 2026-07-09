@@ -16,6 +16,11 @@ interface StripeEnvironmentSetup {
   keys_configured: boolean
   webhook_configured: boolean
   customer_configured: boolean
+  connect_ready: boolean
+  connect_error: string | null
+  connect_dashboard_url: string
+  connect_tasklist_url: string
+  connect_checked_at: string | null
   setup_complete: boolean
   webhook_secret_preview: string | null
   webhook_endpoint_id: string | null
@@ -436,7 +441,8 @@ export default function PaymentMethodSettings({ settings }: Props) {
                         <p className="mt-1 text-sm text-muted-foreground">
                           When you save your publishable and secret keys, the app creates the Cashier webhook,
                           platform customer, donation product, and syncs plans — no Stripe Dashboard configuration
-                          required.
+                          required. Organization donation payouts use Stripe Connect (Standard accounts); Connect
+                          readiness is checked automatically when you save.
                         </p>
                       </div>
                       <div className="space-y-1">
@@ -450,7 +456,7 @@ export default function PaymentMethodSettings({ settings }: Props) {
                         {activeStripeSetup.setup_complete ? (
                           <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
                             <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                              Configured — webhook created in Stripe
+                              Configured — webhook and Stripe Connect ready
                             </p>
                             {activeStripeSetup.webhook_endpoint_id && (
                               <p className="mt-1 text-sm text-green-700 dark:text-green-400">
@@ -469,17 +475,20 @@ export default function PaymentMethodSettings({ settings }: Props) {
                               </p>
                             )}
                             <p className="mt-1 text-xs text-green-700/80 dark:text-green-400/80">
-                              Look for this endpoint under Stripe Dashboard → Developers → Webhooks.
+                              Organizations can connect Stripe for donation payouts.
                             </p>
                           </div>
                         ) : activeStripeSetup.keys_configured ? (
                           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
                             <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                              Keys saved — click Save again to create the Stripe webhook
+                              Keys saved — finish automatic setup
                             </p>
                             <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                               {!activeStripeSetup.webhook_configured && "Webhook not created in Stripe yet. "}
                               {!activeStripeSetup.customer_configured && "Platform customer pending. "}
+                              {activeStripeSetup.webhook_configured &&
+                                !activeStripeSetup.connect_ready &&
+                                "Stripe Connect needs one-time platform setup. "}
                               Confirm APP_URL in .env matches your public site URL.
                             </p>
                           </div>
@@ -489,6 +498,54 @@ export default function PaymentMethodSettings({ settings }: Props) {
                           </p>
                         )}
                       </div>
+                      {activeStripeSetup.keys_configured && (
+                        <div className="space-y-2">
+                          <Label>Stripe Connect ({stripeEnvironmentLabels[stripeEnvironment]})</Label>
+                          {activeStripeSetup.connect_ready ? (
+                            <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                              <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                                Connect enabled — organizations can onboard
+                              </p>
+                              {activeStripeSetup.connect_checked_at && (
+                                <p className="mt-1 text-xs text-green-700/80 dark:text-green-400/80">
+                                  Last checked {new Date(activeStripeSetup.connect_checked_at).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                                Connect setup required (one-time in Stripe)
+                              </p>
+                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                                {activeStripeSetup.connect_error ??
+                                  "Stripe Connect is not enabled on this platform account yet. Open Stripe Connect, click Get started under For platforms, and complete your platform profile."}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <a
+                                  href={activeStripeSetup.connect_dashboard_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950 dark:text-amber-200 dark:hover:text-amber-100"
+                                >
+                                  Open Stripe Connect
+                                </a>
+                                <a
+                                  href={activeStripeSetup.connect_tasklist_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950 dark:text-amber-200 dark:hover:text-amber-100"
+                                >
+                                  Connect task list
+                                </a>
+                              </div>
+                              <p className="mt-2 text-xs text-amber-700/80 dark:text-amber-400/80">
+                                After finishing in Stripe, click Save Settings here to re-check Connect status.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <details className="text-xs text-muted-foreground">
                         <summary className="cursor-pointer font-medium text-foreground">
                           Required Stripe events ({settings.stripe_webhook_events.length})
