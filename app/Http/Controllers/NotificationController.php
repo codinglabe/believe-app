@@ -349,7 +349,15 @@ class NotificationController extends Controller
             $payload = (array) $notification->data;
             $meta = is_array($payload['meta'] ?? null) ? $payload['meta'] : [];
             $type = strtolower((string) ($payload['type'] ?? $notification->type ?? ''));
-            $isContentDrop = $this->payloadLooksLikeContentDrop($type, $payload, (string) $notification->type);
+            $class = (string) $notification->type;
+
+            // Recipient/system alerts: keep ids if present, but do not invent a "sender" org name.
+            // (e.g. donation_received → organization_id is the recipient, not who sent the notice.)
+            if ($this->shouldSkipSenderEnrichment($type, $class)) {
+                continue;
+            }
+
+            $isContentDrop = $this->payloadLooksLikeContentDrop($type, $payload, $class);
 
             $orgId = isset($payload['organization_id'])
                 ? (int) $payload['organization_id']
@@ -404,6 +412,31 @@ class NotificationController extends Controller
             $payload['meta'] = $meta;
             $notification->setAttribute('data', $payload);
         }
+    }
+
+    /**
+     * Notifications where the org/user on the payload is a recipient or subject,
+     * not the author of the notification — do not attach a "Sent by" org name.
+     */
+    private function shouldSkipSenderEnrichment(string $type, string $notificationClass): bool
+    {
+        $blob = strtolower($type.' '.$notificationClass);
+
+        return str_contains($blob, 'donation_received')
+            || str_contains($blob, 'donationreceived')
+            || str_contains($blob, 'donation_confirmed')
+            || str_contains($blob, 'donationconfirmed')
+            || str_contains($blob, 'manual_donation')
+            || str_contains($blob, 'manualdonation')
+            || str_contains($blob, 'participation')
+            || str_contains($blob, 'daily_engagement')
+            || str_contains($blob, 'dailyengagement')
+            || str_contains($blob, 'gift_card')
+            || str_contains($blob, 'giftcard')
+            || str_contains($blob, 'supporter_birthday')
+            || str_contains($blob, 'supporterbirthday')
+            || str_contains($blob, 'believe_point_purchase')
+            || str_contains($blob, 'believePointPurchase');
     }
 
     private function trimName(mixed $value): ?string

@@ -139,36 +139,99 @@ function pickNonEmptyString(value: unknown): string | null {
 }
 
 /**
- * Best-effort short sender line for the bell/inbox metadata row.
- * Prefers organization when present; otherwise a person (host, sender, donor, etc.).
+ * Types where "Sent by …" would be wrong or redundant:
+ * - recipient/system alerts (donation received, confirmations, rewards)
+ * - body already names the actor (donor, celebrant, etc.)
+ */
+function shouldHideSenderLabel(type: string): boolean {
+  const t = type.toLowerCase()
+  if (
+    t === DONATION_RECEIVED_TYPE ||
+    t === DONATION_CONFIRMED_TYPE ||
+    t === SUPPORTER_BIRTHDAY_TYPE ||
+    t.includes("DonationReceived") ||
+    t.includes("DonationConfirmed") ||
+    t.includes("ManualDonation") ||
+    t.includes("manual_donation") ||
+    t.includes("participation") ||
+    t.includes("daily_engagement") ||
+    t.includes("gift_card") ||
+    t.includes("brp_reward") ||
+    t.includes("believe_point_purchase")
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * True when this notification was authored/sent by an org (campaign, course, invite, etc.).
+ * Not when the org is merely the recipient of an action.
+ */
+function shouldPreferOrganizationSender(type: string): boolean {
+  const t = type.toLowerCase()
+  return (
+    t === "prayer" ||
+    t === "devotional" ||
+    t === "scripture" ||
+    t === "campaign" ||
+    t.includes("dailyprayer") ||
+    t === CARE_ALLIANCE_INVITATION_TYPE ||
+    t.includes("care_alliance") ||
+    t.includes("course") ||
+    t.includes("job") ||
+    t.includes("event") ||
+    t.includes("newsletter")
+  )
+}
+
+/**
+ * Short "Sent by …" line only when an external org/person authored the notification.
+ * Skips recipient/system types (e.g. donation received → your own org is not the sender).
  */
 export function notificationSenderLabel(
   notification: Notification,
   rawPayload?: Record<string, any>,
 ): string | null {
-  const meta = notification.meta || {}
-  const payload = rawPayload || {}
-
-  const organizationName =
-    pickNonEmptyString(meta.organization_name) ||
-    pickNonEmptyString(payload.organization_name)
-
-  if (organizationName) {
-    return `Sent by ${organizationName}`
+  if (shouldHideSenderLabel(notification.type)) {
+    return null
   }
 
+  const meta = notification.meta || {}
+  const payload = rawPayload || {}
+  const type = notification.type
+
+  // Org-authored content (prayer campaigns, courses, alliance invites, …)
+  if (shouldPreferOrganizationSender(type)) {
+    const organizationName =
+      pickNonEmptyString(meta.organization_name) ||
+      pickNonEmptyString(payload.organization_name)
+    if (organizationName) {
+      return `Sent by ${organizationName}`
+    }
+  }
+
+  // Person-authored (gifts, Unity Meet host, inviter) — never donor_name (already in body)
   const personName =
     pickNonEmptyString(meta.sender_name) ||
-    pickNonEmptyString(meta.creator_name) ||
-    pickNonEmptyString(payload.creator_name) ||
     pickNonEmptyString(payload.host_name) ||
     pickNonEmptyString(meta.host_name) ||
     pickNonEmptyString(payload.inviter_label) ||
     pickNonEmptyString(meta.inviter_label) ||
-    pickNonEmptyString(meta.donor_name)
+    pickNonEmptyString(meta.creator_name) ||
+    pickNonEmptyString(payload.creator_name)
 
   if (personName) {
     return `Sent by ${personName}`
+  }
+
+  // Fallback: org name only for org-authored types already handled above;
+  // for unknown types, show org if present (campaign-like payloads).
+  const organizationName =
+    pickNonEmptyString(meta.organization_name) ||
+    pickNonEmptyString(payload.organization_name)
+  if (organizationName && shouldPreferOrganizationSender(type)) {
+    return `Sent by ${organizationName}`
   }
 
   return null
