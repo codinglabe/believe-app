@@ -5,7 +5,7 @@
 set -euo pipefail
 
 RUNNER_USER="${RUNNER_USER:-believeinunity}"
-RUNNER_DIR="${RUNNER_DIR:-/tmp/github-actions-runner}"
+RUNNER_DIR="${RUNNER_DIR:-/home/believeinunity/actions-runner}"
 LOG_DIR="${LOG_DIR:-/home/believeinunity/logs}"
 SERVICE_NAME="github-actions-runner"
 
