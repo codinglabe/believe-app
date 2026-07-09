@@ -16,6 +16,13 @@ class OpenAiService
         $this->apiKey = config('services.openai.api_key');
     }
 
+    protected function defaultChatModel(): string
+    {
+        $model = trim((string) config('services.openai.chat_model', 'gpt-4o-mini'));
+
+        return $model !== '' ? $model : 'gpt-4o-mini';
+    }
+
     /**
      * Base HTTP client for OpenAI requests (respects verify_ssl for local dev SSL issues).
      */
@@ -38,7 +45,7 @@ class OpenAiService
 
         try {
             $response = $this->httpClient()->post($this->apiUrl, [
-                'model' => 'gpt-3.5-turbo',
+                'model' => $this->defaultChatModel(),
                 'messages' => [
                     [
                         'role' => 'system',
@@ -227,7 +234,7 @@ PROMPT;
     {
         try {
             $response = $this->httpClient()->post($this->apiUrl, [
-                'model' => 'gpt-3.5-turbo',
+                'model' => $this->defaultChatModel(),
                 'messages' => $messages,
                 'temperature' => 0.7,
                 'max_tokens' => 2000,
@@ -272,7 +279,7 @@ PROMPT;
      */
     public function chatCompletionJson(array $messages, ?string $model = null, ?float $temperature = null, ?int $maxTokensOverride = null): array
     {
-        $model = $model ?: config('services.kiosk_provider_ingest.model', 'gpt-3.5-turbo');
+        $model = $model ?: config('services.kiosk_provider_ingest.model', $this->defaultChatModel());
         $maxTokens = $maxTokensOverride ?? (int) config('services.kiosk_provider_ingest.max_output_tokens', 4096);
         if ($maxTokens < 256) {
             $maxTokens = 4096;
