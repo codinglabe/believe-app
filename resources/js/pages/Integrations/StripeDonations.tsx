@@ -131,7 +131,11 @@ export default function StripeDonations({
             <div className="text-sm">
               <p className="font-medium text-red-800 dark:text-red-200">Stripe Connect client ID missing</p>
               <p className="text-red-700 dark:text-red-300 mt-1">
-                The platform admin must set <code className="text-xs">STRIPE_CONNECT_CLIENT_ID</code> (from Stripe Dashboard → Connect → Settings) and register this callback URL:
+                The platform admin must set the Connect OAuth client ID under{" "}
+                <Link href={route("payment-methods.index")} className="underline font-medium">
+                  Settings → Payment Methods → Stripe
+                </Link>{" "}
+                and register this callback URL in Stripe Dashboard → Connect → OAuth:
               </p>
               <p className="mt-2 font-mono text-xs break-all text-red-800 dark:text-red-200">{oauthCallbackUrl}</p>
             </div>
@@ -269,7 +273,7 @@ export default function StripeDonations({
           <a href="https://dashboard.stripe.com/connect" target="_blank" rel="noopener noreferrer" className="underline">
             dashboard.stripe.com/connect
           </a>
-          , set <code className="text-xs">STRIPE_CONNECT_CLIENT_ID</code>, and add the OAuth redirect URI shown above.
+          , set the Connect OAuth client ID under Settings → Payment Methods → Stripe, and add the redirect URI shown there.
         </p>
       </div>
     </AppLayout>

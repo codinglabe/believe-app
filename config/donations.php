@@ -18,11 +18,11 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Stripe Connect OAuth client ID (Standard accounts)
+    | Stripe Connect OAuth client ID (optional .env fallback)
     |--------------------------------------------------------------------------
     |
-    | From Stripe Dashboard → Connect → Settings → OAuth settings (ca_...).
-    | Required for organization Standard Connect onboarding.
+    | Primary source: Settings → Payment Methods → Stripe (stored in DB).
+    | Env override is optional and rarely needed.
     |
     */
 

@@ -41,6 +41,13 @@ class PaymentMethodSettingController extends Controller
      */
     private function buildSettingsPayload(?PaymentMethod $paypal, ?PaymentMethod $stripe): array
     {
+        $connectClientIds = is_array($stripe?->additional_config['stripe_connect_client_ids'] ?? null)
+            ? $stripe->additional_config['stripe_connect_client_ids']
+            : [];
+        $legacyConnectClientId = is_array($stripe?->additional_config)
+            ? trim((string) ($stripe->additional_config['stripe_connect_client_id'] ?? ''))
+            : '';
+
         return [
             'paypal_client_id' => $paypal->client_id ?? null,
             'paypal_client_secret' => $paypal->client_secret ?? null,
@@ -71,6 +78,11 @@ class PaymentMethodSettingController extends Controller
             'stripe_sandbox_setup' => $this->stripeEnvironmentSetupSummary($stripe, 'sandbox'),
             'stripe_test_setup' => $this->stripeEnvironmentSetupSummary($stripe, 'test'),
             'stripe_live_setup' => $this->stripeEnvironmentSetupSummary($stripe, 'live'),
+
+            'stripe_sandbox_connect_client_id' => $connectClientIds['sandbox'] ?? ($legacyConnectClientId !== '' ? $legacyConnectClientId : null),
+            'stripe_test_connect_client_id' => $connectClientIds['test'] ?? ($legacyConnectClientId !== '' ? $legacyConnectClientId : null),
+            'stripe_live_connect_client_id' => $connectClientIds['live'] ?? ($legacyConnectClientId !== '' ? $legacyConnectClientId : null),
+            'stripe_connect_oauth_callback_url' => route('integrations.stripe-connect.callback'),
         ];
     }
 
@@ -167,6 +179,10 @@ class PaymentMethodSettingController extends Controller
             'stripe_sandbox_webhook_secret' => ['nullable', 'string', 'max:255'],
             'stripe_test_webhook_secret' => ['nullable', 'string', 'max:255'],
             'stripe_live_webhook_secret' => ['nullable', 'string', 'max:255'],
+
+            'stripe_sandbox_connect_client_id' => ['nullable', 'string', 'max:255'],
+            'stripe_test_connect_client_id' => ['nullable', 'string', 'max:255'],
+            'stripe_live_connect_client_id' => ['nullable', 'string', 'max:255'],
         ]);
 
         PaymentMethod::setConfig('paypal', [
@@ -245,6 +261,8 @@ class PaymentMethodSettingController extends Controller
         }
 
         $stripeConfig = $this->attachResolvedStripeAccountIds($stripeConfig);
+
+        $stripeConfig = $this->mergeStripeConnectClientIds($stripeConfig, $oldStripe, $request);
 
         PaymentMethod::setConfig('stripe', $stripeConfig);
 
@@ -407,6 +425,41 @@ class PaymentMethodSettingController extends Controller
                 $stripeConfig["{$environment}_account_id"] = $accountId;
             }
         }
+
+        return $stripeConfig;
+    }
+
+    /**
+     * @param  array<string, mixed>  $stripeConfig
+     * @return array<string, mixed>
+     */
+    private function mergeStripeConnectClientIds(array $stripeConfig, ?PaymentMethod $oldStripe, Request $request): array
+    {
+        $additionalConfig = is_array($stripeConfig['additional_config'] ?? null)
+            ? $stripeConfig['additional_config']
+            : (is_array($oldStripe?->additional_config) ? $oldStripe->additional_config : []);
+
+        $ids = is_array($additionalConfig['stripe_connect_client_ids'] ?? null)
+            ? $additionalConfig['stripe_connect_client_ids']
+            : [];
+
+        foreach (['sandbox', 'test', 'live'] as $environment) {
+            $field = "stripe_{$environment}_connect_client_id";
+            $submitted = trim((string) $request->input($field, ''));
+            $existing = trim((string) ($ids[$environment] ?? ''));
+
+            if ($submitted !== '') {
+                $ids[$environment] = $submitted;
+            } elseif ($existing !== '') {
+                $ids[$environment] = $existing;
+            } else {
+                unset($ids[$environment]);
+            }
+        }
+
+        $additionalConfig['stripe_connect_client_ids'] = $ids;
+        unset($additionalConfig['stripe_connect_client_id']);
+        $stripeConfig['additional_config'] = $additionalConfig;
 
         return $stripeConfig;
     }

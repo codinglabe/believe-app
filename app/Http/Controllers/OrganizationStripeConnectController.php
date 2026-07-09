@@ -61,7 +61,7 @@ class OrganizationStripeConnectController extends Controller
 
             if (StripeConnectOrganizationService::connectClientId() === null) {
                 return $this->backWithConnectError(
-                    'Stripe Connect client ID is not configured. Ask the platform admin to set STRIPE_CONNECT_CLIENT_ID in Stripe Dashboard → Connect → Settings.'
+                    'Stripe Connect client ID is not configured. Ask the platform admin to set it under Settings → Payment Methods → Stripe.'
                 );
             }
 
