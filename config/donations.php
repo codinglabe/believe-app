@@ -18,19 +18,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Stripe Connect OAuth client ID (optional .env fallback)
-    |--------------------------------------------------------------------------
-    |
-    | Primary source: Settings → Payment Methods → Stripe (stored in DB).
-    | Env override is optional and rarely needed.
-    |
-    */
-
-    'stripe_connect_client_id' => env('STRIPE_CONNECT_CLIENT_ID'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Default ISO country hint (legacy / future use)
+    | Default ISO country for new Stripe Connect Standard accounts
     |--------------------------------------------------------------------------
     */
 

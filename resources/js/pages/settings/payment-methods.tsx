@@ -55,11 +55,6 @@ interface SettingsProps {
   stripe_sandbox_setup: StripeEnvironmentSetup
   stripe_test_setup: StripeEnvironmentSetup
   stripe_live_setup: StripeEnvironmentSetup
-
-  stripe_sandbox_connect_client_id: string | null
-  stripe_test_connect_client_id: string | null
-  stripe_live_connect_client_id: string | null
-  stripe_connect_oauth_callback_url: string
 }
 
 interface Props {
@@ -109,10 +104,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
     // Live credentials
     stripe_live_publishable_key: settings.stripe_live_publishable_key || "",
     stripe_live_secret_key: settings.stripe_live_secret_key || "",
-
-    stripe_sandbox_connect_client_id: settings.stripe_sandbox_connect_client_id || "",
-    stripe_test_connect_client_id: settings.stripe_test_connect_client_id || "",
-    stripe_live_connect_client_id: settings.stripe_live_connect_client_id || "",
   })
 
   // State for password visibility
@@ -120,7 +111,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
   const [showPaypalClientSecret, setShowPaypalClientSecret] = React.useState(false)
   const [showStripePublishable, setShowStripePublishable] = React.useState(false)
   const [showStripeSecret, setShowStripeSecret] = React.useState(false)
-  const [showStripeConnectClientId, setShowStripeConnectClientId] = React.useState(false)
   
   const [stripeEnvironment, setStripeEnvironment] = React.useState<StripeEnvironment>(
     (settings.stripe_mode_environment as StripeEnvironment) || "sandbox"
@@ -157,24 +147,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
     sandbox: data.stripe_sandbox_secret_key,
     test: data.stripe_test_secret_key,
     live: data.stripe_live_secret_key,
-  }
-
-  const stripeConnectClientIdByEnvironment: Record<StripeEnvironment, string> = {
-    sandbox: data.stripe_sandbox_connect_client_id,
-    test: data.stripe_test_connect_client_id,
-    live: data.stripe_live_connect_client_id,
-  }
-
-  const setStripeConnectClientId = (environment: StripeEnvironment, value: string) => {
-    if (environment === "sandbox") {
-      setData("stripe_sandbox_connect_client_id", value)
-      return
-    }
-    if (environment === "test") {
-      setData("stripe_test_connect_client_id", value)
-      return
-    }
-    setData("stripe_live_connect_client_id", value)
   }
 
   const setStripePublishableKey = (environment: StripeEnvironment, value: string) => {
@@ -233,13 +205,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
       : stripeEnvironment === "test"
         ? errors.stripe_test_secret_key
         : errors.stripe_live_secret_key
-
-  const stripeConnectClientIdError =
-    stripeEnvironment === "sandbox"
-      ? errors.stripe_sandbox_connect_client_id
-      : stripeEnvironment === "test"
-        ? errors.stripe_test_connect_client_id
-        : errors.stripe_live_connect_client_id
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -463,54 +428,6 @@ export default function PaymentMethodSettings({ settings }: Props) {
                       {stripeSecretError && (
                         <p className="text-sm text-red-500 mt-1">{stripeSecretError}</p>
                       )}
-                    </div>
-
-                    <div className="space-y-3 rounded-md border border-purple-200/60 bg-purple-50/50 p-4 dark:border-purple-800/40 dark:bg-purple-950/20">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Stripe Connect — Standard OAuth</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Required for nonprofit donation payouts. Copy the <strong>Live client ID</strong> from Stripe Dashboard →
-                          Settings → Connect → OAuth (<code className="text-xs">ca_...</code>). Enable OAuth for Stripe Dashboard accounts
-                          and add the redirect URI below in Stripe.
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="stripe_connect_client_id">
-                          {stripeEnvironmentLabels[stripeEnvironment]} Connect OAuth client ID
-                        </Label>
-                        <div className="relative">
-                          <Input
-                            id="stripe_connect_client_id"
-                            type={showStripeConnectClientId ? "text" : "password"}
-                            value={stripeConnectClientIdByEnvironment[stripeEnvironment]}
-                            onChange={(e) => setStripeConnectClientId(stripeEnvironment, e.target.value)}
-                            className="pr-10 font-mono text-sm"
-                            placeholder="ca_xxxxxxxxxxxxxxxxxxxxxxxx"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowStripeConnectClientId((prev) => !prev)}
-                          >
-                            {showStripeConnectClientId ? (
-                              <EyeOff className="h-4 w-4 text-gray-500" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-gray-500" />
-                            )}
-                          </Button>
-                        </div>
-                        {stripeConnectClientIdError && (
-                          <p className="text-sm text-red-500 mt-1">{stripeConnectClientIdError}</p>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <Label>OAuth redirect URI (add in Stripe Connect settings)</Label>
-                        <code className="block break-all rounded bg-background px-2 py-1.5 text-xs font-mono">
-                          {settings.stripe_connect_oauth_callback_url}
-                        </code>
-                      </div>
                     </div>
 
                     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4">
