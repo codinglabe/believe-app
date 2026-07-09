@@ -12,7 +12,7 @@ use Laravel\Cashier\Cashier;
  *
  * Uses the **destination charge** pattern so the BIU platform Stripe account collects the
  * processing-fee portion as `application_fee_amount`, and the remaining amount is transferred
- * to the organization's connected Express account via `transfer_data.destination`.
+ * to the organization's connected Standard account via `transfer_data.destination`.
  *
  * `on_behalf_of` keeps the receipt, statement descriptor, and risk profile attached to the
  * connected nonprofit so the donor still sees the organization as the merchant.

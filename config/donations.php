@@ -10,7 +10,7 @@ return [
     | When true, one-time Stripe gifts to nonprofits that are not routed through
     | Care Alliance financial distribution require Connect onboarding before checkout.
     | When false, the app falls back to the legacy platform Checkout flow until the
-    | organization connects Stripe Express.
+    | organization connects a Standard Stripe account via OAuth.
     |
     */
 
@@ -18,14 +18,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Default ISO country for new Stripe Connect Express accounts
+    | Stripe Connect OAuth client ID (Standard accounts)
     |--------------------------------------------------------------------------
     |
-    | Two-letter country code used when the platform creates a fresh Express
-    | Connect account for a nonprofit. Stripe restricts which countries are
-    | available; default to "US" for the BIU rollout. Override per-deployment
-    | via DONATIONS_STRIPE_CONNECT_COUNTRY when expanding to a new market.
+    | From Stripe Dashboard → Connect → Settings → OAuth settings (ca_...).
+    | Required for organization Standard Connect onboarding.
     |
+    */
+
+    'stripe_connect_client_id' => env('STRIPE_CONNECT_CLIENT_ID'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default ISO country hint (legacy / future use)
+    |--------------------------------------------------------------------------
     */
 
     'stripe_connect_default_country' => env('DONATIONS_STRIPE_CONNECT_COUNTRY', 'US'),

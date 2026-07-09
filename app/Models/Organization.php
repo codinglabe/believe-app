@@ -100,6 +100,7 @@ class Organization extends Model implements HasPreferredPayoutMethod
         'stripe_connect_account_id',
         'stripe_connect_charges_enabled',
         'stripe_connect_payouts_enabled',
+        'stripe_connect_account_type',
         'preferred_payout_method',
         'paypal_payout_email',
         'paypal_payouts_enabled',
