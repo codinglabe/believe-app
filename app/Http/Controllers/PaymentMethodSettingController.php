@@ -79,6 +79,11 @@ class PaymentMethodSettingController extends Controller
      *     keys_configured: bool,
      *     webhook_configured: bool,
      *     customer_configured: bool,
+     *     connect_ready: bool,
+     *     connect_error: string|null,
+     *     connect_dashboard_url: string,
+     *     connect_tasklist_url: string,
+     *     connect_checked_at: string|null,
      *     setup_complete: bool,
      *     webhook_secret_preview: string|null,
      *     webhook_endpoint_id: string|null
@@ -91,6 +96,11 @@ class PaymentMethodSettingController extends Controller
                 'keys_configured' => false,
                 'webhook_configured' => false,
                 'customer_configured' => false,
+                'connect_ready' => false,
+                'connect_error' => null,
+                'connect_dashboard_url' => \App\Services\StripeConnectPlatformService::connectDashboardUrl($environment),
+                'connect_tasklist_url' => \App\Services\StripeConnectPlatformService::connectTasklistUrl($environment),
+                'connect_checked_at' => null,
                 'setup_complete' => false,
                 'webhook_secret_preview' => null,
                 'webhook_endpoint_id' => null,
@@ -105,16 +115,29 @@ class PaymentMethodSettingController extends Controller
             ? $stripe->additional_config['stripe_webhook_endpoints']
             : [];
         $webhookEndpointId = trim((string) ($endpointIds[$environment] ?? ''));
+        $connectStored = is_array($stripe->additional_config['stripe_connect_platform'] ?? null)
+            ? ($stripe->additional_config['stripe_connect_platform'][$environment] ?? null)
+            : null;
+        $connectSummary = \App\Services\StripeConnectPlatformService::summaryForEnvironment(
+            is_array($connectStored) ? $connectStored : null,
+            $environment,
+        );
 
         $keysConfigured = $publishableKey !== '' && $secretKey !== '';
         $webhookConfigured = $webhookSecret !== '' && $webhookEndpointId !== '';
         $customerConfigured = $customerId !== '';
+        $connectReady = (bool) $connectSummary['ready'];
 
         return [
             'keys_configured' => $keysConfigured,
             'webhook_configured' => $webhookConfigured,
             'customer_configured' => $customerConfigured,
-            'setup_complete' => $keysConfigured && $webhookConfigured && $customerConfigured,
+            'connect_ready' => $connectReady,
+            'connect_error' => $connectSummary['error'],
+            'connect_dashboard_url' => $connectSummary['dashboard_url'],
+            'connect_tasklist_url' => $connectSummary['tasklist_url'],
+            'connect_checked_at' => $connectSummary['checked_at'],
+            'setup_complete' => $keysConfigured && $webhookConfigured && $customerConfigured && $connectReady,
             'webhook_secret_preview' => $webhookConfigured ? $this->maskWebhookSecret($webhookSecret) : null,
             'webhook_endpoint_id' => $webhookEndpointId !== '' ? $webhookEndpointId : null,
         ];

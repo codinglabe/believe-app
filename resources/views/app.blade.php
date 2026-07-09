@@ -94,15 +94,37 @@
     </head>
     <body class="font-sans antialiased">
         @unless($isLivestock || $isMerchant)
-            {{-- Visible without JavaScript — Google OAuth homepage verification reads raw HTML --}}
-            <noscript>
-                <div style="padding: 12px 16px; text-align: center; font-size: 14px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb;">
-                    <strong>Believe In Unity</strong> —
+            {{-- Crawlable static copy for OAuth homepage / policy verification (no JS required) --}}
+            <div id="believe-in-unity-static-home" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" aria-hidden="true">
+                <h1>Believe In Unity</h1>
+                <p>The affordable all-in-one operating system for nonprofits — donations, CRM, volunteers, events, email, video meetings, marketplace, and fundraising.</p>
+                <p>
+                    <a href="{{ url('/') }}">Home</a>
+                    ·
                     <a href="{{ url('/privacy-policy') }}">Privacy Policy</a>
                     ·
                     <a href="{{ url('/terms-of-service') }}">Terms of Service</a>
                     ·
                     <a href="{{ url('/data-deletion') }}">Data Deletion</a>
+                    ·
+                    <a href="{{ url('/contact') }}">Contact</a>
+                </p>
+            </div>
+            <noscript>
+                <div style="padding: 16px 20px; max-width: 48rem; margin: 0 auto; font-size: 15px; line-height: 1.5; color: #111827;">
+                    <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0 0 0.5rem;">Believe In Unity</h1>
+                    <p style="margin: 0 0 1rem;">The affordable all-in-one operating system for nonprofits — donations, CRM, volunteers, events, email, video meetings, marketplace, and fundraising.</p>
+                    <p style="margin: 0;">
+                        <a href="{{ url('/') }}">Home</a>
+                        ·
+                        <a href="{{ url('/privacy-policy') }}">Privacy Policy</a>
+                        ·
+                        <a href="{{ url('/terms-of-service') }}">Terms of Service</a>
+                        ·
+                        <a href="{{ url('/data-deletion') }}">Data Deletion</a>
+                        ·
+                        <a href="{{ url('/contact') }}">Contact</a>
+                    </p>
                 </div>
             </noscript>
         @endunless

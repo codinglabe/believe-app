@@ -24,6 +24,7 @@ class OrganizationStripeConnectController extends Controller
         $organization->refresh();
 
         $configured = StripeConnectOrganizationService::configureStripe();
+        $isLegacyExpress = StripeConnectOrganizationService::isLegacyExpressAccount($organization);
 
         return Inertia::render('Integrations/StripeDonations', [
             'organization' => [
@@ -31,10 +32,12 @@ class OrganizationStripeConnectController extends Controller
                 'stripe_connect_account_id' => $organization->stripe_connect_account_id,
                 'stripe_connect_charges_enabled' => (bool) $organization->stripe_connect_charges_enabled,
                 'stripe_connect_payouts_enabled' => (bool) $organization->stripe_connect_payouts_enabled,
+                'stripe_connect_account_type' => $organization->stripe_connect_account_type,
                 'email' => $organization->email ?: $organization->platform_email ?: $organization->user?->email,
             ],
             'requireConnectForPublicDonations' => (bool) config('donations.require_org_stripe_connect_for_direct_donations', false),
             'stripeConfigured' => $configured,
+            'isLegacyExpressAccount' => $isLegacyExpress,
             'syncError' => $syncError,
             'connectError' => $request->session()->get('connect_error'),
         ]);
@@ -50,7 +53,7 @@ class OrganizationStripeConnectController extends Controller
 
         try {
             if (! StripeConnectOrganizationService::configureStripe()) {
-                return $this->backWithConnectError('Stripe credentials are not configured for this application. Ask the platform admin to set Stripe keys.');
+                return $this->backWithConnectError('Stripe credentials are not configured for this application. Ask the platform admin to set Stripe keys under Settings → Payment Methods.');
             }
 
             $url = StripeConnectOrganizationService::createAccountOnboardingLink($organization);
@@ -66,6 +69,26 @@ class OrganizationStripeConnectController extends Controller
         return redirect()->away($url);
     }
 
+    public function oauthCallback(Request $request): RedirectResponse
+    {
+        return redirect()->route('integrations.stripe-connect')
+            ->with('success', 'Stripe Connect now uses automatic Standard account onboarding. Click Connect to continue.');
+    }
+
+    public function disconnect(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $organization = Organization::forAuthUser($user);
+        if (! $organization || $organization->registration_status !== 'approved') {
+            abort(403, 'Approved organization profile required.');
+        }
+
+        StripeConnectOrganizationService::disconnectAccount($organization);
+
+        return redirect()->route('integrations.stripe-connect')
+            ->with('success', 'Stripe account disconnected. Connect again when ready.');
+    }
+
     public function onboardingReturn(Request $request): RedirectResponse
     {
         $user = $request->user();
@@ -79,8 +102,8 @@ class OrganizationStripeConnectController extends Controller
 
         return redirect()->route('integrations.stripe-connect')
             ->with('success', $ready
-                ? 'Stripe payouts are ready — qualifying donations settle directly with your nonprofit.'
-                : 'Stripe saved your progress. Complete onboarding to receive direct payouts.');
+                ? 'Your Standard Stripe account is ready — qualifying donations settle directly with your nonprofit.'
+                : 'Stripe saved your progress. Complete onboarding to enable payouts, or open your Stripe Dashboard to finish setup.');
     }
 
     public function onboardingRefresh(Request $request): RedirectResponse

@@ -131,6 +131,8 @@ return [
         'api_key' => env('OPENAI_API_KEY'),
         // Set to false only on local/dev if you get "SSL certificate problem: unable to get local issuer certificate"
         'verify_ssl' => env('OPENAI_VERIFY_SSL', true),
+        /** Default chat/completions model (AI Chat, campaigns, kiosk, Challenge Hub quiz, etc.). */
+        'chat_model' => env('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
     ],
 
     /*
@@ -249,7 +251,7 @@ return [
     'kiosk_provider_ingest' => [
         'enabled' => env('KIOSK_PROVIDER_INGEST_ENABLED', true),
         'cache_ttl_days' => (int) env('KIOSK_GEO_CACHE_TTL_DAYS', 30),
-        'model' => env('KIOSK_PROVIDER_INGEST_MODEL', 'gpt-3.5-turbo'),
+        'model' => env('KIOSK_PROVIDER_INGEST_MODEL', 'gpt-4o-mini'),
         /** Max completion tokens (raise if JSON is truncated; model caps still apply). */
         'max_output_tokens' => (int) env('KIOSK_PROVIDER_INGEST_MAX_TOKENS', 4096),
         /** When true, `kiosk:refresh-provider-ingest` runs from the scheduler (monthly). */
@@ -273,10 +275,10 @@ return [
         'openai_after_scripture' => false,
         /** Batched ref-only stem polish (rarely needed if prefer_openai_grounded_refill is on). */
         'scripture_stem_refiner_enabled' => false,
-        'scripture_stem_refiner_model' => 'gpt-3.5-turbo',
+        'scripture_stem_refiner_model' => env('CHALLENGE_QUIZ_STEM_REFINER_MODEL', 'gpt-4o-mini'),
         'scripture_stem_refiner_max_output_tokens' => 2200,
         'scripture_stem_refiner_excerpt_max_chars' => 320,
-        'model' => 'gpt-3.5-turbo',
+        'model' => env('CHALLENGE_QUIZ_MODEL', 'gpt-4o-mini'),
         'max_output_tokens' => 4096,
         'points_per_correct' => 10.0,
         'points_per_incorrect' => 10.0,

@@ -20,15 +20,12 @@ class StripeConnectOrganizationService
         }
 
         $envSecret = (string) (config('cashier.secret') ?? '');
-        if ($envSecret !== '') {
-            return true;
-        }
 
-        return false;
+        return $envSecret !== '';
     }
 
     /**
-     * Pull charges/payouts flags from Stripe and persist locally. Returns null on success or a
+     * Pull charges/payouts flags and account type from Stripe. Returns null on success or a
      * short error string when Stripe rejects the call (e.g. wrong API mode, missing Connect setup).
      */
     public static function syncAccountStatusFromStripe(Organization $organization): ?string
@@ -45,6 +42,7 @@ class StripeConnectOrganizationService
             $organization->forceFill([
                 'stripe_connect_charges_enabled' => (bool) ($acct->charges_enabled ?? false),
                 'stripe_connect_payouts_enabled' => (bool) ($acct->payouts_enabled ?? false),
+                'stripe_connect_account_type' => isset($acct->type) ? (string) $acct->type : null,
             ])->save();
 
             return null;
@@ -60,9 +58,11 @@ class StripeConnectOrganizationService
     }
 
     /**
+     * Create (or reuse) a Standard connected account for the nonprofit.
+     *
      * @return non-empty-string
      */
-    public static function createExpressAccountIfMissing(Organization $organization): string
+    public static function createStandardAccountIfMissing(Organization $organization): string
     {
         if (! self::configureStripe()) {
             throw new \RuntimeException('Stripe credentials are not configured for this application.');
@@ -78,6 +78,13 @@ class StripeConnectOrganizationService
 
         if ($organization->stripe_connect_account_id !== null && $organization->stripe_connect_account_id !== '') {
             self::syncAccountStatusFromStripe($organization);
+            $organization->refresh();
+
+            if (self::isLegacyExpressAccount($organization)) {
+                throw new \RuntimeException(
+                    'This organization is linked to a legacy Express Stripe account. Disconnect it first, then connect again to create a Standard account with the full Stripe Dashboard.'
+                );
+            }
 
             return $organization->stripe_connect_account_id;
         }
@@ -89,7 +96,7 @@ class StripeConnectOrganizationService
 
         try {
             $account = $stripe->accounts->create([
-                'type' => 'express',
+                'type' => 'standard',
                 'country' => $country,
                 'email' => $email,
                 'capabilities' => [
@@ -103,7 +110,7 @@ class StripeConnectOrganizationService
                 ],
             ]);
         } catch (\Throwable $e) {
-            Log::error('Stripe Connect account create failed', [
+            Log::error('Stripe Connect Standard account create failed', [
                 'organization_id' => $organization->id,
                 'error' => $e->getMessage(),
             ]);
@@ -113,6 +120,7 @@ class StripeConnectOrganizationService
 
         $organization->forceFill([
             'stripe_connect_account_id' => $account->id,
+            'stripe_connect_account_type' => 'standard',
         ])->save();
 
         self::syncAccountStatusFromStripe($organization);
@@ -120,13 +128,18 @@ class StripeConnectOrganizationService
         return $account->id;
     }
 
+    /**
+     * Stripe Connect Onboarding link for a Standard account (no OAuth client ID required).
+     *
+     * @return non-empty-string
+     */
     public static function createAccountOnboardingLink(Organization $organization): string
     {
         if (! self::configureStripe()) {
             throw new \RuntimeException('Stripe credentials are not configured for this application.');
         }
 
-        $accountId = self::createExpressAccountIfMissing($organization);
+        $accountId = self::createStandardAccountIfMissing($organization);
 
         try {
             $link = Cashier::stripe()->accountLinks->create([
@@ -149,6 +162,26 @@ class StripeConnectOrganizationService
     }
 
     /**
+     * Remove the local Connect link. The Stripe account may still exist on Stripe's side.
+     */
+    public static function disconnectAccount(Organization $organization): void
+    {
+        $organization->forceFill([
+            'stripe_connect_account_id' => null,
+            'stripe_connect_charges_enabled' => false,
+            'stripe_connect_payouts_enabled' => false,
+            'stripe_connect_account_type' => null,
+        ])->save();
+    }
+
+    public static function isLegacyExpressAccount(Organization $organization): bool
+    {
+        $type = strtolower(trim((string) ($organization->stripe_connect_account_type ?? '')));
+
+        return $type === 'express' || $type === 'custom';
+    }
+
+    /**
      * Convert raw Stripe SDK exceptions into a sentence the org admin can act on.
      */
     public static function humanizeStripeError(\Throwable $e): string
@@ -157,7 +190,7 @@ class StripeConnectOrganizationService
         $lower = strtolower($msg);
 
         if (str_contains($lower, 'signed up for connect') || str_contains($lower, 'enable connect')) {
-            return 'Stripe Connect is not enabled on this platform’s Stripe account. The platform admin must visit https://dashboard.stripe.com/connect and complete Connect setup before organizations can onboard.';
+            return 'Stripe Connect is not enabled on this platform’s Stripe account. The platform admin must open Settings → Payment Methods → Stripe, follow the Connect setup link for your active mode, complete the one-time Stripe Connect platform profile, then click Save Settings again.';
         }
 
         if (str_contains($lower, 'no such account') || str_contains($lower, 'does not exist')) {
@@ -165,7 +198,7 @@ class StripeConnectOrganizationService
         }
 
         if (str_contains($lower, 'invalid api key') || str_contains($lower, 'no api key provided')) {
-            return 'The Stripe API key is invalid or missing. Check the Stripe configuration in the admin panel.';
+            return 'The Stripe API key is invalid or missing. Check the Stripe configuration in Admin → Settings → Payment Methods.';
         }
 
         return 'Stripe error: '.$msg;
@@ -174,6 +207,10 @@ class StripeConnectOrganizationService
     public static function organizationCanAcceptDirectDonations(Organization $organization): bool
     {
         if ($organization->stripe_connect_account_id === null || $organization->stripe_connect_account_id === '') {
+            return false;
+        }
+
+        if (self::isLegacyExpressAccount($organization)) {
             return false;
         }
 

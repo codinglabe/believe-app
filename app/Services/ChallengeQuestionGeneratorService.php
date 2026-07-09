@@ -218,9 +218,9 @@ class ChallengeQuestionGeneratorService
         }
 
         $maxExcerpt = max(120, (int) config('services.challenge_quiz.scripture_stem_refiner_excerpt_max_chars', 320));
-        $model = trim((string) config('services.challenge_quiz.scripture_stem_refiner_model', 'gpt-3.5-turbo'));
+        $model = trim((string) config('services.challenge_quiz.scripture_stem_refiner_model', config('services.openai.chat_model', 'gpt-4o-mini')));
         if ($model === '') {
-            $model = 'gpt-3.5-turbo';
+            $model = (string) config('services.openai.chat_model', 'gpt-4o-mini');
         }
         $maxOut = (int) config('services.challenge_quiz.scripture_stem_refiner_max_output_tokens', 2200);
         if ($maxOut < 500) {
@@ -529,7 +529,7 @@ SYS
         }
 
         $batchSize = (int) config('services.challenge_quiz.openai_batch_size', 8);
-        $model = (string) config('services.challenge_quiz.model', 'gpt-3.5-turbo');
+        $model = (string) config('services.challenge_quiz.model', config('services.openai.chat_model', 'gpt-4o-mini'));
         $maxTokens = (int) config('services.challenge_quiz.max_output_tokens', 4096);
 
         $subTrim = is_string($subcategory) ? trim($subcategory) : '';

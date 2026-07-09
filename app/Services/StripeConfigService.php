@@ -204,6 +204,7 @@ class StripeConfigService
     {
         $env = $environment ?? self::getEnvironment();
         $credentials = self::getCredentials($env);
+
         return $credentials['publishable_key'] ?? null;
     }
 

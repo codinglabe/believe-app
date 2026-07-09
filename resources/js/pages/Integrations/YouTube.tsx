@@ -213,6 +213,9 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
                     <strong>youtube.readonly</strong> — view your channel and public video metadata for Unity Videos.
                   </li>
                   <li>
+                    <strong>youtube.force-ssl</strong> — manage live streams and channel features when you start Go YouTube Live or related Unity Meet workflows.
+                  </li>
+                  <li>
                     <strong>youtube.upload</strong> — upload recordings only when you choose to publish from Unity Meet or livestreams.
                   </li>
                 </ul>

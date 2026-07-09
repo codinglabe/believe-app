@@ -1,7 +1,7 @@
 "use client"
 
 import AppLayout from "@/layouts/app-layout"
-import { Head, Link, usePage } from "@inertiajs/react"
+import { Head, Link, router, usePage } from "@inertiajs/react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Landmark, CheckCircle2, AlertCircle, AlertTriangle, ExternalLink, Loader2 } from "lucide-react"
@@ -13,10 +13,12 @@ interface Props {
     stripe_connect_account_id: string | null
     stripe_connect_charges_enabled: boolean
     stripe_connect_payouts_enabled: boolean
+    stripe_connect_account_type: string | null
     email: string | null
   }
   requireConnectForPublicDonations: boolean
   stripeConfigured: boolean
+  isLegacyExpressAccount: boolean
   syncError: string | null
   connectError: string | null
 }
@@ -30,15 +32,19 @@ export default function StripeDonations({
   organization,
   requireConnectForPublicDonations,
   stripeConfigured,
+  isLegacyExpressAccount,
   syncError,
   connectError,
 }: Props) {
   const { errors } = usePage().props as { errors?: InertiaPageErrors }
   const [submitting, setSubmitting] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
 
-  const ready = organization.stripe_connect_charges_enabled && organization.stripe_connect_payouts_enabled
+  const ready = organization.stripe_connect_charges_enabled
+    && organization.stripe_connect_payouts_enabled
+    && !isLegacyExpressAccount
   const hasAccount = !!organization.stripe_connect_account_id
-  const inProgress = hasAccount && !ready
+  const inProgress = hasAccount && !ready && !isLegacyExpressAccount
 
   const formError = errors?.stripe ?? null
   const inlineError = connectError || formError || syncError
@@ -46,11 +52,21 @@ export default function StripeDonations({
   const startUrl = route("integrations.stripe-connect.start")
 
   const handleStart = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!stripeConfigured || !organization.email) {
+    if (!stripeConfigured) {
       e.preventDefault()
       return
     }
     setSubmitting(true)
+  }
+
+  const handleDisconnect = () => {
+    if (!window.confirm("Disconnect this Stripe account from BIU? You can reconnect with a Standard Stripe account afterward.")) {
+      return
+    }
+    setDisconnecting(true)
+    router.post(route("integrations.stripe-connect.disconnect"), {}, {
+      onFinish: () => setDisconnecting(false),
+    })
   }
 
   return (
@@ -62,8 +78,8 @@ export default function StripeDonations({
           Stripe payouts for donations
         </h1>
         <p className="text-muted-foreground mb-6">
-          Connect Stripe Express so one-time card and US bank donations can be settled directly into your nonprofit's bank account.
-          Funds flow on Stripe's rails — BIU never holds your donation money.
+          Connect a <strong>Standard Stripe account</strong> for your nonprofit. BIU creates the account automatically using the platform Stripe keys — no extra setup required.
+          Your organization gets the full Stripe Dashboard to manage payouts, disputes, and tax documents.
         </p>
 
         <div className="mb-6 rounded-md border border-border bg-muted/40 p-4 text-sm">
@@ -73,19 +89,25 @@ export default function StripeDonations({
               <span className="font-medium text-foreground">Donor pays</span> the gift amount (plus the processing fee, if they opt to cover it).
             </li>
             <li>
-              <span className="font-medium text-foreground">BIU receives</span> only the processing-fee portion as a Stripe{" "}
-              <code className="text-xs bg-background px-1 py-0.5 rounded border">application_fee</code> — used to offset Stripe's card fees.
+              <span className="font-medium text-foreground">BIU receives</span> only the processing-fee portion on the platform balance — used to offset Stripe&apos;s card fees. BIU charges <strong>no platform fee</strong> on donations.
             </li>
             <li>
-              <span className="font-medium text-foreground">Your organization receives</span> the remaining gift amount, transferred straight to your
-              connected Stripe Express account and paid out to your bank on Stripe's normal payout schedule.
+              <span className="font-medium text-foreground">Your organization receives</span> 100% of the gift amount in your connected Standard Stripe account, paid out on your normal Stripe schedule.
             </li>
           </ul>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Receipts and statement descriptors still show your nonprofit (Stripe <code className="text-xs">on_behalf_of</code>) so donors see the gift
-            as going to your organization, not BIU.
-          </p>
         </div>
+
+        {isLegacyExpressAccount ? (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden />
+            <div className="text-sm">
+              <p className="font-medium text-amber-900 dark:text-amber-100">Reconnect with a Standard Stripe account</p>
+              <p className="text-amber-800 dark:text-amber-200 mt-1">
+                This organization was linked to a legacy Stripe Express account. Disconnect below, then connect again using Standard Connect OAuth so your nonprofit owns and manages its own Stripe Dashboard.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {!stripeConfigured ? (
           <div className="mb-4 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-4 py-3 flex items-start gap-2">
@@ -93,23 +115,7 @@ export default function StripeDonations({
             <div className="text-sm">
               <p className="font-medium text-red-800 dark:text-red-200">Stripe is not configured for this site</p>
               <p className="text-red-700 dark:text-red-300 mt-1">
-                The platform admin must add Stripe API keys (Admin → Payment Methods → Stripe) before any organization can connect.
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        {!organization.email ? (
-          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden />
-            <div className="text-sm">
-              <p className="font-medium text-amber-900 dark:text-amber-100">Add an organization email first</p>
-              <p className="text-amber-800 dark:text-amber-200 mt-1">
-                Stripe requires a contact email to create your Express account. Please set the organization email under{" "}
-                <Link href={route("dashboard")} className="underline font-medium">
-                  Settings → Profile
-                </Link>{" "}
-                and try again.
+                The platform admin must add Stripe API keys under Settings → Payment Methods → Stripe before organizations can connect.
               </p>
             </div>
           </div>
@@ -142,10 +148,12 @@ export default function StripeDonations({
               <div className="flex items-start gap-2 text-green-700 dark:text-green-400">
                 <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" aria-hidden />
                 <div>
-                  <p className="font-medium">Stripe payouts enabled</p>
+                  <p className="font-medium">Standard Stripe account connected</p>
                   <p className="text-sm text-muted-foreground">
-                    Qualifying one-time gifts to your organization where Unity Impact Alliance splitting is not controlling settlement can route
-                    through direct charges when this onboarding is active.
+                    Qualifying one-time gifts to your organization can route directly to your Stripe account. Manage payouts and settings at{" "}
+                    <a href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer" className="underline">
+                      dashboard.stripe.com
+                    </a>.
                   </p>
                 </div>
               </div>
@@ -153,10 +161,10 @@ export default function StripeDonations({
               <div className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
                 <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden />
                 <div className="space-y-1">
-                  <p className="font-medium">Stripe onboarding partially complete</p>
+                  <p className="font-medium">Stripe setup in progress</p>
                   <p className="text-sm text-muted-foreground">
-                    Your Stripe account is created but Stripe still needs more information before it can charge cards
-                    {organization.stripe_connect_payouts_enabled ? "" : " or send payouts"}. Click below to continue where you left off.
+                    Your Standard Stripe account is linked but Stripe still needs more information before it can charge cards
+                    {organization.stripe_connect_payouts_enabled ? "" : " or send payouts"}. Finish setup in your Stripe Dashboard.
                   </p>
                   <ul className="text-xs text-muted-foreground mt-2 space-y-0.5">
                     <li>
@@ -178,38 +186,53 @@ export default function StripeDonations({
               <div className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
                 <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden />
                 <div>
-                  <p className="font-medium">Finish Stripe onboarding</p>
+                  <p className="font-medium">Connect your Standard Stripe account</p>
                   <p className="text-sm text-muted-foreground">
                     {requireConnectForPublicDonations
-                      ? "This environment is configured to require Connect before accepting direct card/bank gifts to your listing."
-                      : "Until onboarding is complete, donors may use the legacy platform checkout path when available."}
+                      ? "This environment requires Standard Connect before accepting direct card/bank gifts to your listing."
+                      : "Until connected, donors may use the legacy platform checkout path when available."}
                   </p>
                 </div>
               </div>
             )}
 
             <div className="flex flex-wrap gap-3">
-              <Button asChild disabled={submitting || !stripeConfigured || !organization.email}>
+              <Button asChild disabled={submitting || !stripeConfigured}>
                 <a
                   href={startUrl}
                   onClick={handleStart}
-                  aria-disabled={submitting || !stripeConfigured || !organization.email}
-                  className={(!stripeConfigured || !organization.email) ? "pointer-events-none opacity-60" : ""}
+                  aria-disabled={submitting || !stripeConfigured}
+                  className={!stripeConfigured ? "pointer-events-none opacity-60" : ""}
                 >
                   {submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden />
                       Redirecting…
                     </>
-                  ) : ready ? (
-                    "Re-open Stripe dashboard"
-                  ) : hasAccount ? (
-                    "Continue Stripe onboarding"
+                  ) : hasAccount && !isLegacyExpressAccount ? (
+                    "Reconnect Stripe account"
                   ) : (
-                    "Continue to Stripe"
+                    "Connect Standard Stripe account"
                   )}
                 </a>
               </Button>
+              {hasAccount ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={disconnecting}
+                  onClick={handleDisconnect}
+                >
+                  {disconnecting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden />
+                      Disconnecting…
+                    </>
+                  ) : (
+                    "Disconnect"
+                  )}
+                </Button>
+              ) : null}
               <Button variant="outline" asChild>
                 <Link href={route("dashboard")}>Back to dashboard</Link>
               </Button>
@@ -218,22 +241,18 @@ export default function StripeDonations({
             {organization.stripe_connect_account_id ? (
               <p className="text-xs text-muted-foreground font-mono break-all">
                 Connected account: {organization.stripe_connect_account_id}
+                {organization.stripe_connect_account_type ? ` (${organization.stripe_connect_account_type})` : ""}
               </p>
             ) : null}
           </CardContent>
         </Card>
 
         <p className="text-xs text-muted-foreground mt-4">
-          Need help? Make sure (1) the platform Stripe account has Connect activated at{" "}
-          <a
-            href="https://dashboard.stripe.com/connect"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-          >
+          Platform admin: ensure Stripe Connect is enabled at{" "}
+          <a href="https://dashboard.stripe.com/connect" target="_blank" rel="noopener noreferrer" className="underline">
             dashboard.stripe.com/connect
           </a>
-          , and (2) your nonprofit profile has a valid email and country set.
+          . Organization onboarding uses the same Stripe keys configured under Settings → Payment Methods.
         </p>
       </div>
     </AppLayout>
