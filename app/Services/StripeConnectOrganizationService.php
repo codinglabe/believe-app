@@ -28,9 +28,7 @@ class StripeConnectOrganizationService
 
     public static function connectClientId(): ?string
     {
-        $clientId = trim((string) config('donations.stripe_connect_client_id', ''));
-
-        return $clientId !== '' ? $clientId : null;
+        return StripeConfigService::getConnectClientId();
     }
 
     /**
@@ -80,7 +78,7 @@ class StripeConnectOrganizationService
         $clientId = self::connectClientId();
         if ($clientId === null) {
             throw new \RuntimeException(
-                'Stripe Connect client ID is not configured. Ask the platform admin to set STRIPE_CONNECT_CLIENT_ID (Stripe Dashboard → Connect → Settings).'
+                'Stripe Connect client ID is not configured. Set it under Settings → Payment Methods → Stripe (Connect OAuth client ID).'
             );
         }
 
@@ -113,7 +111,7 @@ class StripeConnectOrganizationService
 
         $clientId = self::connectClientId();
         if ($clientId === null) {
-            throw new \RuntimeException('Stripe Connect client ID is not configured.');
+            throw new \RuntimeException('Stripe Connect client ID is not configured. Set it under Settings → Payment Methods → Stripe.');
         }
 
         try {
@@ -219,7 +217,7 @@ class StripeConnectOrganizationService
         }
 
         if (str_contains($lower, 'invalid client')) {
-            return 'Stripe Connect client ID is invalid. Check STRIPE_CONNECT_CLIENT_ID in the platform environment.';
+            return 'Stripe Connect client ID is invalid. Check the Connect OAuth client ID under Settings → Payment Methods → Stripe.';
         }
 
         return 'Stripe error: '.$msg;

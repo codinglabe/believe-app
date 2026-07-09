@@ -204,7 +204,45 @@ class StripeConfigService
     {
         $env = $environment ?? self::getEnvironment();
         $credentials = self::getCredentials($env);
+
         return $credentials['publishable_key'] ?? null;
+    }
+
+    /**
+     * Stripe Connect OAuth client ID for Standard account onboarding (ca_...).
+     * Stored per environment in payment_methods.stripe additional_config.
+     */
+    public static function getConnectClientId(?string $environment = null): ?string
+    {
+        try {
+            $env = $environment ?? self::getEnvironment();
+            $stripe = PaymentMethod::getConfig('stripe');
+            if (! $stripe) {
+                return null;
+            }
+
+            $additional = is_array($stripe->additional_config) ? $stripe->additional_config : [];
+            $ids = is_array($additional['stripe_connect_client_ids'] ?? null)
+                ? $additional['stripe_connect_client_ids']
+                : [];
+
+            $clientId = trim((string) ($ids[$env] ?? ''));
+            if ($clientId !== '') {
+                return $clientId;
+            }
+
+            // Legacy single-value storage
+            $legacy = trim((string) ($additional['stripe_connect_client_id'] ?? ''));
+            if ($legacy !== '') {
+                return $legacy;
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to read Stripe Connect client ID from payment methods', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
     }
 
     /**
