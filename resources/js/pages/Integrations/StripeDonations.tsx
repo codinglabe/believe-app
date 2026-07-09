@@ -18,9 +18,7 @@ interface Props {
   }
   requireConnectForPublicDonations: boolean
   stripeConfigured: boolean
-  connectClientConfigured: boolean
   isLegacyExpressAccount: boolean
-  oauthCallbackUrl: string
   syncError: string | null
   connectError: string | null
 }
@@ -34,9 +32,7 @@ export default function StripeDonations({
   organization,
   requireConnectForPublicDonations,
   stripeConfigured,
-  connectClientConfigured,
   isLegacyExpressAccount,
-  oauthCallbackUrl,
   syncError,
   connectError,
 }: Props) {
@@ -56,7 +52,7 @@ export default function StripeDonations({
   const startUrl = route("integrations.stripe-connect.start")
 
   const handleStart = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!stripeConfigured || !connectClientConfigured) {
+    if (!stripeConfigured) {
       e.preventDefault()
       return
     }
@@ -82,8 +78,8 @@ export default function StripeDonations({
           Stripe payouts for donations
         </h1>
         <p className="text-muted-foreground mb-6">
-          Connect your nonprofit&apos;s <strong>Standard Stripe account</strong> so one-time card and US bank donations settle directly into your bank account.
-          You manage payouts, disputes, and tax documents in your own Stripe Dashboard — BIU never holds your donation money.
+          Connect a <strong>Standard Stripe account</strong> for your nonprofit. BIU creates the account automatically using the platform Stripe keys — no extra setup required.
+          Your organization gets the full Stripe Dashboard to manage payouts, disputes, and tax documents.
         </p>
 
         <div className="mb-6 rounded-md border border-border bg-muted/40 p-4 text-sm">
@@ -119,25 +115,8 @@ export default function StripeDonations({
             <div className="text-sm">
               <p className="font-medium text-red-800 dark:text-red-200">Stripe is not configured for this site</p>
               <p className="text-red-700 dark:text-red-300 mt-1">
-                The platform admin must add Stripe API keys (Admin → Payment Methods → Stripe) before any organization can connect.
+                The platform admin must add Stripe API keys under Settings → Payment Methods → Stripe before organizations can connect.
               </p>
-            </div>
-          </div>
-        ) : null}
-
-        {stripeConfigured && !connectClientConfigured ? (
-          <div className="mb-4 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-4 py-3 flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600 dark:text-red-400" aria-hidden />
-            <div className="text-sm">
-              <p className="font-medium text-red-800 dark:text-red-200">Stripe Connect client ID missing</p>
-              <p className="text-red-700 dark:text-red-300 mt-1">
-                The platform admin must set the Connect OAuth client ID under{" "}
-                <Link href={route("payment-methods.index")} className="underline font-medium">
-                  Settings → Payment Methods → Stripe
-                </Link>{" "}
-                and register this callback URL in Stripe Dashboard → Connect → OAuth:
-              </p>
-              <p className="mt-2 font-mono text-xs break-all text-red-800 dark:text-red-200">{oauthCallbackUrl}</p>
             </div>
           </div>
         ) : null}
@@ -218,12 +197,12 @@ export default function StripeDonations({
             )}
 
             <div className="flex flex-wrap gap-3">
-              <Button asChild disabled={submitting || !stripeConfigured || !connectClientConfigured}>
+              <Button asChild disabled={submitting || !stripeConfigured}>
                 <a
                   href={startUrl}
                   onClick={handleStart}
-                  aria-disabled={submitting || !stripeConfigured || !connectClientConfigured}
-                  className={(!stripeConfigured || !connectClientConfigured) ? "pointer-events-none opacity-60" : ""}
+                  aria-disabled={submitting || !stripeConfigured}
+                  className={!stripeConfigured ? "pointer-events-none opacity-60" : ""}
                 >
                   {submitting ? (
                     <>
@@ -269,11 +248,11 @@ export default function StripeDonations({
         </Card>
 
         <p className="text-xs text-muted-foreground mt-4">
-          Platform admin: enable Connect at{" "}
+          Platform admin: ensure Stripe Connect is enabled at{" "}
           <a href="https://dashboard.stripe.com/connect" target="_blank" rel="noopener noreferrer" className="underline">
             dashboard.stripe.com/connect
           </a>
-          , set the Connect OAuth client ID under Settings → Payment Methods → Stripe, and add the redirect URI shown there.
+          . Organization onboarding uses the same Stripe keys configured under Settings → Payment Methods.
         </p>
       </div>
     </AppLayout>

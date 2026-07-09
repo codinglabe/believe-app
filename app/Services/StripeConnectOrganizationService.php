@@ -4,9 +4,7 @@ namespace App\Services;
 
 use App\Models\Organization;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Laravel\Cashier\Cashier;
-use Stripe\OAuth;
 
 class StripeConnectOrganizationService
 {
@@ -24,11 +22,6 @@ class StripeConnectOrganizationService
         $envSecret = (string) (config('cashier.secret') ?? '');
 
         return $envSecret !== '';
-    }
-
-    public static function connectClientId(): ?string
-    {
-        return StripeConfigService::getConnectClientId();
     }
 
     /**
@@ -65,62 +58,59 @@ class StripeConnectOrganizationService
     }
 
     /**
-     * Build the Stripe Standard Connect OAuth authorize URL.
+     * Create (or reuse) a Standard connected account for the nonprofit.
      *
      * @return non-empty-string
      */
-    public static function createStandardOAuthAuthorizeUrl(Organization $organization): string
+    public static function createStandardAccountIfMissing(Organization $organization): string
     {
         if (! self::configureStripe()) {
             throw new \RuntimeException('Stripe credentials are not configured for this application.');
         }
 
-        $clientId = self::connectClientId();
-        if ($clientId === null) {
-            throw new \RuntimeException(
-                'Stripe Connect client ID is not configured. Set it under Settings → Payment Methods → Stripe (Connect OAuth client ID).'
-            );
+        $organization->loadMissing('user');
+        $stripe = Cashier::stripe();
+
+        $email = trim((string) ($organization->email ?: $organization->platform_email ?: $organization->user?->email ?: ''));
+        if ($email === '') {
+            throw new \RuntimeException('Organization must have an email address on file before connecting Stripe payouts.');
         }
 
-        $state = Str::random(40);
-        session([
-            'stripe_connect_oauth_state' => $state,
-            'stripe_connect_oauth_org_id' => $organization->id,
-        ]);
+        if ($organization->stripe_connect_account_id !== null && $organization->stripe_connect_account_id !== '') {
+            self::syncAccountStatusFromStripe($organization);
+            $organization->refresh();
 
-        return OAuth::authorizeUrl([
-            'response_type' => 'code',
-            'scope' => 'read_write',
-            'client_id' => $clientId,
-            'redirect_uri' => route('integrations.stripe-connect.callback'),
-            'state' => $state,
-            'stripe_landing' => 'login',
-        ]);
-    }
+            if (self::isLegacyExpressAccount($organization)) {
+                throw new \RuntimeException(
+                    'This organization is linked to a legacy Express Stripe account. Disconnect it first, then connect again to create a Standard account with the full Stripe Dashboard.'
+                );
+            }
 
-    /**
-     * Exchange an OAuth authorization code for a connected Standard account ID.
-     *
-     * @return non-empty-string Connected account ID (acct_...)
-     */
-    public static function completeStandardOAuth(Organization $organization, string $code): string
-    {
-        if (! self::configureStripe()) {
-            throw new \RuntimeException('Stripe credentials are not configured for this application.');
+            return $organization->stripe_connect_account_id;
         }
 
-        $clientId = self::connectClientId();
-        if ($clientId === null) {
-            throw new \RuntimeException('Stripe Connect client ID is not configured. Set it under Settings → Payment Methods → Stripe.');
+        $country = strtoupper((string) config('donations.stripe_connect_default_country', 'US'));
+        if ($country === '' || strlen($country) !== 2) {
+            $country = 'US';
         }
 
         try {
-            $response = OAuth::token([
-                'grant_type' => 'authorization_code',
-                'code' => $code,
+            $account = $stripe->accounts->create([
+                'type' => 'standard',
+                'country' => $country,
+                'email' => $email,
+                'capabilities' => [
+                    'card_payments' => ['requested' => true],
+                    'transfers' => ['requested' => true],
+                ],
+                'business_type' => 'non_profit',
+                'metadata' => [
+                    'organization_id' => (string) $organization->id,
+                    'organization_name' => mb_substr((string) $organization->name, 0, 250),
+                ],
             ]);
         } catch (\Throwable $e) {
-            Log::error('Stripe Connect OAuth token exchange failed', [
+            Log::error('Stripe Connect Standard account create failed', [
                 'organization_id' => $organization->id,
                 'error' => $e->getMessage(),
             ]);
@@ -128,54 +118,54 @@ class StripeConnectOrganizationService
             throw new \RuntimeException(self::humanizeStripeError($e), 0, $e);
         }
 
-        $accountId = trim((string) ($response->stripe_user_id ?? ''));
-        if ($accountId === '') {
-            throw new \RuntimeException('Stripe did not return a connected account ID. Please try connecting again.');
-        }
-
         $organization->forceFill([
-            'stripe_connect_account_id' => $accountId,
+            'stripe_connect_account_id' => $account->id,
+            'stripe_connect_account_type' => 'standard',
         ])->save();
 
         self::syncAccountStatusFromStripe($organization);
-        $organization->refresh();
 
-        $type = strtolower(trim((string) ($organization->stripe_connect_account_type ?? '')));
-        if ($type !== '' && $type !== 'standard') {
-            self::disconnectAccount($organization, deauthorizeOnStripe: true);
-
-            throw new \RuntimeException(
-                'This Stripe account is not a Standard Connect account. Please sign in with a Standard Stripe account, or create a new one through the Connect flow.'
-            );
-        }
-
-        return $accountId;
+        return $account->id;
     }
 
     /**
-     * Remove the local Connect link (and optionally deauthorize on Stripe).
+     * Stripe Connect Onboarding link for a Standard account (no OAuth client ID required).
+     *
+     * @return non-empty-string
      */
-    public static function disconnectAccount(Organization $organization, bool $deauthorizeOnStripe = true): void
+    public static function createAccountOnboardingLink(Organization $organization): string
     {
-        $accountId = $organization->stripe_connect_account_id;
-        if ($deauthorizeOnStripe && $accountId !== null && $accountId !== '') {
-            $clientId = self::connectClientId();
-            if ($clientId !== null && self::configureStripe()) {
-                try {
-                    OAuth::deauthorize([
-                        'client_id' => $clientId,
-                        'stripe_user_id' => $accountId,
-                    ]);
-                } catch (\Throwable $e) {
-                    Log::warning('Stripe Connect deauthorize failed', [
-                        'organization_id' => $organization->id,
-                        'stripe_connect_account_id' => $accountId,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
+        if (! self::configureStripe()) {
+            throw new \RuntimeException('Stripe credentials are not configured for this application.');
         }
 
+        $accountId = self::createStandardAccountIfMissing($organization);
+
+        try {
+            $link = Cashier::stripe()->accountLinks->create([
+                'account' => $accountId,
+                'refresh_url' => route('integrations.stripe-connect.refresh'),
+                'return_url' => route('integrations.stripe-connect.return'),
+                'type' => 'account_onboarding',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Stripe Connect account link create failed', [
+                'organization_id' => $organization->id,
+                'stripe_connect_account_id' => $accountId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new \RuntimeException(self::humanizeStripeError($e), 0, $e);
+        }
+
+        return $link->url;
+    }
+
+    /**
+     * Remove the local Connect link. The Stripe account may still exist on Stripe's side.
+     */
+    public static function disconnectAccount(Organization $organization): void
+    {
         $organization->forceFill([
             'stripe_connect_account_id' => null,
             'stripe_connect_charges_enabled' => false,
@@ -208,16 +198,7 @@ class StripeConnectOrganizationService
         }
 
         if (str_contains($lower, 'invalid api key') || str_contains($lower, 'no api key provided')) {
-            return 'The Stripe API key is invalid or missing. Check the Stripe configuration in the admin panel.';
-        }
-
-        if (str_contains($lower, 'redirect_uri') && str_contains($lower, 'mismatch')) {
-            return 'Stripe Connect redirect URI mismatch. The platform admin must add this callback URL in Stripe Dashboard → Connect → Settings: '
-                .route('integrations.stripe-connect.callback');
-        }
-
-        if (str_contains($lower, 'invalid client')) {
-            return 'Stripe Connect client ID is invalid. Check the Connect OAuth client ID under Settings → Payment Methods → Stripe.';
+            return 'The Stripe API key is invalid or missing. Check the Stripe configuration in Admin → Settings → Payment Methods.';
         }
 
         return 'Stripe error: '.$msg;
