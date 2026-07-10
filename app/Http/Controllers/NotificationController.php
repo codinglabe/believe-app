@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\ContentItem;
+use App\Models\Organization;
 use App\Models\ScheduledDrop;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -22,6 +25,8 @@ class NotificationController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $this->enrichNotificationsWithSender($notifications);
+
         return response()->json([
             'notifications' => $notifications,
         ]);
@@ -36,6 +41,7 @@ class NotificationController extends Controller
         $search = trim((string) $request->query('q', ''));
         $user = $request->user();
         $allRows = $user->notifications()->orderBy('created_at', 'desc')->get();
+        $this->enrichNotificationsWithSender($allRows);
 
         $searchFiltered = $search === ''
             ? $allRows
@@ -45,7 +51,10 @@ class NotificationController extends Controller
                     (string) ($payload['type'] ?? '') . ' ' .
                     (string) ($payload['title'] ?? '') . ' ' .
                     (string) ($payload['body'] ?? '') . ' ' .
-                    (string) ($payload['message'] ?? '')
+                    (string) ($payload['message'] ?? '') . ' ' .
+                    (string) ($payload['organization_name'] ?? '') . ' ' .
+                    (string) (($payload['meta']['organization_name'] ?? '') ?: '') . ' ' .
+                    (string) (($payload['meta']['sender_name'] ?? '') ?: '')
                 ));
 
                 return str_contains($blob, strtolower($search));
@@ -230,5 +239,250 @@ class NotificationController extends Controller
         }
 
         return 'system';
+    }
+
+    /**
+     * Attach organization_name / creator_name onto notification payloads
+     * so the bell/inbox can show "Sent by …" for older rows that lack it.
+     *
+     * @param  Collection<int, DatabaseNotification>  $notifications
+     */
+    private function enrichNotificationsWithSender(Collection $notifications): void
+    {
+        if ($notifications->isEmpty()) {
+            return;
+        }
+
+        $orgIds = [];
+        $userIds = [];
+        $contentItemIds = [];
+
+        foreach ($notifications as $notification) {
+            $payload = (array) $notification->data;
+            $meta = is_array($payload['meta'] ?? null) ? $payload['meta'] : [];
+            $type = strtolower((string) ($payload['type'] ?? $notification->type ?? ''));
+
+            foreach ([$payload['organization_id'] ?? null, $meta['organization_id'] ?? null] as $orgId) {
+                if ($orgId) {
+                    $orgIds[] = (int) $orgId;
+                }
+            }
+
+            foreach ([$payload['created_by'] ?? null, $meta['created_by'] ?? null, $payload['user_id'] ?? null] as $userId) {
+                if ($userId) {
+                    $userIds[] = (int) $userId;
+                }
+            }
+
+            $hasSenderName = filled($payload['organization_name'] ?? null)
+                || filled($meta['organization_name'] ?? null)
+                || filled($meta['sender_name'] ?? null)
+                || filled($payload['host_name'] ?? null)
+                || filled($payload['inviter_label'] ?? null)
+                || filled($meta['donor_name'] ?? null)
+                || filled($payload['creator_name'] ?? null)
+                || filled($meta['creator_name'] ?? null);
+
+            if (! $hasSenderName && $this->payloadLooksLikeContentDrop($type, $payload, (string) $notification->type)
+                && ! empty($payload['content_item_id'])) {
+                $contentItemIds[] = (int) $payload['content_item_id'];
+            }
+        }
+
+        $contentItemIds = array_values(array_unique($contentItemIds));
+        $contentById = collect();
+        $campaignOrgByContentId = [];
+        $campaignUserByContentId = [];
+
+        if ($contentItemIds !== []) {
+            $contentById = ContentItem::query()
+                ->whereIn('id', $contentItemIds)
+                ->get(['id', 'organization_id', 'user_id'])
+                ->keyBy('id');
+
+            foreach ($contentById as $item) {
+                if ($item->organization_id) {
+                    $orgIds[] = (int) $item->organization_id;
+                }
+                if ($item->user_id) {
+                    $userIds[] = (int) $item->user_id;
+                }
+            }
+
+            $drops = ScheduledDrop::query()
+                ->with(['campaign:id,organization_id,user_id'])
+                ->whereIn('content_item_id', $contentItemIds)
+                ->orderByDesc('id')
+                ->get(['id', 'content_item_id', 'campaign_id']);
+
+            foreach ($drops as $drop) {
+                $contentId = (int) $drop->content_item_id;
+                if (isset($campaignOrgByContentId[$contentId])) {
+                    continue;
+                }
+                if ($drop->campaign?->organization_id) {
+                    $campaignOrgByContentId[$contentId] = (int) $drop->campaign->organization_id;
+                    $orgIds[] = (int) $drop->campaign->organization_id;
+                }
+                if ($drop->campaign?->user_id) {
+                    $campaignUserByContentId[$contentId] = (int) $drop->campaign->user_id;
+                    $userIds[] = (int) $drop->campaign->user_id;
+                }
+            }
+        }
+
+        $orgNamesById = $orgIds === []
+            ? []
+            : Organization::query()
+                ->whereIn('id', array_values(array_unique($orgIds)))
+                ->pluck('name', 'id')
+                ->all();
+
+        $userNamesById = $userIds === []
+            ? []
+            : User::query()
+                ->whereIn('id', array_values(array_unique($userIds)))
+                ->pluck('name', 'id')
+                ->all();
+
+        foreach ($notifications as $notification) {
+            $payload = (array) $notification->data;
+            $meta = is_array($payload['meta'] ?? null) ? $payload['meta'] : [];
+            $type = strtolower((string) ($payload['type'] ?? $notification->type ?? ''));
+            $class = (string) $notification->type;
+
+            // Recipient/system alerts: keep ids if present, but do not invent a "sender" org name.
+            // (e.g. donation_received → organization_id is the recipient, not who sent the notice.)
+            if ($this->shouldSkipSenderEnrichment($type, $class)) {
+                continue;
+            }
+
+            $isContentDrop = $this->payloadLooksLikeContentDrop($type, $payload, $class);
+
+            $orgId = isset($payload['organization_id'])
+                ? (int) $payload['organization_id']
+                : (isset($meta['organization_id']) ? (int) $meta['organization_id'] : null);
+
+            $creatorId = isset($payload['created_by'])
+                ? (int) $payload['created_by']
+                : (isset($meta['created_by']) ? (int) $meta['created_by'] : null);
+
+            $contentItemId = ! empty($payload['content_item_id']) ? (int) $payload['content_item_id'] : null;
+            $contentItem = ($isContentDrop && $contentItemId && isset($contentById[$contentItemId]))
+                ? $contentById[$contentItemId]
+                : null;
+
+            if (! $orgId && $contentItem?->organization_id) {
+                $orgId = (int) $contentItem->organization_id;
+            }
+            if (! $orgId && $contentItemId && isset($campaignOrgByContentId[$contentItemId])) {
+                $orgId = $campaignOrgByContentId[$contentItemId];
+            }
+
+            if (! $creatorId && $contentItem?->user_id) {
+                $creatorId = (int) $contentItem->user_id;
+            }
+            if (! $creatorId && $contentItemId && isset($campaignUserByContentId[$contentItemId])) {
+                $creatorId = $campaignUserByContentId[$contentItemId];
+            }
+
+            $orgName = $this->trimName($payload['organization_name'] ?? $meta['organization_name'] ?? null)
+                ?? ($orgId && isset($orgNamesById[$orgId]) ? $this->trimName($orgNamesById[$orgId]) : null);
+
+            $creatorName = $this->trimName($payload['creator_name'] ?? $meta['creator_name'] ?? null)
+                ?? ($creatorId && isset($userNamesById[$creatorId]) ? $this->trimName($userNamesById[$creatorId]) : null);
+
+            if ($orgId) {
+                $payload['organization_id'] = $orgId;
+                $meta['organization_id'] = $orgId;
+            }
+            if ($orgName) {
+                $payload['organization_name'] = $orgName;
+                $meta['organization_name'] = $orgName;
+            }
+            if ($creatorId) {
+                $payload['created_by'] = $creatorId;
+                $meta['created_by'] = $creatorId;
+            }
+            if ($creatorName) {
+                $payload['creator_name'] = $creatorName;
+                $meta['creator_name'] = $creatorName;
+            }
+
+            $payload['meta'] = $meta;
+            $notification->setAttribute('data', $payload);
+        }
+    }
+
+    /**
+     * Notifications where the org/user on the payload is a recipient or subject,
+     * not the author of the notification — do not attach a "Sent by" org name.
+     */
+    private function shouldSkipSenderEnrichment(string $type, string $notificationClass): bool
+    {
+        $blob = strtolower($type.' '.$notificationClass);
+
+        return str_contains($blob, 'donation_received')
+            || str_contains($blob, 'donationreceived')
+            || str_contains($blob, 'donation_confirmed')
+            || str_contains($blob, 'donationconfirmed')
+            || str_contains($blob, 'manual_donation')
+            || str_contains($blob, 'manualdonation')
+            || str_contains($blob, 'participation')
+            || str_contains($blob, 'daily_engagement')
+            || str_contains($blob, 'dailyengagement')
+            || str_contains($blob, 'gift_card')
+            || str_contains($blob, 'giftcard')
+            || str_contains($blob, 'supporter_birthday')
+            || str_contains($blob, 'supporterbirthday')
+            || str_contains($blob, 'believe_point_purchase')
+            || str_contains($blob, 'believePointPurchase');
+    }
+
+    private function trimName(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+
+        return $trimmed !== '' ? $trimmed : null;
+    }
+
+    /**
+     * True when content_item_id refers to a ContentItem (campaign prayer/devotional),
+     * not a course/event/job id that reuses the same field name.
+     */
+    private function payloadLooksLikeContentDrop(string $type, array $payload, string $notificationClass = ''): bool
+    {
+        $class = strtolower($notificationClass);
+        if (
+            str_contains($type, 'dailyprayer')
+            || str_contains($class, 'dailyprayer')
+            || in_array($type, ['prayer', 'devotional', 'scripture', 'campaign'], true)
+        ) {
+            return true;
+        }
+
+        // Course/job/event jobs put their own ids in content_item_id — skip those.
+        if (
+            isset($payload['course_id'])
+            || isset($payload['event_id'])
+            || isset($payload['job_post_id'])
+            || str_contains($type, 'course')
+            || str_contains($type, 'event')
+            || str_contains($type, 'job')
+            || str_contains($type, 'gift')
+            || str_contains($type, 'donation')
+            || str_contains($type, 'birthday')
+            || str_contains($type, 'invitation')
+            || str_contains($type, 'participation')
+        ) {
+            return false;
+        }
+
+        return ! empty($payload['content_item_id'])
+            && empty($payload['course_id'])
+            && empty($payload['event_id']);
     }
 }

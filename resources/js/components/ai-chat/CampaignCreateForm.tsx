@@ -200,7 +200,7 @@ export const CampaignCreateForm: React.FC<CampaignCreateFormProps> = ({
           <Send className="h-4 w-4 text-primary" />
           Delivery Channels <span className="text-destructive">*</span>
         </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {defaultChannels.map((channel) => (
             <button
               key={channel}
@@ -223,7 +223,9 @@ export const CampaignCreateForm: React.FC<CampaignCreateFormProps> = ({
                   )}
                 </div>
                 <div className="text-left">
-                  <div className="font-semibold capitalize">{channel}</div>
+                  <div className="font-semibold capitalize">
+                    {channel === 'web' ? 'Web Notification' : channel === 'email' ? 'Email' : channel}
+                  </div>
                 </div>
               </div>
             </button>

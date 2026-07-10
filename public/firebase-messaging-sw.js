@@ -1,4 +1,4 @@
-// @version 6642c1cb267b2cb6
+// @version c8caba5061881589
 // firebase-messaging-sw.js - Single service worker at site root
 // Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
@@ -311,7 +311,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-6642c1cb267b2cb6";
+const CACHE_NAME = "pwa-cache-c8caba5061881589";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 

@@ -14,6 +14,8 @@ export interface Notification {
   type: string
   channel: string
   meta?: Record<string, any>
+  /** Short "Sent by …" line for org/person who created the notification. */
+  senderLabel?: string | null
   timestamp: string
   read?: boolean
 }
@@ -84,15 +86,35 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
     (type === DONATION_RECEIVED_TYPE ? notificationData.url ?? notificationData.click_action : null) ??
     null
 
+  const organizationName =
+    pickNonEmptyString(notificationData.organization_name) ||
+    pickNonEmptyString(notificationData.meta?.organization_name) ||
+    null
+  const organizationId =
+    notificationData.organization_id ?? notificationData.meta?.organization_id ?? null
+  const creatorName =
+    pickNonEmptyString(notificationData.creator_name) ||
+    pickNonEmptyString(notificationData.meta?.creator_name) ||
+    null
+
   const meta: Record<string, any> = {
     ...(notificationData.meta || {}),
     ...(invitationId != null ? { invitation_id: invitationId } : {}),
     ...(joinUrl ? { join_url: joinUrl } : {}),
     ...(successUrl ? { success_url: successUrl } : {}),
     ...(donationsUrl ? { donations_url: donationsUrl } : {}),
+    ...(organizationId != null ? { organization_id: organizationId } : {}),
+    ...(organizationName ? { organization_name: organizationName } : {}),
+    ...(creatorName ? { creator_name: creatorName } : {}),
+    ...(pickNonEmptyString(notificationData.host_name)
+      ? { host_name: pickNonEmptyString(notificationData.host_name) }
+      : {}),
+    ...(pickNonEmptyString(notificationData.inviter_label)
+      ? { inviter_label: pickNonEmptyString(notificationData.inviter_label) }
+      : {}),
   }
 
-  return {
+  const mapped: Notification = {
     id: String(dbNotif.id),
     title,
     body,
@@ -103,6 +125,116 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
     timestamp: createdAt,
     read: !!readAt,
   }
+  mapped.senderLabel = notificationSenderLabel(mapped, notificationData)
+
+  return mapped
+}
+
+function pickNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Types where "Sent by …" would be wrong or redundant:
+ * - recipient/system alerts (donation received, confirmations, rewards)
+ * - body already names the actor (donor, celebrant, etc.)
+ */
+function shouldHideSenderLabel(type: string): boolean {
+  const t = type.toLowerCase()
+  if (
+    t === DONATION_RECEIVED_TYPE ||
+    t === DONATION_CONFIRMED_TYPE ||
+    t === SUPPORTER_BIRTHDAY_TYPE ||
+    t.includes("DonationReceived") ||
+    t.includes("DonationConfirmed") ||
+    t.includes("ManualDonation") ||
+    t.includes("manual_donation") ||
+    t.includes("participation") ||
+    t.includes("daily_engagement") ||
+    t.includes("gift_card") ||
+    t.includes("brp_reward") ||
+    t.includes("believe_point_purchase")
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * True when this notification was authored/sent by an org (campaign, course, invite, etc.).
+ * Not when the org is merely the recipient of an action.
+ */
+function shouldPreferOrganizationSender(type: string): boolean {
+  const t = type.toLowerCase()
+  return (
+    t === "prayer" ||
+    t === "devotional" ||
+    t === "scripture" ||
+    t === "campaign" ||
+    t.includes("dailyprayer") ||
+    t === CARE_ALLIANCE_INVITATION_TYPE ||
+    t.includes("care_alliance") ||
+    t.includes("course") ||
+    t.includes("job") ||
+    t.includes("event") ||
+    t.includes("newsletter")
+  )
+}
+
+/**
+ * Short "Sent by …" line only when an external org/person authored the notification.
+ * Skips recipient/system types (e.g. donation received → your own org is not the sender).
+ */
+export function notificationSenderLabel(
+  notification: Notification,
+  rawPayload?: Record<string, any>,
+): string | null {
+  if (shouldHideSenderLabel(notification.type)) {
+    return null
+  }
+
+  const meta = notification.meta || {}
+  const payload = rawPayload || {}
+  const type = notification.type
+
+  // Org-authored content (prayer campaigns, courses, alliance invites, …)
+  if (shouldPreferOrganizationSender(type)) {
+    const organizationName =
+      pickNonEmptyString(meta.organization_name) ||
+      pickNonEmptyString(payload.organization_name)
+    if (organizationName) {
+      return `Sent by ${organizationName}`
+    }
+  }
+
+  // Person-authored (gifts, Unity Meet host, inviter) — never donor_name (already in body)
+  const personName =
+    pickNonEmptyString(meta.sender_name) ||
+    pickNonEmptyString(payload.host_name) ||
+    pickNonEmptyString(meta.host_name) ||
+    pickNonEmptyString(payload.inviter_label) ||
+    pickNonEmptyString(meta.inviter_label) ||
+    pickNonEmptyString(meta.creator_name) ||
+    pickNonEmptyString(payload.creator_name)
+
+  if (personName) {
+    return `Sent by ${personName}`
+  }
+
+  // Fallback: org name only for org-authored types already handled above;
+  // for unknown types, show org if present (campaign-like payloads).
+  const organizationName =
+    pickNonEmptyString(meta.organization_name) ||
+    pickNonEmptyString(payload.organization_name)
+  if (organizationName && shouldPreferOrganizationSender(type)) {
+    return `Sent by ${organizationName}`
+  }
+
+  return null
 }
 
 /** Navigate when a donation in-app notification is opened. */

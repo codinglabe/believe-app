@@ -58,6 +58,13 @@ class DispatchDueDrops extends Command
                                 continue;
                             if ($channel === 'web' && !$user->login_status)
                                 continue;
+                            if ($channel === 'email') {
+                                $email = trim((string) ($user->email ?? ''));
+                                if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                                    $this->warn("User {$user->id} not eligible for Email: missing/invalid email");
+                                    continue;
+                                }
+                            }
 
                             // Create idempotency key
                             $idempotencyKey = hash('sha256', implode('|', [

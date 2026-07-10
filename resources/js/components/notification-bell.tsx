@@ -14,6 +14,7 @@ import {
   UNITY_MEET_INVITATION_TYPE,
   donationNotificationTarget,
   mapDatabaseNotification,
+  notificationSenderLabel,
   parseNotificationPayload,
   type DatabaseNotification,
   type Notification,
@@ -175,17 +176,28 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       userChannel.listen(".campaign.notification", (data: any) => {
           console.log("[v0] Received campaign notification:", data)
 
+          const meta = {
+            ...(data.meta || {}),
+            ...(data.organization_id != null ? { organization_id: data.organization_id } : {}),
+            ...(typeof data.organization_name === "string" && data.organization_name.trim()
+              ? { organization_name: data.organization_name.trim() }
+              : {}),
+            ...(typeof data.creator_name === "string" && data.creator_name.trim()
+              ? { creator_name: data.creator_name.trim() }
+              : {}),
+          }
           const newNotification: Notification = {
             id: data.id || `real-time-${Date.now()}`,
             title: data.title || "New Notification",
             body: data.body || "",
             content_item_id: data.content_item_id || 0,
-            type: data.content_type || "campaign",
+            type: data.content_type || data.type || "campaign",
             channel: data.channel || "app",
-            meta: data.meta || {},
-            timestamp: data.sent_at || new Date().toISOString(),
+            meta,
+            timestamp: data.sent_at || data.timestamp || new Date().toISOString(),
             read: false,
           }
+          newNotification.senderLabel = notificationSenderLabel(newNotification, data)
 
 
           setNotifications((prev) => [newNotification, ...prev])
@@ -644,6 +656,9 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                               </Button>
                             </div>
                           )}
+                          {notification.senderLabel ? (
+                            <p className="text-[11px] font-medium text-foreground/80">{notification.senderLabel}</p>
+                          ) : null}
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pt-0.5">
                             <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/90">
                               {String(notification.type).replace(/_/g, " ")}

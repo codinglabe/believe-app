@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Enums\PushNotificationModule;
+use App\Mail\CampaignPrayerMail;
 use App\Models\Campaign;
 use App\Models\ContentItem;
 use App\Models\Organization;
@@ -54,10 +55,33 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
                 // Web: Only broadcast and database
                 return ['broadcast', 'database', 'firebase'];
 
+            case 'email':
+                return ['mail'];
+
             default:
                 // Default: Only database
                 return ['database'];
         }
+    }
+
+    public function toMail($notifiable): CampaignPrayerMail
+    {
+        $sender = $this->resolveSenderMeta();
+        $organizationName = trim((string) ($sender['organization_name'] ?? ''));
+        $contentUrl = route('notifications.content.show', ['content_item' => $this->contentItem->id]);
+        $scriptureRef = null;
+        if (is_array($this->contentItem->meta) && ! empty($this->contentItem->meta['scripture_ref'])) {
+            $scriptureRef = (string) $this->contentItem->meta['scripture_ref'];
+        }
+
+        return new CampaignPrayerMail(
+            recipientName: trim((string) ($notifiable->name ?? '')),
+            organizationName: $organizationName,
+            title: (string) $this->contentItem->title,
+            bodyText: strip_tags((string) $this->contentItem->body),
+            scriptureRef: $scriptureRef,
+            contentUrl: $contentUrl,
+        );
     }
 
     public function toFirebase($notifiable)
@@ -111,13 +135,20 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
             if ($organizationId) {
                 $data['organization_id'] = (string) $organizationId;
 
-                $logoUrl = Organization::query()
+                $organization = Organization::query()
                     ->with('user:id,image,registered_user_image')
-                    ->find($organizationId)
-                    ?->logoUrl();
+                    ->find($organizationId);
 
-                if ($logoUrl) {
-                    $data['organization_logo_url'] = $logoUrl;
+                if ($organization) {
+                    $orgName = trim((string) ($organization->name ?? ''));
+                    if ($orgName !== '') {
+                        $data['organization_name'] = $orgName;
+                    }
+
+                    $logoUrl = $organization->logoUrl();
+                    if ($logoUrl) {
+                        $data['organization_logo_url'] = $logoUrl;
+                    }
                 }
             }
 
@@ -208,6 +239,8 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
             $this->notifiable = $notifiable;
         }
 
+        $sender = $this->resolveSenderMeta();
+
         return new BroadcastMessage([
             'id' => $this->id, // Notification ID
             'title' => $this->contentItem->title,
@@ -216,7 +249,11 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
             'type' => $this->contentItem->type,
             'content_type' => $this->contentItem->type,
             'channel' => $this->channel,
-            'meta' => $this->contentItem->meta ?? [],
+            'meta' => array_merge($this->contentItem->meta ?? [], $sender['meta']),
+            'organization_id' => $sender['organization_id'],
+            'organization_name' => $sender['organization_name'],
+            'created_by' => $sender['created_by'],
+            'creator_name' => $sender['creator_name'],
             'timestamp' => now()->toISOString(),
             'notification_id' => $this->id,
         ]);
@@ -244,13 +281,19 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
 
     public function toDatabase($notifiable): array
     {
+        $sender = $this->resolveSenderMeta();
+
         return [
             'title' => $this->contentItem->title,
             'body' => strip_tags($this->contentItem->body),
             'content_item_id' => $this->contentItem->id,
             'type' => $this->contentItem->type,
             'channel' => $this->channel,
-            'meta' => $this->contentItem->meta ?? [],
+            'meta' => array_merge($this->contentItem->meta ?? [], $sender['meta']),
+            'organization_id' => $sender['organization_id'],
+            'organization_name' => $sender['organization_name'],
+            'created_by' => $sender['created_by'],
+            'creator_name' => $sender['creator_name'],
             'sent_at' => now()->toISOString(),
         ];
     }
@@ -262,6 +305,53 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
             'body' => strip_tags($this->contentItem->body),
             'content_item_id' => $this->contentItem->id,
             'channel' => $this->channel,
+        ];
+    }
+
+    /**
+     * @return array{organization_id: int|null, organization_name: string|null, created_by: int|null, creator_name: string|null, meta: array<string, mixed>}
+     */
+    private function resolveSenderMeta(): array
+    {
+        $campaign = $this->resolveCampaign();
+        $organizationId = $campaign?->organization_id ?? $this->contentItem->organization_id;
+
+        if (! $organizationId && $this->campaignId) {
+            $organizationId = Campaign::query()->whereKey($this->campaignId)->value('organization_id');
+        }
+
+        $organizationName = null;
+        if ($organizationId) {
+            $organizationName = Organization::query()->whereKey($organizationId)->value('name');
+            $organizationName = is_string($organizationName) ? trim($organizationName) : null;
+            if ($organizationName === '') {
+                $organizationName = null;
+            }
+        }
+
+        $createdBy = $campaign?->user_id ?? $this->contentItem->user_id;
+        $creatorName = null;
+        if ($createdBy) {
+            $creatorName = \App\Models\User::query()->whereKey($createdBy)->value('name');
+            $creatorName = is_string($creatorName) ? trim($creatorName) : null;
+            if ($creatorName === '') {
+                $creatorName = null;
+            }
+        }
+
+        $meta = array_filter([
+            'organization_id' => $organizationId,
+            'organization_name' => $organizationName,
+            'created_by' => $createdBy,
+            'creator_name' => $creatorName,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        return [
+            'organization_id' => $organizationId ? (int) $organizationId : null,
+            'organization_name' => $organizationName,
+            'created_by' => $createdBy ? (int) $createdBy : null,
+            'creator_name' => $creatorName,
+            'meta' => $meta,
         ];
     }
 }

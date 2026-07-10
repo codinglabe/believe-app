@@ -5,7 +5,7 @@ import { Head, Link, useForm } from "@inertiajs/react"
 import type { ContentItem } from "@/types"
 import AppLayout from "@/layouts/app-layout"
 import { useState } from "react"
-import { Calendar, Clock, Radio, Users, FileText, Send, ArrowLeft, CheckCircle2, Search, X } from "lucide-react"
+import { Calendar, Clock, Radio, Users, FileText, Send, ArrowLeft, CheckCircle2, Search, X, Mail } from "lucide-react"
 
 const route = (name: string, params?: any) => {
   const routes: Record<string, string> = {
@@ -242,7 +242,7 @@ const CampaignsCreate: React.FC<CampaignsCreateProps> = ({ contentItems, default
                 <span className="text-sm text-muted-foreground">*</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <button
                   type="button"
                   onClick={() => toggleChannel("whatsapp")}
@@ -293,6 +293,35 @@ const CampaignsCreate: React.FC<CampaignsCreateProps> = ({ contentItems, default
                     <div className="text-left">
                       <div className="font-semibold">Web Notification</div>
                       <div className="text-xs text-muted-foreground">Send via web notifications</div>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => toggleChannel("email")}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    data.channels.includes("email")
+                      ? "border-primary bg-primary/10"
+                      : "border-border bg-background hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                        data.channels.includes("email") ? "border-primary bg-primary" : "border-border"
+                      }`}
+                    >
+                      {data.channels.includes("email") && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-foreground" />
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <div className="font-semibold flex items-center gap-1.5">
+                        <Mail className="h-3.5 w-3.5" />
+                        Email
+                      </div>
+                      <div className="text-xs text-muted-foreground">Send via email notifications</div>
                     </div>
                   </div>
                 </button>

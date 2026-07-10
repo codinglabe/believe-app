@@ -462,6 +462,11 @@ export default function NotificationsInbox() {
                               <p className={cn("mt-1 text-sm text-slate-600 dark:text-slate-300", notification.type === CARE_ALLIANCE_INVITATION_TYPE ? "" : "line-clamp-2")}>
                                 {notification.body}
                               </p>
+                              {notification.senderLabel ? (
+                                <p className="mt-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                                  {notification.senderLabel}
+                                </p>
+                              ) : null}
                               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                                 <Badge className={cn("border px-2 py-0.5 font-normal", visual.badgeClassName)}>{visual.badge}</Badge>
                                 <span className="inline-flex items-center gap-1">

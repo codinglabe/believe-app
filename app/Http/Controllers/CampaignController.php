@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campaign;
 use App\Models\ContentItem;
 use App\Models\User;
+use App\Jobs\SendCampaignCreatedEmails;
 use App\Services\AIContentGenerator;
 use App\Services\CampaignPlanner;
 use App\Support\CampaignDeliveryChannels;
@@ -69,7 +70,7 @@ class CampaignController extends Controller
             'end_date' => 'required|date|after:start_date',
             'send_time_local' => 'required|date_format:H:i',
             'channels' => 'required|array|min:1',
-            'channels.*' => 'in:push,whatsapp,web',
+            'channels.*' => CampaignDeliveryChannels::validationRule(),
             'content_items' => 'required|array|min:1',
             'content_items.*' => 'exists:content_items,id',
             'user_ids' => 'required|array|min:1',
@@ -91,6 +92,10 @@ class CampaignController extends Controller
         $contentItems = ContentItem::whereIn('id', $validated['content_items'])->get();
 
         $scheduledCount = CampaignPlanner::planDailyCampaign($campaign, $contentItems);
+
+        if (CampaignDeliveryChannels::includesEmail($validated['channels'])) {
+            SendCampaignCreatedEmails::dispatch($campaign->id);
+        }
 
         return redirect()->route('campaigns.show', $campaign)
             ->with('success', "Campaign created successfully! Scheduled {$scheduledCount} daily prayers for {$campaign->selectedUsers()->count()} users.");
