@@ -190,7 +190,7 @@ export interface Campaign {
     start_date: string;
     end_date: string;
     send_time_local: string;
-    channels: ('push' | 'whatsapp' | 'web')[];
+    channels: ('push' | 'whatsapp' | 'web' | 'email')[];
     rrule?: any;
     status: 'active' | 'paused' | 'cancelled';
     created_at: string;
@@ -216,7 +216,7 @@ export interface SendJob {
     scheduled_drop_id: number;
     user_id: number;
     user: User;
-    channel: 'push' | 'whatsapp' | 'web';
+    channel: 'push' | 'whatsapp' | 'web' | 'email';
     status: 'queued' | 'sent' | 'delivered' | 'failed';
     idempotency_key: string;
     error?: string;

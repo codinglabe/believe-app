@@ -7,8 +7,10 @@ use App\Models\AiChatConversation;
 use App\Models\AiChatMessage;
 use App\Models\Campaign;
 use App\Models\ContentItem;
+use App\Jobs\SendCampaignCreatedEmails;
 use App\Services\OpenAiService;
 use App\Services\CampaignPlanner;
+use App\Support\CampaignDeliveryChannels;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
@@ -1406,10 +1408,10 @@ PROMPT;
         }
         
         // Validate channels are valid
-        $validChannels = ['web', 'whatsapp', 'push'];
-        $data['channels'] = array_filter($data['channels'], function($channel) use ($validChannels) {
-            return in_array(strtolower($channel), $validChannels);
-        });
+        $validChannels = CampaignDeliveryChannels::VALUES;
+        $data['channels'] = array_values(array_filter($data['channels'], function ($channel) use ($validChannels) {
+            return in_array(strtolower((string) $channel), $validChannels, true);
+        }));
         
         if (empty($data['channels'])) {
             $data['channels'] = ['web']; // Fallback to web if all invalid
@@ -1496,7 +1498,7 @@ PROMPT;
                         'meta' => $item->meta,
                     ];
                 })->toArray(),
-                'default_channels' => ['web', 'whatsapp'],
+                'default_channels' => ['web', 'whatsapp', 'email'],
                 'message' => 'Please fill in the campaign details below:',
             ];
         }
@@ -1694,6 +1696,10 @@ PROMPT;
             // Refresh to get accurate user count
             $campaign->refresh();
             $usersCount = $campaign->selectedUsers()->count();
+
+            if (CampaignDeliveryChannels::includesEmail($data['channels'] ?? [])) {
+                SendCampaignCreatedEmails::dispatch($campaign->id);
+            }
 
             Log::info('Campaign created successfully via AI chat', [
                 'campaign_id' => $campaign->id,
@@ -2118,8 +2124,14 @@ PROMPT;
                 if (stripos($channelsStr, 'web') !== false || stripos($channelsStr, 'notification') !== false) {
                     $detectedChannels[] = 'web';
                 }
+                if (stripos($channelsStr, 'email') !== false || stripos($channelsStr, 'gmail') !== false || stripos($channelsStr, 'mail') !== false) {
+                    $detectedChannels[] = 'email';
+                }
+                if (stripos($channelsStr, 'push') !== false) {
+                    $detectedChannels[] = 'push';
+                }
                 if (!empty($detectedChannels)) {
-                    $updates['channels'] = $detectedChannels;
+                    $updates['channels'] = array_values(array_unique($detectedChannels));
                 }
             }
         } elseif (!empty($data['channels']) && is_array($data['channels'])) {
@@ -4034,7 +4046,7 @@ Return ONLY a valid JSON object with this EXACT structure (no markdown, no code 
   "start_date": "YYYY-MM-DD format string or null (e.g., '2025-12-04')",
   "end_date": "YYYY-MM-DD format string or null (e.g., '2025-12-10')",
   "send_time_local": "HH:MM format string or null (e.g., '07:00', '14:30')",
-  "channels": ["web", "whatsapp", "push"] or null (array of lowercase strings),
+  "channels": ["web", "whatsapp", "push", "email"] or null (array of lowercase strings),
   "status": "active" or "paused" or "cancelled" or null,
   "content_items": [1, 2, 3] or null (array of numeric IDs),
   "user_ids": [5, 10, 15] or null (array of numeric IDs)
@@ -4119,18 +4131,20 @@ CRITICAL EXTRACTION RULES FOR CREATE OPERATION:
      * "time is 9:15 AM" → send_time_local: "09:15"
 
 7. CHANNELS EXTRACTION PATTERNS:
-   Identify delivery channels (must be lowercase: "web", "whatsapp", "push"):
+   Identify delivery channels (must be lowercase: "web", "whatsapp", "push", "email"):
    - Keywords: "using", "via", "through", "with", "on", "channel"
-   - Patterns: "using web", "via whatsapp", "with push notifications", "web and whatsapp"
+   - Patterns: "using web", "via whatsapp", "with push notifications", "web and whatsapp", "via email"
    - Multiple channels: "web and whatsapp" → ["web", "whatsapp"]
    - Channel synonyms:
      * "web" / "web notifications" / "browser" → "web"
      * "whatsapp" / "whats app" / "wa" → "whatsapp"
      * "push" / "push notifications" / "mobile push" → "push"
+     * "email" / "gmail" / "mail" / "e-mail" → "email"
    - Examples:
      * "using web notifications" → channels: ["web"]
      * "via whatsapp and web" → channels: ["whatsapp", "web"]
      * "with push and whatsapp" → channels: ["push", "whatsapp"]
+     * "web and email" → channels: ["web", "email"]
 
 8. CONTENT ITEMS & USER IDs EXTRACTION:
    - Match content item titles/names from AVAILABLE CONTENT ITEMS list below
@@ -4168,10 +4182,11 @@ ADVANCED EXTRACTION SCENARIOS & EDGE CASES:
 
 11. CHANNEL COMBINATION RULES:
     - "web and whatsapp" → ["web", "whatsapp"]
-    - "all channels" / "all available channels" → ["web", "whatsapp", "push"]
+    - "all channels" / "all available channels" → ["web", "whatsapp", "push", "email"]
     - "notifications" (without specifying) → ["web"]
     - "both web and push" → ["web", "push"]
     - "whatsapp or web" → ["whatsapp", "web"] (interpret "or" as "and")
+    - "web and email" / "email and web notifications" → ["web", "email"]
 
 12. PARTIAL INFORMATION HANDLING:
     - If user provides ONLY name → extract name, return nulls for dates/time/channels

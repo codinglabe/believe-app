@@ -4,7 +4,7 @@ import type React from "react"
 import { Head, Link, router, useForm, usePage } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { useEffect, useState } from "react"
-import { Calendar, Clock, FileText, Users, MessageSquare, Radio, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Calendar, Clock, FileText, Users, MessageSquare, Radio, Sparkles, AlertCircle, CheckCircle2, Mail } from "lucide-react"
 import type { SharedData } from "@/types"
 import { AiChatUsageCard } from "@/components/ai-chat/AiChatUsageCard"
 import { AiTokensPurchaseModal } from "@/components/ai-chat/AiTokensPurchaseModal"
@@ -426,6 +426,19 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
                   />
                   <span className="text-sm font-medium">Web Notification</span>
                   {data.channels.includes("web") && <CheckCircle2 className="h-4 w-4 text-primary ml-auto" />}
+                </label>
+                <label className="inline-flex items-center gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all border-border hover:border-primary/50 hover:bg-accent/50">
+                  <input
+                    type="checkbox"
+                    checked={data.channels.includes("email")}
+                    onChange={() => toggleChannel("email")}
+                    className="rounded border-border text-primary focus:ring-primary w-4 h-4"
+                  />
+                  <span className="text-sm font-medium inline-flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" />
+                    Email
+                  </span>
+                  {data.channels.includes("email") && <CheckCircle2 className="h-4 w-4 text-primary ml-auto" />}
                 </label>
               </div>
               {errors.channels && (
