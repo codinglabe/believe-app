@@ -74,14 +74,21 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
             $scriptureRef = (string) $this->contentItem->meta['scripture_ref'];
         }
 
-        return new CampaignPrayerMail(
+        // MailChannel sends Mailables as-is and does not attach the notifiable's
+        // address, so the recipient must be set explicitly on the mailable.
+        $to = $notifiable->routeNotificationFor('mail', $this);
+        if (empty($to)) {
+            $to = trim((string) ($notifiable->email ?? ''));
+        }
+
+        return (new CampaignPrayerMail(
             recipientName: trim((string) ($notifiable->name ?? '')),
             organizationName: $organizationName,
             title: (string) $this->contentItem->title,
             bodyText: strip_tags((string) $this->contentItem->body),
             scriptureRef: $scriptureRef,
             contentUrl: $contentUrl,
-        );
+        ))->to($to);
     }
 
     public function toFirebase($notifiable)
