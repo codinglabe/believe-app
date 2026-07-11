@@ -337,7 +337,7 @@ export default function SupporterShowLivestream({
     !isGoLivePending
 
   /** Top bar, Stream options, sidebar YouTube card — logic kept; toggle true to show again. */
-  const showYoutubeLiveMeetingChrome = false
+  const showYoutubeLiveMeetingChrome = true
   const showYoutubeLiveButtonInTopBar = showYoutubeLiveMeetingChrome
   const showYoutubeLiveSidebarCard = showYoutubeLiveMeetingChrome
   const showStreamOptionsButton = showYoutubeLiveMeetingChrome

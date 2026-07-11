@@ -94,6 +94,7 @@ use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
 use App\Http\Controllers\Facebook\PostController;
 use App\Http\Controllers\FavoriteMenuController;
+use App\Http\Controllers\FindCareAlliancesController;
 use App\Http\Controllers\FindSupportersController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\Organization\OrganizationSupportersController;

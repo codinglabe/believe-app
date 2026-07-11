@@ -18,7 +18,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/frontend/ui/command"
-import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, ChevronsUpDown, Check, Pin, Megaphone, Rss, Link2, Loader2, Rocket, Info, Sparkles } from "lucide-react"
+import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, ChevronsUpDown, Check, Pin, Megaphone, Rss, Link2, Loader2, Info, Sparkles, HardDrive, Brain } from "lucide-react"
 import toast from "react-hot-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -515,6 +515,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   /** Grid items only — never repeat the featured hero row (search single-result used to inject featured here and duplicated the card). */
   const gridVideos = videos
 
+  const connectYoutubeUrl = route("login") + "?redirect=" + encodeURIComponent("/integrations/youtube/redirect")
+
   const handleImportVideo = useCallback(async () => {
     const trimmed = importUrl.trim()
     if (!trimmed) {
@@ -548,11 +550,11 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       <PageHead title={seo?.title ?? "Unity Video Hub"} description={seo?.description} />
       <div className="min-h-screen bg-neutral-50 dark:bg-gray-950 text-neutral-900 dark:text-gray-100">
         {/* Profile completion banner - logged-in user (org or supporter) without YouTube */}
-        {auth?.user && (
+        {userOrgCanConnect && !userOrgHasYoutube && auth?.user && (
           <div className="bg-amber-500/15 border-b border-amber-500/30">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <p className="text-sm text-amber-800 dark:text-amber-200">
-                <strong>Complete Your Profile to Unlock All Unity Video Hub Features:</strong> 1. Add your first video
+                <strong>Complete Your Profile to Unlock All Unity Video Hub Features:</strong> 1. Connect your YouTube channel
               </p>
               <div className="flex items-center gap-3">
                 <div className="w-24 h-2 rounded-full bg-neutral-200 dark:bg-gray-700 overflow-hidden">
@@ -562,7 +564,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   size="sm"
                   type="button"
                   className="bg-amber-500 hover:bg-amber-600 text-gray-900 font-medium"
-                  onClick={() => importPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+                  onClick={() => { window.location.href = route("integrations.youtube.redirect"); }}
                 >
                   Continue &gt;
                 </Button>
@@ -1069,8 +1071,80 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
           )}
           </main>
 
-          {/* Right sidebar: Import YouTube Video (channel block hidden while sync is disabled) */}
+          {/* Right sidebar: Your YouTube Channel, Connect CTA, Import YouTube Video */}
           <aside className="w-full lg:w-[320px] shrink-0 space-y-6">
+            {myChannel ? (
+              <div className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-gray-500 mb-3">Your YouTube Channel</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <Avatar className="h-12 w-12 rounded-full border-2 border-neutral-200 dark:border-gray-700">
+                    {myChannel.avatar && <AvatarImage src={myChannel.avatar} alt={myChannel.name} />}
+                    <AvatarFallback className="rounded-full bg-neutral-200 dark:bg-gray-700 text-neutral-600 dark:text-gray-300 text-sm">{myChannel.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-neutral-900 dark:text-white truncate flex items-center gap-1">
+                      {myChannel.name}
+                      <span className="text-blue-500 dark:text-blue-400" title="Verified">✓</span>
+                    </p>
+                    <p className="text-xs text-neutral-500 dark:text-gray-500">{myChannel.subscriber_count_formatted} Subscribers</p>
+                  </div>
+                </div>
+                {myChannel.channel_slug && (
+                  <Link href={`/unity-videos/channel/${myChannel.channel_slug}`}>
+                    <Button size="sm" className="w-full rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm mb-4">
+                      Visit Channel
+                    </Button>
+                  </Link>
+                )}
+                <div className="flex gap-2 border-b border-neutral-200 dark:border-gray-800 pb-2 text-xs text-neutral-500 dark:text-gray-500">
+                  <span>Home</span><span>Videos</span><span>Playlists</span><span>About</span>
+                </div>
+                <div className="flex gap-2 mt-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {myChannel.preview_videos.map((pv) => (
+                    <Link key={pv.slug} href={myChannel.channel_slug ? `/unity-videos/watch/yt/${pv.slug}?channel_slug=${encodeURIComponent(myChannel.channel_slug)}&creator=${encodeURIComponent(myChannel.name)}` : `/unity-videos/watch/yt/${pv.slug}`} className="shrink-0 w-[100px] block rounded-lg overflow-hidden bg-neutral-100 dark:bg-gray-800 group">
+                      <div className="aspect-video relative">
+                        <img src={pv.thumbnail_url} alt={pv.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        {pv.duration === "LIVE" ? (
+                          <span className="absolute bottom-0.5 right-0.5 bg-red-600 text-white text-[10px] px-1 rounded">LIVE</span>
+                        ) : pv.duration ? (
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-white text-[10px] px-1 rounded">{pv.duration}</span>
+                        ) : null}
+                      </div>
+                      <p className="text-[10px] text-neutral-500 dark:text-gray-400 truncate px-1 py-0.5 line-clamp-2">{pv.title}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {!myChannel && !userOrgHasYoutube ? (
+              <div className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Youtube className="w-6 h-6 text-red-500" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Connect Your YouTube Channel</h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-gray-400 mb-3">To unlock all features of Unity Video Hub:</p>
+                <ul className="space-y-2 text-xs text-neutral-600 dark:text-gray-400 mb-4">
+                  <li className="flex items-center gap-2"><HardDrive className="w-4 h-4 text-neutral-500 shrink-0" /> Enable automatic livestream replay storage</li>
+                  <li className="flex items-center gap-2"><Youtube className="w-4 h-4 text-red-500 shrink-0" /> Import your YouTube videos into the Unity Video Hub</li>
+                  <li className="flex items-center gap-2"><Brain className="w-4 h-4 text-neutral-500 shrink-0" /> Let Navigator AI learn from your video content for better insights.</li>
+                </ul>
+                {auth?.user ? (
+                  <Button
+                    type="button"
+                    className="w-full rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold"
+                    onClick={() => { window.location.href = route("integrations.youtube.redirect"); }}
+                  >
+                    Connect Now
+                  </Button>
+                ) : (
+                  <Link href={connectYoutubeUrl}>
+                    <Button className="w-full rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold">
+                      Connect Now
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            ) : null}
             <div
               ref={importPanelRef}
               className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4 shadow-sm"
@@ -1135,21 +1209,9 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   "Add Video URL"
                 )}
               </Button>
-              <div className="mt-5 pt-4 border-t border-neutral-200 dark:border-gray-800">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-gray-500 mb-2 flex items-center gap-1.5">
-                  <Rocket className="w-3.5 h-3.5 text-amber-500" aria-hidden />
-                  Coming Soon
-                </p>
-                <ul className="space-y-1.5 text-xs text-neutral-500 dark:text-gray-500">
-                  <li>Channel Sync</li>
-                  <li>Automatic Imports</li>
-                  <li>Livestream Replay Imports</li>
-                  <li>YouTube Account Connection</li>
-                </ul>
-              </div>
               <div className="mt-4 flex gap-2 rounded-lg bg-neutral-100 dark:bg-gray-800/60 p-3 text-[11px] text-neutral-600 dark:text-gray-400">
                 <Info className="w-4 h-4 shrink-0 text-neutral-400 dark:text-gray-500 mt-0.5" aria-hidden />
-                <p>Channel connection and automatic imports require YouTube authorization.</p>
+                <p>Connected channels sync automatically. You can also import any public YouTube URL above.</p>
               </div>
             </div>
           </aside>

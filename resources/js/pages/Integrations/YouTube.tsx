@@ -186,7 +186,7 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
             <CardHeader>
               <CardTitle className="text-lg">Channel connected</CardTitle>
 <CardDescription>
-                Your YouTube channel is linked for Unity Meet and other integrations. Add videos to Unity Video Hub manually from the Import YouTube Video panel on the Unity Videos page.
+                Your YouTube channel is linked. Videos from your channel sync to Unity Video Hub, and you can also import any public URL from the Unity Videos page.
                 {is_supporter && " You can disconnect your channel below at any time."}
               </CardDescription>
             </CardHeader>
