@@ -55,6 +55,7 @@ import {
     FolderOpen,
     ShoppingBag,
     Search,
+    Youtube,
     Video,
     TrendingUp,
     Cloud,
@@ -1006,6 +1007,18 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'Payout settings',
                         href: route('integrations.payout-settings'),
                         icon: Wallet,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Social media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'YouTube',
+                        href: route('integrations.youtube'),
+                        icon: Youtube,
                         role: 'organization',
                     },
                     {

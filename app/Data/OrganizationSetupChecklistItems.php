@@ -12,10 +12,7 @@ class OrganizationSetupChecklistItems
     public const SECTION_TOOLS = 'tools';
 
     /** Temporarily hidden from the setup checklist UI (re-enable by removing ids here). */
-    private const HIDDEN_ITEM_IDS = [
-        'social_media',
-        'youtube',
-    ];
+    private const HIDDEN_ITEM_IDS = [];
 
     /**
      * @return list<array{

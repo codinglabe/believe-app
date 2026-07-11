@@ -14,12 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Youtube, Cloud, Link2Off, Megaphone } from "lucide-react"
+import { Youtube, Cloud, Link2Off } from "lucide-react"
 import { Link, router } from "@inertiajs/react"
 import { toast } from "react-hot-toast"
-
-/** Set to false when YouTube OAuth connect is ready to ship. */
-const YOUTUBE_INTEGRATION_COMING_SOON = true
 
 interface MyChannel {
   name: string
@@ -42,9 +39,9 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
   const [youtubeDisconnecting, setYoutubeDisconnecting] = useState(false)
   const [dropboxDisconnecting, setDropboxDisconnecting] = useState(false)
 
-  // const handleConnect = () => {
-  //   window.location.href = route("integrations.youtube.redirect") + "?upload=1"
-  // }
+  const handleConnect = () => {
+    window.location.href = route("integrations.youtube.redirect") + "?upload=1"
+  }
 
   const handleDisconnect = () => {
     setYoutubeDisconnectOpen(true)
@@ -84,42 +81,7 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
 <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-8">
         {/* YouTube */}
         <div className="min-w-0">
-        {YOUTUBE_INTEGRATION_COMING_SOON ? (
-          <Card className="bg-white dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 h-full flex flex-col rounded-xl shadow-sm overflow-hidden">
-            <CardContent className="flex flex-col items-center text-center px-6 py-8 sm:py-10 flex-1">
-              <div className="w-14 h-14 rounded-xl bg-red-600 flex items-center justify-center shrink-0 mb-5">
-                <Youtube className="w-8 h-8 text-white" aria-hidden />
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
-                <CardTitle className="text-gray-900 dark:text-white text-lg mb-0">YouTube</CardTitle>
-                <span className="rounded-full bg-violet-600 px-2.5 py-0.5 text-xs font-medium text-white">
-                  Coming Soon
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-8">
-                YouTube integration is coming soon.
-                <br />
-                We&apos;re working on bringing this feature to you.
-              </p>
-              <div
-                className="mt-auto w-full max-w-[220px] rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600/70 px-8 py-10 flex items-center justify-center"
-                aria-hidden
-              >
-                <div className="relative">
-                  <Megaphone
-                    className="h-16 w-16 text-violet-500 dark:text-violet-400"
-                    strokeWidth={1.5}
-                    fill="currentColor"
-                    fillOpacity={0.15}
-                  />
-                  <span className="absolute -right-3 top-2 h-1 w-4 rounded-full bg-amber-400/90 rotate-[25deg]" />
-                  <span className="absolute -right-5 top-5 h-1 w-5 rounded-full bg-amber-400/70 rotate-[15deg]" />
-                  <span className="absolute -right-4 top-8 h-1 w-3 rounded-full bg-amber-400/50 rotate-[5deg]" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : isConnected && myChannel ? (
+        {isConnected && myChannel ? (
           <div className="rounded-xl border border-gray-700/50 bg-gray-900/80 dark:bg-gray-900/80 p-5 sm:p-6 h-full flex flex-col shadow-sm">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Your YouTube Channel</h3>
             <div className="flex items-center gap-3 mb-3">
@@ -145,7 +107,7 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
               </Link>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Add videos from the Import YouTube Video panel on the Unity Videos page.
+              Your channel syncs to Unity Videos. You can also add videos from the Import YouTube Video panel.
             </p>
             <Button
               type="button"
@@ -195,14 +157,14 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              {/* <Button
+              <Button
                 type="button"
                 className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white rounded-lg"
                 onClick={handleConnect}
               >
                 <Youtube className="w-4 h-4 mr-2" />
                 Connect with YouTube
-              </Button> */}
+              </Button>
             </CardContent>
           </Card>
         )}
