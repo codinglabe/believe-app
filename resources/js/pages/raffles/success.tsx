@@ -324,7 +324,7 @@ export default function RaffleSuccessPage({
                                         </span>
                                     </div>
                                     <p className="text-center text-xs text-muted-foreground">
-                                        No card processing fees when paying with Believe Points.
+                                        No payment provider fee when paying with Believe Points.
                                     </p>
                                     <div className="flex justify-between gap-4">
                                         <span className="text-muted-foreground">

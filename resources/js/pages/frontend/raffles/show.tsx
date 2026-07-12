@@ -594,11 +594,11 @@ export default function RaffleShow({
                                                         <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
                                                             <div className="min-w-0">
                                                                 <p className="text-sm font-semibold text-foreground">
-                                                                    Cover processing fees
+                                                                    Cover payment provider fee
                                                                 </p>
                                                                 <p className="mt-0.5 text-xs text-muted-foreground">
                                                                     When on, your total is adjusted so the nonprofit receives the full
-                                                                    subtotal.
+                                                                    donation subtotal.
                                                                 </p>
                                                             </div>
                                                             <Switch
@@ -625,7 +625,7 @@ export default function RaffleShow({
                                                                                 </span>
                                                                             </div>
                                                                             <div className="flex justify-between text-muted-foreground">
-                                                                                <span>Est. processing</span>
+                                                                                <span>Payment Provider Fee</span>
                                                                                 <span className="tabular-nums">
                                                                                     +${feePreview.processing_fee_estimate.toFixed(2)}
                                                                                 </span>
@@ -646,7 +646,7 @@ export default function RaffleShow({
                                                                                 </span>
                                                                             </div>
                                                                             <div className="flex justify-between text-muted-foreground">
-                                                                                <span>Est. processing</span>
+                                                                                <span>Payment Provider Fee</span>
                                                                                 <span className="tabular-nums">
                                                                                     −${feePreview.processing_fee_estimate.toFixed(2)}
                                                                                 </span>
@@ -680,7 +680,7 @@ export default function RaffleShow({
                                                             <strong className="text-foreground">
                                                                 {lineSubtotal.toFixed(2)} Believe Points
                                                             </strong>{' '}
-                                                            (no card processing fees).
+                                                            (no payment provider fee).
                                                         </p>
                                                     </div>
                                                 ) : null}

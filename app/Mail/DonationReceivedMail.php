@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\Donation;
 use App\Models\User;
+use App\Services\TimezoneService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -32,6 +33,13 @@ class DonationReceivedMail extends Mailable
 
     public function content(): Content
     {
+        $donationAt = $this->donation->donation_date ?? $this->donation->created_at;
+        $donationDateFormatted = TimezoneService::formatUtcForTimezone(
+            $donationAt,
+            TimezoneService::forUser($this->orgUser),
+            'F j, Y g:i A T',
+        );
+
         return new Content(
             view: 'emails.donation-received',
             with: [
@@ -39,6 +47,7 @@ class DonationReceivedMail extends Mailable
                 'orgUser' => $this->orgUser,
                 'donorName' => $this->donorName,
                 'donationsUrl' => $this->donationsUrl,
+                'donationDateFormatted' => $donationDateFormatted,
             ],
         );
     }

@@ -285,9 +285,9 @@ function stripeDonationLedgerExplanation(d: DonationLedgerInfo | null): string |
   if (!d || d.missing || d.kind === "care_alliance_campaign") return null
   if (d.payment_method !== "stripe") return null
   if (d.donor_covers_processing_fees) {
-    return "Donor covered processing: Gross is the total amount paid. Net is that payment minus the processing fee (and any other fees listed)—what the nonprofit receives. The fee row is the portion that goes to the processor."
+    return "Donor covered payment provider fee: Gross is the total amount paid. Net is that payment minus the payment provider fee (and any other fees listed)—what the nonprofit receives. The fee row is the portion charged by Stripe or PayPal."
   }
-  return "Nonprofit absorbs processing: NET is the donation amount minus the processing fee (and any other fees listed). Org payout matches that net settlement."
+  return "Nonprofit absorbs payment provider fee: NET is the donation amount minus the payment provider fee (and any other fees listed). Org payout matches that net settlement."
 }
 
 function ledgerActorContextIcon(kind: LedgerActorContext["kind"]): ComponentType<{ className?: string }> {

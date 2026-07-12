@@ -397,13 +397,13 @@ export function InstantDonate({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-slate-900 dark:text-white">Make Impact Pay</p>
               <p className="truncate text-sm text-slate-600 dark:text-white/60">
-                {makeImpactPay ? "On — you cover processing fees" : "Off"}
+                {makeImpactPay ? "On — you cover the payment provider fee" : "Off"}
               </p>
             </div>
             <Switch
               checked={makeImpactPay}
               onCheckedChange={setMakeImpactPay}
-              aria-label="Make Impact Pay — cover processing fees"
+              aria-label="Make Impact Pay — cover payment provider fee"
             />
           </div>
         </div>
