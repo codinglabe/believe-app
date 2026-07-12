@@ -96,6 +96,7 @@ Route::middleware(['auth:merchant'])->group(function () {
             Route::get('/stripe-connect/start', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'startStripeConnect'])->name('stripe-connect.start');
             Route::get('/stripe-connect/return', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'stripeConnectReturn'])->name('stripe-connect.return');
             Route::get('/stripe-connect/refresh', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'stripeConnectRefresh'])->name('stripe-connect.refresh');
+            Route::post('/stripe-connect/disconnect', [App\Http\Controllers\Merchant\MerchantPayoutSettingsController::class, 'disconnectStripeConnect'])->name('stripe-connect.disconnect');
         });
 
         Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');

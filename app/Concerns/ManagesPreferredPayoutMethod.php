@@ -22,6 +22,11 @@ trait ManagesPreferredPayoutMethod
             return false;
         }
 
+        $type = strtolower(trim((string) ($this->stripe_connect_account_type ?? '')));
+        if ($type === 'express' || $type === 'custom') {
+            return false;
+        }
+
         return (bool) $this->stripe_connect_charges_enabled && (bool) $this->stripe_connect_payouts_enabled;
     }
 
