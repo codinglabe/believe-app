@@ -85,20 +85,20 @@ function CapabilityBadge({
 
 const FLOW_STEPS = [
   {
-    title: "Donor pays",
-    body: "Gift amount, plus processing fee if they choose to cover it.",
+    title: "Donor gives",
+    body: "Supporters donate to your nonprofit through Believe In Unity.",
     icon: HandCoins,
     iconClass: "bg-purple-600/10 text-purple-700 dark:text-purple-300",
   },
   {
-    title: "BIU fee offset",
-    body: "Only the processing-fee portion stays on the platform balance. No BIU platform fee.",
+    title: "Settles to Stripe",
+    body: "The donation is routed to your connected Standard Stripe account.",
     icon: ShieldCheck,
     iconClass: "bg-blue-600/10 text-blue-700 dark:text-blue-300",
   },
   {
     title: "Your nonprofit",
-    body: "Receives 100% of the gift in your Standard Stripe account on your payout schedule.",
+    body: "You receive 100% of the donation on your normal Stripe payout schedule.",
     icon: Building2,
     iconClass: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-300",
   },
