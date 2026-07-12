@@ -47,7 +47,7 @@ export function StripeConnectHeader({
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
             Connect a Standard Stripe account for{" "}
             <span className="font-medium text-foreground">{organizationName}</span>.
-            Your nonprofit keeps 100% of the gift and manages payouts from the full Stripe Dashboard.
+            Your nonprofit keeps 100% of each donation and manages payouts from the full Stripe Dashboard.
           </p>
         </div>
         <div

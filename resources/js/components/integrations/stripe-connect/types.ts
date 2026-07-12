@@ -68,7 +68,7 @@ export function getStatusMeta(
         icon: CheckCircle2,
         title: "Standard Stripe account connected",
         description:
-          "Qualifying one-time gifts can settle directly to your nonprofit’s Stripe balance.",
+          "Qualifying one-time donations can settle directly to your nonprofit’s Stripe balance.",
       }
     case "in_progress":
       return {
@@ -95,7 +95,7 @@ export function getStatusMeta(
         icon: Landmark,
         title: "Connect your Standard Stripe account",
         description: requireConnectForPublicDonations
-          ? "Standard Connect is required before accepting direct card or bank gifts to your listing."
+          ? "Standard Connect is required before accepting direct card or bank donations to your listing."
           : "Until connected, donors may use the legacy platform checkout path when available.",
       }
   }
