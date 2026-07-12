@@ -33,6 +33,7 @@ class StripeConnectMerchantService
             $merchant->forceFill([
                 'stripe_connect_charges_enabled' => (bool) ($acct->charges_enabled ?? false),
                 'stripe_connect_payouts_enabled' => (bool) ($acct->payouts_enabled ?? false),
+                'stripe_connect_account_type' => isset($acct->type) ? (string) $acct->type : null,
             ])->save();
 
             return null;
@@ -47,7 +48,12 @@ class StripeConnectMerchantService
         }
     }
 
-    public static function createExpressAccountIfMissing(Merchant $merchant): string
+    /**
+     * Create (or reuse) a Standard connected account for the merchant.
+     *
+     * @return non-empty-string
+     */
+    public static function createStandardAccountIfMissing(Merchant $merchant): string
     {
         if (! self::configureStripe()) {
             throw new \RuntimeException('Stripe credentials are not configured for this application.');
@@ -61,6 +67,13 @@ class StripeConnectMerchantService
 
         if ($merchant->stripe_connect_account_id !== null && $merchant->stripe_connect_account_id !== '') {
             self::syncAccountStatusFromStripe($merchant);
+            $merchant->refresh();
+
+            if (self::isLegacyExpressAccount($merchant)) {
+                throw new \RuntimeException(
+                    'This merchant is linked to a legacy Express Stripe account. Disconnect it first, then connect again to create a Standard account with the full Stripe Dashboard.'
+                );
+            }
 
             return $merchant->stripe_connect_account_id;
         }
@@ -72,7 +85,7 @@ class StripeConnectMerchantService
 
         try {
             $account = $stripe->accounts->create([
-                'type' => 'express',
+                'type' => 'standard',
                 'country' => $country,
                 'email' => $email,
                 'capabilities' => [
@@ -86,7 +99,7 @@ class StripeConnectMerchantService
                 ],
             ]);
         } catch (\Throwable $e) {
-            Log::error('Stripe Connect merchant account create failed', [
+            Log::error('Stripe Connect merchant Standard account create failed', [
                 'merchant_id' => $merchant->id,
                 'error' => $e->getMessage(),
             ]);
@@ -96,6 +109,7 @@ class StripeConnectMerchantService
 
         $merchant->forceFill([
             'stripe_connect_account_id' => $account->id,
+            'stripe_connect_account_type' => 'standard',
         ])->save();
 
         self::syncAccountStatusFromStripe($merchant);
@@ -103,13 +117,18 @@ class StripeConnectMerchantService
         return $account->id;
     }
 
+    /**
+     * Stripe Connect Onboarding link for a Standard account.
+     *
+     * @return non-empty-string
+     */
     public static function createAccountOnboardingLink(Merchant $merchant): string
     {
         if (! self::configureStripe()) {
             throw new \RuntimeException('Stripe credentials are not configured for this application.');
         }
 
-        $accountId = self::createExpressAccountIfMissing($merchant);
+        $accountId = self::createStandardAccountIfMissing($merchant);
 
         try {
             $link = Cashier::stripe()->accountLinks->create([
@@ -131,9 +150,30 @@ class StripeConnectMerchantService
         return $link->url;
     }
 
+    public static function disconnectAccount(Merchant $merchant): void
+    {
+        $merchant->forceFill([
+            'stripe_connect_account_id' => null,
+            'stripe_connect_charges_enabled' => false,
+            'stripe_connect_payouts_enabled' => false,
+            'stripe_connect_account_type' => null,
+        ])->save();
+    }
+
+    public static function isLegacyExpressAccount(Merchant $merchant): bool
+    {
+        $type = strtolower(trim((string) ($merchant->stripe_connect_account_type ?? '')));
+
+        return $type === 'express' || $type === 'custom';
+    }
+
     public static function merchantCanReceivePayouts(Merchant $merchant): bool
     {
         if ($merchant->stripe_connect_account_id === null || $merchant->stripe_connect_account_id === '') {
+            return false;
+        }
+
+        if (self::isLegacyExpressAccount($merchant)) {
             return false;
         }
 

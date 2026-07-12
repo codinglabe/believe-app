@@ -71,6 +71,7 @@ class Merchant extends Authenticatable implements HasPreferredPayoutMethod
         'stripe_connect_account_id',
         'stripe_connect_charges_enabled',
         'stripe_connect_payouts_enabled',
+        'stripe_connect_account_type',
         'paypal_payout_email',
         'paypal_payouts_enabled',
         'paypal_payout_connected_at',

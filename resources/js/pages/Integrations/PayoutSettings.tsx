@@ -23,6 +23,8 @@ interface Readiness {
     connected: boolean
     charges_enabled: boolean
     payouts_enabled: boolean
+    account_type?: string | null
+    is_legacy_express?: boolean
     ready: boolean
   }
   paypal: {
@@ -161,8 +163,13 @@ export default function PayoutSettings({
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                Connect Stripe Express to receive bank payouts for selling modules.
+                Connect a Standard Stripe account to receive bank payouts for selling modules.
               </p>
+              {readiness.stripe.is_legacy_express ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Legacy Express account detected. Open Details to disconnect and reconnect with Standard Connect.
+                </p>
+              ) : null}
               {!stripeConfigured ? (
                 <p className="text-xs text-red-600">Stripe is not configured on this platform.</p>
               ) : null}

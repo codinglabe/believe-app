@@ -19,6 +19,12 @@
 COMMAND_IN_PRODUCTION.md
 # Full docs folder – do not push
 docs/
+
+# Local project overview (never commit — keep outside repo or ignored)
+AGENTS.md
+PROJECT-OVERVIEW.md
+**/AGENTS.md
+**/PROJECT-OVERVIEW.md
 Homestead.json
 Homestead.yaml
 npm-debug.log

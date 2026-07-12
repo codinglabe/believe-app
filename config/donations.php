@@ -10,7 +10,7 @@ return [
     | When true, one-time Stripe gifts to nonprofits that are not routed through
     | Care Alliance financial distribution require Connect onboarding before checkout.
     | When false, the app falls back to the legacy platform Checkout flow until the
-    | organization connects a Standard Stripe account via OAuth.
+    | organization connects a Standard Stripe account.
     |
     */
 
