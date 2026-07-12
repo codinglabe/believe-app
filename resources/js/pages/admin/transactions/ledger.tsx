@@ -980,7 +980,7 @@ export default function TransactionLedger({
               (subtotal, shipping, tax), supplier name/type,{" "}
               <span className="font-medium text-foreground">catalog supplier cost</span> and{" "}
               <span className="font-medium text-foreground">markup</span>, settlement (
-              <span className="font-medium text-foreground">supplier payout</span>, processing,{" "}
+              <span className="font-medium text-foreground">supplier payout</span>, payment provider fee,{" "}
               <span className="font-medium text-foreground">BIU platform fee</span>,{" "}
               <span className="font-medium text-foreground">platform payout</span>), org / supporter payouts, net — plus provider,
               payment, and related for ops.
@@ -1341,8 +1341,8 @@ export default function TransactionLedger({
                           <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Settlement paid to supplier / merchant">
                             Supplier payout
                           </th>
-                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Stripe + Bridge processing (detail on hover)">
-                            Processing
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Payment Provider Fee — Stripe + Bridge (detail on hover)">
+                            Payment provider fee
                           </th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right" title="BIU / platform fee on the order (not platform share)">
                             Platform fee
@@ -1405,7 +1405,7 @@ export default function TransactionLedger({
                               : Number(rep?.stripe_fee ?? 0) + Number(rep?.bridge_fee ?? 0)
                             : 0
                           const processingTitle = ledgerKind === "money"
-                            ? `Stripe ${formatMoney(stripeFeeAmt, cur)} · Bridge ${formatMoney(bridgeFeeAmt, cur)}`
+                            ? `Payment Provider Fee — Stripe ${formatMoney(stripeFeeAmt, cur)} · Bridge ${formatMoney(bridgeFeeAmt, cur)}`
                             : undefined
                           const supplierNameCell = ledgerSupplierName(u, rep)
                           const supplierTypeCell = ledgerSupplierType(u, rep)
