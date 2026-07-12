@@ -402,7 +402,7 @@ export function DonationPaymentMethods({
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-900 dark:text-white">Make Full Impact</p>
                   <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-white/55">
-                    Cover fees so 100% goes to the nonprofit.
+                    Cover the payment provider fee so 100% of your donation goes to the nonprofit.
                   </p>
                 </div>
                 <Switch checked={donorCoversProcessingFees} onCheckedChange={onDonorCoversChange} />
@@ -426,7 +426,7 @@ export function DonationPaymentMethods({
                   <span className="text-right font-semibold tabular-nums text-slate-900 dark:text-white">
                     ${feePreview.checkout_total_usd.toFixed(2)}
                   </span>
-                  <span className="text-slate-600 dark:text-white/60">Processing fees</span>
+                  <span className="text-slate-600 dark:text-white/60">Payment Provider Fee</span>
                   <span className="text-right tabular-nums text-slate-700 dark:text-white/75">
                     ${feePreview.processing_fee_estimate.toFixed(2)}
                   </span>

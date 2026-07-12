@@ -788,7 +788,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         ],
                     },
                     {
-                        title: 'Stripe processing fees',
+                        title: 'Payment Provider Fee',
                         href: '/admin/processing-fees',
                         icon: Percent,
                         role: 'admin',

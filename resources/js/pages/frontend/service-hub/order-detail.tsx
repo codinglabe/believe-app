@@ -922,7 +922,7 @@ export default function OrderDetail() {
                       )}
                       {order.transactionFee > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Stripe processing fee</span>
+                          <span className="text-muted-foreground">Payment provider fee (Stripe)</span>
                           <span className="font-medium">${order.transactionFee.toFixed(2)}</span>
                         </div>
                       )}

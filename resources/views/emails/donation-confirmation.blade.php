@@ -24,7 +24,7 @@
         </div>
         <div class="info-row">
             <span class="info-label">Date:</span>
-            <span class="info-value">{{ $donation->donation_date?->format('F j, Y g:i A') ?? now()->format('F j, Y g:i A') }}</span>
+            <span class="info-value">{{ $donationDateFormatted }}</span>
         </div>
         <div class="info-row">
             <span class="info-label">Frequency:</span>
