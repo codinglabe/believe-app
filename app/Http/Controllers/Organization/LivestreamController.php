@@ -234,7 +234,15 @@ class LivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $hostPushUrl = $livestream->getHostPushUrl(false);
         $hostPushUrlLocal = $livestream->getHostPushUrl(false);
-        $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
+        $hostPushUrlDropbox = null;
+        $hostRecordingViewUrl = $livestream->getHostRecordingViewUrl(false);
+        $hostRecordingViewUrlDropbox = null;
+        if ($dropboxConnected) {
+            $dropboxRecordingUrl = $livestream->getHostRecordingViewUrl(true);
+            if (is_string($dropboxRecordingUrl) && str_contains($dropboxRecordingUrl, '&dropbox=')) {
+                $hostRecordingViewUrlDropbox = $dropboxRecordingUrl;
+            }
+        }
         // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
         // Frontend loads this in a hidden iframe so guests reach YouTube too.
         $scenePushUrl = $livestream->getScenePushUrl();
@@ -299,6 +307,8 @@ class LivestreamController extends Controller
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlLocal' => $hostPushUrlLocal,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
+                'hostRecordingViewUrl' => $hostRecordingViewUrl,
+                'hostRecordingViewUrlDropbox' => $hostRecordingViewUrlDropbox,
                 'scenePushUrl' => $scenePushUrl,
                 'canvasUrl' => $livestream->getCanvasUrl(),
                 'canvasMode' => $livestream->isCanvasModeEnabled(),

@@ -96,6 +96,9 @@ interface Livestream {
   participantUrl: string
   hostPushUrl: string
   scenePushUrl?: string | null
+  /** Solo viewer that records the host stream (one continuous file across screen share). */
+  hostRecordingViewUrl?: string | null
+  hostRecordingViewUrlDropbox?: string | null
   /** Participant-canvas mixer page URL — hidden iframe when canvasMode is on so
    * all participants reach YouTube, not just the host. */
   canvasUrl?: string | null
@@ -291,10 +294,13 @@ export default function SupporterShowLivestream({
     }
   }, [showScheduledEmailInvites, sidebarTab])
 
-  const effectiveHostUrl =
-    recordingDestination === "dropbox" && livestream.hostPushUrlDropbox
-      ? livestream.hostPushUrlDropbox
-      : (livestream.hostPushUrl || livestream.directorUrl)
+  const effectiveHostUrl = livestream.hostPushUrl || livestream.directorUrl
+
+  /** Solo viewer recorder — one continuous file; screen share uses replaceTrack on this stream. */
+  const effectiveRecordingViewUrl =
+    recordingDestination === "dropbox" && livestream.hostRecordingViewUrlDropbox
+      ? livestream.hostRecordingViewUrlDropbox
+      : (livestream.hostRecordingViewUrl ?? null)
 
   /** Host push URLs: ensure Meet-style labels + single-row grid (matches participant embeds). */
   const vdoHostIframeSrc = useMemo(() => {
@@ -313,6 +319,16 @@ export default function SupporterShowLivestream({
   }, [effectiveHostUrl, livestream.meetingSessionKey])
 
   const showVdoVideo = isMeetingActive && vdoVideoActive && !isEndingMeeting && Boolean(vdoHostIframeSrc)
+
+  /** Freeze recorder URL when the meeting goes live so destination toggles don't remount mid-call. */
+  const [lockedRecordingViewUrl, setLockedRecordingViewUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!showVdoVideo) {
+      setLockedRecordingViewUrl(null)
+      return
+    }
+    setLockedRecordingViewUrl((current) => current ?? effectiveRecordingViewUrl)
+  }, [showVdoVideo, effectiveRecordingViewUrl])
 
   const joinUrl = livestream.latestInviteUrl ?? livestream.joinUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : "")
   const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
@@ -719,7 +735,7 @@ export default function SupporterShowLivestream({
           Recording saved to
         </div>
         <p className="text-xs text-muted-foreground">
-          Choose where recordings are stored when you start recording in the meeting.
+          Choose where the meeting recording is stored. One continuous file — screen share stays in the same recording.
         </p>
         <div className="flex gap-2">
           <Button
@@ -727,6 +743,7 @@ export default function SupporterShowLivestream({
             size="sm"
             className="flex-1 h-9 gap-1.5 text-xs"
             onClick={() => setRecordingDestination("local")}
+            disabled={showVdoVideo}
           >
             <HardDrive className="h-3.5 w-3.5" />
             Local
@@ -736,7 +753,7 @@ export default function SupporterShowLivestream({
             size="sm"
             className="flex-1 h-9 gap-1.5 text-xs"
             onClick={() => livestream.dropboxRecordingAvailable && setRecordingDestination("dropbox")}
-            disabled={!livestream.dropboxRecordingAvailable}
+            disabled={!livestream.dropboxRecordingAvailable || showVdoVideo}
             title={!livestream.dropboxRecordingAvailable ? "Connect Dropbox to save recordings to the cloud" : undefined}
           >
             <Cloud className="h-3.5 w-3.5" />
@@ -745,9 +762,9 @@ export default function SupporterShowLivestream({
         </div>
         <p className="text-[10px] text-muted-foreground">
           {recordingDestination === "local"
-            ? "Recording will download to this device when you stop."
+            ? "One continuous recording downloads to this device when the meeting ends (includes screen share)."
             : livestream.dropboxRecordingAvailable
-              ? "Start recording in the meeting — the file is saved to your Dropbox folder (VDO may also keep a copy in your browser downloads)."
+              ? "One continuous recording uploads to Dropbox (includes screen share). Choose destination before starting the meeting."
               : "Connect Dropbox in settings to save recordings to the cloud."}
         </p>
         {!livestream.dropboxRecordingAvailable && (
@@ -1419,12 +1436,24 @@ export default function SupporterShowLivestream({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
                 {showVdoVideo ? (
-                  <VdoMeetingIframe
-                    key={`host-${livestream.meetingSessionKey ?? 0}`}
-                    src={vdoHostIframeSrc!}
-                    title="Host"
-                    active={showVdoVideo}
-                  />
+                  <>
+                    <VdoMeetingIframe
+                      key={`host-${livestream.meetingSessionKey ?? 0}`}
+                      src={vdoHostIframeSrc!}
+                      title="Host"
+                      active={showVdoVideo}
+                    />
+                    {lockedRecordingViewUrl ? (
+                      <iframe
+                        key={`recorder-${livestream.meetingSessionKey ?? 0}`}
+                        src={lockedRecordingViewUrl}
+                        title="Meeting recorder"
+                        className="pointer-events-none fixed left-[-10000px] top-0 z-[-1] h-[240px] w-[426px] border-0 opacity-0"
+                        allow="autoplay *; fullscreen *"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </>
                 ) : (
                   <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-zinc-950 to-black px-6 text-center">
                     <div className="space-y-2 max-w-md">
