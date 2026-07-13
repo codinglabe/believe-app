@@ -94,7 +94,7 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
                 return;
             }
 
-            $upload->updateProgress(RecordingYoutubeUpload::STAGE_DOWNLOADING, 8);
+            $upload->updateProgress(RecordingYoutubeUpload::STAGE_DOWNLOADING, 8, true);
 
             $api = new DropboxOrgApi($dropboxToken);
             if (! $api->downloadToPath($upload->dropbox_path, $localPath)) {
@@ -105,10 +105,11 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
                 return;
             }
 
-            $upload->updateProgress(RecordingYoutubeUpload::STAGE_UPLOADING, 18);
+            $upload->updateProgress(RecordingYoutubeUpload::STAGE_DOWNLOADING, 16, true);
+            $upload->updateProgress(RecordingYoutubeUpload::STAGE_UPLOADING, 18, true);
 
-            $fileSize = is_file($localPath) ? filesize($localPath) : 0;
             $uploadId = $upload->id;
+            $lastBroadcastPercent = 18;
 
             $result = $youtubeService->uploadVideoFileForUser(
                 $upload->user,
@@ -116,14 +117,18 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
                 (string) $upload->title,
                 (string) ($upload->description ?? ''),
                 (string) $upload->privacy_status,
-                function (int $percent) use ($uploadId): void {
+                function (int $percent) use ($uploadId, &$lastBroadcastPercent): void {
                     $row = RecordingYoutubeUpload::query()->find($uploadId);
-                    if ($row !== null) {
-                        $row->updateProgress(
-                            RecordingYoutubeUpload::STAGE_UPLOADING,
-                            min(95, max(18, $percent)),
-                        );
+                    if ($row === null) {
+                        return;
                     }
+                    $force = abs($percent - $lastBroadcastPercent) >= 1 || $percent >= 95;
+                    $row->updateProgress(
+                        RecordingYoutubeUpload::STAGE_UPLOADING,
+                        min(95, max(18, $percent)),
+                        $force,
+                    );
+                    $lastBroadcastPercent = $percent;
                 },
             );
 

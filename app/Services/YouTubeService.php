@@ -1675,7 +1675,7 @@ class YouTubeService
             ];
         }
 
-        $chunkSize = 5 * 1024 * 1024;
+        $chunkSize = 2 * 1024 * 1024;
         $handle = fopen($localPath, 'rb');
         if ($handle === false) {
             return [
