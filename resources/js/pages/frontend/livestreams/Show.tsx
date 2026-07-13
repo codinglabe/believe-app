@@ -719,7 +719,7 @@ export default function SupporterShowLivestream({
           Recording saved to
         </div>
         <p className="text-xs text-muted-foreground">
-          Auto-recording starts when you join as host. Choose where the file is saved.
+          Auto-recording starts when you join as host and keeps one file until the meeting ends (screen share will not start a second recording).
         </p>
         <div className="flex gap-2">
           <Button

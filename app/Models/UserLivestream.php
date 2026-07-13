@@ -380,19 +380,22 @@ class UserLivestream extends Model
 
         $dropboxCtx = $recordToDropbox ? $this->resolveDropboxUploadContext() : null;
 
-        // Auto-record the host stream on join. Do NOT use &autorecord — that also records
-        // remote guests and starts a new file each time someone joins the room.
-        // &screensharetype=1: screen share replaces the webcam on the same published stream
-        // (avoids VDO starting a second local recording for a separate screen-share stream).
+        // Enable recording with &record (bitrate only). Do NOT use &autorecordlocal —
+        // that stops/restarts the file when the host screen-shares, and also auto-starts
+        // a second recording for the screen-share stream (VDO SSTYPE3).
+        // Do NOT use &autorecord — that also records remote guests when they join.
+        // Host iframe starts recording once via postMessage; screen share must not remount it.
+        // Default screensharetype=3 keeps the webcam MediaRecorder running (type=1 replaces
+        // tracks and kills the first recording).
         if ($dropboxCtx !== null) {
-            $recordParam = '&autorecordlocal=6000';
+            $recordParam = '&record=6000';
         } elseif ($recordEnabled) {
-            $recordParam = '&autorecordlocal=6000';
+            $recordParam = '&record=6000';
         } else {
             $recordParam = '';
         }
 
-        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&screensharetype=1&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&screensharetype=3&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
