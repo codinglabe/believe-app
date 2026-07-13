@@ -431,7 +431,6 @@ class OrganizationLivestream extends Model
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
-        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->organization?->name ?? 'Host');
         $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
         $room = rawurlencode($this->getVdoRoomName());
@@ -456,26 +455,16 @@ class OrganizationLivestream extends Model
             ? rawurlencode($streamKey.'_s1')
             : $push;
 
-        $dropboxToken = null;
-        if ($recordToDropbox && $this->organization) {
-            $oauthService = app(\App\Services\DropboxOAuthService::class);
-            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
-            $dropboxToken = ! empty($dropboxToken) ? $dropboxToken : null;
-        }
+        // $recordToDropbox is unused here — host publisher does not record locally.
+        // Recording (+ Dropbox) lives on {@see getHostRecordingViewUrl()}.
+        unset($recordToDropbox);
 
-        // Enable host recording with &record (bitrate), NOT &autorecordlocal.
-        // &autorecordlocal also auto-starts a second recording when the host screen-shares
-        // (VDO SSTYPE3 path). The host iframe starts the first recording once via postMessage.
-        // Do NOT use &autorecord — that also records remote guests when they join.
-        if ($dropboxToken !== null) {
-            $recordParam = '&record=6000';
-        } elseif ($recordEnabled) {
-            $recordParam = '&record=6000';
-        } else {
-            $recordParam = '';
-        }
-
-        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+        // No local &record / &autorecordlocal on the host publisher.
+        // VDO's local MediaRecorder stops or starts a second file when the host screen-shares.
+        // Recording is done by {@see getHostRecordingViewUrl()} (solo viewer of this push id).
+        // &screensharetype=1: screen share replaceTracks into the same published stream so the
+        // viewer recorder keeps one continuous file that includes the screen.
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}&quality=0&bitrate=6000&webcam&ssb&screensharetype=1&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
@@ -489,17 +478,46 @@ class OrganizationLivestream extends Model
             $base .= '&mediamtx=' . $mediaMtxHost . '&codec=vp8';
         }
 
-        if ($dropboxToken !== null) {
+        return $base;
+    }
+
+    /**
+     * Solo viewer that records the host push stream once (webcam → screen share on same stream).
+     * Uses &autorecordremote so recording is of the *received* track; WebRTC replaceTrack on
+     * screen share keeps one MediaRecorder file (unlike local &autorecordlocal on the publisher).
+     *
+     * @param  bool  $recordToDropbox  When true and Dropbox is linked, upload chunks to Dropbox.
+     */
+    public function getHostRecordingViewUrl(bool $recordToDropbox = false): ?string
+    {
+        $this->loadMissing('organization');
+        $settings = $this->settings ?? [];
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
+        if (! $recordEnabled) {
+            return null;
+        }
+
+        $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
+        $viewId = $this->isCanvasModeEnabled() ? $streamKey.'_s1' : $streamKey;
+        $view = rawurlencode($viewId);
+        $room = rawurlencode($this->getVdoRoomName());
+        $pass = rawurlencode((string) $this->getDecryptedPassword());
+        $passwordParam = $pass !== '' ? '&password='.$pass : '';
+
+        // muted = no speaker playback from this hidden iframe (avoids echo); audio still recorded.
+        $base = "https://vdo.ninja/?view={$view}&solo&room={$room}{$passwordParam}&autorecordremote=6000&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart&muted";
+
+        if ($recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
-            $folderName = $this->getDropboxFolderName();
-            $folderPath = '/' . trim($folderName, '/');
-
-            // VDO.Ninja only uploads to dropboxpath when the folder exists; otherwise it uploads to root.
-            $oauthService->ensureFolderExists($dropboxToken, $folderPath);
-
-            $base .= '&dropbox=' . rawurlencode($dropboxToken);
-            $base .= '&dropboxpath=/' . rawurlencode($folderName);
-            $base .= '&cloud=1';
+            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
+            if (! empty($dropboxToken)) {
+                $folderName = $this->getDropboxFolderName();
+                $folderPath = '/'.trim($folderName, '/');
+                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
+                $base .= '&dropbox='.rawurlencode($dropboxToken);
+                $base .= '&dropboxpath=/'.rawurlencode($folderName);
+                $base .= '&cloud=1';
+            }
         }
 
         return $base;

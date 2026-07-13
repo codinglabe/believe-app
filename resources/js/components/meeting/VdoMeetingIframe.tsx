@@ -125,35 +125,6 @@ function isVdoReadyMessage(data: unknown): boolean {
   return false
 }
 
-/** Host URLs use &record (not &autorecordlocal) so screen share does not spawn a second file. */
-function shouldAutoStartLocalRecording(src: string): boolean {
-  try {
-    const parsed = new URL(src)
-    if (parsed.searchParams.has("norecord")) {
-      return false
-    }
-    if (parsed.searchParams.has("autorecordlocal") || parsed.searchParams.has("autorecord")) {
-      return false
-    }
-    return parsed.searchParams.has("record")
-  } catch {
-    return false
-  }
-}
-
-function startVdoLocalRecordingOnce(frameWindow: Window | null | undefined): void {
-  if (!frameWindow) {
-    return
-  }
-
-  try {
-    // VDO only starts recording on session.videoElement (webcam). Safe if already recording.
-    frameWindow.postMessage({ record: true }, "*")
-  } catch {
-    // iframe may already be gone
-  }
-}
-
 type VdoMeetingIframeProps = {
   src: string
   title?: string
@@ -177,7 +148,6 @@ export default function VdoMeetingIframe({
 }: VdoMeetingIframeProps) {
   const meetingSrc = useMemo(() => normalizeMeetingSrc(src), [src])
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const recordingStartedRef = useRef(false)
   const [mediaAccess, setMediaAccess] = useState<MediaAccessState>("checking")
   const [isRequestingAccess, setIsRequestingAccess] = useState(false)
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
@@ -247,13 +217,11 @@ export default function VdoMeetingIframe({
     closeVdoSession(iframeRef.current?.contentWindow ?? null)
     setIframeSrc(null)
     setVdoSessionReady(false)
-    recordingStartedRef.current = false
   }, [active])
 
   useEffect(() => {
     setVdoSessionReady(false)
     setIframeSrc(null)
-    recordingStartedRef.current = false
 
     if (mediaAccess !== "granted" || !active) {
       return
@@ -286,36 +254,6 @@ export default function VdoMeetingIframe({
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
   }, [iframeSrc, active])
-
-  // Start the first (webcam) recording once. Never use &autorecordlocal — VDO would start
-  // another recording when the host shares screen.
-  useEffect(() => {
-    if (!vdoSessionReady || !active || !iframeSrc || recordingStartedRef.current) {
-      return
-    }
-
-    if (!shouldAutoStartLocalRecording(iframeSrc)) {
-      return
-    }
-
-    const frameWindow = iframeRef.current?.contentWindow
-    const startId = window.setTimeout(() => {
-      if (recordingStartedRef.current) {
-        return
-      }
-      recordingStartedRef.current = true
-      startVdoLocalRecordingOnce(frameWindow ?? iframeRef.current?.contentWindow)
-    }, 2500)
-
-    const retryId = window.setTimeout(() => {
-      startVdoLocalRecordingOnce(iframeRef.current?.contentWindow)
-    }, 5000)
-
-    return () => {
-      window.clearTimeout(startId)
-      window.clearTimeout(retryId)
-    }
-  }, [vdoSessionReady, active, iframeSrc])
 
   const handleAllowAccess = useCallback(async () => {
     setIsRequestingAccess(true)

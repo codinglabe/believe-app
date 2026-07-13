@@ -653,11 +653,14 @@ class SupporterLivestreamController extends Controller
         $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
         $participantUrl = $livestream->getParticipantUrl();
         $hostPushUrl = $livestream->getHostPushUrl(false);
+        // Host publisher no longer embeds Dropbox — recording is a solo viewer of the host stream.
         $hostPushUrlDropbox = null;
+        $hostRecordingViewUrl = $livestream->getHostRecordingViewUrl(false);
+        $hostRecordingViewUrlDropbox = null;
         if ($dropboxConnected) {
-            $dropboxHostUrl = $livestream->getHostPushUrl(true);
-            if (str_contains($dropboxHostUrl, '&dropbox=')) {
-                $hostPushUrlDropbox = $dropboxHostUrl;
+            $dropboxRecordingUrl = $livestream->getHostRecordingViewUrl(true);
+            if (is_string($dropboxRecordingUrl) && str_contains($dropboxRecordingUrl, '&dropbox=')) {
+                $hostRecordingViewUrlDropbox = $dropboxRecordingUrl;
             }
         }
         // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
@@ -729,11 +732,13 @@ class SupporterLivestreamController extends Controller
                 'participantUrl' => $participantUrl,
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
+                'hostRecordingViewUrl' => $hostRecordingViewUrl,
+                'hostRecordingViewUrlDropbox' => $hostRecordingViewUrlDropbox,
                 'scenePushUrl' => $scenePushUrl,
                 'canvasUrl' => $livestream->getCanvasUrl(),
                 'canvasMode' => $livestream->isCanvasModeEnabled(),
                 'browserMediaMtxPush' => \App\Support\StreamingWorkerSourceUrl::shouldAttachVdoMediaMtxPush(),
-                'dropboxRecordingAvailable' => $hostPushUrlDropbox !== null,
+                'dropboxRecordingAvailable' => $hostRecordingViewUrlDropbox !== null,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
                 'liveViewerUrl' => $liveViewerUrl,
@@ -1568,6 +1573,7 @@ class SupporterLivestreamController extends Controller
             'unityMeetRecordings' => true,
             'recordingsDisconnectAvailable' => ($ctx['source'] ?? null) === 'user',
             'recordingsBackedByOrganization' => ($ctx['source'] ?? null) === 'organization',
+            'recordingsRestrictedToUserMeetings' => (bool) ($ctx['restrictToUserRooms'] ?? false),
             'meetingTitleHints' => $meetingTitleHints,
             'youtubeConnected' => $publishService->userHasYoutubeConnected($user),
             'youtubeCanUpload' => $publishService->userCanUploadToYoutube($user),
@@ -2071,6 +2077,22 @@ class SupporterLivestreamController extends Controller
         $roomNames = UserLivestream::where('user_id', $user->id)->pluck('room_name')->map(fn ($r) => trim((string) $r))->filter()->values()->all();
 
         $tokens = app(DropboxOAuthService::class);
+        $org = Organization::forAuthUser($user);
+
+        // Nonprofit dashboard accounts: use the org Dropbox folder and list all files
+        // (same source of truth as Integrations → Dropbox).
+        if ($user->hasNonprofitDashboardRole() && $org && ! empty($org->dropbox_refresh_token)) {
+            $token = $tokens->getAccessTokenForOrganization($org);
+
+            return [
+                'linked' => ! empty($token),
+                'token' => $token ?: null,
+                'folderPath' => $this->recordingFolderPathForOrganization($org),
+                'restrictToUserRooms' => false,
+                'roomNames' => $roomNames,
+                'source' => 'organization',
+            ];
+        }
 
         if (! empty($user->dropbox_refresh_token)) {
             $token = $tokens->getAccessTokenForUser($user);
@@ -2085,7 +2107,6 @@ class SupporterLivestreamController extends Controller
             ];
         }
 
-        $org = Organization::forAuthUser($user);
         if ($org && ! empty($org->dropbox_refresh_token)) {
             $token = $tokens->getAccessTokenForOrganization($org);
 
