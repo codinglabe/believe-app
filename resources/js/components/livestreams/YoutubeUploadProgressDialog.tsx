@@ -164,13 +164,6 @@ export default function YoutubeUploadProgressDialog({
                   Do not close this window until the upload finishes. Large recordings may take several minutes.
                 </p>
               ) : null}
-
-              {upload?.status === "pending" && (upload.progress_percent ?? 0) < 5 ? (
-                <p className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
-                  If this stays on &quot;Queued&quot; for a long time, run{" "}
-                  <code className="rounded bg-muted px-1">php artisan queue:work</code> on the server.
-                </p>
-              ) : null}
             </>
           )}
         </div>
