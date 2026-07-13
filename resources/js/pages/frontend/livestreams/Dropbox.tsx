@@ -356,14 +356,27 @@ export default function SupporterDropbox({
     }
     if (liveYoutubeUpload?.dropbox_path) {
       const existing = map.get(liveYoutubeUpload.dropbox_path)
+      // Never let stale optimistic UI overwrite a finished server row.
+      if (existing?.status === "published" || existing?.status === "failed") {
+        return map
+      }
       const livePct = liveYoutubeUpload.progress_percent ?? 0
       const existingPct = existing?.progress_percent ?? 0
-      if (!existing || livePct >= existingPct || liveYoutubeUpload.status !== existing.status) {
+      if (!existing || livePct >= existingPct) {
         map.set(liveYoutubeUpload.dropbox_path, { ...existing, ...liveYoutubeUpload })
       }
     }
     return map
   }, [youtubeUploads, liveYoutubeUpload])
+
+  // Drop optimistic overlay once Inertia props show the upload finished.
+  useEffect(() => {
+    if (!liveYoutubeUpload?.dropbox_path) return
+    const fromServer = youtubeUploads.find((u) => u.dropbox_path === liveYoutubeUpload.dropbox_path)
+    if (fromServer?.status === "published" || fromServer?.status === "failed") {
+      setLiveYoutubeUpload(fromServer)
+    }
+  }, [youtubeUploads, liveYoutubeUpload?.dropbox_path])
 
   const hasActiveYoutubeUpload =
     youtubeUploads.some((u) => u.status === "pending" || u.status === "uploading") ||
@@ -382,7 +395,17 @@ export default function SupporterDropbox({
     const channel = instance.private(`user.${authUserId}`)
     const handler = (payload: YoutubeUploadProgressRow) => {
       if (!payload?.dropbox_path) return
-      setLiveYoutubeUpload(payload)
+      setLiveYoutubeUpload((prev) => {
+        if (!prev || prev.dropbox_path !== payload.dropbox_path) {
+          return payload
+        }
+        if (payload.status === "published" || payload.status === "failed") {
+          return payload
+        }
+        const prevPct = prev.progress_percent ?? 0
+        const nextPct = payload.progress_percent ?? 0
+        return nextPct >= prevPct ? payload : prev
+      })
     }
 
     channel.listen(".recording.youtube.upload.progress", handler)

@@ -355,8 +355,15 @@ final class RecordingYoutubePublishService
 
     private function dispatchUploadJob(int $uploadId): void
     {
+        // Local often has no supervisor queue worker — run after the HTTP response so
+        // progress begins immediately without `php artisan queue:work`.
+        if (app()->environment('local') && filter_var(env('YOUTUBE_UPLOAD_USE_QUEUE', false), FILTER_VALIDATE_BOOL) === false) {
+            PublishDropboxRecordingToYouTube::dispatchAfterResponse($uploadId);
+
+            return;
+        }
+
         // afterCommit: worker must not pick the job before the upload row is visible.
-        // onQueue default: Supervisor workers listen on redis --queue=default.
         PublishDropboxRecordingToYouTube::dispatch($uploadId)
             ->onQueue('default')
             ->afterCommit();
