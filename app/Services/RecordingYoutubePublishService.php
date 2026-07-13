@@ -351,8 +351,11 @@ final class RecordingYoutubePublishService
 
     private function dispatchUploadJob(int $uploadId): void
     {
-        // Push to the database/redis queue immediately so Inertia redirects do not drop afterResponse jobs.
-        PublishDropboxRecordingToYouTube::dispatch($uploadId)->onQueue('default');
+        // afterCommit: worker must not pick the job before the upload row is visible.
+        // onQueue default: Supervisor workers listen on redis --queue=default.
+        PublishDropboxRecordingToYouTube::dispatch($uploadId)
+            ->onQueue('default')
+            ->afterCommit();
     }
 
     /**
