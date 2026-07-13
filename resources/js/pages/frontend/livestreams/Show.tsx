@@ -719,7 +719,7 @@ export default function SupporterShowLivestream({
           Recording saved to
         </div>
         <p className="text-xs text-muted-foreground">
-          Auto-recording starts when you join as host and keeps one file until the meeting ends (screen share will not start a second recording).
+          Choose where recordings are stored when you start recording in the meeting.
         </p>
         <div className="flex gap-2">
           <Button
@@ -745,9 +745,9 @@ export default function SupporterShowLivestream({
         </div>
         <p className="text-[10px] text-muted-foreground">
           {recordingDestination === "local"
-            ? "Recording downloads to this device when you stop or leave the meeting."
+            ? "Recording will download to this device when you stop."
             : livestream.dropboxRecordingAvailable
-              ? "Recording is saved to your Dropbox folder (VDO may also keep a copy in browser downloads)."
+              ? "Start recording in the meeting — the file is saved to your Dropbox folder (VDO may also keep a copy in your browser downloads)."
               : "Connect Dropbox in settings to save recordings to the cloud."}
         </p>
         {!livestream.dropboxRecordingAvailable && (

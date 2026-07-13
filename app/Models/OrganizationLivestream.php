@@ -463,22 +463,17 @@ class OrganizationLivestream extends Model
             $dropboxToken = ! empty($dropboxToken) ? $dropboxToken : null;
         }
 
-        // Enable recording with &record (bitrate only). Do NOT use &autorecordlocal —
-        // that stops/restarts the file when the host screen-shares, and also auto-starts
-        // a second recording for the screen-share stream (VDO SSTYPE3).
-        // Do NOT use &autorecord — that also records remote guests when they join.
-        // Host iframe starts recording once via postMessage; screen share must not remount it.
-        // Default screensharetype=3 keeps the webcam MediaRecorder running (type=1 replaces
-        // tracks and kills the first recording).
+        // Host-only auto-record on first load. Do NOT use &autorecord — it also records remote
+        // guests and starts a new file each time someone joins the room.
         if ($dropboxToken !== null) {
-            $recordParam = '&record=6000';
+            $recordParam = '&autorecordlocal=6000';
         } elseif ($recordEnabled) {
-            $recordParam = '&record=6000';
+            $recordParam = '&autorecordlocal=6000';
         } else {
             $recordParam = '';
         }
 
-        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&screensharetype=3&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl

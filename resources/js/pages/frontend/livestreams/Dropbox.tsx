@@ -119,6 +119,8 @@ interface Props {
   /** False when using organization Dropbox so we don’t offer “disconnect” for the whole org from this page. */
   recordingsDisconnectAvailable?: boolean
   recordingsBackedByOrganization?: boolean
+  /** When true, only files matching this user's Unity Meet room names are listed. */
+  recordingsRestrictedToUserMeetings?: boolean
   meetingTitleHints?: MeetingTitleHint[]
   youtubeConnected?: boolean
   youtubeCanUpload?: boolean
@@ -294,6 +296,7 @@ export default function SupporterDropbox({
   unityMeetRecordings = false,
   recordingsDisconnectAvailable = true,
   recordingsBackedByOrganization = false,
+  recordingsRestrictedToUserMeetings = false,
   meetingTitleHints = [],
   youtubeConnected = false,
   youtubeCanUpload = true,
@@ -1146,7 +1149,9 @@ export default function SupporterDropbox({
                     </p>
                     {dropboxLinked && unityMeetRecordings && recordingsBackedByOrganization ? (
                       <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                        Your organization shares one Dropbox folder. We only list files whose names include your meeting ID (room name).
+                        {recordingsRestrictedToUserMeetings
+                          ? "Your organization shares one Dropbox folder. We only list files whose names include your meeting ID (room name)."
+                          : "Showing recordings from your organization’s Dropbox folder (same as Integrations → Dropbox)."}
                       </p>
                     ) : null}
                   </div>
