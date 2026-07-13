@@ -14,11 +14,6 @@ use Inertia\Response;
 
 class SocialMediaController extends Controller
 {
-    public function __construct()
-    {
-        abort(404);
-    }
-
     /**
      * Display the social media management page.
      */

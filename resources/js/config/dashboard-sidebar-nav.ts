@@ -198,6 +198,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
                 items: [
                     {
+                        title: 'Social media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
                         title: 'Connect pages',
                         href: '/facebook/connect',
                         icon: LinkIcon,
@@ -1012,6 +1018,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                     {
                         title: 'Social media',
                         href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Facebook Connect',
+                        href: '/facebook/connect',
                         icon: Facebook,
                         role: 'organization',
                     },

@@ -73,9 +73,9 @@ class OrganizationSetupChecklistItems
             [
                 'id' => 'social_media',
                 'section' => self::SECTION_SYSTEM,
-                'label' => 'Social media',
-                'description' => 'Connect your social media accounts.',
-                'route' => 'social-media.index',
+                'label' => 'Facebook',
+                'description' => 'Connect your Facebook Page to publish and manage posts.',
+                'route' => 'facebook.connect',
                 'route_label' => 'Connect',
             ],
             [
