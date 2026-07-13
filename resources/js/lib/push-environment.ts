@@ -83,19 +83,3 @@ export function isMobilePushClient(): boolean {
     const isMobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
     return isMobileUa || isStandalonePwa();
 }
-
-export async function logPushDiagnostics(): Promise<void> {
-    if (!import.meta.env.DEV) {
-        return;
-    }
-
-    const reg = await navigator.serviceWorker?.getRegistration("/");
-    console.info("[Push diagnostics]", {
-        href: window.location.href,
-        isSecureContext: window.isSecureContext,
-        isPushCapableBrowser: isPushCapableBrowser(),
-        notificationPermission: Notification.permission,
-        serviceWorker: reg?.active?.scriptURL ?? "none",
-        vapidMeta: document.querySelector('meta[name="firebase-vapid-key"]')?.getAttribute("content")?.slice(0, 12) + "…",
-    });
-}
