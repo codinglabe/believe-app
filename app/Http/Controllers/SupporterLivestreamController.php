@@ -1826,54 +1826,80 @@ class SupporterLivestreamController extends Controller
         $user = $request->user();
         $user->loadMissing('organization');
 
-        $validated = $request->validate([
-            'path' => 'required|string|max:2048',
-            'title' => 'nullable|string|max:100',
-            'description' => 'nullable|string|max:4900',
-            'privacy_status' => 'nullable|string|in:public,unlisted,private',
-        ]);
+        try {
+            $validated = $request->validate([
+                'path' => 'required|string|max:2048',
+                'title' => 'nullable|string|max:100',
+                'description' => 'nullable|string|max:4900',
+                'privacy_status' => 'nullable|string|in:public,unlisted,private',
+            ]);
 
-        $path = trim((string) $validated['path']);
-        if (str_contains($path, '..')) {
-            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
-        }
+            $path = trim((string) $validated['path']);
+            if ($path === '' || str_contains($path, '..')) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+            }
 
-        $ctx = $this->unityMeetRecordingDropboxContext($user);
-        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
-            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
-        }
+            $ctx = $this->unityMeetRecordingDropboxContext($user);
+            if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+            }
 
-        $folderPath = (string) $ctx['folderPath'];
-        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
-            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only publish files from your recording folder.');
-        }
+            $folderPath = rtrim((string) ($ctx['folderPath'] ?? ''), '/');
+            if ($folderPath === '' || ! $this->dropboxPathIsInsideFolder($path, $folderPath)) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only publish files from your recording folder.');
+            }
 
-        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
-            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
-        }
+            if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
+                return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+            }
 
-        $result = $publishService->queuePublish(
-            $user,
-            $path,
-            basename($path),
-            $validated['title'] ?? null,
-            $validated['description'] ?? null,
-            (string) ($validated['privacy_status'] ?? 'unlisted'),
-        );
-
-        if (! ($result['success'] ?? false)) {
-            return redirect()->route('livestreams.supporter.recordings')->with(
-                'error',
-                (string) ($result['error'] ?? 'Could not start YouTube upload.'),
+            $result = $publishService->queuePublish(
+                $user,
+                $path,
+                basename(str_replace('\\', '/', $path)),
+                $validated['title'] ?? null,
+                $validated['description'] ?? null,
+                (string) ($validated['privacy_status'] ?? 'unlisted'),
             );
+
+            if (! ($result['success'] ?? false)) {
+                return redirect()->route('livestreams.supporter.recordings')->with(
+                    'error',
+                    (string) ($result['error'] ?? 'Could not start YouTube upload.'),
+                );
+            }
+
+            $redirectParams = $this->recordingsListRedirectParams($request);
+
+            return redirect()
+                ->route('livestreams.supporter.recordings', $redirectParams)
+                ->with('success', 'Upload to YouTube started. Keep this page open to watch progress.')
+                ->with('youtube_upload_path', $path);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('recordingPublishToYoutube failed', [
+                'user_id' => $user->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('livestreams.supporter.recordings')
+                ->with('error', 'Could not start YouTube upload. Please try again.');
+        }
+    }
+
+    private function dropboxPathIsInsideFolder(string $path, string $folderPath): bool
+    {
+        $path = str_replace('\\', '/', trim($path));
+        $folderPath = rtrim(str_replace('\\', '/', trim($folderPath)), '/');
+
+        if ($path === '' || $folderPath === '') {
+            return false;
         }
 
-        $redirectParams = $this->recordingsListRedirectParams($request);
-
-        return redirect()
-            ->route('livestreams.supporter.recordings', $redirectParams)
-            ->with('success', 'Upload to YouTube started. Keep this page open to watch progress.')
-            ->with('youtube_upload_path', $path);
+        return str_starts_with(strtolower($path), strtolower($folderPath.'/'))
+            || strcasecmp($path, $folderPath) === 0;
     }
 
     /**

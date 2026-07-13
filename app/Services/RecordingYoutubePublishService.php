@@ -7,6 +7,8 @@ use App\Models\Organization;
 use App\Models\RecordingYoutubeUpload;
 use App\Models\User;
 use App\Models\UserLivestream;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 final class RecordingYoutubePublishService
@@ -29,13 +31,23 @@ final class RecordingYoutubePublishService
 
     public function userCanUploadToYoutube(User $user): bool
     {
-        if (! empty($user->youtube_refresh_token)) {
-            return $this->youtubeService->userCanUploadVideos($user);
-        }
+        try {
+            if (! empty($user->youtube_refresh_token)) {
+                return $this->youtubeService->userCanUploadVideos($user);
+            }
 
-        $organization = Organization::forAuthUser($user);
-        if ($organization !== null && ! empty($organization->youtube_refresh_token)) {
-            return $this->youtubeService->organizationCanUploadVideos($organization);
+            $organization = Organization::forAuthUser($user);
+            if ($organization !== null && ! empty($organization->youtube_refresh_token)) {
+                return $this->youtubeService->organizationCanUploadVideos($organization);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('YouTube upload-capability check failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            // Prefer allowing the publish UI when tokens exist; the job validates upload scopes.
+            return $this->userHasYoutubeConnected($user);
         }
 
         return false;
@@ -59,13 +71,6 @@ final class RecordingYoutubePublishService
             ];
         }
 
-        if (! $this->userCanUploadToYoutube($user)) {
-            return [
-                'success' => false,
-                'error' => 'YouTube upload permission is missing. Open Integrations → YouTube, disconnect, connect again, and allow all requested access (including upload videos).',
-            ];
-        }
-
         if (! $this->isVideoRecordingFilename($dropboxName)) {
             return [
                 'success' => false,
@@ -73,85 +78,112 @@ final class RecordingYoutubePublishService
             ];
         }
 
-        $pathHash = RecordingYoutubeUpload::hashDropboxPath($dropboxPath);
-
-        $existing = RecordingYoutubeUpload::query()
-            ->where('user_id', $user->id)
-            ->where('dropbox_path_hash', $pathHash)
-            ->first();
-
-        if ($existing !== null) {
-            if ($existing->status === RecordingYoutubeUpload::STATUS_UPLOADING) {
+        try {
+            if (! Schema::hasTable('recording_youtube_uploads')) {
                 return [
-                    'success' => true,
-                    'upload' => $this->serializeUpload($existing),
+                    'success' => false,
+                    'error' => 'YouTube upload storage is not ready yet. Please run migrations and try again.',
                 ];
             }
 
-            if ($existing->status === RecordingYoutubeUpload::STATUS_PUBLISHED) {
-                return [
-                    'success' => true,
-                    'upload' => $this->serializeUpload($existing),
-                ];
+            $pathHash = RecordingYoutubeUpload::hashDropboxPath($dropboxPath);
+
+            $existing = RecordingYoutubeUpload::query()
+                ->where('user_id', $user->id)
+                ->where('dropbox_path_hash', $pathHash)
+                ->first();
+
+            if ($existing !== null) {
+                if ($existing->status === RecordingYoutubeUpload::STATUS_UPLOADING) {
+                    return [
+                        'success' => true,
+                        'upload' => $this->serializeUpload($existing),
+                    ];
+                }
+
+                if ($existing->status === RecordingYoutubeUpload::STATUS_PUBLISHED) {
+                    return [
+                        'success' => true,
+                        'upload' => $this->serializeUpload($existing),
+                    ];
+                }
+
+                if ($existing->status === RecordingYoutubeUpload::STATUS_PENDING) {
+                    $this->dispatchUploadJob($existing->id);
+
+                    return [
+                        'success' => true,
+                        'upload' => $this->serializeUpload($existing->fresh() ?? $existing),
+                    ];
+                }
+
+                if ($existing->status === RecordingYoutubeUpload::STATUS_FAILED) {
+                    $existing->update([
+                        'status' => RecordingYoutubeUpload::STATUS_PENDING,
+                        'error_message' => null,
+                        'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
+                        'progress_percent' => 0,
+                        'youtube_video_id' => null,
+                        'youtube_watch_url' => null,
+                        'published_at' => null,
+                    ]);
+                    $this->dispatchUploadJob($existing->id);
+
+                    return [
+                        'success' => true,
+                        'upload' => $this->serializeUpload($existing->fresh() ?? $existing),
+                    ];
+                }
             }
 
-            if ($existing->status === RecordingYoutubeUpload::STATUS_PENDING) {
-                PublishDropboxRecordingToYouTube::dispatch($existing->id);
+            $resolvedTitle = $this->resolveTitle($user, $dropboxName, $title);
 
-                return [
-                    'success' => true,
-                    'upload' => $this->serializeUpload($existing->fresh()),
-                ];
-            }
-
-            if ($existing->status === RecordingYoutubeUpload::STATUS_FAILED) {
-                $existing->update([
+            $upload = RecordingYoutubeUpload::query()->updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'dropbox_path_hash' => $pathHash,
+                ],
+                [
+                    'dropbox_path' => $dropboxPath,
+                    'dropbox_name' => $dropboxName,
                     'status' => RecordingYoutubeUpload::STATUS_PENDING,
+                    'title' => $resolvedTitle,
+                    'description' => $description,
+                    'privacy_status' => in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
+                        ? $privacyStatus
+                        : 'unlisted',
                     'error_message' => null,
+                    'attempts' => 0,
                     'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
                     'progress_percent' => 0,
-                    'youtube_video_id' => null,
-                    'youtube_watch_url' => null,
-                    'published_at' => null,
-                ]);
-                PublishDropboxRecordingToYouTube::dispatch($existing->id);
+                ],
+            );
 
-                return [
-                    'success' => true,
-                    'upload' => $this->serializeUpload($existing->fresh()),
-                ];
-            }
-        }
+            $this->dispatchUploadJob($upload->id);
 
-        $resolvedTitle = $this->resolveTitle($user, $dropboxName, $title);
-
-        $upload = RecordingYoutubeUpload::query()->updateOrCreate(
-            [
+            return [
+                'success' => true,
+                'upload' => $this->serializeUpload($upload),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue Dropbox recording YouTube upload', [
                 'user_id' => $user->id,
-                'dropbox_path_hash' => $pathHash,
-            ],
-            [
-                'dropbox_path' => $dropboxPath,
-                'dropbox_name' => $dropboxName,
-                'status' => RecordingYoutubeUpload::STATUS_PENDING,
-                'title' => $resolvedTitle,
-                'description' => $description,
-                'privacy_status' => in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
-                    ? $privacyStatus
-                    : 'unlisted',
-                'error_message' => null,
-                'attempts' => 0,
-                'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
-                'progress_percent' => 0,
-            ],
-        );
+                'path' => $dropboxPath,
+                'error' => $e->getMessage(),
+            ]);
 
-        PublishDropboxRecordingToYouTube::dispatch($upload->id);
+            return [
+                'success' => false,
+                'error' => 'Could not start YouTube upload. Please try again in a moment.',
+            ];
+        }
+    }
 
-        return [
-            'success' => true,
-            'upload' => $this->serializeUpload($upload),
-        ];
+    private function dispatchUploadJob(int $uploadId): void
+    {
+        PublishDropboxRecordingToYouTube::dispatch($uploadId)
+            ->onQueue('default')
+            ->afterResponse();
     }
 
     /**
