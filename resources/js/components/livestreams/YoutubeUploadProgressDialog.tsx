@@ -30,7 +30,7 @@ function stageLabel(upload: YoutubeUploadProgressRow | undefined): string {
   switch (stage) {
     case "queued":
     case "pending":
-      return "Queued — preparing upload"
+      return "Starting upload…"
     case "downloading":
       return "Downloading from Dropbox"
     case "uploading":
@@ -123,7 +123,7 @@ export default function YoutubeUploadProgressDialog({
                 <p className="text-sm font-medium text-foreground">Something went wrong</p>
                 <p className="text-sm text-muted-foreground">
                   {upload?.error_message ??
-                    "The upload could not be completed. Ensure YouTube is connected, the queue worker is running, and try again."}
+                    "The upload could not be completed. Reconnect YouTube under Integrations if needed, then try again."}
                 </p>
               </div>
             </div>
@@ -160,9 +160,19 @@ export default function YoutubeUploadProgressDialog({
               </ul>
 
               {polling ? (
-                <p className="text-xs text-muted-foreground">
-                  Do not close this window until the upload finishes. Large recordings may take several minutes.
-                </p>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Do not close this window until the upload finishes. Large recordings may take several minutes.
+                  </p>
+                  {(upload?.progress_stage === "queued" ||
+                    upload?.progress_stage === "pending" ||
+                    upload?.status === "pending") && (
+                    <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+                      Waiting for the upload to start — this usually begins within a few seconds. If it stays
+                      here more than a minute, tap Retry upload after closing, or contact support.
+                    </p>
+                  )}
+                </div>
               ) : null}
             </>
           )}
