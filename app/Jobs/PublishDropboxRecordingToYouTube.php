@@ -58,6 +58,20 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
         $localPath = $tempDir.'/'.$upload->id.'_'.$safeName;
 
         try {
+            // Confirm channel tokens still work (user or organization) before downloading.
+            $accessTokenProbe = $youtubeService->getValidAccessTokenForUser($upload->user);
+            if (($accessTokenProbe === null || $accessTokenProbe === '') && $upload->user->hasNonprofitDashboardRole()) {
+                $organization = \App\Models\Organization::forAuthUser($upload->user);
+                if ($organization !== null) {
+                    $accessTokenProbe = $youtubeService->getValidAccessToken($organization);
+                }
+            }
+            if ($accessTokenProbe === null || $accessTokenProbe === '') {
+                $upload->markFailed('YouTube is not connected or the access token expired. Reconnect YouTube under Integrations and try again.');
+
+                return;
+            }
+
             $upload->updateProgress(RecordingYoutubeUpload::STAGE_DOWNLOADING, 8);
 
             $api = new DropboxOrgApi($dropboxToken);
