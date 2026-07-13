@@ -22,7 +22,7 @@ export type YoutubeUploadProgressRow = {
 }
 
 function stageLabel(upload: YoutubeUploadProgressRow | undefined): string {
-  if (!upload) return "Starting upload…"
+  if (!upload) return "Preparing upload…"
   if (upload.status === "failed") return "Upload failed"
   if (upload.status === "published") return "Published on YouTube"
 
@@ -30,7 +30,7 @@ function stageLabel(upload: YoutubeUploadProgressRow | undefined): string {
   switch (stage) {
     case "queued":
     case "pending":
-      return "Starting upload…"
+      return "Preparing upload…"
     case "downloading":
       return "Downloading from Dropbox"
     case "uploading":
@@ -45,12 +45,14 @@ function stageLabel(upload: YoutubeUploadProgressRow | undefined): string {
 }
 
 function progressValue(upload: YoutubeUploadProgressRow | undefined): number {
-  if (!upload) return 3
+  if (!upload) return 5
   if (upload.status === "published") return 100
   if (upload.status === "failed") return upload.progress_percent ?? 0
-  if (upload.progress_percent && upload.progress_percent > 0) return upload.progress_percent
-  if (upload.status === "uploading") return 25
-  if (upload.status === "pending") return 8
+  if (typeof upload.progress_percent === "number" && upload.progress_percent > 0) {
+    return upload.progress_percent
+  }
+  if (upload.status === "uploading") return 12
+  if (upload.status === "pending") return 5
   return 5
 }
 
@@ -79,6 +81,10 @@ export default function YoutubeUploadProgressDialog({
   const published = upload?.status === "published"
   const inProgress = !failed && !published
   const percent = progressValue(upload)
+  const stage = upload?.progress_stage ?? upload?.status
+  const downloading =
+    stage === "downloading" || stage === "queued" || stage === "pending" || (!upload && polling)
+  const uploading = stage === "uploading" || (upload?.progress_percent ?? 0) >= 18
 
   return (
     <Dialog
@@ -142,37 +148,30 @@ export default function YoutubeUploadProgressDialog({
 
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
-                  {upload?.progress_stage === "downloading" || (upload?.progress_percent ?? 0) >= 8 ? (
+                  {downloading && !uploading ? (
                     <Loader2 className="h-4 w-4 shrink-0 animate-spin text-purple-600" />
+                  ) : uploading || published ? (
+                    <Cloud className="h-4 w-4 shrink-0 text-purple-600" />
                   ) : (
                     <Cloud className="h-4 w-4 shrink-0 opacity-40" />
                   )}
                   Download recording from Dropbox
                 </li>
                 <li className="flex items-center gap-2">
-                  {upload?.progress_stage === "uploading" || (upload?.progress_percent ?? 0) >= 20 ? (
+                  {uploading && stage !== "processing" && stage !== "complete" ? (
                     <Loader2 className="h-4 w-4 shrink-0 animate-spin text-purple-600" />
                   ) : (
-                    <Youtube className="h-4 w-4 shrink-0 opacity-40" />
+                    <Youtube className={cn("h-4 w-4 shrink-0", uploading ? "text-purple-600" : "opacity-40")} />
                   )}
                   Upload to your YouTube channel
                 </li>
               </ul>
 
               {polling ? (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Do not close this window until the upload finishes. Large recordings may take several minutes.
-                  </p>
-                  {(upload?.progress_stage === "queued" ||
-                    upload?.progress_stage === "pending" ||
-                    upload?.status === "pending") && (
-                    <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
-                      Waiting for the upload to start — this usually begins within a few seconds. If it stays
-                      here more than a minute, tap Retry upload after closing, or contact support.
-                    </p>
-                  )}
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Progress updates live. Do not close this window until the upload finishes. Large recordings may
+                  take several minutes.
+                </p>
               ) : null}
             </>
           )}
