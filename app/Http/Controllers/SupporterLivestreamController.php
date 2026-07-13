@@ -653,14 +653,11 @@ class SupporterLivestreamController extends Controller
         $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
         $participantUrl = $livestream->getParticipantUrl();
         $hostPushUrl = $livestream->getHostPushUrl(false);
-        // Host publisher no longer embeds Dropbox — recording is a solo viewer of the host stream.
         $hostPushUrlDropbox = null;
-        $hostRecordingViewUrl = $livestream->getHostRecordingViewUrl(false);
-        $hostRecordingViewUrlDropbox = null;
         if ($dropboxConnected) {
-            $dropboxRecordingUrl = $livestream->getHostRecordingViewUrl(true);
-            if (is_string($dropboxRecordingUrl) && str_contains($dropboxRecordingUrl, '&dropbox=')) {
-                $hostRecordingViewUrlDropbox = $dropboxRecordingUrl;
+            $dropboxHostUrl = $livestream->getHostPushUrl(true);
+            if (str_contains($dropboxHostUrl, '&dropbox=')) {
+                $hostPushUrlDropbox = $dropboxHostUrl;
             }
         }
         // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
@@ -732,13 +729,11 @@ class SupporterLivestreamController extends Controller
                 'participantUrl' => $participantUrl,
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
-                'hostRecordingViewUrl' => $hostRecordingViewUrl,
-                'hostRecordingViewUrlDropbox' => $hostRecordingViewUrlDropbox,
                 'scenePushUrl' => $scenePushUrl,
                 'canvasUrl' => $livestream->getCanvasUrl(),
                 'canvasMode' => $livestream->isCanvasModeEnabled(),
                 'browserMediaMtxPush' => \App\Support\StreamingWorkerSourceUrl::shouldAttachVdoMediaMtxPush(),
-                'dropboxRecordingAvailable' => $hostRecordingViewUrlDropbox !== null,
+                'dropboxRecordingAvailable' => $hostPushUrlDropbox !== null,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
                 'liveViewerUrl' => $liveViewerUrl,
