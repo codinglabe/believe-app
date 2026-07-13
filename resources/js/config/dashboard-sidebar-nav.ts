@@ -1091,6 +1091,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: MessageCircle,
                 role: ['user', 'organization', 'organization_pending', 'care_alliance'],
             },
+            {
+                title: 'Recordings',
+                href: route('livestreams.supporter.recordings'),
+                icon: FolderOpen,
+                role: ['organization', 'organization_pending', 'care_alliance'],
+            },
         ],
     },
 
