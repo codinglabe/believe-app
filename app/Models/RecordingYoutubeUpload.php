@@ -73,17 +73,24 @@ class RecordingYoutubeUpload extends Model
 
     public function markUploading(): void
     {
-        $this->update([
+        $payload = [
             'status' => self::STATUS_UPLOADING,
             'started_at' => $this->started_at ?? now(),
             'error_message' => null,
-            'progress_stage' => self::STAGE_DOWNLOADING,
-            'progress_percent' => max((int) $this->progress_percent, 5),
-        ]);
+        ];
+        if ($this->hasProgressColumns()) {
+            $payload['progress_stage'] = self::STAGE_DOWNLOADING;
+            $payload['progress_percent'] = max((int) $this->progress_percent, 5);
+        }
+        $this->update($payload);
     }
 
     public function updateProgress(string $stage, int $percent): void
     {
+        if (! $this->hasProgressColumns()) {
+            return;
+        }
+
         $this->update([
             'progress_stage' => $stage,
             'progress_percent' => min(100, max(0, $percent)),
@@ -92,23 +99,40 @@ class RecordingYoutubeUpload extends Model
 
     public function markPublished(string $videoId, string $watchUrl): void
     {
-        $this->update([
+        $payload = [
             'status' => self::STATUS_PUBLISHED,
             'youtube_video_id' => $videoId,
             'youtube_watch_url' => $watchUrl,
             'published_at' => now(),
             'error_message' => null,
-            'progress_stage' => self::STAGE_COMPLETE,
-            'progress_percent' => 100,
-        ]);
+        ];
+        if ($this->hasProgressColumns()) {
+            $payload['progress_stage'] = self::STAGE_COMPLETE;
+            $payload['progress_percent'] = 100;
+        }
+        $this->update($payload);
     }
 
     public function markFailed(string $message): void
     {
-        $this->update([
+        $payload = [
             'status' => self::STATUS_FAILED,
             'error_message' => $message,
-            'progress_stage' => null,
-        ]);
+        ];
+        if ($this->hasProgressColumns()) {
+            $payload['progress_stage'] = null;
+        }
+        $this->update($payload);
+    }
+
+    private function hasProgressColumns(): bool
+    {
+        static $cached = null;
+        if ($cached === null) {
+            $cached = \Illuminate\Support\Facades\Schema::hasColumn($this->getTable(), 'progress_stage')
+                && \Illuminate\Support\Facades\Schema::hasColumn($this->getTable(), 'progress_percent');
+        }
+
+        return $cached;
     }
 }

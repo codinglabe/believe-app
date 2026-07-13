@@ -555,7 +555,6 @@ export default function SupporterDropbox({
     file: DropboxFile,
     payload: { title: string; description?: string; privacy: "unlisted" | "private" | "public" },
   ) => {
-    beginYoutubeProgress(file, payload.title)
     setPublishing(true)
     router.post(
       route("livestreams.supporter.recordings.youtube.publish"),
@@ -569,8 +568,19 @@ export default function SupporterDropbox({
       {
         preserveScroll: true,
         onFinish: () => setPublishing(false),
-        onSuccess: () => {
+        onSuccess: (page) => {
           setPublishTarget(null)
+          const flash = (page.props as { flash?: { error?: string; youtube_upload_path?: string } }).flash
+          if (flash?.error) {
+            toast.error(flash.error)
+            setYoutubeProgressPath(null)
+            return
+          }
+          // Only show progress after the server queued the upload.
+          beginYoutubeProgress(file, payload.title)
+          if (flash?.youtube_upload_path) {
+            setYoutubeProgressPath(flash.youtube_upload_path)
+          }
         },
         onError: () => {
           toast.error("Could not start YouTube upload.")

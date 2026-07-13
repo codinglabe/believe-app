@@ -87,6 +87,8 @@ final class RecordingYoutubePublishService
             }
 
             $pathHash = RecordingYoutubeUpload::hashDropboxPath($dropboxPath);
+            $hasProgressColumns = Schema::hasColumn('recording_youtube_uploads', 'progress_stage')
+                && Schema::hasColumn('recording_youtube_uploads', 'progress_percent');
 
             $existing = RecordingYoutubeUpload::query()
                 ->where('user_id', $user->id)
@@ -108,25 +110,27 @@ final class RecordingYoutubePublishService
                     ];
                 }
 
-                if ($existing->status === RecordingYoutubeUpload::STATUS_PENDING) {
-                    $this->dispatchUploadJob($existing->id);
-
-                    return [
-                        'success' => true,
-                        'upload' => $this->serializeUpload($existing->fresh() ?? $existing),
-                    ];
-                }
-
-                if ($existing->status === RecordingYoutubeUpload::STATUS_FAILED) {
-                    $existing->update([
+                if ($existing->status === RecordingYoutubeUpload::STATUS_PENDING
+                    || $existing->status === RecordingYoutubeUpload::STATUS_FAILED) {
+                    $reset = [
                         'status' => RecordingYoutubeUpload::STATUS_PENDING,
+                        'dropbox_path' => $dropboxPath,
+                        'dropbox_name' => $dropboxName,
+                        'title' => $this->resolveTitle($user, $dropboxName, $title),
+                        'description' => $description,
+                        'privacy_status' => in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
+                            ? $privacyStatus
+                            : 'unlisted',
                         'error_message' => null,
-                        'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
-                        'progress_percent' => 0,
                         'youtube_video_id' => null,
                         'youtube_watch_url' => null,
                         'published_at' => null,
-                    ]);
+                    ];
+                    if ($hasProgressColumns) {
+                        $reset['progress_stage'] = RecordingYoutubeUpload::STAGE_QUEUED;
+                        $reset['progress_percent'] = 0;
+                    }
+                    $existing->update($reset);
                     $this->dispatchUploadJob($existing->id);
 
                     return [
@@ -138,25 +142,29 @@ final class RecordingYoutubePublishService
 
             $resolvedTitle = $this->resolveTitle($user, $dropboxName, $title);
 
+            $attributes = [
+                'dropbox_path' => $dropboxPath,
+                'dropbox_name' => $dropboxName,
+                'status' => RecordingYoutubeUpload::STATUS_PENDING,
+                'title' => $resolvedTitle,
+                'description' => $description,
+                'privacy_status' => in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
+                    ? $privacyStatus
+                    : 'unlisted',
+                'error_message' => null,
+                'attempts' => 0,
+            ];
+            if ($hasProgressColumns) {
+                $attributes['progress_stage'] = RecordingYoutubeUpload::STAGE_QUEUED;
+                $attributes['progress_percent'] = 0;
+            }
+
             $upload = RecordingYoutubeUpload::query()->updateOrCreate(
                 [
                     'user_id' => $user->id,
                     'dropbox_path_hash' => $pathHash,
                 ],
-                [
-                    'dropbox_path' => $dropboxPath,
-                    'dropbox_name' => $dropboxName,
-                    'status' => RecordingYoutubeUpload::STATUS_PENDING,
-                    'title' => $resolvedTitle,
-                    'description' => $description,
-                    'privacy_status' => in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
-                        ? $privacyStatus
-                        : 'unlisted',
-                    'error_message' => null,
-                    'attempts' => 0,
-                    'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
-                    'progress_percent' => 0,
-                ],
+                $attributes,
             );
 
             $this->dispatchUploadJob($upload->id);
@@ -170,20 +178,28 @@ final class RecordingYoutubePublishService
                 'user_id' => $user->id,
                 'path' => $dropboxPath,
                 'error' => $e->getMessage(),
+                'exception' => $e::class,
+                'file' => $e->getFile().':'.$e->getLine(),
             ]);
+
+            $hint = 'Could not start YouTube upload. Please try again in a moment.';
+            if (str_contains($e->getMessage(), 'Unknown column')) {
+                $hint = 'YouTube upload database is missing columns. Please run migrations, then try again.';
+            } elseif (str_contains(strtolower($e->getMessage()), 'jobs') && str_contains(strtolower($e->getMessage()), "doesn't exist")) {
+                $hint = 'Queue is not set up on this server. Contact support to enable the jobs worker.';
+            }
 
             return [
                 'success' => false,
-                'error' => 'Could not start YouTube upload. Please try again in a moment.',
+                'error' => $hint,
             ];
         }
     }
 
     private function dispatchUploadJob(int $uploadId): void
     {
-        PublishDropboxRecordingToYouTube::dispatch($uploadId)
-            ->onQueue('default')
-            ->afterResponse();
+        // Push to the database/redis queue immediately so Inertia redirects do not drop afterResponse jobs.
+        PublishDropboxRecordingToYouTube::dispatch($uploadId)->onQueue('default');
     }
 
     /**
