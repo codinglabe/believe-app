@@ -382,6 +382,8 @@ class UserLivestream extends Model
 
         // Host-only auto-record on first load. Do NOT use &autorecord — it also records remote
         // guests and starts a new file each time someone joins the room.
+        // &screensharetype=1: screen share replaces the webcam on the same local stream so
+        // &autorecordlocal does not start a second recording when the host shares screen.
         if ($dropboxCtx !== null) {
             $recordParam = '&autorecordlocal=6000';
         } elseif ($recordEnabled) {
@@ -390,7 +392,7 @@ class UserLivestream extends Model
             $recordParam = '';
         }
 
-        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&screensharetype=1&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
