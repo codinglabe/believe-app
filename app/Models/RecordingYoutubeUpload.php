@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\RecordingYoutubeUploadProgress;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -83,18 +84,38 @@ class RecordingYoutubeUpload extends Model
             $payload['progress_percent'] = max((int) $this->progress_percent, 5);
         }
         $this->update($payload);
+        $this->broadcastProgress();
     }
 
-    public function updateProgress(string $stage, int $percent): void
+    public function updateProgress(string $stage, int $percent, bool $forceBroadcast = false): void
     {
         if (! $this->hasProgressColumns()) {
             return;
         }
 
+        $percent = min(100, max(0, $percent));
+        $previousStage = (string) ($this->progress_stage ?? '');
+        $previousPercent = (int) ($this->progress_percent ?? 0);
+
+        // Skip no-op DB writes; still allow forced broadcasts for UI heartbeats.
+        if (
+            ! $forceBroadcast
+            && $previousStage === $stage
+            && abs($previousPercent - $percent) < 1
+        ) {
+            return;
+        }
+
         $this->update([
             'progress_stage' => $stage,
-            'progress_percent' => min(100, max(0, $percent)),
+            'progress_percent' => $percent,
         ]);
+
+        $stageChanged = $previousStage !== $stage;
+        $jumped = abs($previousPercent - $percent) >= 2;
+        if ($forceBroadcast || $stageChanged || $jumped || $percent >= 95 || $percent <= 5) {
+            $this->broadcastProgress();
+        }
     }
 
     public function markPublished(string $videoId, string $watchUrl): void
@@ -111,6 +132,7 @@ class RecordingYoutubeUpload extends Model
             $payload['progress_percent'] = 100;
         }
         $this->update($payload);
+        $this->broadcastProgress();
     }
 
     public function markFailed(string $message): void
@@ -123,6 +145,21 @@ class RecordingYoutubeUpload extends Model
             $payload['progress_stage'] = null;
         }
         $this->update($payload);
+        $this->broadcastProgress();
+    }
+
+    public function broadcastProgress(): void
+    {
+        if ($this->user_id === null) {
+            return;
+        }
+
+        try {
+            event(RecordingYoutubeUploadProgress::fromUpload($this->fresh() ?? $this));
+        } catch (\Throwable $e) {
+            // Progress broadcast must never fail the upload itself.
+            report($e);
+        }
     }
 
     private function hasProgressColumns(): bool

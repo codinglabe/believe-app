@@ -59,8 +59,11 @@ import {
 import { toast } from "react-hot-toast"
 import { PageHead } from "@/components/frontend/PageHead"
 import RecordingsListPagination from "@/components/livestreams/RecordingsListPagination"
-import YoutubeUploadProgressDialog from "@/components/livestreams/YoutubeUploadProgressDialog"
+import YoutubeUploadProgressDialog, {
+  type YoutubeUploadProgressRow,
+} from "@/components/livestreams/YoutubeUploadProgressDialog"
 import { cn } from "@/lib/utils"
+import echo from "@/lib/echo"
 
 const BRAND = {
   from: "#9333ea",
@@ -338,23 +341,79 @@ export default function SupporterDropbox({
   const [youtubeProgressPath, setYoutubeProgressPath] = useState<string | null>(null)
   const [youtubeProgressTitle, setYoutubeProgressTitle] = useState("")
   const [youtubeProgressFileName, setYoutubeProgressFileName] = useState("")
+  const [liveYoutubeUpload, setLiveYoutubeUpload] = useState<YoutubeUploadProgressRow | null>(null)
 
-  const page = usePage<{ flash?: { youtube_upload_path?: string } }>()
+  const page = usePage<{
+    flash?: { youtube_upload_path?: string }
+    auth?: { user?: { id?: number } | null }
+  }>()
+  const authUserId = page.props.auth?.user?.id ?? null
+
   const youtubeUploadByPath = useMemo(() => {
-    const map = new Map<string, RecordingYoutubeUpload>()
+    const map = new Map<string, YoutubeUploadProgressRow>()
     for (const row of youtubeUploads) {
       map.set(row.dropbox_path, row)
     }
+    if (liveYoutubeUpload?.dropbox_path) {
+      const existing = map.get(liveYoutubeUpload.dropbox_path)
+      // Never let stale optimistic UI overwrite a finished server row.
+      if (existing?.status === "published" || existing?.status === "failed") {
+        return map
+      }
+      const livePct = liveYoutubeUpload.progress_percent ?? 0
+      const existingPct = existing?.progress_percent ?? 0
+      if (!existing || livePct >= existingPct) {
+        map.set(liveYoutubeUpload.dropbox_path, { ...existing, ...liveYoutubeUpload })
+      }
+    }
     return map
-  }, [youtubeUploads])
+  }, [youtubeUploads, liveYoutubeUpload])
 
-  const hasActiveYoutubeUpload = youtubeUploads.some(
-    (u) => u.status === "pending" || u.status === "uploading",
-  )
+  // Drop optimistic overlay once Inertia props show the upload finished.
+  useEffect(() => {
+    if (!liveYoutubeUpload?.dropbox_path) return
+    const fromServer = youtubeUploads.find((u) => u.dropbox_path === liveYoutubeUpload.dropbox_path)
+    if (fromServer?.status === "published" || fromServer?.status === "failed") {
+      setLiveYoutubeUpload(fromServer)
+    }
+  }, [youtubeUploads, liveYoutubeUpload?.dropbox_path])
+
+  const hasActiveYoutubeUpload =
+    youtubeUploads.some((u) => u.status === "pending" || u.status === "uploading") ||
+    liveYoutubeUpload?.status === "pending" ||
+    liveYoutubeUpload?.status === "uploading"
 
   const trackedYoutubeUpload = youtubeProgressPath
     ? youtubeUploadByPath.get(youtubeProgressPath)
     : undefined
+
+  // Real-time progress via Reverb on the private user channel.
+  useEffect(() => {
+    if (!authUserId || !unityMeetRecordings) return
+
+    const instance = echo()
+    const channel = instance.private(`user.${authUserId}`)
+    const handler = (payload: YoutubeUploadProgressRow) => {
+      if (!payload?.dropbox_path) return
+      setLiveYoutubeUpload((prev) => {
+        if (!prev || prev.dropbox_path !== payload.dropbox_path) {
+          return payload
+        }
+        if (payload.status === "published" || payload.status === "failed") {
+          return payload
+        }
+        const prevPct = prev.progress_percent ?? 0
+        const nextPct = payload.progress_percent ?? 0
+        return nextPct >= prevPct ? payload : prev
+      })
+    }
+
+    channel.listen(".recording.youtube.upload.progress", handler)
+
+    return () => {
+      channel.stopListening(".recording.youtube.upload.progress")
+    }
+  }, [authUserId, unityMeetRecordings])
 
   useEffect(() => {
     if (!youtubeProgressPath || !unityMeetRecordings) return
@@ -362,7 +421,10 @@ export default function SupporterDropbox({
     const upload = youtubeUploadByPath.get(youtubeProgressPath)
     if (upload?.status === "published") {
       toast.success("Recording published to YouTube.")
-      const t = window.setTimeout(() => setYoutubeProgressPath(null), 2500)
+      const t = window.setTimeout(() => {
+        setYoutubeProgressPath(null)
+        setLiveYoutubeUpload(null)
+      }, 2500)
       return () => window.clearTimeout(t)
     }
 
@@ -370,12 +432,13 @@ export default function SupporterDropbox({
       return
     }
 
+    // Light fallback if Reverb drops — only refresh upload rows.
     const interval = window.setInterval(() => {
       router.reload({
-        only: ["youtubeUploads", "dropboxFiles", "recordingsList"],
+        only: ["youtubeUploads"],
         preserveScroll: true,
       })
-    }, 2500)
+    }, 1000)
 
     return () => window.clearInterval(interval)
   }, [youtubeProgressPath, unityMeetRecordings, youtubeUploadByPath, trackedYoutubeUpload?.status])
@@ -555,6 +618,16 @@ export default function SupporterDropbox({
     file: DropboxFile,
     payload: { title: string; description?: string; privacy: "unlisted" | "private" | "public" },
   ) => {
+    // Open modal immediately — do not wait for the server round-trip.
+    beginYoutubeProgress(file, payload.title)
+    setLiveYoutubeUpload({
+      dropbox_path: path,
+      status: "uploading",
+      progress_stage: "downloading",
+      progress_percent: 5,
+      title: payload.title,
+      privacy_status: payload.privacy,
+    } as YoutubeUploadProgressRow)
     setPublishing(true)
     router.post(
       route("livestreams.supporter.recordings.youtube.publish"),
@@ -574,10 +647,9 @@ export default function SupporterDropbox({
           if (flash?.error) {
             toast.error(flash.error)
             setYoutubeProgressPath(null)
+            setLiveYoutubeUpload(null)
             return
           }
-          // Only show progress after the server queued the upload.
-          beginYoutubeProgress(file, payload.title)
           if (flash?.youtube_upload_path) {
             setYoutubeProgressPath(flash.youtube_upload_path)
           }
@@ -585,6 +657,7 @@ export default function SupporterDropbox({
         onError: () => {
           toast.error("Could not start YouTube upload.")
           setYoutubeProgressPath(null)
+          setLiveYoutubeUpload(null)
         },
       },
     )
@@ -1094,8 +1167,15 @@ export default function SupporterDropbox({
                           fileName={youtubeProgressFileName}
                           title={youtubeProgressTitle}
                           upload={trackedYoutubeUpload}
-                          polling={trackedYoutubeUpload?.status === "pending" || trackedYoutubeUpload?.status === "uploading"}
-                          onClose={() => setYoutubeProgressPath(null)}
+                          polling={
+                            youtubeProgressPath !== null &&
+                            trackedYoutubeUpload?.status !== "published" &&
+                            trackedYoutubeUpload?.status !== "failed"
+                          }
+                          onClose={() => {
+                            setYoutubeProgressPath(null)
+                            setLiveYoutubeUpload(null)
+                          }}
                           onRetry={
                             youtubeProgressPath
                               ? () => {

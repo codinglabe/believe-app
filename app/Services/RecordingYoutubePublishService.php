@@ -181,7 +181,7 @@ final class RecordingYoutubePublishService
             if ($existing->status === RecordingYoutubeUpload::STATUS_PENDING
                 || $existing->status === RecordingYoutubeUpload::STATUS_FAILED) {
                 $reset = [
-                    'status' => RecordingYoutubeUpload::STATUS_PENDING,
+                    'status' => RecordingYoutubeUpload::STATUS_UPLOADING,
                     'dropbox_path' => $dropboxPath,
                     'dropbox_name' => $dropboxName,
                     'title' => $this->resolveTitle($user, $dropboxName, $title),
@@ -193,12 +193,14 @@ final class RecordingYoutubePublishService
                     'youtube_video_id' => null,
                     'youtube_watch_url' => null,
                     'published_at' => null,
+                    'started_at' => now(),
                 ];
                 if ($hasProgressColumns) {
-                    $reset['progress_stage'] = RecordingYoutubeUpload::STAGE_QUEUED;
-                    $reset['progress_percent'] = 0;
+                    $reset['progress_stage'] = RecordingYoutubeUpload::STAGE_DOWNLOADING;
+                    $reset['progress_percent'] = 5;
                 }
                 $existing->update($reset);
+                $existing->broadcastProgress();
                 $this->dispatchUploadJob($existing->id);
 
                 return [
@@ -213,7 +215,7 @@ final class RecordingYoutubePublishService
         $attributes = [
             'dropbox_path' => $dropboxPath,
             'dropbox_name' => $dropboxName,
-            'status' => RecordingYoutubeUpload::STATUS_PENDING,
+            'status' => RecordingYoutubeUpload::STATUS_UPLOADING,
             'title' => $resolvedTitle,
             'description' => $description,
             'privacy_status' => in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
@@ -221,10 +223,11 @@ final class RecordingYoutubePublishService
                 : 'unlisted',
             'error_message' => null,
             'attempts' => 0,
+            'started_at' => now(),
         ];
         if ($hasProgressColumns) {
-            $attributes['progress_stage'] = RecordingYoutubeUpload::STAGE_QUEUED;
-            $attributes['progress_percent'] = 0;
+            $attributes['progress_stage'] = RecordingYoutubeUpload::STAGE_DOWNLOADING;
+            $attributes['progress_percent'] = 5;
         }
 
         $upload = RecordingYoutubeUpload::query()->updateOrCreate(
@@ -235,6 +238,7 @@ final class RecordingYoutubePublishService
             $attributes,
         );
 
+        $upload->broadcastProgress();
         $this->dispatchUploadJob($upload->id);
 
         return [
@@ -351,8 +355,15 @@ final class RecordingYoutubePublishService
 
     private function dispatchUploadJob(int $uploadId): void
     {
+        // Local often has no supervisor queue worker — run after the HTTP response so
+        // progress begins immediately without `php artisan queue:work`.
+        if (app()->environment('local') && filter_var(env('YOUTUBE_UPLOAD_USE_QUEUE', false), FILTER_VALIDATE_BOOL) === false) {
+            PublishDropboxRecordingToYouTube::dispatchAfterResponse($uploadId);
+
+            return;
+        }
+
         // afterCommit: worker must not pick the job before the upload row is visible.
-        // onQueue default: Supervisor workers listen on redis --queue=default.
         PublishDropboxRecordingToYouTube::dispatch($uploadId)
             ->onQueue('default')
             ->afterCommit();

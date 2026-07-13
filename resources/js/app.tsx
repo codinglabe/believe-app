@@ -19,7 +19,7 @@ import { isMerchantDomain } from './lib/merchant-domain';
 import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
 import { showNativePushNotification } from './lib/firebase-push-toast';
 import { syncPushTokenWithServer, startPushTokenRefreshListeners } from './lib/push-token-sync';
-import { ensureMobilePwaCookie, logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
+import { ensureMobilePwaCookie, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import IncomingCallOverlay from './components/call/IncomingCallOverlay';
 import CallPermissionsPrompt from './components/call/CallPermissionsPrompt';
 import LocationPermissionPrompt from './components/LocationPermissionPrompt';
@@ -117,7 +117,6 @@ createInertiaApp({
             const userId = pageProps?.auth?.user?.id;
             if (userId && !isLivestockDomain()) {
                 void registerServiceWorker()?.then(async () => {
-                    await logPushDiagnostics();
                     await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
                 });
             }
@@ -183,7 +182,6 @@ createInertiaApp({
             });
             void registerServiceWorker()?.then(async () => {
                 if (initialUserId) {
-                    await logPushDiagnostics();
                     await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
                 }
             });
@@ -281,7 +279,6 @@ if (typeof window !== 'undefined' && !isLivestockDomain()) {
                     click_action: '/livestreams/join/test-room',
                 },
             });
-        console.info('[Push] Dev helpers: enableBelievePush(), testBelievePushToast()');
     }
 
     if ('permissions' in navigator) {
