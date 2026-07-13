@@ -1561,6 +1561,15 @@ class YouTubeService
         ?callable $onProgress = null,
     ): array {
         $accessToken = $this->getValidAccessTokenForUser($user);
+
+        // Nonprofit dashboard accounts usually connect YouTube on the organization.
+        if (($accessToken === null || $accessToken === '') && $user->hasNonprofitDashboardRole()) {
+            $organization = Organization::forAuthUser($user);
+            if ($organization !== null) {
+                $accessToken = $this->getValidAccessToken($organization);
+            }
+        }
+
         if ($accessToken === null || $accessToken === '') {
             return [
                 'success' => false,

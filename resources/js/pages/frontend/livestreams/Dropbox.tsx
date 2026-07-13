@@ -685,7 +685,7 @@ export default function SupporterDropbox({
                 <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-100">
                   YouTube is connected but <strong>upload permission</strong> is missing. Open{" "}
                   <a href={youtubeIntegrationsUrl} className="font-medium underline">
-                    Unity Meet Settings
+                    YouTube integrations
                   </a>
                   , disconnect YouTube, then{" "}
                   <a href={youtubeReconnectUrl ?? youtubeIntegrationsUrl} className="font-medium underline">

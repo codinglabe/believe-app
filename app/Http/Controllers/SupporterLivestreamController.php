@@ -1572,7 +1572,9 @@ class SupporterLivestreamController extends Controller
             'meetingTitleHints' => $meetingTitleHints,
             'youtubeConnected' => $publishService->userHasYoutubeConnected($user),
             'youtubeCanUpload' => $publishService->userCanUploadToYoutube($user),
-            'youtubeIntegrationsUrl' => route('livestreams.supporter.settings'),
+            'youtubeIntegrationsUrl' => $user->hasNonprofitDashboardRole()
+                ? route('integrations.youtube')
+                : route('livestreams.supporter.settings'),
             'youtubeReconnectUrl' => route('integrations.youtube.redirect'),
             'youtubeUploads' => $publishService->uploadsForPaths($user->id, $paths),
         ]);
