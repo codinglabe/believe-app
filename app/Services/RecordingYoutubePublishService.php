@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\PublishDropboxRecordingToYouTube;
+use App\Models\Organization;
 use App\Models\RecordingYoutubeUpload;
 use App\Models\User;
 use App\Models\UserLivestream;
@@ -16,16 +17,28 @@ final class RecordingYoutubePublishService
 
     public function userHasYoutubeConnected(User $user): bool
     {
-        return ! empty($user->youtube_refresh_token);
+        if (! empty($user->youtube_refresh_token) || ! empty($user->youtube_access_token)) {
+            return true;
+        }
+
+        $organization = Organization::forAuthUser($user);
+
+        return $organization !== null
+            && (! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token));
     }
 
     public function userCanUploadToYoutube(User $user): bool
     {
-        if (! $this->userHasYoutubeConnected($user)) {
-            return false;
+        if (! empty($user->youtube_refresh_token)) {
+            return $this->youtubeService->userCanUploadVideos($user);
         }
 
-        return $this->youtubeService->userCanUploadVideos($user);
+        $organization = Organization::forAuthUser($user);
+        if ($organization !== null && ! empty($organization->youtube_refresh_token)) {
+            return $this->youtubeService->organizationCanUploadVideos($organization);
+        }
+
+        return false;
     }
 
     /**
@@ -42,14 +55,14 @@ final class RecordingYoutubePublishService
         if (! $this->userHasYoutubeConnected($user)) {
             return [
                 'success' => false,
-                'error' => 'Connect YouTube under Unity Meet Settings before publishing recordings.',
+                'error' => 'Connect YouTube under Integrations before publishing recordings.',
             ];
         }
 
         if (! $this->userCanUploadToYoutube($user)) {
             return [
                 'success' => false,
-                'error' => 'YouTube upload permission is missing. Open Unity Meet Settings, disconnect YouTube, connect again, and allow all requested access (including upload videos).',
+                'error' => 'YouTube upload permission is missing. Open Integrations → YouTube, disconnect, connect again, and allow all requested access (including upload videos).',
             ];
         }
 

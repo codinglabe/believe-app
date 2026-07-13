@@ -127,11 +127,18 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
     {
         $tokens = app(DropboxOAuthService::class);
 
+        if ($user->hasNonprofitDashboardRole()) {
+            $organization = \App\Models\Organization::forAuthUser($user);
+            if ($organization !== null && ! empty($organization->dropbox_refresh_token)) {
+                return $tokens->getAccessTokenForOrganization($organization);
+            }
+        }
+
         if (! empty($user->dropbox_refresh_token)) {
             return $tokens->getAccessTokenForUser($user);
         }
 
-        $organization = $user->organization;
+        $organization = \App\Models\Organization::forAuthUser($user);
         if ($organization !== null && ! empty($organization->dropbox_refresh_token)) {
             return $tokens->getAccessTokenForOrganization($organization);
         }
