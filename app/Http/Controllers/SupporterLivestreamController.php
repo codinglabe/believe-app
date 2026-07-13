@@ -1898,8 +1898,17 @@ class SupporterLivestreamController extends Controller
             return false;
         }
 
-        return str_starts_with(strtolower($path), strtolower($folderPath.'/'))
-            || strcasecmp($path, $folderPath) === 0;
+        $pathLower = mb_strtolower($path);
+        $folderLower = mb_strtolower($folderPath);
+
+        if (str_starts_with($pathLower, $folderLower.'/') || $pathLower === $folderLower) {
+            return true;
+        }
+
+        // Dropbox may return path_lower while we store a display folder name.
+        $folderLeaf = mb_strtolower(basename($folderPath));
+
+        return $folderLeaf !== '' && str_contains($pathLower, '/'.$folderLeaf.'/');
     }
 
     /**
