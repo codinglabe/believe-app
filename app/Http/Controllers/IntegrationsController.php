@@ -165,8 +165,24 @@ class IntegrationsController extends Controller
         ]);
 
         if (! $tokenResponse->successful()) {
-            Log::warning('YouTube OAuth token exchange failed', ['body' => $tokenResponse->body()]);
-            return redirect()->route($callbackRoute)->with('error', 'Could not connect to YouTube. Please try again.');
+            $tokenBody = $tokenResponse->body();
+            Log::warning('YouTube OAuth token exchange failed', ['body' => $tokenBody]);
+
+            $googleError = null;
+            try {
+                $googleError = $tokenResponse->json('error');
+            } catch (\Throwable) {
+                // ignore
+            }
+
+            $message = 'Could not connect to YouTube. Please try again.';
+            if ($googleError === 'invalid_client') {
+                $message = 'YouTube OAuth credentials are invalid. Check YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET in .env (and that the redirect URI is listed in Google Cloud Console), then try again.';
+            } elseif ($googleError === 'redirect_uri_mismatch') {
+                $message = 'YouTube redirect URI mismatch. Add this exact URI in Google Cloud Console: '.$redirectUri;
+            }
+
+            return redirect()->route($callbackRoute)->with('error', $message);
         }
 
         $tokenData = $tokenResponse->json();
