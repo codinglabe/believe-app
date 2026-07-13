@@ -53,15 +53,20 @@ class CourseUnityMeetService
         $organization = Organization::forAuthUser($user);
         $kind = self::KIND_USER;
 
+        // Form start_date/start_time are browser wall-clock values — parse with the
+        // request timezone (X-Timezone), not a stale profile default (e.g. Chicago).
+        $timezone = TimezoneService::requestTimezone();
         $scheduledAt = Carbon::createFromFormat(
             'Y-m-d H:i',
             $input['start_date'].' '.$input['start_time'],
-            TimezoneService::forUser($user)
+            $timezone
         );
 
         if (! $scheduledAt) {
             throw new InvalidArgumentException('Schedule time is invalid.');
         }
+
+        $scheduledAt = $scheduledAt->utc();
 
         $isUpdate = $existingKind && $existingId;
         if (! $isUpdate && $scheduledAt->isPast()) {
@@ -163,10 +168,11 @@ class CourseUnityMeetService
         $livestream->settings = $settings;
 
         if ($course->start_date && $course->start_time) {
+            $timezone = TimezoneService::requestTimezone();
             $scheduledAt = Carbon::parse(
                 $course->start_date->format('Y-m-d').' '.$course->start_time,
-                TimezoneService::forUser($course->user ?? null)
-            );
+                $timezone
+            )->utc();
             $livestream->scheduled_at = $scheduledAt;
         }
 

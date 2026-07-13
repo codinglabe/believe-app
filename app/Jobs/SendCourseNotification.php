@@ -6,6 +6,7 @@ use App\Jobs\Concerns\UsesPushNotificationQueue;
 use App\Models\Course;
 use App\Models\Organization;
 use App\Services\FirebaseService;
+use App\Support\ConnectionHubType;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -57,9 +58,17 @@ class SendCourseNotification implements ShouldQueue
             }
 
             $courseName = $this->course->name;
-            $topicName = $this->course->topic->name ?? 'New Course';
-            $title = "New Course Available";
-            $body = "{$organization->name} created a new course in {$topicName}: {$courseName}";
+            $hubType = (string) ($this->course->type ?? ConnectionHubType::LEARNING);
+            $typeLabel = ConnectionHubType::label($hubType);
+            $listingNoun = match ($hubType) {
+                ConnectionHubType::EVENTS => 'meetup',
+                ConnectionHubType::COMPANION => 'companion',
+                ConnectionHubType::EARNING => 'earning',
+                default => 'course',
+            };
+            $topicName = $this->course->topic->name ?? "New {$typeLabel}";
+            $title = "New {$typeLabel} Available";
+            $body = "{$organization->name} created a new {$listingNoun} in {$topicName}: {$courseName}";
             $courseUrl = route('course.show', $this->course->slug);
 
             $firebaseService = app(FirebaseService::class);

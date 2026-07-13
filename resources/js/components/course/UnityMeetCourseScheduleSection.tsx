@@ -100,18 +100,23 @@ export default function UnityMeetCourseScheduleSection({
     )
   }
 
+  // Prefer the form wall-clock values so the label matches Start Date / Start Time.
+  // (meeting.scheduled_at is UTC and must not be shown as if it were local input.)
   const scheduledLabel =
-    meeting?.scheduled_at
-      ? new Date(meeting.scheduled_at).toLocaleString(undefined, {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : startDate && startTime
-        ? new Date(`${startDate}T${startTime}`).toLocaleString(undefined, {
+    startDate && startTime
+      ? new Date(`${startDate}T${startTime.length === 5 ? `${startTime}:00` : startTime}`).toLocaleString(
+          undefined,
+          {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          },
+        )
+      : meeting?.scheduled_at
+        ? new Date(meeting.scheduled_at).toLocaleString(undefined, {
             weekday: "long",
             month: "long",
             day: "numeric",
