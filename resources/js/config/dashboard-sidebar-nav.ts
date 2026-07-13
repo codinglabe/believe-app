@@ -794,7 +794,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         ],
                     },
                     {
-                        title: 'Stripe processing fees',
+                        title: 'Payment Provider Fee',
                         href: '/admin/processing-fees',
                         icon: Percent,
                         role: 'admin',
@@ -1102,6 +1102,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/livestreams/supporter',
                 icon: MessageCircle,
                 role: ['user', 'organization', 'organization_pending', 'care_alliance'],
+            },
+            {
+                title: 'Recordings',
+                href: route('livestreams.supporter.recordings'),
+                icon: FolderOpen,
+                role: ['organization', 'organization_pending', 'care_alliance'],
             },
         ],
     },

@@ -8,9 +8,17 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('recording_youtube_uploads')) {
+            return;
+        }
+
         Schema::table('recording_youtube_uploads', function (Blueprint $table) {
-            $table->string('progress_stage', 32)->nullable()->after('status');
-            $table->unsignedTinyInteger('progress_percent')->default(0)->after('progress_stage');
+            if (! Schema::hasColumn('recording_youtube_uploads', 'progress_stage')) {
+                $table->string('progress_stage', 32)->nullable()->after('status');
+            }
+            if (! Schema::hasColumn('recording_youtube_uploads', 'progress_percent')) {
+                $table->unsignedTinyInteger('progress_percent')->default(0)->after('progress_stage');
+            }
         });
     }
 

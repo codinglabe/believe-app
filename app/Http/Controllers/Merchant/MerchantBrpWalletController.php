@@ -160,8 +160,8 @@ class MerchantBrpWalletController extends Controller
                             'currency' => 'usd',
                             'unit_amount' => $processingFeeCents,
                             'product_data' => [
-                                'name' => 'Processing Fee (3.5%)',
-                                'description' => 'Processing fee is added on top of your BP budget.',
+                                'name' => 'Payment Provider Fee (3.5%)',
+                                'description' => 'Payment provider fee is added on top of your BP budget.',
                             ],
                         ],
                         'quantity' => 1,

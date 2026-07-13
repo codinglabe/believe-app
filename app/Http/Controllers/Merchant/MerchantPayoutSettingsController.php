@@ -38,6 +38,7 @@ class MerchantPayoutSettingsController extends Controller
             'paypalConfigured' => PayPalPayoutEntityService::isPlatformConfigured(),
             'modules' => ['marketplace', 'merchant_hub', 'courses', 'events'],
             'connectError' => $request->session()->get('connect_error'),
+            'isLegacyExpressAccount' => StripeConnectMerchantService::isLegacyExpressAccount($merchant),
         ]);
     }
 
@@ -129,6 +130,19 @@ class MerchantPayoutSettingsController extends Controller
     public function stripeConnectRefresh(Request $request): RedirectResponse
     {
         return $this->startStripeConnect($request);
+    }
+
+    public function disconnectStripeConnect(Request $request): RedirectResponse
+    {
+        /** @var Merchant $merchant */
+        $merchant = Auth::guard('merchant')->user();
+
+        StripeConnectMerchantService::disconnectAccount($merchant);
+
+        return redirect()->route('merchant.payouts.index')
+            ->with('flash', [
+                'success' => 'Stripe Connect disconnected. You can connect a Standard Stripe account again.',
+            ]);
     }
 
     private function backWithConnectError(string $message): RedirectResponse

@@ -331,7 +331,7 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                             )}
                             <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Campaign budget (rewards)</span><span className="text-white font-medium">${live.budget_usd.toFixed(2)}</span></div>
                             <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Platform fee (4.5%)</span><span className="text-white font-medium">${live.platform_fee_usd.toFixed(2)}</span></div>
-                            <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Stripe fee (3.5%)</span><span className="text-white font-medium">${live.processing_fee_usd.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Payment provider fee (3.5%)</span><span className="text-white font-medium">${live.processing_fee_usd.toFixed(2)}</span></div>
                             <div className="flex justify-between text-sm"><span className="text-gray-300 font-semibold">✓ Total charge</span><span className="text-emerald-400 font-semibold">${live.total_usd.toFixed(2)}</span></div>
                             {insufficientBalance && (
                               <div className="flex items-center gap-2 pt-2 border-t border-gray-800 mt-2">
@@ -542,7 +542,7 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                             : `${modelSupportersForSelectedType.toLocaleString()} (type) / ${maxResponses.toLocaleString()} (your reward)`,
                         ],
                         ['Platform Fee (4.5%)', `$${(live?.platform_fee_usd ?? 0).toFixed(2)}`],
-                        ['Processing Fee (3.5%)', `$${(live?.processing_fee_usd ?? 0).toFixed(2)}`],
+                        ['Payment Provider Fee (3.5%)', `$${(live?.processing_fee_usd ?? 0).toFixed(2)}`],
                         ['Total Charge', `$${(live?.total_usd ?? 0).toFixed(2)}`],
                         ['Estimated Time', selectedType?.est_time || '—'],
                         ['Question Type', form.question_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())],

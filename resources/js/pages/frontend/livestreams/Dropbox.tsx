@@ -119,6 +119,8 @@ interface Props {
   /** False when using organization Dropbox so we don’t offer “disconnect” for the whole org from this page. */
   recordingsDisconnectAvailable?: boolean
   recordingsBackedByOrganization?: boolean
+  /** When true, only files matching this user's Unity Meet room names are listed. */
+  recordingsRestrictedToUserMeetings?: boolean
   meetingTitleHints?: MeetingTitleHint[]
   youtubeConnected?: boolean
   youtubeCanUpload?: boolean
@@ -294,6 +296,7 @@ export default function SupporterDropbox({
   unityMeetRecordings = false,
   recordingsDisconnectAvailable = true,
   recordingsBackedByOrganization = false,
+  recordingsRestrictedToUserMeetings = false,
   meetingTitleHints = [],
   youtubeConnected = false,
   youtubeCanUpload = true,
@@ -552,7 +555,6 @@ export default function SupporterDropbox({
     file: DropboxFile,
     payload: { title: string; description?: string; privacy: "unlisted" | "private" | "public" },
   ) => {
-    beginYoutubeProgress(file, payload.title)
     setPublishing(true)
     router.post(
       route("livestreams.supporter.recordings.youtube.publish"),
@@ -566,8 +568,19 @@ export default function SupporterDropbox({
       {
         preserveScroll: true,
         onFinish: () => setPublishing(false),
-        onSuccess: () => {
+        onSuccess: (page) => {
           setPublishTarget(null)
+          const flash = (page.props as { flash?: { error?: string; youtube_upload_path?: string } }).flash
+          if (flash?.error) {
+            toast.error(flash.error)
+            setYoutubeProgressPath(null)
+            return
+          }
+          // Only show progress after the server queued the upload.
+          beginYoutubeProgress(file, payload.title)
+          if (flash?.youtube_upload_path) {
+            setYoutubeProgressPath(flash.youtube_upload_path)
+          }
         },
         onError: () => {
           toast.error("Could not start YouTube upload.")
@@ -682,7 +695,7 @@ export default function SupporterDropbox({
                 <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-100">
                   YouTube is connected but <strong>upload permission</strong> is missing. Open{" "}
                   <a href={youtubeIntegrationsUrl} className="font-medium underline">
-                    Unity Meet Settings
+                    YouTube integrations
                   </a>
                   , disconnect YouTube, then{" "}
                   <a href={youtubeReconnectUrl ?? youtubeIntegrationsUrl} className="font-medium underline">
@@ -1055,6 +1068,7 @@ export default function SupporterDropbox({
                                 Cancel
                               </Button>
                               <Button
+                                type="button"
                                 onClick={handlePublishToYoutube}
                                 disabled={publishing || !publishTitle.trim()}
                                 className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
@@ -1146,7 +1160,9 @@ export default function SupporterDropbox({
                     </p>
                     {dropboxLinked && unityMeetRecordings && recordingsBackedByOrganization ? (
                       <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                        Your organization shares one Dropbox folder. We only list files whose names include your meeting ID (room name).
+                        {recordingsRestrictedToUserMeetings
+                          ? "Your organization shares one Dropbox folder. We only list files whose names include your meeting ID (room name)."
+                          : "Showing recordings from your organization’s Dropbox folder (same as Integrations → Dropbox)."}
                       </p>
                     ) : null}
                   </div>

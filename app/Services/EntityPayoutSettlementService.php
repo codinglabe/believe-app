@@ -93,7 +93,7 @@ class EntityPayoutSettlementService
     }
 
     /**
-     * Stripe Connect transfers funds to the connected Express account.
+     * Stripe Connect transfers funds to the connected Standard account.
      *
      * @param  array<string, mixed>  $metadata
      */
@@ -107,6 +107,13 @@ class EntityPayoutSettlementService
         $accountId = (string) $entity->stripe_connect_account_id;
         if ($accountId === '') {
             throw new \RuntimeException('Stripe Connect account is not configured.');
+        }
+
+        $accountType = strtolower(trim((string) ($entity->stripe_connect_account_type ?? '')));
+        if ($accountType === 'express' || $accountType === 'custom') {
+            throw new \RuntimeException(
+                'Legacy Express Stripe accounts are no longer supported. Disconnect and reconnect with a Standard Stripe account.'
+            );
         }
 
         if (! StripeConnectOrganizationService::configureStripe()) {
@@ -191,6 +198,12 @@ class EntityPayoutSettlementService
                 'connected' => filled($entity->stripe_connect_account_id ?? null),
                 'charges_enabled' => (bool) ($entity->stripe_connect_charges_enabled ?? false),
                 'payouts_enabled' => (bool) ($entity->stripe_connect_payouts_enabled ?? false),
+                'account_type' => $entity->stripe_connect_account_type ?? null,
+                'is_legacy_express' => in_array(
+                    strtolower(trim((string) ($entity->stripe_connect_account_type ?? ''))),
+                    ['express', 'custom'],
+                    true,
+                ),
                 'ready' => $entity->isStripePayoutReady(),
             ],
             'paypal' => PayPalPayoutEntityService::statusPayload($entity),

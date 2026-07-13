@@ -20,7 +20,7 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
 
     public int $timeout = 7200;
 
-    public int $tries = 2;
+    public int $tries = 5;
 
     public function __construct(
         public int $uploadId,
@@ -29,7 +29,29 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
     public function handle(YouTubeService $youtubeService): void
     {
         $upload = RecordingYoutubeUpload::query()->with(['user.organization'])->find($this->uploadId);
-        if ($upload === null || $upload->user === null) {
+        if ($upload === null) {
+            // Race after commit, or a worker from another app on a shared Redis prefix.
+            // Releasing keeps the job available until REDIS_PREFIX isolation is fixed.
+            if ($this->attempts() < ($this->tries + 2)) {
+                Log::warning('PublishDropboxRecordingToYouTube: upload row missing — releasing back to queue', [
+                    'upload_id' => $this->uploadId,
+                    'attempt' => $this->attempts(),
+                ]);
+                $this->release(5);
+
+                return;
+            }
+
+            Log::error('PublishDropboxRecordingToYouTube: upload row still missing after retries', [
+                'upload_id' => $this->uploadId,
+            ]);
+
+            return;
+        }
+
+        if ($upload->user === null) {
+            $upload->markFailed('Upload owner account was not found. Please try again after signing in.');
+
             return;
         }
 
@@ -58,6 +80,20 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
         $localPath = $tempDir.'/'.$upload->id.'_'.$safeName;
 
         try {
+            // Confirm channel tokens still work (user or organization) before downloading.
+            $accessTokenProbe = $youtubeService->getValidAccessTokenForUser($upload->user);
+            if (($accessTokenProbe === null || $accessTokenProbe === '') && $upload->user->hasNonprofitDashboardRole()) {
+                $organization = \App\Models\Organization::forAuthUser($upload->user);
+                if ($organization !== null) {
+                    $accessTokenProbe = $youtubeService->getValidAccessToken($organization);
+                }
+            }
+            if ($accessTokenProbe === null || $accessTokenProbe === '') {
+                $upload->markFailed('YouTube is not connected or the access token expired. Reconnect YouTube under Integrations and try again.');
+
+                return;
+            }
+
             $upload->updateProgress(RecordingYoutubeUpload::STAGE_DOWNLOADING, 8);
 
             $api = new DropboxOrgApi($dropboxToken);
@@ -127,11 +163,18 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
     {
         $tokens = app(DropboxOAuthService::class);
 
+        if ($user->hasNonprofitDashboardRole()) {
+            $organization = \App\Models\Organization::forAuthUser($user);
+            if ($organization !== null && ! empty($organization->dropbox_refresh_token)) {
+                return $tokens->getAccessTokenForOrganization($organization);
+            }
+        }
+
         if (! empty($user->dropbox_refresh_token)) {
             return $tokens->getAccessTokenForUser($user);
         }
 
-        $organization = $user->organization;
+        $organization = \App\Models\Organization::forAuthUser($user);
         if ($organization !== null && ! empty($organization->dropbox_refresh_token)) {
             return $tokens->getAccessTokenForOrganization($organization);
         }

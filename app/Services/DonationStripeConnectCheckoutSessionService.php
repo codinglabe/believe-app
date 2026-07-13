@@ -46,6 +46,11 @@ final class DonationStripeConnectCheckoutSessionService
         if ($organization->stripe_connect_account_id === null || $organization->stripe_connect_account_id === '') {
             throw new \InvalidArgumentException('Organization has no Stripe Connect account.');
         }
+        if (StripeConnectOrganizationService::isLegacyExpressAccount($organization)) {
+            throw new \InvalidArgumentException(
+                'Legacy Express Stripe accounts are not supported for donations. The organization must reconnect with a Standard Stripe account.'
+            );
+        }
         if ($checkoutTotalInCents <= 0) {
             throw new \InvalidArgumentException('Checkout amount must be positive.');
         }

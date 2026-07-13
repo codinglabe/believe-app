@@ -15,6 +15,8 @@ interface Readiness {
     connected: boolean
     charges_enabled: boolean
     payouts_enabled: boolean
+    account_type: string | null
+    is_legacy_express: boolean
     ready: boolean
   }
   paypal: {
@@ -34,6 +36,7 @@ interface Props {
   paypalConfigured: boolean
   modules: string[]
   connectError: string | null
+  isLegacyExpressAccount: boolean
 }
 
 export default function MerchantPayoutSettings({
@@ -44,6 +47,7 @@ export default function MerchantPayoutSettings({
   paypalConfigured,
   modules,
   connectError,
+  isLegacyExpressAccount,
 }: Props) {
   const { flash } = usePage().props as { flash?: { success?: string; error?: string } }
   const [stripeSubmitting, setStripeSubmitting] = useState(false)
@@ -92,9 +96,19 @@ export default function MerchantPayoutSettings({
   }
 
   const startStripe = () => {
-    if (!stripeConfigured) return
+    if (!stripeConfigured || isLegacyExpressAccount) return
     setStripeSubmitting(true)
     window.location.href = route("merchant.payouts.stripe-connect.start")
+  }
+
+  const disconnectStripe = () => {
+    if (!confirm("Disconnect this Stripe account? You can reconnect with a Standard Stripe account afterward.")) {
+      return
+    }
+    router.post(route("merchant.payouts.stripe-connect.disconnect"), {}, {
+      preserveScroll: true,
+      onSuccess: () => showSuccessToast("Stripe disconnected."),
+    })
   }
 
   const displayName = merchant.business_name || merchant.name
@@ -168,24 +182,39 @@ export default function MerchantPayoutSettings({
               </MerchantCardHeader>
               <MerchantCardContent className="space-y-4">
                 <p className="text-sm text-gray-400">
-                  Bank payouts via Stripe Express — recommended for larger merchants.
+                  Bank payouts via a Standard Stripe account — you manage your own Stripe Dashboard.
                 </p>
+                {isLegacyExpressAccount || readiness.stripe.is_legacy_express ? (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    This merchant is linked to a legacy Express Stripe account. Disconnect below, then connect again with Standard Connect.
+                  </div>
+                ) : null}
                 <ul className="text-xs text-gray-500 space-y-1">
                   <li>Charges: {readiness.stripe.charges_enabled ? "yes" : "no"}</li>
                   <li>Payouts: {readiness.stripe.payouts_enabled ? "yes" : "no"}</li>
+                  {readiness.stripe.account_type ? (
+                    <li>Account type: {readiness.stripe.account_type}</li>
+                  ) : null}
                 </ul>
                 {!stripeConfigured ? (
                   <p className="text-xs text-red-400">Stripe is not configured on this platform.</p>
                 ) : null}
-                <MerchantButton
-                  type="button"
-                  onClick={startStripe}
-                  disabled={stripeSubmitting || !stripeConfigured}
-                >
-                  {stripeSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  {readiness.stripe.ready ? "Manage Stripe" : "Connect Stripe"}
-                  <ExternalLink className="h-3.5 w-3.5 ml-2" />
-                </MerchantButton>
+                <div className="flex flex-wrap gap-2">
+                  <MerchantButton
+                    type="button"
+                    onClick={startStripe}
+                    disabled={stripeSubmitting || !stripeConfigured || isLegacyExpressAccount || readiness.stripe.is_legacy_express}
+                  >
+                    {stripeSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    {readiness.stripe.ready ? "Manage Stripe" : "Connect Standard Stripe"}
+                    <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                  </MerchantButton>
+                  {readiness.stripe.connected ? (
+                    <MerchantButton type="button" variant="outline" onClick={disconnectStripe}>
+                      Disconnect
+                    </MerchantButton>
+                  ) : null}
+                </div>
               </MerchantCardContent>
             </MerchantCard>
 

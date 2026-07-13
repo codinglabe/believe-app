@@ -16,7 +16,7 @@ interface Props {
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
   { title: "System Management", href: "#" },
-  { title: "Stripe processing fees", href: "/admin/processing-fees" },
+  { title: "Payment Provider Fee", href: "/admin/processing-fees" },
 ]
 
 /** Stored rates are decimals (0.029); form uses plain percent (2.9). */
@@ -42,14 +42,15 @@ export default function AdminProcessingFeesIndex({ rates }: Props) {
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Stripe processing fees - Admin" />
+      <Head title="Payment Provider Fee - Admin" />
       <div className="w-full space-y-6 p-4 sm:p-6">
         <div className="w-full">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Stripe processing fee estimates</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Payment Provider Fee</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1.5 w-full">
-            Configure the card and ACH fee model used across the app for previews and totals (donations, raffles, node
-            sales, and other Stripe card flows). Values should match your Stripe pricing (e.g. 2.9% + $0.30 for cards,
-            0.8% capped at $5 for ACH in the US). Only administrators can change these.
+            Configure the card and ACH payment provider fee model used for donation and other Stripe checkout
+            previews. Believe In Unity does not charge a separate processing fee on donations — this is only the
+            payment provider’s fee estimate (for example Stripe card or ACH pricing). Only administrators can
+            change these values.
           </p>
         </div>
 
@@ -59,8 +60,8 @@ export default function AdminProcessingFeesIndex({ rates }: Props) {
               <CardHeader>
                 <CardTitle>Card (credit / debit)</CardTitle>
                 <CardDescription>
-                  Approximate fee: (charge × percent) + fixed amount per charge. Used wherever the app estimates card
-                  processing cost.
+                  Approximate fee: (charge × percent) + fixed amount per charge. Used wherever the app estimates the
+                  payment provider fee for card donations and related Stripe checkouts.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col space-y-4">

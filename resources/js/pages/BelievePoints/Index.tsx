@@ -1042,7 +1042,7 @@ export default function BelievePointsIndex({
                         </li>
                         {(feePreview.supporter_pays_processing_fee ?? feePreview.processing_fee_usd > 0) && (
                           <li className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
-                            <span>Processing Fee</span>
+                            <span>Payment Provider Fee</span>
                             <span className="font-semibold tabular-nums text-foreground">
                               {formatCurrency(feePreview.processing_fee_usd)}
                             </span>

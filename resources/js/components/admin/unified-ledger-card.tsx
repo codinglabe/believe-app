@@ -600,7 +600,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               hint="Total paid. Gross = Subtotal + Shipping + Tax."
             />
             <div className="min-w-0 space-y-2 sm:col-span-2 lg:col-span-2">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Processing fee (Stripe + Bridge)</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Payment Provider Fee (Stripe + Bridge)</p>
               {data.provider === "points" ? (
                 <>
                   <p className="tabular-nums text-sm font-semibold text-muted-foreground">—</p>
@@ -616,7 +616,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 <>
                   <p className="tabular-nums text-sm font-semibold text-foreground">{formatMoney(data.processor_fee_amount, cur)}</p>
                   <p className="text-pretty text-[10px] leading-snug text-muted-foreground">
-                    Workbook example: Processing fee = Subtotal × processor % — here you see actual Stripe + Bridge from the transaction.
+                    Workbook example: Payment provider fee = Subtotal × processor % — here you see actual Stripe + Bridge from the transaction.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline" className={cn("tabular-nums text-xs font-semibold", providerBadgeClass("stripe"))}>
@@ -658,7 +658,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 <Amount
                   label="Organization payout"
                   value={ledgerAmountNode(isBpLedger, isBrpLedger ? null : data.organization_payout_amount, cur, true)}
-                  hint="What the org receives after fees in this split. Workbook shorthand: Org payout ≈ Subtotal − processing − platform fee (fees come from payout, not charged again to the buyer)."
+                  hint="What the org receives after fees in this split. Workbook shorthand: Org payout ≈ Subtotal − payment provider fee − platform fee (fees come from payout, not charged again to the buyer)."
                 />
                 <Amount
                   label="Supporter payout"
@@ -674,15 +674,15 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <span className="mx-1">·</span>
               <span className="font-medium text-foreground">Split</span> is the nonprofit&apos;s <span className="font-medium">gross</span> markup
               share (before fees). <span className="font-medium text-foreground">Supplier payout</span> matches the merchant/cost slice in full —
-              processing does not reduce it. <span className="font-medium text-foreground">Platform payout</span> includes order platform fee plus
-              any BIU line split. <span className="font-medium text-foreground">Organization payout</span> is that markup minus Stripe processing
+              payment provider fees do not reduce it. <span className="font-medium text-foreground">Platform payout</span> includes order platform fee plus
+              any BIU line split. <span className="font-medium text-foreground">Organization payout</span> is that markup minus payment provider fee
               and the order platform fee (fees are not added on top for the buyer). <span className="font-medium text-foreground">Net</span> is
               supplier + organization payout. BIU fee in the grid is BIU split + order platform fee.
             </p>
           )}
           {data.module === "servicehub" && sellingPayoutsVisible(data) && (
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Stripe processing</span> is deducted from seller earnings (buyer is not charged extra
+              <span className="font-medium text-foreground">Payment provider fee</span> is deducted from seller earnings (buyer is not charged extra
               for it). <span className="font-medium text-foreground">Supplier payout</span> is that net to the seller;{" "}
               <span className="font-medium text-foreground">platform payout</span> is platform plus transaction fees;{" "}
               <span className="font-medium text-foreground">Net</span> matches seller settlement for this row.
@@ -710,7 +710,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 <ProviderRailLabel provider={data.provider} />
               </p>
               {(data.bridge_fee_amount > 0 || data.provider === "bridge") && data.provider !== "points" && (
-                <p className="mt-1 text-xs text-muted-foreground">Bridge fees or virtual-account flows appear in Processing fee / provider.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Bridge fees or virtual-account flows appear in Payment Provider Fee / provider rail.</p>
               )}
               {data.provider === "points" && (
                 <p className="mt-1 text-xs text-muted-foreground">Paid from the donor&apos;s Believe Points balance (not card or bank).</p>

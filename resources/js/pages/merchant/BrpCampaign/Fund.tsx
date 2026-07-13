@@ -841,7 +841,7 @@ export default function BrpCampaignFund({ wallet }: Props) {
                   Merchants pay real money to buy Merchant BRP. That balance is distributed to customers based on your rules. When customers redeem BRP, you are giving a discount funded from the BRP you purchased — not free magic internet points.
                 </p>
                 <ol className="space-y-3 text-sm text-gray-300 list-decimal list-inside">
-                  <li>You fund a campaign with USD (plus standard processing fees).</li>
+                  <li>You fund a campaign with USD (plus the payment provider fee).</li>
                   <li>Customers earn Merchant BRP through the triggers you choose.</li>
                   <li>Customers spend BRP at your business to unlock savings.</li>
                   <li>You keep the relationship and the sale — with predictable reward economics.</li>
