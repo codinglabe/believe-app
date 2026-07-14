@@ -91,6 +91,11 @@ return [
     'require_topics_selection' => (bool) env('REQUIRE_TOPICS_SELECTION', true),
 
     /*
+    | Force normal supporters (role user) to complete /profile/edit first.
+    */
+    'require_supporter_profile' => (bool) env('REQUIRE_SUPPORTER_PROFILE', true),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------

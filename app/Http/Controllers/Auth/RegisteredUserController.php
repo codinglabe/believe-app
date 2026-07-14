@@ -115,8 +115,8 @@ class RegisteredUserController extends Controller
             ]);
         }
 
-        // Supporter: redirect to public profile view
-        return redirect()->route('users.show', $user->slug ?? $user->id);
+        // Supporter: complete profile first
+        return redirect()->route('user.profile.edit');
     }
 
     /**

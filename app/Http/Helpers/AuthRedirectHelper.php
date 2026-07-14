@@ -3,6 +3,8 @@
 namespace App\Http\Helpers;
 
 use App\Models\CareAlliance;
+use App\Models\User;
+use App\Services\SupporterProfileCompletionService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Route;
 
@@ -15,7 +17,7 @@ class AuthRedirectHelper
     /**
      * Get the default redirect URL for the authenticated user (by role).
      *
-     * - Supporter (user): public profile
+     * - Supporter (user): /profile/edit until required fields filled, then public profile
      * - Care Alliance (Spatie role care_alliance): public alliance hub (/alliances/{slug})
      * - Organization / organization_pending: public org page
      * - Admin: dashboard
@@ -29,6 +31,10 @@ class AuthRedirectHelper
         $role = $user->role ?? (method_exists($user, 'getRoleNames') ? $user->getRoleNames()->first() : null);
 
         if ($role === 'user') {
+            if ($user instanceof User && SupporterProfileCompletionService::needsProfileSetup($user)) {
+                return Route::has('user.profile.edit') ? route('user.profile.edit') : '/profile/edit';
+            }
+
             $slug = $user->slug ?? $user->id;
 
             return Route::has('users.show') ? route('users.show', $slug) : '/';

@@ -9,6 +9,30 @@ use App\Models\User;
  */
 final class SupporterProfileCompletionService
 {
+    /**
+     * Minimum fields required on /profile/edit for a normal supporter (role user).
+     * Used to force first-time profile setup after registration / login.
+     */
+    public static function hasRequiredEditFields(User $user): bool
+    {
+        if (($user->role ?? null) !== 'user') {
+            return true;
+        }
+
+        return filled($user->city)
+            && filled($user->state)
+            && filled($user->zipcode)
+            && filled($user->dob);
+    }
+
+    /**
+     * True when a normal supporter still needs to finish /profile/edit.
+     */
+    public static function needsProfileSetup(User $user): bool
+    {
+        return ($user->role ?? null) === 'user' && ! self::hasRequiredEditFields($user);
+    }
+
     public static function isComplete(User $user): bool
     {
         if (($user->role ?? null) !== 'user') {
