@@ -173,6 +173,10 @@ export default function ProfileEdit() {
   const religionOptions = pageProps.religionOptions ?? []
   const organizations = pageProps.organizations ?? []
   const profileReady = Boolean(pageProps.user)
+  const setupInfo =
+    (typeof pageProps.flash?.info === "string" && pageProps.flash.info) ||
+    (typeof (pageProps as { info?: unknown }).info === "string" && (pageProps as { info?: string }).info) ||
+    null
 
   const { updateAppearance } = useAppearance()
 
@@ -610,6 +614,13 @@ export default function ProfileEdit() {
           <AlertDescription className="text-green-800 dark:text-green-200">Profile updated successfully!</AlertDescription>
         </Alert>
       </Transition>
+
+      {setupInfo ? (
+        <Alert className="mb-2 border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/80">
+          <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+          <AlertDescription className="text-purple-900 dark:text-purple-100">{setupInfo}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <form onSubmit={handleSubmit} noValidate className="min-w-0 w-full max-w-full space-y-4 sm:space-y-6">
         {/* 1. Personal Information */}

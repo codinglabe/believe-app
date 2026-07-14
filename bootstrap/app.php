@@ -25,6 +25,7 @@ use App\Http\Middleware\EnsureCanReadTopics;
 use App\Http\Middleware\EnsureCareAllianceWalletEligible;
 use App\Http\Middleware\EnsureEmailIsVerified;
 use App\Http\Middleware\EnsureServiceHubSeller;
+use App\Http\Middleware\EnsureSupporterProfileComplete;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\IncreaseUploadLimits;
@@ -90,6 +91,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             DetectTimezone::class, // Persists browser timezone to users.timezone (app stays UTC)
             EnsureBridgeVerified::class,
+            EnsureSupporterProfileComplete::class, // Role user: finish /profile/edit before rest of app
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             IncreaseUploadLimits::class,
@@ -107,6 +109,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
             'topics.selected' => CheckTopicsSelected::class,
+            'profile.complete' => EnsureSupporterProfileComplete::class,
             'check.permission' => CheckPermission::class,
             'check.role' => CheckRole::class,
             'EnsureEmailIsVerified' => EnsureEmailIsVerified::class,
