@@ -119,11 +119,9 @@ class BridgePrefundedLiquidityService
                         continue;
                     }
 
-                    if ($service->isMemberCustomerBridgeWallet($walletId)
-                        && $walletId !== $configuredReserveWalletId) {
-                        continue;
-                    }
-
+                    // Always list every wallet for the configured reserve customer — orgs/treasury
+                    // customers can have multiple Bridge wallets and the funded one must be selectable.
+                    // (@see https://apidocs.bridge.xyz/platform/wallets/move-money)
                     $walletSummary = $this->fetchWalletSummary($service, $preferredCustomerId, $walletId);
                     if ($walletSummary === null) {
                         continue;
@@ -138,6 +136,52 @@ class BridgePrefundedLiquidityService
                         'currency' => strtolower((string) $walletSummary['currency']),
                         'bridge_wallet_id' => $walletId,
                         'customer_id' => $preferredCustomerId,
+                        'chain' => (string) $walletSummary['chain'],
+                        'address' => (string) $walletSummary['address'],
+                        'is_recommended' => false,
+                        'matches_name_filter' => $preferredName !== ''
+                            && $service->prefundedAccountNameMatches($customerName, $preferredName),
+                    ];
+                }
+            }
+        }
+
+        // Also surface wallets for the saved reserve customer even when the preferred override
+        // was empty but settings already store a customer ID / wallet ID.
+        $configuredCustomerId = trim((string) ($additionalConfig[$customerIdKey] ?? ''));
+        if ($configuredCustomerId !== '' && $configuredCustomerId !== $preferredCustomerId) {
+            $customerResult = $service->getCustomer($configuredCustomerId);
+            $customerPayload = ($customerResult['success'] ?? false) && is_array($customerResult['data'] ?? null)
+                ? $customerResult['data']
+                : [];
+            $customerName = $service->extractCustomerDisplayName($customerPayload);
+            $walletsResult = $service->getWallets($configuredCustomerId);
+
+            if ($walletsResult['success'] ?? false) {
+                foreach ($service->normalizeBridgeListData($walletsResult) as $walletRow) {
+                    if (! is_array($walletRow)) {
+                        continue;
+                    }
+
+                    $walletId = trim((string) ($walletRow['id'] ?? ''));
+                    if ($walletId === '' || isset($seenWalletIds[$walletId])) {
+                        continue;
+                    }
+
+                    $walletSummary = $this->fetchWalletSummary($service, $configuredCustomerId, $walletId);
+                    if ($walletSummary === null) {
+                        continue;
+                    }
+
+                    $seenWalletIds[$walletId] = true;
+                    $accounts[] = [
+                        'id' => $walletId,
+                        'source' => 'customer_reserve',
+                        'name' => $customerName,
+                        'available_balance' => (string) $walletSummary['balance'],
+                        'currency' => strtolower((string) $walletSummary['currency']),
+                        'bridge_wallet_id' => $walletId,
+                        'customer_id' => $configuredCustomerId,
                         'chain' => (string) $walletSummary['chain'],
                         'address' => (string) $walletSummary['address'],
                         'is_recommended' => false,
@@ -192,11 +236,7 @@ class BridgePrefundedLiquidityService
     ): ?array {
         $accountName = (string) ($payload['name'] ?? $row['name'] ?? 'Prefunded account');
         $walletId = $service->extractBridgeWalletIdFromPayload($payload);
-        if ($walletId !== ''
-            && $service->isMemberCustomerBridgeWallet($walletId)
-            && $walletId !== $configuredReserveWalletId) {
-            $walletId = '';
-        }
+        // Keep wallet id even if it is also linked locally — admin must be able to pick the funded wallet.
 
         $customerId = $service->extractCustomerIdFromPayload($payload);
         $walletSummary = $walletId !== ''
@@ -243,9 +283,28 @@ class BridgePrefundedLiquidityService
         if ($preferredWalletId !== '') {
             foreach ($accounts as $index => $account) {
                 if ((string) ($account['bridge_wallet_id'] ?? '') === $preferredWalletId) {
-                    $recommendedIndex = $index;
-                    break;
+                    $configuredBalance = (float) ($account['available_balance'] ?? 0);
+                    // Prefer the configured wallet when it has funds; otherwise recommend a funded sibling.
+                    if ($configuredBalance > 0) {
+                        $recommendedIndex = $index;
+                        break;
+                    }
                 }
+            }
+        }
+
+        if ($recommendedIndex === null) {
+            $bestBalance = -1.0;
+            foreach ($accounts as $index => $account) {
+                $balance = (float) ($account['available_balance'] ?? 0);
+                if ($balance > $bestBalance) {
+                    $bestBalance = $balance;
+                    $recommendedIndex = $index;
+                }
+            }
+
+            if ($bestBalance <= 0) {
+                $recommendedIndex = null;
             }
         }
 
@@ -281,6 +340,12 @@ class BridgePrefundedLiquidityService
             $bRecommended = (bool) ($b['is_recommended'] ?? false);
             if ($aRecommended !== $bRecommended) {
                 return $bRecommended <=> $aRecommended;
+            }
+
+            $aBalance = (float) ($a['available_balance'] ?? 0);
+            $bBalance = (float) ($b['available_balance'] ?? 0);
+            if ($aBalance !== $bBalance) {
+                return $bBalance <=> $aBalance;
             }
 
             $aMatch = (bool) ($a['matches_name_filter'] ?? false);
