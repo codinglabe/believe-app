@@ -118,66 +118,23 @@ class BelievePointsToBridgeWalletService
             ];
         }
 
-        $prefundedAccountId = $this->settings->prefundedAccountId();
-
-        $bridgeResult = $this->bridgeService->createPrefundedWalletTransfer(
-            $this->settings->prefundedCustomerId(),
-            $this->settings->prefundedWalletId(),
-            (string) $integration->bridge_customer_id,
-            $recipientWallet['wallet_id'],
+        // Deduct BP and persist the transfer row BEFORE any Bridge disbursement.
+        $reserved = $this->reserveTransferPoints(
+            $user,
+            $integration,
             $amount,
             $idempotencyKey,
-            $prefundedAccountId !== '' ? $prefundedAccountId : null,
-            $this->settings->prefundedAccountName() !== '' ? $this->settings->prefundedAccountName() : null,
+            $recipientWallet['wallet_id'],
         );
 
-        if ($bridgeResult['success'] ?? false) {
-            return $this->finalizeSubmittedTransfer(
-                $user,
-                $integration,
-                $amount,
-                $idempotencyKey,
-                $recipientWallet['wallet_id'],
-                $bridgeResult,
-            );
+        if (! ($reserved['success'] ?? false)) {
+            return $reserved;
         }
 
-        if (! ($bridgeResult['success'] ?? false)) {
-            if ($this->shouldQueueForLiquidityRetry($bridgeResult)) {
-                Log::info('Believe Points wallet transfer awaiting reserve liquidity', [
-                    'user_id' => $user->id,
-                    'amount' => $amount,
-                    'bridge_error' => $bridgeResult['error'] ?? null,
-                    'bridge_error_code' => $bridgeResult['error_code'] ?? null,
-                ]);
+        /** @var BelievePointWalletTransfer $transfer */
+        $transfer = $reserved['transfer'];
 
-                return $this->queueNewTransferForLiquidity(
-                    $user,
-                    $integration,
-                    $amount,
-                    $idempotencyKey,
-                    $recipientWallet['wallet_id'],
-                );
-            }
-
-            Log::warning('Believe Points wallet transfer rejected by Bridge', [
-                'user_id' => $user->id,
-                'amount' => $amount,
-                'reserve_customer_id' => $this->settings->prefundedCustomerId(),
-                'reserve_wallet_id' => $this->settings->prefundedWalletId(),
-                'recipient_customer_id' => $integration->bridge_customer_id,
-                'recipient_wallet_id' => $recipientWallet['wallet_id'],
-                'bridge_error' => $bridgeResult['error'] ?? null,
-                'bridge_error_code' => $bridgeResult['error_code'] ?? null,
-                'bridge_response' => $bridgeResult['response'] ?? null,
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'We could not complete your transfer right now. Please try again later.',
-                'error_code' => (string) ($bridgeResult['error_code'] ?? 'BRIDGE_TRANSFER_FAILED'),
-            ];
-        }
+        return $this->disburseReservedTransfer($transfer, $integration, $user);
     }
 
     /**
@@ -415,81 +372,11 @@ class BelievePointsToBridgeWalletService
     }
 
     /**
-     * @param  array<string, mixed>  $bridgeResult
-     * @return array{success: bool, message?: string, data?: array<string, mixed>}
+     * Deduct purchased BP and create a pending transfer row. Must complete before Bridge is called.
+     *
+     * @return array{success: bool, transfer?: BelievePointWalletTransfer, message?: string, error_code?: string}
      */
-    private function finalizeSubmittedTransfer(
-        User $user,
-        BridgeIntegration $integration,
-        float $amount,
-        string $idempotencyKey,
-        string $recipientWalletId,
-        array $bridgeResult,
-    ): array {
-        /** @var BelievePointWalletTransfer $transfer */
-        $transfer = DB::transaction(function () use ($user, $integration, $amount, $idempotencyKey, $recipientWalletId, $bridgeResult) {
-            $lockedUser = User::query()->lockForUpdate()->findOrFail($user->id);
-            $availablePurchased = round((float) ($lockedUser->believe_points ?? 0), 2);
-
-            if ($availablePurchased + 0.000001 < $amount) {
-                throw new \RuntimeException('INSUFFICIENT_BELIEVE_POINTS');
-            }
-
-            $lockedUser->decrement('believe_points', $amount);
-
-            $record = BelievePointWalletTransfer::query()->create([
-                'user_id' => $lockedUser->id,
-                'bridge_integration_id' => $integration->id,
-                'amount' => $amount,
-                'status' => BelievePointWalletTransfer::STATUS_SUBMITTED,
-                'bridge_transfer_id' => $this->bridgeTransferIdFromResult($bridgeResult),
-                'bridge_transfer_state' => $this->bridgeStateFromResult($bridgeResult),
-                'idempotency_key' => $idempotencyKey,
-                'metadata' => [
-                    'recipient_customer_id' => $integration->bridge_customer_id,
-                    'recipient_wallet_id' => $recipientWalletId,
-                    'bridge_response' => $bridgeResult['data'] ?? [],
-                ],
-            ]);
-
-            $this->createWalletTransferLedgerEntry($lockedUser->id, $record->id, $amount);
-
-            return $record;
-        });
-
-        $this->applyBridgeTransferStateFromResult($transfer, $bridgeResult);
-        $transfer->refresh();
-
-        $bridgeTransferId = (string) ($transfer->bridge_transfer_id ?? '');
-        if ($bridgeTransferId !== '') {
-            $this->bridgeWalletNotifier->notifyTransferWebhook(
-                is_array($bridgeResult['data'] ?? null) ? $bridgeResult['data'] : ['id' => $bridgeTransferId, 'amount' => $amount],
-                (string) ($transfer->bridge_transfer_state ?? 'pending'),
-                'transfer.created',
-            );
-        }
-
-        $snapshot = $this->bridgeWalletReadService->getWalletSnapshot($integration);
-
-        return [
-            'success' => true,
-            'message' => 'Your wallet is being funded. Funds will appear when Bridge confirms the transfer.',
-            'data' => [
-                'transfer_id' => $transfer->id,
-                'bridge_transfer_id' => $bridgeTransferId,
-                'status' => $transfer->status,
-                'bridge_state' => $transfer->bridge_transfer_state,
-                'amount' => $amount,
-                'believe_points_balance' => round((float) $user->fresh()->believe_points, 2),
-                'wallet_balance' => $snapshot['balance'] ?? null,
-            ],
-        ];
-    }
-
-    /**
-     * @return array{success: bool, message?: string, data?: array<string, mixed>}
-     */
-    private function queueNewTransferForLiquidity(
+    private function reserveTransferPoints(
         User $user,
         BridgeIntegration $integration,
         float $amount,
@@ -498,6 +385,15 @@ class BelievePointsToBridgeWalletService
     ): array {
         try {
             $transfer = DB::transaction(function () use ($user, $integration, $amount, $idempotencyKey, $recipientWalletId) {
+                $existing = BelievePointWalletTransfer::query()
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+
                 $lockedUser = User::query()->lockForUpdate()->findOrFail($user->id);
                 $availablePurchased = round((float) ($lockedUser->believe_points ?? 0), 2);
 
@@ -507,20 +403,22 @@ class BelievePointsToBridgeWalletService
 
                 $lockedUser->decrement('believe_points', $amount);
 
-                return BelievePointWalletTransfer::query()->create([
+                $record = BelievePointWalletTransfer::query()->create([
                     'user_id' => $lockedUser->id,
                     'bridge_integration_id' => $integration->id,
                     'amount' => $amount,
                     'status' => BelievePointWalletTransfer::STATUS_PENDING,
                     'idempotency_key' => $idempotencyKey,
-                    'retry_until' => now()->addHours(self::LIQUIDITY_RETRY_HOURS),
                     'metadata' => [
                         'recipient_customer_id' => $integration->bridge_customer_id,
                         'recipient_wallet_id' => $recipientWalletId,
-                        'awaiting_liquidity' => true,
-                        'queued_at' => now()->toIso8601String(),
+                        'reserved_at' => now()->toIso8601String(),
                     ],
                 ]);
+
+                $this->recordWalletTransferLedger($record);
+
+                return $record;
             });
         } catch (\RuntimeException $e) {
             if ($e->getMessage() === 'INSUFFICIENT_BELIEVE_POINTS') {
@@ -534,7 +432,157 @@ class BelievePointsToBridgeWalletService
             throw $e;
         }
 
-        return $this->pendingUserResponse($transfer, $user);
+        return [
+            'success' => true,
+            'transfer' => $transfer,
+        ];
+    }
+
+    /**
+     * Call Bridge only after BP is already deducted for this transfer row.
+     * Never refund after Bridge reports success — leave pending for retry/reconcile instead.
+     *
+     * @return array{success: bool, message?: string, data?: array<string, mixed>, error_code?: string}
+     */
+    private function disburseReservedTransfer(
+        BelievePointWalletTransfer $transfer,
+        BridgeIntegration $integration,
+        User $user,
+    ): array {
+        if ($transfer->status !== BelievePointWalletTransfer::STATUS_PENDING || $transfer->bridge_transfer_id) {
+            return $this->responseFromTransferRecord($transfer, $user);
+        }
+
+        $metadata = is_array($transfer->metadata) ? $transfer->metadata : [];
+        $recipientWalletId = (string) ($metadata['recipient_wallet_id'] ?? '');
+        if ($recipientWalletId === '') {
+            $resolved = $this->bridgeService->resolveCustomerBridgeWallet($integration);
+            $recipientWalletId = (string) ($resolved['wallet_id'] ?? '');
+        }
+
+        if ($recipientWalletId === '') {
+            $this->refundFailedTransfer($transfer, 'Recipient Bridge wallet missing after reservation.');
+
+            return [
+                'success' => false,
+                'message' => 'Your Bridge wallet is not ready yet. Complete wallet setup first.',
+                'error_code' => 'BRIDGE_WALLET_REQUIRED',
+            ];
+        }
+
+        $prefundedAccountId = $this->settings->prefundedAccountId();
+
+        try {
+            $bridgeResult = $this->bridgeService->createPrefundedWalletTransfer(
+                $this->settings->prefundedCustomerId(),
+                $this->settings->prefundedWalletId(),
+                (string) $integration->bridge_customer_id,
+                $recipientWalletId,
+                (float) $transfer->amount,
+                $transfer->idempotency_key,
+                $prefundedAccountId !== '' ? $prefundedAccountId : null,
+                $this->settings->prefundedAccountName() !== '' ? $this->settings->prefundedAccountName() : null,
+            );
+        } catch (\Throwable $e) {
+            // Do not refund here: Bridge may have accepted before the client errored.
+            // Keep pending so the same idempotency key can be retried safely.
+            Log::error('Believe Points wallet transfer Bridge call threw after BP reserved', [
+                'transfer_id' => $transfer->id,
+                'user_id' => $user->id,
+                'amount' => $transfer->amount,
+                'error' => $e->getMessage(),
+            ]);
+
+            $transfer->update([
+                'retry_until' => $transfer->retry_until ?? now()->addHours(self::LIQUIDITY_RETRY_HOURS),
+                'metadata' => array_merge($metadata, [
+                    'last_bridge_exception' => $e->getMessage(),
+                    'queued_at' => now()->toIso8601String(),
+                ]),
+            ]);
+
+            return $this->pendingUserResponse($transfer->fresh(), $user);
+        }
+
+        if ($bridgeResult['success'] ?? false) {
+            try {
+                $this->markTransferSubmitted($transfer, $bridgeResult);
+                $this->recordWalletTransferLedger($transfer->fresh());
+            } catch (\Throwable $e) {
+                // BP already deducted and Bridge already accepted — do not refund.
+                Log::error('Believe Points wallet transfer Bridge succeeded but local submit update failed', [
+                    'transfer_id' => $transfer->id,
+                    'user_id' => $user->id,
+                    'bridge_transfer_id' => $this->bridgeTransferIdFromResult($bridgeResult),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            $transfer->refresh();
+            $snapshot = $this->bridgeWalletReadService->getWalletSnapshot($integration);
+
+            return [
+                'success' => true,
+                'message' => 'Your wallet is being funded. Funds will appear when Bridge confirms the transfer.',
+                'data' => [
+                    'transfer_id' => $transfer->id,
+                    'bridge_transfer_id' => $transfer->bridge_transfer_id,
+                    'status' => $transfer->status,
+                    'bridge_state' => $transfer->bridge_transfer_state,
+                    'amount' => (float) $transfer->amount,
+                    'believe_points_balance' => round((float) $user->fresh()->believe_points, 2),
+                    'wallet_balance' => $snapshot['balance'] ?? null,
+                ],
+            ];
+        }
+
+        if ($this->shouldQueueForLiquidityRetry($bridgeResult)) {
+            Log::info('Believe Points wallet transfer awaiting reserve liquidity', [
+                'transfer_id' => $transfer->id,
+                'user_id' => $user->id,
+                'amount' => $transfer->amount,
+                'bridge_error' => $bridgeResult['error'] ?? null,
+                'bridge_error_code' => $bridgeResult['error_code'] ?? null,
+            ]);
+
+            $transfer->update([
+                'retry_until' => $transfer->retry_until ?? now()->addHours(self::LIQUIDITY_RETRY_HOURS),
+                'metadata' => array_merge($metadata, [
+                    'awaiting_liquidity' => true,
+                    'queued_at' => now()->toIso8601String(),
+                    'last_bridge_error' => $bridgeResult['error'] ?? $bridgeResult['message'] ?? null,
+                ]),
+            ]);
+
+            return $this->pendingUserResponse($transfer->fresh(), $user);
+        }
+
+        Log::warning('Believe Points wallet transfer rejected by Bridge after BP reserved', [
+            'transfer_id' => $transfer->id,
+            'user_id' => $user->id,
+            'amount' => $transfer->amount,
+            'reserve_customer_id' => $this->settings->prefundedCustomerId(),
+            'reserve_wallet_id' => $this->settings->prefundedWalletId(),
+            'recipient_customer_id' => $integration->bridge_customer_id,
+            'recipient_wallet_id' => $recipientWalletId,
+            'bridge_error' => $bridgeResult['error'] ?? null,
+            'bridge_error_code' => $bridgeResult['error_code'] ?? null,
+            'bridge_response' => $bridgeResult['response'] ?? null,
+        ]);
+
+        $this->refundFailedTransfer(
+            $transfer,
+            (string) ($bridgeResult['error'] ?? $bridgeResult['message'] ?? 'Bridge transfer failed'),
+        );
+
+        return [
+            'success' => false,
+            'message' => 'We could not complete your transfer right now. Your Believe Points were restored.',
+            'error_code' => (string) ($bridgeResult['error_code'] ?? 'BRIDGE_TRANSFER_FAILED'),
+            'data' => [
+                'believe_points_balance' => round((float) $user->fresh()->believe_points, 2),
+            ],
+        ];
     }
 
     /**
@@ -642,6 +690,11 @@ class BelievePointsToBridgeWalletService
         DB::transaction(function () use ($transfer, $reason) {
             $locked = BelievePointWalletTransfer::query()->lockForUpdate()->find($transfer->id);
             if ($locked === null || $locked->status === BelievePointWalletTransfer::STATUS_REFUNDED) {
+                return;
+            }
+
+            // Do not reverse BP after a completed Bridge credit.
+            if ($locked->status === BelievePointWalletTransfer::STATUS_COMPLETED) {
                 return;
             }
 

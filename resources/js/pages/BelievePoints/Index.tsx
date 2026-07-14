@@ -346,6 +346,7 @@ export default function BelievePointsIndex({
   const [walletTransferAmount, setWalletTransferAmount] = useState("")
   const [walletTransferOpen, setWalletTransferOpen] = useState(false)
   const [walletTransferSubmitting, setWalletTransferSubmitting] = useState(false)
+  const walletTransferIdempotencyKeyRef = useRef<string | null>(null)
   const savedCards = useMemo(
     () => filterMethodsForRail(savedPaymentMethods, "card"),
     [savedPaymentMethods],
@@ -646,6 +647,9 @@ export default function BelievePointsIndex({
 
     setWalletTransferSubmitting(true)
     try {
+      if (!walletTransferIdempotencyKeyRef.current) {
+        walletTransferIdempotencyKeyRef.current = crypto.randomUUID()
+      }
       const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? ""
       const response = await fetch(route("believe-points.transfer-to-wallet"), {
         method: "POST",
@@ -658,12 +662,13 @@ export default function BelievePointsIndex({
         credentials: "include",
         body: JSON.stringify({
           amount,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: walletTransferIdempotencyKeyRef.current,
         }),
       })
 
       const data = await response.json()
       if (data.success) {
+        walletTransferIdempotencyKeyRef.current = null
         showSuccessToast(data.message || "Wallet funding started")
         if (typeof data.data?.believe_points_balance === "number") {
           setLocalBalance(data.data.believe_points_balance)
@@ -674,6 +679,11 @@ export default function BelievePointsIndex({
         setWalletTransferOpen(false)
         router.reload({ only: ["walletTransfers", "currentBalance", "processingBalance", "processingReleaseAt", "walletLedger"] })
       } else {
+        // Definitive failure — allow a fresh idempotency key on the next attempt
+        walletTransferIdempotencyKeyRef.current = null
+        if (typeof data.data?.believe_points_balance === "number") {
+          setLocalBalance(data.data.believe_points_balance)
+        }
         showErrorToast(data.message || "Failed to move Believe Points to wallet")
       }
     } catch {
