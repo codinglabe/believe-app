@@ -188,9 +188,12 @@ class BridgeSettingsController extends Controller
         if (! empty($request->bridge_sandbox_api_key)) {
             $sandboxService = new BridgeService($request->bridge_sandbox_api_key, 'sandbox');
             $sandboxWalletId = trim((string) ($additionalConfig['sandbox_prefunded_wallet_id'] ?? ''));
-            if ($sandboxWalletId !== '' && $sandboxService->isMemberCustomerBridgeWallet($sandboxWalletId)) {
+            $sandboxCustomerId = trim((string) ($additionalConfig['sandbox_prefunded_customer_id'] ?? ''));
+            if ($sandboxWalletId !== ''
+                && $sandboxService->isMemberCustomerBridgeWallet($sandboxWalletId)
+                && ! $this->walletBelongsToReserveCustomer($sandboxService, $sandboxWalletId, $sandboxCustomerId)) {
                 return back()->withErrors([
-                    'sandbox_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use your platform reserve customer wallet instead.',
+                    'sandbox_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use a wallet under your platform reserve customer instead.',
                 ]);
             }
             $additionalConfig = $sandboxService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'sandbox');
@@ -199,9 +202,12 @@ class BridgeSettingsController extends Controller
         if (! empty($request->bridge_live_api_key)) {
             $liveService = new BridgeService($request->bridge_live_api_key, 'live');
             $liveWalletId = trim((string) ($additionalConfig['live_prefunded_wallet_id'] ?? ''));
-            if ($liveWalletId !== '' && $liveService->isMemberCustomerBridgeWallet($liveWalletId)) {
+            $liveCustomerId = trim((string) ($additionalConfig['live_prefunded_customer_id'] ?? ''));
+            if ($liveWalletId !== ''
+                && $liveService->isMemberCustomerBridgeWallet($liveWalletId)
+                && ! $this->walletBelongsToReserveCustomer($liveService, $liveWalletId, $liveCustomerId)) {
                 return back()->withErrors([
-                    'live_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use your platform reserve customer wallet instead.',
+                    'live_prefunded_wallet_id' => 'That wallet belongs to a Believe member. Use a wallet under your platform reserve customer instead.',
                 ]);
             }
             $additionalConfig = $liveService->normalizeStoredPrefundedWalletConfig($additionalConfig, 'live');
@@ -337,5 +343,30 @@ class BridgeSettingsController extends Controller
             'error',
             $result['error'] ?? 'Live Stripe Issuing is not active. Complete Bridge cards onboarding and install the Bridge Cards Stripe App on your live Stripe account.'
         );
+    }
+
+    /**
+     * Allow selecting a wallet under the configured reserve customer even if that customer
+     * is also linked in Believe (e.g. org treasury used as temporary liquidity).
+     */
+    private function walletBelongsToReserveCustomer(
+        BridgeService $service,
+        string $walletId,
+        string $reserveCustomerId,
+    ): bool {
+        $walletId = trim($walletId);
+        $reserveCustomerId = trim($reserveCustomerId);
+        if ($walletId === '' || $reserveCustomerId === '') {
+            return false;
+        }
+
+        $walletResult = $service->getBridgeWalletById($walletId);
+        if (! ($walletResult['success'] ?? false) || ! is_array($walletResult['data'] ?? null)) {
+            return false;
+        }
+
+        $walletCustomerId = $service->extractCustomerIdFromPayload($walletResult['data']);
+
+        return $walletCustomerId !== '' && $walletCustomerId === $reserveCustomerId;
     }
 }

@@ -3529,9 +3529,14 @@ class BridgeService
     }
 
     /**
-     * Resolve a customer's custodial Bridge wallet for transfers.
+     * Resolve a customer's custodial Bridge wallet for transfers and balance display.
      *
-     * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool}|null
+     * Bridge customers can have multiple wallets across chains
+     * (@see https://apidocs.bridge.xyz/platform/wallets/move-money). Orgs often end up with
+     * several Solana wallets after repeated VA/wallet creates — prefer the funded wallet,
+     * not a stale empty bridge_wallet_id.
+     *
+     * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool, balance?: float}|null
      */
     public function resolveCustomerBridgeWallet(BridgeIntegration $integration, ?string $customerIdOverride = null): ?array
     {
@@ -3546,37 +3551,107 @@ class BridgeService
 
         $integration->loadMissing('primaryWallet', 'wallets');
 
-        $walletId = $integration->bridge_wallet_id
-            ?? $integration->primaryWallet?->bridge_wallet_id
-            ?? $integration->wallets->first(fn (BridgeWallet $w) => ! empty($w->bridge_wallet_id))?->bridge_wallet_id;
-
-        if ($walletId) {
-            $resolved = $this->parseBridgeWalletForTransfer($customerId, $walletId);
-            if ($resolved !== null) {
-                return $resolved;
+        $preferredIds = [];
+        foreach ([
+            $integration->primaryWallet?->bridge_wallet_id,
+            $integration->bridge_wallet_id,
+            ...$integration->wallets
+                ->pluck('bridge_wallet_id')
+                ->filter()
+                ->values()
+                ->all(),
+        ] as $candidateId) {
+            $candidateId = trim((string) $candidateId);
+            if ($candidateId !== '' && ! in_array($candidateId, $preferredIds, true)) {
+                $preferredIds[] = $candidateId;
             }
         }
 
-        $wallets = $this->normalizeBridgeListData($this->getWallets($customerId));
-        if ($wallets === []) {
+        $best = null;
+        $seen = [];
+
+        foreach ($preferredIds as $walletId) {
+            $resolved = $this->parseBridgeWalletForTransfer($customerId, $walletId);
+            if ($resolved === null) {
+                continue;
+            }
+
+            $seen[$walletId] = true;
+            $best = $this->preferHigherBalanceWallet($best, $resolved);
+
+            if (($resolved['balance'] ?? 0) > 0) {
+                break;
+            }
+        }
+
+        // Prefer funded preferred wallet; otherwise scan all Bridge wallets for this customer.
+        if ($best === null || ($best['balance'] ?? 0) <= 0) {
+            $apiWallets = $this->normalizeBridgeListData($this->getWallets($customerId));
+            foreach ($apiWallets as $wallet) {
+                $walletId = trim((string) ($wallet['id'] ?? ''));
+                if ($walletId === '' || isset($seen[$walletId])) {
+                    continue;
+                }
+
+                $resolved = $this->parseBridgeWalletForTransfer($customerId, $walletId);
+                if ($resolved === null) {
+                    continue;
+                }
+
+                $seen[$walletId] = true;
+                $best = $this->preferHigherBalanceWallet($best, $resolved);
+            }
+        }
+
+        if ($best === null) {
             return null;
         }
 
-        $walletId = (string) ($wallets[0]['id'] ?? '');
-        if ($walletId === '') {
-            return null;
+        if ($integration->bridge_wallet_id !== $best['wallet_id']) {
+            $previousWalletId = $integration->bridge_wallet_id;
+            $integration->update(['bridge_wallet_id' => $best['wallet_id']]);
+            Log::info('Bridge wallet preference updated to funded wallet', [
+                'integration_id' => $integration->id,
+                'previous_bridge_wallet_id' => $previousWalletId,
+                'wallet_id' => $best['wallet_id'],
+                'balance' => $best['balance'] ?? null,
+                'chain' => $best['chain'] ?? null,
+            ]);
         }
 
-        $resolved = $this->parseBridgeWalletForTransfer($customerId, $walletId);
-        if ($resolved === null) {
-            return null;
+        return $best;
+    }
+
+    /**
+     * @param  array{wallet_id: string, chain: string, currency: string, initiation_required: bool, balance?: float}|null  $current
+     * @param  array{wallet_id: string, chain: string, currency: string, initiation_required: bool, balance?: float}  $candidate
+     * @return array{wallet_id: string, chain: string, currency: string, initiation_required: bool, balance?: float}
+     */
+    private function preferHigherBalanceWallet(?array $current, array $candidate): array
+    {
+        if ($current === null) {
+            return $candidate;
         }
 
-        if ($integration->bridge_wallet_id !== $walletId) {
-            $integration->update(['bridge_wallet_id' => $walletId]);
+        $currentBalance = (float) ($current['balance'] ?? 0);
+        $candidateBalance = (float) ($candidate['balance'] ?? 0);
+
+        if ($candidateBalance > $currentBalance) {
+            return $candidate;
         }
 
-        return $resolved;
+        if ($candidateBalance < $currentBalance) {
+            return $current;
+        }
+
+        // Tie-break: prefer Solana (app default chain for VAs / transfers).
+        $currentChain = strtolower((string) ($current['chain'] ?? ''));
+        $candidateChain = strtolower((string) ($candidate['chain'] ?? ''));
+        if ($candidateChain === 'solana' && $currentChain !== 'solana') {
+            return $candidate;
+        }
+
+        return $current;
     }
 
     /**

@@ -160,9 +160,8 @@ export function PrefundedLiquidityPicker({
         <div>
           <p className="text-sm font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Your platform <span className="font-medium">reserve account</span> is a Bridge customer account (not a
-            Believe member wallet) that your client configured for BP funding. Enter the reserve customer ID and name,
-            load from Bridge, then select the matching wallet.
+            Load every Bridge wallet for your platform <span className="font-medium">reserve customer</span> (including
+            funded wallets). Select the wallet that shows your available balance, then save.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={loadAccounts}>
