@@ -23,7 +23,7 @@ class PostService
         }
 
         $response = Http::post(
-            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/feed",
+            "https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$account->facebook_page_id}/feed",
             $params
         );
 
@@ -69,7 +69,7 @@ class PostService
             $fileContents,
             $filename,
             ['Content-Type' => $mimeType]
-        )->post("https://graph.facebook.com/v19.0/{$account->facebook_page_id}/photos", $params);
+        )->post("https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$account->facebook_page_id}/photos", $params);
 
         if (!$response->successful()) {
             Log::error('Facebook image upload failed', [
@@ -115,7 +115,7 @@ class PostService
         // Facebook video upload is a multi-step process
         // Start upload session
         $startResponse = Http::post(
-            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/videos",
+            "https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$account->facebook_page_id}/videos",
             [
                 'access_token' => $account->page_access_token,
                 'upload_phase' => 'start',
@@ -158,7 +158,7 @@ class PostService
 
         // Finish upload
         $finishResponse = Http::post(
-            "https://graph.facebook.com/v19.0/{$videoId}",
+            "https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$videoId}",
             [
                 'access_token' => $account->page_access_token,
                 'upload_phase' => 'finish',
@@ -173,7 +173,7 @@ class PostService
 
         // Create post with video
         $postResponse = Http::post(
-            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/feed",
+            "https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$account->facebook_page_id}/feed",
             [
                 'message' => $message,
                 'attached_media[0]' => json_encode(['media_fbid' => $videoId]),
@@ -193,7 +193,7 @@ class PostService
      */
     public function getPageInfoForApp(FacebookAccount $account)
     {
-        $response = Http::get("https://graph.facebook.com/v19.0/{$account->facebook_page_id}", [
+        $response = Http::get("https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$account->facebook_page_id}", [
             'access_token' => $account->page_access_token,
             'fields' => 'id,name,category,followers_count,picture{url},cover,about,description',
         ]);
@@ -210,7 +210,7 @@ class PostService
      */
     public function deletePost(FacebookAccount $account, $postId)
     {
-        $response = Http::delete("https://graph.facebook.com/v19.0/{$postId}", [
+        $response = Http::delete("https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$postId}", [
             'access_token' => $account->page_access_token,
         ]);
 
@@ -226,7 +226,7 @@ class PostService
      */
     public function getPageInsights(FacebookAccount $account, $metric = 'page_post_engagements')
     {
-        $response = Http::get("https://graph.facebook.com/v19.0/{$account->facebook_page_id}/insights/{$metric}", [
+        $response = Http::get("https://graph.facebook.com/".config('facebook.api_version', 'v21.0')."/{$account->facebook_page_id}/insights/{$metric}", [
             'access_token' => $account->page_access_token,
             'period' => 'day',
         ]);

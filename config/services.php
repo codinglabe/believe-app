@@ -328,6 +328,12 @@ return [
         'app_id' => env('FACEBOOK_APP_ID'),
         'app_secret' => env('FACEBOOK_APP_SECRET'),
         'redirect_uri' => env('FACEBOOK_REDIRECT_URI', env('APP_URL').'/facebook/callback'),
+        /**
+         * Optional Facebook Login for Business configuration ID from Meta App Dashboard.
+         * When set, OAuth dialog includes config_id (recommended for Pages / tech-provider apps).
+         * Does not replace platform authentication.
+         */
+        'config_id' => env('FACEBOOK_CONFIG_ID'),
         /** @see config/facebook.php scopes and api_version for App Review */
         'default_graph_version' => env('FACEBOOK_API_VERSION', 'v21.0'),
     ],
