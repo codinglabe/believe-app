@@ -166,11 +166,27 @@ class GiftCardService
     {
         try {
             $endpoint = '/accountstatus';
+            $apiKey = $this->getApiKey();
+
+            if (empty($apiKey)) {
+                Log::warning('Phaze API key not configured');
+
+                return null;
+            }
+
+            $signature = $this->generateSignature('GET', $endpoint, null);
+
             $headers = [
-                'API-Key' => $this->getApiKey(),
+                'API-Key' => $apiKey,
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
             ];
+
+            // Phaze requires Signature on authenticated routes; missing signature
+            // returns HTTP 400 "Signature did not match".
+            if ($signature) {
+                $headers['Signature'] = $signature;
+            }
 
             return $this->makeCurlRequest('GET', $endpoint, $headers);
         } catch (\Exception $e) {

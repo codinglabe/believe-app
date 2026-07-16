@@ -62,5 +62,16 @@ class PhazeBalanceServiceTest extends TestCase
         ]);
 
         $this->assertEqualsWithDelta(5000.25, $balance, 0.01);
+
+        // Production Phaze accountstatus shape: account.balance as numeric string.
+        $productionShape = $method->invoke($service, [
+            'account' => [
+                'organizationName' => 'Stuttie Learning Inc',
+                'baseCurrency' => 'USD',
+                'balance' => '100.00',
+            ],
+        ]);
+
+        $this->assertEqualsWithDelta(100.0, $productionShape, 0.01);
     }
 }
