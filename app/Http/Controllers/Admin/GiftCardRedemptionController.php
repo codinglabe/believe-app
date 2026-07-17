@@ -87,7 +87,8 @@ class GiftCardRedemptionController extends Controller
         }
 
         return back()->withErrors([
-            'retry' => $giftCard->failure_reason ?: 'Retry did not complete. Check Phaze balance and try again.',
+            'retry' => $this->adminFailureMessage($giftCard)
+                ?: 'Retry did not complete. Check Phaze balance and try again.',
         ]);
     }
 
@@ -106,9 +107,26 @@ class GiftCardRedemptionController extends Controller
         }
 
         return back()->withErrors([
-            'force_fulfill' => $giftCard->failure_reason
+            'force_fulfill' => $this->adminFailureMessage($giftCard)
                 ?: 'Fulfillment did not complete. Check live Phaze balance / API and try again.',
         ]);
+    }
+
+    private function adminFailureMessage(GiftCard $giftCard): ?string
+    {
+        $failureMeta = is_array($giftCard->meta['phaze_fulfillment_failure'] ?? null)
+            ? $giftCard->meta['phaze_fulfillment_failure']
+            : [];
+
+        foreach (['error_admin', 'error'] as $key) {
+            if (is_string($failureMeta[$key] ?? null) && trim($failureMeta[$key]) !== '') {
+                return trim($failureMeta[$key]);
+            }
+        }
+
+        return is_string($giftCard->failure_reason) && trim($giftCard->failure_reason) !== ''
+            ? trim($giftCard->failure_reason)
+            : null;
     }
 
     /**
@@ -117,6 +135,15 @@ class GiftCardRedemptionController extends Controller
     private function transformRedemption(GiftCard $giftCard): array
     {
         $status = GiftCardStatus::tryFrom($giftCard->status);
+        $failureMeta = is_array($giftCard->meta['phaze_fulfillment_failure'] ?? null)
+            ? $giftCard->meta['phaze_fulfillment_failure']
+            : [];
+
+        $adminFailureReason = is_string($failureMeta['error_admin'] ?? null) && $failureMeta['error_admin'] !== ''
+            ? $failureMeta['error_admin']
+            : (is_string($failureMeta['error'] ?? null) && $failureMeta['error'] !== ''
+                ? $failureMeta['error']
+                : $giftCard->failure_reason);
 
         return [
             'id' => $giftCard->id,
@@ -131,6 +158,7 @@ class GiftCardRedemptionController extends Controller
             'fulfilled_at' => $giftCard->fulfilled_at?->toIso8601String(),
             'fulfillment_attempt_count' => (int) $giftCard->fulfillment_attempt_count,
             'failure_reason' => $giftCard->failure_reason,
+            'admin_failure_reason' => $adminFailureReason,
             'external_id' => $giftCard->external_id,
             'can_retry' => GiftCardStatus::isRetryEligible($giftCard->status),
             'can_force_fulfill' => GiftCardStatus::isForceFulfillEligible($giftCard->status),

@@ -32,6 +32,7 @@ interface RedemptionRow {
   fulfilled_at: string | null
   fulfillment_attempt_count: number
   failure_reason: string | null
+  admin_failure_reason?: string | null
   external_id: string | null
   can_retry: boolean
   can_force_fulfill: boolean
@@ -100,7 +101,15 @@ function statusBadgeClass(status: string): string {
 }
 
 export default function GiftCardRedemptionsIndex({ redemptions, filters, counts, statusOptions }: Props) {
-  const page = usePage<{ flash?: { success?: string } }>()
+  const page = usePage<{
+    flash?: { success?: string }
+    errors?: Record<string, string>
+  }>()
+
+  const actionError =
+    page.props.errors?.force_fulfill ||
+    page.props.errors?.retry ||
+    null
 
   const setStatus = (status: string) => {
     router.get(route("admin.gift-card-redemptions.index"), { status }, { preserveState: true, replace: true })
@@ -132,6 +141,12 @@ export default function GiftCardRedemptionsIndex({ redemptions, filters, counts,
         {page.props.flash?.success && (
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200">
             {page.props.flash.success}
+          </div>
+        )}
+
+        {actionError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200">
+            {actionError}
           </div>
         )}
 
@@ -201,8 +216,10 @@ export default function GiftCardRedemptionsIndex({ redemptions, filters, counts,
                       </td>
                       <td className="py-3 pr-4">
                         <Badge className={statusBadgeClass(row.status)}>{row.status_label}</Badge>
-                        {row.failure_reason && (
-                          <p className="mt-1 max-w-xs text-xs text-muted-foreground line-clamp-2">{row.failure_reason}</p>
+                        {(row.admin_failure_reason || row.failure_reason) && (
+                          <p className="mt-1 max-w-sm text-xs text-red-700 dark:text-red-300 whitespace-normal">
+                            {row.admin_failure_reason || row.failure_reason}
+                          </p>
                         )}
                       </td>
                       <td className="py-3 pr-4">{row.fulfillment_attempt_count}</td>
