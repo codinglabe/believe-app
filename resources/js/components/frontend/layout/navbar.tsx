@@ -50,7 +50,6 @@ import {
   Compass,
   Ticket,
   Trophy,
-  Activity,
   BarChart3,
   Settings,
   HelpCircle,
@@ -241,7 +240,6 @@ export default function Navbar() {
     ...(isLoggedIn
       ? [
           { name: "Dashboard", href: dashboardHref, icon: BarChart3 },
-          { name: "Activity Feed", href: route("social-feed.index"), icon: Activity },
           { name: "Notifications", href: route("notifications.index"), icon: Bell },
         ]
       : []),
