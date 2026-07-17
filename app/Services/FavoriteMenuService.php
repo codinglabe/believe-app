@@ -72,6 +72,7 @@ class FavoriteMenuService
     public function payloadForUser(User $user): array
     {
         $this->ensureDefaults($user);
+        $this->ensureGiftCardsInQuickFavorites($user);
 
         $catalog = $this->visibleCatalogForUser($user);
         $favoriteKeys = $this->favoriteKeysForUser($user);
@@ -106,6 +107,47 @@ class FavoriteMenuService
         }
 
         $this->seedDefaults($user);
+    }
+
+    /**
+     * Make Gift Cards easy to find in My Favorites (users can remove it anytime).
+     */
+    public function ensureGiftCardsInQuickFavorites(User $user): void
+    {
+        if (! $this->isSupporterUser($user) && ! $user->hasNonprofitDashboardRole()) {
+            return;
+        }
+
+        if (! MenuItem::query()->where('menu_key', 'gift_cards')->where('is_active', true)->exists()) {
+            return;
+        }
+
+        $alreadyPinned = UserFavoriteMenu::query()
+            ->where('user_id', $user->id)
+            ->where('menu_key', 'gift_cards')
+            ->where('placement', UserFavoriteMenu::PLACEMENT_QUICK)
+            ->exists();
+
+        if ($alreadyPinned) {
+            return;
+        }
+
+        $count = UserFavoriteMenu::query()
+            ->where('user_id', $user->id)
+            ->where('placement', UserFavoriteMenu::PLACEMENT_QUICK)
+            ->count();
+
+        if ($count >= self::MAX_QUICK_FAVORITES) {
+            return;
+        }
+
+        UserFavoriteMenu::query()->create([
+            'user_id' => $user->id,
+            'menu_key' => 'gift_cards',
+            'sort_order' => $count + 1,
+            'placement' => UserFavoriteMenu::PLACEMENT_QUICK,
+            'is_active' => true,
+        ]);
     }
 
     public function seedDefaults(User $user): void
@@ -385,21 +427,7 @@ class FavoriteMenuService
 
         $result = [];
         foreach ([1, 2, 3, 4, 5] as $slot) {
-            // Supporters: Gift Cards as the center tab (1-tap manage/redeem).
-            // Orgs/admins keep the Favorites hub in the center.
             if ($slot === 3) {
-                if ($this->isSupporterUser($user)) {
-                    $giftItem = $catalog->firstWhere('menu_key', 'gift_cards');
-                    if ($giftItem) {
-                        $result[] = array_merge($this->serializeMenuItem($giftItem, $user), [
-                            'slot' => 3,
-                            'isCenterGift' => true,
-                        ]);
-
-                        continue;
-                    }
-                }
-
                 $result[] = [
                     'slot' => 3,
                     'menuKey' => 'my_favorites',

@@ -619,6 +619,31 @@ export default function SuccessPage({
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-3 pt-6">
+                                {!pendingFulfillment && (giftCard.voucher || giftCard.card_number) ? (
+                                    <Button
+                                        className="w-full justify-start bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                                        onClick={() => copyToClipboard(giftCard.voucher || giftCard.card_number || '')}
+                                    >
+                                        {copied ? (
+                                            <CheckCircle className="h-4 w-4 mr-2" />
+                                        ) : (
+                                            <Copy className="h-4 w-4 mr-2" />
+                                        )}
+                                        {copied ? 'Code copied!' : 'Redeem — Copy Code'}
+                                    </Button>
+                                ) : pendingFulfillment ? (
+                                    <Button className="w-full justify-start" disabled>
+                                        <Gift className="h-4 w-4 mr-2" />
+                                        Redeem available within 72h
+                                    </Button>
+                                ) : (
+                                    <Link href={route('gift-cards.show.id', giftCard.id)}>
+                                        <Button className="w-full justify-start bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700">
+                                            <Gift className="h-4 w-4 mr-2" />
+                                            Redeem Gift Card
+                                        </Button>
+                                    </Link>
+                                )}
                                 <Link href={route('gift-cards.my-cards')}>
                                     <Button variant="outline" className="w-full justify-start hover:bg-primary/5 hover:border-primary/30 transition-all">
                                         <Gift className="h-4 w-4 mr-2" />

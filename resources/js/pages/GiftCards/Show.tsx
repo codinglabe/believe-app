@@ -518,47 +518,6 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                     </div>
                                 )}
 
-                                {!isProcessingStatus && (giftCard.voucher || giftCard.card_number) && (
-                                    <div
-                                        id="redeem"
-                                        className="scroll-mt-24 rounded-xl border border-purple-200/80 bg-gradient-to-r from-purple-50 to-blue-50 p-4 dark:border-purple-800/60 dark:from-purple-950/40 dark:to-blue-950/40"
-                                    >
-                                        <p className="text-base font-semibold text-foreground">Redeem this gift card</p>
-                                        <p className="mt-1 text-sm text-muted-foreground">
-                                            Copy the code below and enter it on the brand&apos;s website or app to use your balance.
-                                        </p>
-                                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                                            {giftCard.voucher && (
-                                                <Button
-                                                    className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
-                                                    onClick={() => copyToClipboard(giftCard.voucher!, 'voucher')}
-                                                >
-                                                    {copied === 'voucher' ? (
-                                                        <CheckCircle className="h-4 w-4 mr-2" />
-                                                    ) : (
-                                                        <Copy className="h-4 w-4 mr-2" />
-                                                    )}
-                                                    {copied === 'voucher' ? 'Code copied!' : 'Copy redeem code'}
-                                                </Button>
-                                            )}
-                                            {giftCard.card_number && (
-                                                <Button
-                                                    variant="outline"
-                                                    className="flex-1"
-                                                    onClick={() => copyToClipboard(giftCard.card_number!, 'card')}
-                                                >
-                                                    {copied === 'card' ? (
-                                                        <CheckCircle className="h-4 w-4 mr-2" />
-                                                    ) : (
-                                                        <Copy className="h-4 w-4 mr-2" />
-                                                    )}
-                                                    {copied === 'card' ? 'Number copied!' : 'Copy card number'}
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
                                 {/* Amount / purchase receipt */}
                                 {(() => {
                                     const faceValue = Number(giftCard.meta?.gift_card_face_value ?? giftCard.amount) || Number(giftCard.amount) || 0
@@ -1002,11 +961,12 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                             <CardContent className="space-y-3">
                                 {giftCard.voucher && (
                                     <Button
-                                        className="w-full justify-start bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                                        variant="outline"
+                                        className="w-full justify-start"
                                         onClick={() => copyToClipboard(giftCard.voucher!, 'voucher')}
                                     >
                                         <Copy className="h-4 w-4 mr-2" />
-                                        Redeem — Copy Code
+                                        Copy Voucher Code
                                     </Button>
                                 )}
                                 {giftCard.card_number && (
