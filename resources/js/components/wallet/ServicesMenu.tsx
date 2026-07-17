@@ -1,4 +1,4 @@
-import { Building2, CreditCard, Plus, Loader2 } from 'lucide-react'
+import { Building2, CreditCard, Gift, Plus, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { ActionView } from './types'
 
@@ -8,6 +8,8 @@ interface ServicesMenuProps {
     hasBankAccounts?: boolean | null
     isCheckingBankAccounts?: boolean
     onAddBankAccount?: () => void
+    /** Opens owned gift cards management (closes wallet). */
+    onOpenMyGiftCards?: () => void
 }
 
 export function ServicesMenu({
@@ -16,6 +18,7 @@ export function ServicesMenu({
     hasBankAccounts,
     isCheckingBankAccounts,
     onAddBankAccount,
+    onOpenMyGiftCards,
 }: ServicesMenuProps) {
     return (
         <motion.div
@@ -28,11 +31,14 @@ export function ServicesMenu({
             <div className="space-y-3">
                 <div className="mb-4">
                     <h2 className="text-lg font-semibold">Services</h2>
-                    <p className="text-xs text-muted-foreground mt-1">Manage your banking and card services</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Manage banking, cards, and gift cards
+                    </p>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2">
                     <button
+                        type="button"
                         onClick={() => {
                             if (hasBankAccounts === false && onAddBankAccount) {
                                 onAddBankAccount()
@@ -61,6 +67,7 @@ export function ServicesMenu({
                     </button>
 
                     <button
+                        type="button"
                         onClick={() => onNavigate('virtual_card')}
                         className="w-full flex flex-col items-center justify-center p-3 rounded-lg border border-border hover:bg-muted transition-colors group cursor-pointer relative"
                     >
@@ -75,9 +82,24 @@ export function ServicesMenu({
                         )}
                         <p className="text-sm font-medium text-center">Cards</p>
                     </button>
+
+                    {onOpenMyGiftCards ? (
+                        <button
+                            type="button"
+                            onClick={onOpenMyGiftCards}
+                            className="w-full flex flex-col items-center justify-center p-3 rounded-lg border border-border hover:bg-muted transition-colors group cursor-pointer"
+                        >
+                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg mb-2 group-hover:scale-110 transition-transform">
+                                <Gift className="h-4 w-4 text-white" />
+                            </div>
+                            <p className="text-sm font-medium text-center">My Gift Cards</p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground text-center leading-tight">
+                                View, redeem & balances
+                            </p>
+                        </button>
+                    ) : null}
                 </div>
             </div>
         </motion.div>
     )
 }
-
