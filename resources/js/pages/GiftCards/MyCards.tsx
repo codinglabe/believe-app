@@ -13,7 +13,8 @@ import {
     Copy,
     CheckCircle,
     Download,
-    CreditCard
+    CreditCard,
+    Ticket,
 } from "lucide-react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
@@ -105,21 +106,35 @@ export default function MyCardsPage({ giftCards, user }: MyCardsProps) {
         setTimeout(() => setCopiedId(null), 2000)
     }
 
+    const canRedeem = (card: GiftCard) =>
+        Boolean(card.voucher) && ['active', 'completed'].includes(card.status)
+
+    const isProcessing = (card: GiftCard) =>
+        ['pending_fulfillment', 'processing', 'pending', 'capacity_reached'].includes(card.status)
+
     const downloadPDFReceipt = (cardId: number) => {
         // Use server-side PDF generation using the updated blade template
         window.open(route('gift-cards.download-pdf', cardId), '_blank')
     }
 
     return (
-        <ProfileLayout title="My Gift Cards" description="View and manage all your gift cards">
+        <ProfileLayout title="My Gift Cards" description="View your cards and redeem codes in one place">
             <Head title="My Gift Cards" />
 
             <div className="space-y-6">
+                <div className="rounded-xl border border-purple-200/70 bg-gradient-to-r from-purple-50 to-blue-50 p-4 dark:border-purple-800/50 dark:from-purple-950/40 dark:to-blue-950/40">
+                    <p className="text-sm font-semibold text-foreground">How to use your gift cards</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Tap <span className="font-medium text-foreground">View</span> for details, or{" "}
+                        <span className="font-medium text-foreground">Redeem</span> to copy your code and use it at the brand.
+                    </p>
+                </div>
+
                 {/* Header Actions */}
                 <div className="flex justify-end">
                     <Link href={route('gift-cards.index')}>
                         <Button>
-                            Browse Gift Cards
+                            Buy a Gift Card
                             <ArrowRight className="h-4 w-4 ml-2" />
                         </Button>
                     </Link>
@@ -252,19 +267,49 @@ export default function MyCardsPage({ giftCards, user }: MyCardsProps) {
                                                 {getPaymentMethodBadge(card.payment_method)}
                                             </div>
 
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col gap-2 sm:flex-row">
                                                 <Link href={route('gift-cards.show.id', card.id)} className="flex-1">
                                                     <Button variant="outline" className="w-full">
                                                         <Eye className="h-4 w-4 mr-2" />
-                                                        View Details
+                                                        View
                                                     </Button>
                                                 </Link>
+                                                {canRedeem(card) ? (
+                                                    <Button
+                                                        className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                                                        onClick={() => {
+                                                            if (card.voucher) {
+                                                                copyToClipboard(card.voucher, card.id)
+                                                            }
+                                                            router.visit(`${route('gift-cards.show.id', card.id)}#redeem`)
+                                                        }}
+                                                    >
+                                                        {copiedId === card.id ? (
+                                                            <CheckCircle className="h-4 w-4 mr-2" />
+                                                        ) : (
+                                                            <Ticket className="h-4 w-4 mr-2" />
+                                                        )}
+                                                        {copiedId === card.id ? 'Code copied' : 'Redeem'}
+                                                    </Button>
+                                                ) : isProcessing(card) ? (
+                                                    <Button className="flex-1" disabled>
+                                                        Processing…
+                                                    </Button>
+                                                ) : (
+                                                    <Link href={route('gift-cards.show.id', card.id)} className="flex-1">
+                                                        <Button className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700">
+                                                            <Ticket className="h-4 w-4 mr-2" />
+                                                            Redeem
+                                                        </Button>
+                                                    </Link>
+                                                )}
                                                 {card.purchased_at && (
                                                     <Button
                                                         variant="outline"
                                                         size="icon"
                                                         onClick={() => downloadPDFReceipt(card.id)}
                                                         title="Download PDF Receipt"
+                                                        className="shrink-0"
                                                     >
                                                         <Download className="h-4 w-4" />
                                                     </Button>

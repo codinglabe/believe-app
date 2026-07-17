@@ -18,7 +18,7 @@ import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
 import { Link, usePage } from "@inertiajs/react"
 import { motion } from "framer-motion"
-import { Heart, Star } from "lucide-react"
+import { Gift, Heart, Star } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -253,6 +253,15 @@ export default function MobileBottomNav() {
           open={profileMenuOpen}
           onClose={() => setProfileMenuOpen(false)}
           profileHref={routes.profileHref}
+          onOpenFavorites={
+            isSupporter
+              ? () => {
+                  setProfileMenuOpen(false)
+                  setFavoritesOpen(true)
+                }
+              : undefined
+          }
+          giftCardsHref={isSupporter ? "/gift-cards/my-cards" : undefined}
         />
       )}
 
@@ -265,7 +274,7 @@ export default function MobileBottomNav() {
           <div className="overflow-visible rounded-[1.75rem] border border-border/70 bg-background/95 shadow-[0_8px_32px_rgba(15,23,42,0.14)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 dark:border-border/50 dark:shadow-[0_8px_32px_rgba(0,0,0,0.45)]">
             <div className="relative grid h-[3.75rem] grid-cols-5 items-end px-1">
               {slots.map((item) => {
-                if (item.slot === 3 || item.isHub) {
+                if (item.isHub) {
                   return (
                     <div key="hub" className="relative z-20 flex h-full flex-col items-center justify-end pb-1.5">
                       <motion.button
@@ -299,6 +308,47 @@ export default function MobileBottomNav() {
                         )}
                       >
                         {item.title}
+                      </span>
+                    </div>
+                  )
+                }
+
+                const isCenterGift =
+                  Boolean(item.isCenterGift) || (item.slot === 3 && item.menuKey === "gift_cards")
+                if (isCenterGift && item.href) {
+                  const giftActive = isMobileNavItemActive(path, item)
+                  return (
+                    <div key="gift-center" className="relative z-20 flex h-full flex-col items-center justify-end pb-1.5">
+                      <motion.div
+                        whileTap={{ scale: 0.96 }}
+                        animate={{ y: giftActive ? -7 : -5 }}
+                        transition={fabTransition}
+                        style={{ bottom: "1.375rem" }}
+                        className="absolute left-1/2 -translate-x-1/2"
+                      >
+                        <Link
+                          href={item.href}
+                          onClick={() => {
+                            closeMenu()
+                            setFavoritesOpen(false)
+                            setProfileMenuOpen(false)
+                          }}
+                          aria-label="My Gift Cards — view or redeem"
+                          className={cn(
+                            "flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-[0_10px_28px_rgba(124,58,237,0.45)] ring-4 ring-background transition-shadow duration-300",
+                            giftActive && "shadow-[0_12px_36px_rgba(124,58,237,0.6)]",
+                          )}
+                        >
+                          <Gift className="h-6 w-6 fill-white/15 stroke-[2.5px]" />
+                        </Link>
+                      </motion.div>
+                      <span
+                        className={cn(
+                          "relative z-10 text-[10px] font-semibold leading-tight",
+                          giftActive ? "text-purple-500 dark:text-purple-400" : "text-muted-foreground",
+                        )}
+                      >
+                        Gift Cards
                       </span>
                     </div>
                   )
