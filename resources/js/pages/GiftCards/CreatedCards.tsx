@@ -19,7 +19,9 @@ import {
     FileText,
     ChevronLeft,
     ChevronRight,
-    CreditCard
+    CreditCard,
+    RefreshCw,
+    Play,
 } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { format } from "date-fns"
@@ -80,8 +82,12 @@ interface CreatedCardsProps {
 }
 
 export default function CreatedCardsPage({ giftCards, organization, isAdmin = false }: CreatedCardsProps) {
-    const page = usePage()
-    const flash = (page.props as any).flash || {}
+    const page = usePage<{
+        flash?: { success?: string }
+        errors?: Record<string, string>
+    }>()
+    const flash = page.props.flash || {}
+    const actionError = page.props.errors?.retry || page.props.errors?.force_fulfill || null
     const { auth } = page.props as any
 
     // Form for gift card terms approval
@@ -89,7 +95,48 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
         gift_card_terms_approved: organization?.gift_card_terms_approved || false,
     })
 
-    // Flash toasts shown by app-layout; do not duplicate here.
+    const canAdminRetry = (card: GiftCard) =>
+        isAdmin &&
+        card.payment_method === 'believe_points' &&
+        (card.status === 'failed' || card.status === 'capacity_reached')
+
+    const canAdminForceFulfill = (card: GiftCard) =>
+        isAdmin &&
+        card.payment_method === 'believe_points' &&
+        (card.status === 'pending_fulfillment' || card.status === 'processing')
+
+    const retryFulfillment = (id: number) => {
+        router.post(route('admin.gift-card-redemptions.retry', id), {}, {
+            preserveScroll: true,
+            onSuccess: (visit) => {
+                const errs = (visit.props as { errors?: Record<string, string> }).errors
+                if (errs?.retry) {
+                    toast.error(errs.retry)
+                    return
+                }
+                toast.success('Retry finished — check the card status.')
+            },
+            onError: (errs) => toast.error(errs.retry || 'Retry failed. Check Phaze credentials/balance.'),
+        })
+    }
+
+    const forceFulfill = (id: number) => {
+        if (!window.confirm('Fulfill this gift card now via Phaze?')) {
+            return
+        }
+        router.post(route('admin.gift-card-redemptions.force-fulfill', id), {}, {
+            preserveScroll: true,
+            onSuccess: (visit) => {
+                const errs = (visit.props as { errors?: Record<string, string> }).errors
+                if (errs?.force_fulfill) {
+                    toast.error(errs.force_fulfill)
+                    return
+                }
+                toast.success('Fulfillment finished — check the card status.')
+            },
+            onError: (errs) => toast.error(errs.force_fulfill || 'Fulfillment failed. Check Phaze credentials/balance.'),
+        })
+    }
 
     const handleTermsSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -199,6 +246,36 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                 </p>
                             </div>
                         </div>
+
+                        {isAdmin && (
+                            <Alert className="border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>
+                                    Failed Believe Points cards can be retried here, or from{' '}
+                                    <Link
+                                        href={route('admin.gift-card-redemptions.index', { status: 'failed' })}
+                                        className="font-medium underline underline-offset-2"
+                                    >
+                                        System → Gift card redemptions
+                                    </Link>
+                                    . Phaze must have a real prefunded balance before retry succeeds.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        {flash.success && (
+                            <Alert className="border-green-200 bg-green-50 text-green-950 dark:border-green-800 dark:bg-green-950/30 dark:text-green-100">
+                                <CheckCircle className="h-4 w-4" />
+                                <AlertDescription>{flash.success}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {actionError && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{actionError}</AlertDescription>
+                            </Alert>
+                        )}
 
                         {/* Stats */}
                         <div className={`grid grid-cols-1 sm:grid-cols-${isAdmin ? '4' : '3'} gap-4`}>
@@ -405,17 +482,35 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                             <div className="flex flex-col gap-2">
                                                 {getStatusBadge(card.status)}
                                                 {getPaymentMethodBadge(card.payment_method)}
-                                                {/* View button - all cards here are purchased */}
-                                                <div className="flex gap-2 mt-2">
+                                                <div className="flex flex-col gap-2 mt-2 min-w-[9.5rem]">
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => router.visit(route('gift-cards.show.id', card.id))}
-                                                        className="flex-1"
                                                     >
                                                         <Eye className="h-3 w-3 mr-1" />
                                                         View Details
                                                     </Button>
+                                                    {canAdminRetry(card) && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="default"
+                                                            onClick={() => retryFulfillment(card.id)}
+                                                        >
+                                                            <RefreshCw className="h-3 w-3 mr-1" />
+                                                            Retry Phaze
+                                                        </Button>
+                                                    )}
+                                                    {canAdminForceFulfill(card) && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="default"
+                                                            onClick={() => forceFulfill(card.id)}
+                                                        >
+                                                            <Play className="h-3 w-3 mr-1" />
+                                                            Fulfill now
+                                                        </Button>
+                                                    )}
                                                 </div>
                                                 {card.purchased_at && (
                                                     <div className="text-xs text-muted-foreground mt-1">
