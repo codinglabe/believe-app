@@ -180,22 +180,75 @@ class GiftCardRedemptionService
 
     /**
      * Fulfill a pending gift card redemption via Phaze.
+     *
+     * Claim/lock happens in a short DB transaction; live balance checks and the
+     * Phaze purchase HTTP call run outside the transaction so queue workers are
+     * not blocked on locks and admin force-fulfill can complete inline.
      */
     public function fulfill(int $giftCardId, bool $adminRetry = false): void
     {
-        DB::transaction(function () use ($giftCardId, $adminRetry) {
+        $claim = $this->claimForFulfillment($giftCardId, $adminRetry);
+
+        if ($claim === null) {
+            return;
+        }
+
+        $purchaseAmount = $claim['amount'];
+
+        if (! $this->phazeBalanceService->canAfford($purchaseAmount)) {
+            $resolved = $this->phazeBalanceService->resolveAffordabilityBalance();
+            $available = round((float) $resolved['available'], 2);
+            $source = $resolved['source'] === 'live'
+                ? 'live Phaze balance'
+                : 'internal Phaze wallet (live API unavailable)';
+            $reason = "Insufficient {$source} at fulfillment. Required {$purchaseAmount}, available {$available}.";
+
+            $this->markFulfillmentReserveInsufficient(
+                $claim['id'],
+                $reason,
+                $purchaseAmount,
+                $available,
+                $resolved,
+            );
+
+            return;
+        }
+
+        $orderId = $claim['order_id'];
+        $productId = $claim['product_id'];
+
+        if ($orderId === '' || $productId <= 0) {
+            $this->markFulfillmentFailed(
+                $claim['id'],
+                'Missing product or order metadata for Phaze fulfillment.',
+            );
+
+            return;
+        }
+
+        $phazePurchaseResult = $this->giftCardService->purchaseGiftCard([
+            'productId' => $productId,
+            'amount' => $purchaseAmount,
+            'currency' => $claim['currency'],
+            'orderId' => $orderId,
+            'externalUserId' => (string) $claim['user_id'],
+        ]);
+
+        if (! $phazePurchaseResult || ! $this->giftCardService->isPurchaseSuccessful($phazePurchaseResult)) {
+            $phazeError = is_array($phazePurchaseResult)
+                ? ($phazePurchaseResult['error'] ?? json_encode($phazePurchaseResult))
+                : 'No response from Phaze purchase API';
+
+            $this->markFulfillmentPhazeFailed($claim['id'], (string) $phazeError, $phazePurchaseResult);
+
+            return;
+        }
+
+        DB::transaction(function () use ($claim, $phazePurchaseResult, $orderId) {
             /** @var GiftCard|null $giftCard */
-            $giftCard = GiftCard::query()->lockForUpdate()->find($giftCardId);
+            $giftCard = GiftCard::query()->lockForUpdate()->find($claim['id']);
 
-            if (! $giftCard) {
-                return;
-            }
-
-            if ($giftCard->payment_method !== 'believe_points') {
-                return;
-            }
-
-            if (GiftCardStatus::isFulfilled($giftCard->status)) {
+            if (! $giftCard || GiftCardStatus::isFulfilled($giftCard->status)) {
                 return;
             }
 
@@ -205,16 +258,70 @@ class GiftCardRedemptionService
                 return;
             }
 
+            $this->applySuccessfulPhazeFulfillment($giftCard, $phazePurchaseResult, $orderId);
+        });
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     amount: float,
+     *     currency: string,
+     *     user_id: int,
+     *     order_id: string,
+     *     product_id: int
+     * }|null
+     */
+    private function claimForFulfillment(int $giftCardId, bool $adminRetry): ?array
+    {
+        return DB::transaction(function () use ($giftCardId, $adminRetry) {
+            /** @var GiftCard|null $giftCard */
+            $giftCard = GiftCard::query()->lockForUpdate()->find($giftCardId);
+
+            if (! $giftCard) {
+                return null;
+            }
+
+            if ($giftCard->payment_method !== 'believe_points') {
+                return null;
+            }
+
+            if (GiftCardStatus::isFulfilled($giftCard->status)) {
+                return null;
+            }
+
+            if ($this->hasCompletedPhazeFulfillment($giftCard)) {
+                $this->markCompletedFromExistingPhazeData($giftCard);
+
+                return null;
+            }
+
             $allowedStatuses = [
                 GiftCardStatus::PendingFulfillment->value,
                 GiftCardStatus::Failed->value,
                 GiftCardStatus::CapacityReached->value,
             ];
 
-            if ($adminRetry && GiftCardStatus::isRetryEligible($giftCard->status)) {
-                // Admin retry is allowed.
+            $staleProcessingLock = $giftCard->status === GiftCardStatus::Processing->value
+                && (
+                    ! $giftCard->fulfillment_locked_at
+                    || $giftCard->fulfillment_locked_at->lte(now()->subMinutes(30))
+                );
+
+            if ($adminRetry && GiftCardStatus::isForceFulfillEligible($giftCard->status)) {
+                // Admin force may reclaim pending or stuck processing rows.
+            } elseif ($adminRetry && GiftCardStatus::isRetryEligible($giftCard->status)) {
+                // Admin retry of failed / capacity reached.
+            } elseif ($staleProcessingLock) {
+                // Cron/worker may reclaim a processing row after the lock TTL.
             } elseif (! in_array($giftCard->status, $allowedStatuses, true)) {
-                return;
+                Log::info('Gift card fulfillment skipped — status not eligible', [
+                    'gift_card_id' => $giftCard->id,
+                    'status' => $giftCard->status,
+                    'admin_retry' => $adminRetry,
+                ]);
+
+                return null;
             }
 
             if (
@@ -223,15 +330,15 @@ class GiftCardRedemptionService
                 && $giftCard->scheduled_fulfillment_at
                 && $giftCard->scheduled_fulfillment_at->isFuture()
             ) {
-                return;
+                return null;
             }
 
             if (
-                $giftCard->status === GiftCardStatus::Processing->value
-                && $giftCard->fulfillment_locked_at
-                && $giftCard->fulfillment_locked_at->gt(now()->subMinutes(30))
+                ! $adminRetry
+                && $giftCard->status === GiftCardStatus::Processing->value
+                && ! $staleProcessingLock
             ) {
-                return;
+                return null;
             }
 
             $giftCard->update([
@@ -239,6 +346,7 @@ class GiftCardRedemptionService
                 'fulfillment_locked_at' => now(),
                 'last_fulfillment_attempt_at' => now(),
                 'fulfillment_attempt_count' => (int) $giftCard->fulfillment_attempt_count + 1,
+                'failure_reason' => null,
             ]);
 
             $this->appendAudit($giftCard, 'fulfillment_started', [
@@ -246,97 +354,126 @@ class GiftCardRedemptionService
                 'admin_retry' => $adminRetry,
             ]);
 
-            $purchaseAmount = (float) $giftCard->amount;
+            $meta = $giftCard->meta ?? [];
 
-            if (! $this->phazeBalanceService->canAfford($purchaseAmount)) {
-                $resolved = $this->phazeBalanceService->resolveAffordabilityBalance();
-                $available = round((float) $resolved['available'], 2);
-                $source = $resolved['source'] === 'live' ? 'live Phaze balance' : 'internal Phaze wallet (live API unavailable)';
-                $reason = "Insufficient {$source} at fulfillment. Required {$purchaseAmount}, available {$available}.";
+            return [
+                'id' => (int) $giftCard->id,
+                'amount' => (float) $giftCard->amount,
+                'currency' => $giftCard->currency ?? 'USD',
+                'user_id' => (int) $giftCard->user_id,
+                'order_id' => (string) ($meta['orderId'] ?? ''),
+                'product_id' => (int) ($meta['productId'] ?? 0),
+            ];
+        });
+    }
 
-                $giftCard->update([
-                    'status' => GiftCardStatus::PendingFulfillment->value,
-                    'failure_reason' => $reason,
-                    'fulfillment_locked_at' => null,
-                ]);
+    /**
+     * @param  array{
+     *     available: float,
+     *     source: string,
+     *     live_available: float|null,
+     *     internal_available: float
+     * }  $resolved
+     */
+    private function markFulfillmentReserveInsufficient(
+        int $giftCardId,
+        string $reason,
+        float $purchaseAmount,
+        float $available,
+        array $resolved,
+    ): void {
+        DB::transaction(function () use ($giftCardId, $reason, $purchaseAmount, $available, $resolved) {
+            /** @var GiftCard|null $giftCard */
+            $giftCard = GiftCard::query()->lockForUpdate()->find($giftCardId);
 
-                $this->appendAudit($giftCard, 'reserve_insufficient', [
-                    'required' => $purchaseAmount,
-                    'available' => $available,
-                    'balance_source' => $resolved['source'],
-                    'live_available' => $resolved['live_available'],
-                    'internal_available' => $resolved['internal_available'],
-                ]);
+            if (! $giftCard || GiftCardStatus::isFulfilled($giftCard->status)) {
+                return;
+            }
 
-                $this->notifyReserveDelayIfNeeded($giftCard->fresh(['user']));
+            $giftCard->update([
+                'status' => GiftCardStatus::PendingFulfillment->value,
+                'failure_reason' => $reason,
+                'fulfillment_locked_at' => null,
+            ]);
 
-                Log::warning('Gift card fulfillment delayed — insufficient Phaze balance', [
-                    'gift_card_id' => $giftCard->id,
-                    'required' => $purchaseAmount,
-                    'available' => $available,
-                    'balance_source' => $resolved['source'],
-                ]);
+            $this->appendAudit($giftCard, 'reserve_insufficient', [
+                'required' => $purchaseAmount,
+                'available' => $available,
+                'balance_source' => $resolved['source'],
+                'live_available' => $resolved['live_available'],
+                'internal_available' => $resolved['internal_available'],
+            ]);
 
+            $this->notifyReserveDelayIfNeeded($giftCard->fresh(['user']));
+        });
+
+        Log::warning('Gift card fulfillment delayed — insufficient Phaze balance', [
+            'gift_card_id' => $giftCardId,
+            'required' => $purchaseAmount,
+            'available' => $available,
+            'balance_source' => $resolved['source'],
+        ]);
+    }
+
+    private function markFulfillmentFailed(int $giftCardId, string $reason): void
+    {
+        DB::transaction(function () use ($giftCardId, $reason) {
+            /** @var GiftCard|null $giftCard */
+            $giftCard = GiftCard::query()->lockForUpdate()->find($giftCardId);
+
+            if (! $giftCard || GiftCardStatus::isFulfilled($giftCard->status)) {
+                return;
+            }
+
+            $giftCard->update([
+                'status' => GiftCardStatus::Failed->value,
+                'failure_reason' => $reason,
+                'fulfillment_locked_at' => null,
+            ]);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $phazePurchaseResult
+     */
+    private function markFulfillmentPhazeFailed(
+        int $giftCardId,
+        string $phazeError,
+        ?array $phazePurchaseResult,
+    ): void {
+        DB::transaction(function () use ($giftCardId, $phazeError, $phazePurchaseResult) {
+            /** @var GiftCard|null $giftCard */
+            $giftCard = GiftCard::query()->lockForUpdate()->find($giftCardId);
+
+            if (! $giftCard || GiftCardStatus::isFulfilled($giftCard->status)) {
                 return;
             }
 
             $meta = $giftCard->meta ?? [];
-            $orderId = $meta['orderId'] ?? null;
-            $productId = (int) ($meta['productId'] ?? 0);
 
-            if (! $orderId || $productId <= 0) {
-                $giftCard->update([
-                    'status' => GiftCardStatus::Failed->value,
-                    'failure_reason' => 'Missing product or order metadata for Phaze fulfillment.',
-                    'fulfillment_locked_at' => null,
-                ]);
+            $giftCard->update([
+                'status' => GiftCardStatus::Failed->value,
+                'failure_reason' => $phazeError,
+                'fulfillment_locked_at' => null,
+                'meta' => array_merge($meta, [
+                    'phaze_fulfillment_failure' => [
+                        'at' => now()->toIso8601String(),
+                        'error' => $phazeError,
+                        'response' => $phazePurchaseResult,
+                    ],
+                ]),
+            ]);
 
-                return;
-            }
-
-            $phazePurchaseData = [
-                'productId' => $productId,
-                'amount' => $purchaseAmount,
-                'currency' => $giftCard->currency ?? 'USD',
-                'orderId' => $orderId,
-                'externalUserId' => (string) $giftCard->user_id,
-            ];
-
-            $phazePurchaseResult = $this->giftCardService->purchaseGiftCard($phazePurchaseData);
-
-            if (! $phazePurchaseResult || ! $this->giftCardService->isPurchaseSuccessful($phazePurchaseResult)) {
-                $phazeError = is_array($phazePurchaseResult)
-                    ? ($phazePurchaseResult['error'] ?? json_encode($phazePurchaseResult))
-                    : 'No response from Phaze purchase API';
-
-                $giftCard->update([
-                    'status' => GiftCardStatus::Failed->value,
-                    'failure_reason' => (string) $phazeError,
-                    'fulfillment_locked_at' => null,
-                    'meta' => array_merge($meta, [
-                        'phaze_fulfillment_failure' => [
-                            'at' => now()->toIso8601String(),
-                            'error' => $phazeError,
-                            'response' => $phazePurchaseResult,
-                        ],
-                    ]),
-                ]);
-
-                $this->appendAudit($giftCard, 'phaze_api_failed', [
-                    'error' => $phazeError,
-                ]);
-
-                Log::error('Gift card Phaze fulfillment failed', [
-                    'gift_card_id' => $giftCard->id,
-                    'error' => $phazeError,
-                    'response' => $phazePurchaseResult,
-                ]);
-
-                return;
-            }
-
-            $this->applySuccessfulPhazeFulfillment($giftCard, $phazePurchaseResult, $orderId);
+            $this->appendAudit($giftCard, 'phaze_api_failed', [
+                'error' => $phazeError,
+            ]);
         });
+
+        Log::error('Gift card Phaze fulfillment failed', [
+            'gift_card_id' => $giftCardId,
+            'error' => $phazeError,
+            'response' => $phazePurchaseResult,
+        ]);
     }
 
     public function queueAdminRetry(GiftCard $giftCard, User $admin): GiftCard
@@ -361,13 +498,14 @@ class GiftCardRedemptionService
             'admin_email' => $admin->email,
         ]);
 
-        FulfillGiftCardRedemptionJob::dispatch($giftCard->id, adminRetry: true);
+        // Run inline so admin retry does not depend on a queue worker being up.
+        $this->fulfill($giftCard->id, adminRetry: true);
 
         return $giftCard->fresh(['user', 'organization']);
     }
 
     /**
-     * Skip the delay queue and fulfill a pending redemption immediately.
+     * Skip the delay queue and fulfill a pending redemption immediately (inline).
      */
     public function queueAdminForceFulfill(GiftCard $giftCard, User $admin): GiftCard
     {
@@ -376,21 +514,23 @@ class GiftCardRedemptionService
         }
 
         if (! GiftCardStatus::isForceFulfillEligible($giftCard->status)) {
-            throw new \InvalidArgumentException('Only pending fulfillment redemptions can be fulfilled early.');
+            throw new \InvalidArgumentException('Only pending or stuck processing redemptions can be fulfilled early.');
         }
 
         $giftCard->update([
+            'status' => GiftCardStatus::PendingFulfillment->value,
             'scheduled_fulfillment_at' => now(),
             'fulfillment_locked_at' => null,
             'failure_reason' => null,
         ]);
 
-        $this->appendAudit($giftCard, 'admin_force_fulfill_queued', [
+        $this->appendAudit($giftCard, 'admin_force_fulfill_started', [
             'admin_id' => $admin->id,
             'admin_email' => $admin->email,
         ]);
 
-        FulfillGiftCardRedemptionJob::dispatch($giftCard->id, adminRetry: true);
+        // Inline: avoids ShouldBeUnique drops and missing queue workers.
+        $this->fulfill($giftCard->id, adminRetry: true);
 
         return $giftCard->fresh(['user', 'organization']);
     }
