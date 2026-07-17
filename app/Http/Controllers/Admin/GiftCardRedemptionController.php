@@ -77,12 +77,18 @@ class GiftCardRedemptionController extends Controller
         $this->authorizeAdmin($request);
 
         try {
-            $this->redemptionService->queueAdminRetry($giftCard, $request->user());
+            $giftCard = $this->redemptionService->queueAdminRetry($giftCard, $request->user());
         } catch (\InvalidArgumentException $e) {
             return back()->withErrors(['retry' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Gift card redemption queued for retry.');
+        if (GiftCardStatus::isFulfilled($giftCard->status)) {
+            return back()->with('success', 'Gift card redemption fulfilled via Phaze.');
+        }
+
+        return back()->withErrors([
+            'retry' => $giftCard->failure_reason ?: 'Retry did not complete. Check Phaze balance and try again.',
+        ]);
     }
 
     public function forceFulfill(Request $request, GiftCard $giftCard): RedirectResponse
@@ -90,12 +96,19 @@ class GiftCardRedemptionController extends Controller
         $this->authorizeAdmin($request);
 
         try {
-            $this->redemptionService->queueAdminForceFulfill($giftCard, $request->user());
+            $giftCard = $this->redemptionService->queueAdminForceFulfill($giftCard, $request->user());
         } catch (\InvalidArgumentException $e) {
             return back()->withErrors(['force_fulfill' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Gift card redemption queued for immediate fulfillment.');
+        if (GiftCardStatus::isFulfilled($giftCard->status)) {
+            return back()->with('success', 'Gift card fulfilled via Phaze.');
+        }
+
+        return back()->withErrors([
+            'force_fulfill' => $giftCard->failure_reason
+                ?: 'Fulfillment did not complete. Check live Phaze balance / API and try again.',
+        ]);
     }
 
     /**

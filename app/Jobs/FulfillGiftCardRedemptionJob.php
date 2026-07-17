@@ -4,30 +4,27 @@ namespace App\Jobs;
 
 use App\Services\GiftCardRedemptionService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class FulfillGiftCardRedemptionJob implements ShouldBeUnique, ShouldQueue
+/**
+ * Concurrency is enforced in GiftCardRedemptionService via lockForUpdate +
+ * fulfillment_locked_at. Do not use ShouldBeUnique here — it silently drops
+ * admin "Fulfill now" dispatches while a delayed job lock is still held.
+ */
+class FulfillGiftCardRedemptionJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
-    public int $uniqueFor = 3600;
-
     public function __construct(
         public int $giftCardId,
         public bool $adminRetry = false,
     ) {}
-
-    public function uniqueId(): string
-    {
-        return 'fulfill-gift-card-'.$this->giftCardId;
-    }
 
     public function handle(GiftCardRedemptionService $redemptionService): void
     {
