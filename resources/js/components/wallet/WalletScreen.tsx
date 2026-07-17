@@ -52,7 +52,7 @@ const quickActions: QuickAction[] = [
     {
         id: 'services_menu',
         label: 'More',
-        description: 'Bank & cards',
+        description: 'Cards & gifts',
         icon: <LayoutGrid className="h-4 w-4" />,
     },
 ]
