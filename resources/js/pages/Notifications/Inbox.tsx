@@ -43,6 +43,7 @@ import {
   CARE_ALLIANCE_INVITATION_TYPE,
   SUPPORTER_BIRTHDAY_TYPE,
   donationNotificationTarget,
+  giftCardNotificationTarget,
   mapDatabaseNotification,
   type DatabaseNotification,
   type Notification,
@@ -257,7 +258,12 @@ export default function NotificationsInbox() {
         if (donationTarget) {
           router.visit(donationTarget)
         } else {
-          router.reload({ only: ["notifications", "activeCategory", "filterCounts", "searchQuery"] })
+          const giftCardTarget = giftCardNotificationTarget(notification)
+          if (giftCardTarget) {
+            router.visit(giftCardTarget)
+          } else {
+            router.reload({ only: ["notifications", "activeCategory", "filterCounts", "searchQuery"] })
+          }
         }
       }
     } catch {

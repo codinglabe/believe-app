@@ -85,6 +85,19 @@ class GiftCardRedemptionController extends Controller
         return back()->with('success', 'Gift card redemption queued for retry.');
     }
 
+    public function forceFulfill(Request $request, GiftCard $giftCard): RedirectResponse
+    {
+        $this->authorizeAdmin($request);
+
+        try {
+            $this->redemptionService->queueAdminForceFulfill($giftCard, $request->user());
+        } catch (\InvalidArgumentException $e) {
+            return back()->withErrors(['force_fulfill' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Gift card redemption queued for immediate fulfillment.');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -107,6 +120,7 @@ class GiftCardRedemptionController extends Controller
             'failure_reason' => $giftCard->failure_reason,
             'external_id' => $giftCard->external_id,
             'can_retry' => GiftCardStatus::isRetryEligible($giftCard->status),
+            'can_force_fulfill' => GiftCardStatus::isForceFulfillEligible($giftCard->status),
             'user' => $giftCard->user ? [
                 'id' => $giftCard->user->id,
                 'name' => $giftCard->user->name,

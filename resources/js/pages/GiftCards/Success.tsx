@@ -31,6 +31,15 @@ interface GiftCard {
     status: string
     purchased_at: string
     expires_at: string | null
+    payment_method?: string | null
+    meta?: {
+        platform_fee?: number | string | null
+        biu_fee?: number | string | null
+        gift_card_total_charged?: number | string | null
+        gift_card_face_value?: number | string | null
+        orderId?: string | null
+        [key: string]: unknown
+    } | null
     organization?: {
         id: number
         name: string
@@ -69,6 +78,14 @@ export default function SuccessPage({
             currency: giftCard.currency || 'USD',
         }).format(amount)
     }
+
+    const faceValue = Number(giftCard.meta?.gift_card_face_value ?? giftCard.amount) || Number(giftCard.amount) || 0
+    const platformFee = Number(giftCard.meta?.platform_fee ?? giftCard.meta?.biu_fee ?? 0) || 0
+    const totalCharged = Number(
+        giftCard.meta?.gift_card_total_charged ?? faceValue + platformFee,
+    ) || faceValue
+    const orderNumber =
+        (typeof giftCard.meta?.orderId === 'string' && giftCard.meta.orderId) || `GC-${giftCard.id}`
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -177,13 +194,28 @@ export default function SuccessPage({
         pdf.text(giftCard.brand_name, 80, yPos)
         yPos += 8
 
-        // Amount
+        // Gift card face value
         pdf.setFont('helvetica', 'normal')
-        pdf.text('Amount:', 20, yPos)
+        pdf.setTextColor(...darkGray)
+        pdf.text('Gift Card Amount:', 20, yPos)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(formatCurrency(faceValue), 80, yPos)
+        yPos += 8
+
+        if (platformFee > 0) {
+            pdf.setFont('helvetica', 'normal')
+            pdf.text('Platform Fee:', 20, yPos)
+            pdf.setFont('helvetica', 'bold')
+            pdf.text(formatCurrency(platformFee), 80, yPos)
+            yPos += 8
+        }
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.text('Total Charged:', 20, yPos)
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(14)
         pdf.setTextColor(...primaryColor)
-        pdf.text(formatCurrency(giftCard.amount), 80, yPos)
+        pdf.text(formatCurrency(totalCharged), 80, yPos)
         pdf.setFontSize(10)
         yPos += 8
 
@@ -444,16 +476,37 @@ export default function SuccessPage({
                                     </div>
                                 </CardHeader>
                                 <CardContent className="space-y-6 pt-6">
-                                    {/* Amount - Enhanced */}
-                                    <div className="flex items-center justify-between p-6 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 border-2 border-primary/20 shadow-md">
-                                        <div>
-                                            <span className="text-sm text-muted-foreground block mb-1">Gift Card Value</span>
-                                            <span className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
-                                                {formatCurrency(giftCard.amount)}
-                                            </span>
+                                    {/* Amount / receipt breakdown */}
+                                    <div className="space-y-3 p-6 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 border-2 border-primary/20 shadow-md">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div>
+                                                <span className="text-sm text-muted-foreground block mb-1">Total charged</span>
+                                                <span className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+                                                    {formatCurrency(totalCharged)}
+                                                </span>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    {paymentMethod === 'believe_points' ? 'Believe Points' : 'USD'}
+                                                </p>
+                                            </div>
+                                            <div className="p-4 rounded-full bg-primary/20">
+                                                <Gift className="h-8 w-8 text-primary" />
+                                            </div>
                                         </div>
-                                        <div className="p-4 rounded-full bg-primary/20">
-                                            <Gift className="h-8 w-8 text-primary" />
+                                        <div className="pt-3 border-t border-primary/20 space-y-2 text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-muted-foreground">Gift card amount</span>
+                                                <span className="font-medium">{formatCurrency(faceValue)}</span>
+                                            </div>
+                                            {platformFee > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Platform fee</span>
+                                                    <span className="font-medium">{formatCurrency(platformFee)}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between">
+                                                <span className="text-muted-foreground">Order number</span>
+                                                <span className="font-mono text-xs font-medium">{orderNumber}</span>
+                                            </div>
                                         </div>
                                     </div>
 

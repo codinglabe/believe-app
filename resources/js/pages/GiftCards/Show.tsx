@@ -14,11 +14,19 @@ import {
     Globe,
     FileText,
     Download,
-    CreditCard
+    CreditCard,
+    Clock,
+    ListOrdered,
 } from "lucide-react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
 import jsPDF from "jspdf"
+
+interface FulfillmentAuditEntry {
+    event?: string
+    at?: string
+    [key: string]: unknown
+}
 
 interface GiftCard {
     id: number
@@ -31,10 +39,15 @@ interface GiftCard {
     currency: string
     status: string
     purchased_at: string | null
+    requested_at?: string | null
+    scheduled_fulfillment_at?: string | null
+    fulfilled_at?: string | null
+    failure_reason?: string | null
     expires_at: string | null
     created_at: string
     payment_method?: string | null
     meta: any
+    fulfillment_audit?: FulfillmentAuditEntry[]
     organization?: {
         id: number
         name: string
@@ -76,6 +89,32 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
 
     const getMetaValue = (key: string) => {
         return giftCard.meta?.[key] || null
+    }
+
+    const isProcessingStatus = ['pending_fulfillment', 'processing', 'capacity_reached'].includes(giftCard.status)
+    const fulfillmentAudit: FulfillmentAuditEntry[] = Array.isArray(giftCard.fulfillment_audit)
+        ? giftCard.fulfillment_audit
+        : Array.isArray(giftCard.meta?.fulfillment_audit)
+            ? giftCard.meta.fulfillment_audit
+            : []
+
+    const formatAuditEvent = (event?: string) => {
+        if (!event) return 'Update'
+        return event
+            .split('_')
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ')
+    }
+
+    const formatDateTime = (value?: string | null) => {
+        if (!value) return null
+        return new Date(value).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        })
     }
 
     const generatePDFReceipt = () => {
@@ -437,19 +476,75 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6">
-                                {/* Amount */}
-                                <div className="flex items-center justify-between p-6 rounded-lg bg-primary/5 border border-primary/20">
-                                    <div>
-                                        <p className="text-sm text-muted-foreground mb-1">Gift Card Value</p>
-                                        <p className="text-4xl font-bold text-primary">
-                                            {formatCurrency(giftCard.amount)}
-                                        </p>
+                                {isProcessingStatus && (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                                        <div className="flex items-start gap-3">
+                                            <Clock className="mt-0.5 h-5 w-5 shrink-0" />
+                                            <div className="space-y-1">
+                                                <p className="font-semibold">Your gift card is being prepared</p>
+                                                <p className="text-sm">
+                                                    Your payment was received. The gift card will be available within 72 hours.
+                                                    We will email and notify you as soon as it is ready.
+                                                </p>
+                                                {giftCard.scheduled_fulfillment_at && (
+                                                    <p className="text-sm">
+                                                        Expected by: {formatDateTime(giftCard.scheduled_fulfillment_at)}
+                                                    </p>
+                                                )}
+                                                {giftCard.failure_reason && (
+                                                    <p className="text-sm text-amber-800 dark:text-amber-200">
+                                                        Note: {giftCard.failure_reason}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <DollarSign className="h-12 w-12 text-primary opacity-50" />
-                                </div>
+                                )}
 
-                                {/* Card Number */}
-                                {giftCard.card_number && (
+                                {/* Amount / purchase receipt */}
+                                {(() => {
+                                    const faceValue = Number(giftCard.meta?.gift_card_face_value ?? giftCard.amount) || Number(giftCard.amount) || 0
+                                    const platformFee = Number(giftCard.meta?.platform_fee ?? giftCard.meta?.biu_fee ?? 0) || 0
+                                    const totalCharged = Number(
+                                        giftCard.meta?.gift_card_total_charged ?? faceValue + platformFee,
+                                    ) || faceValue
+
+                                    return (
+                                        <div className="space-y-3 p-6 rounded-lg bg-primary/5 border border-primary/20">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div>
+                                                    <p className="text-sm text-muted-foreground mb-1">
+                                                        {platformFee > 0 ? 'Total charged' : 'Gift Card Value'}
+                                                    </p>
+                                                    <p className="text-4xl font-bold text-primary">
+                                                        {formatCurrency(totalCharged)}
+                                                    </p>
+                                                    {platformFee > 0 && (
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            Includes platform fee
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <DollarSign className="h-12 w-12 text-primary opacity-50" />
+                                            </div>
+                                            {platformFee > 0 && (
+                                                <div className="pt-3 border-t border-primary/20 space-y-1.5 text-sm">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Gift card amount</span>
+                                                        <span className="font-medium">{formatCurrency(faceValue)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Platform fee</span>
+                                                        <span className="font-medium">{formatCurrency(platformFee)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+                                })()}
+
+                                {/* Card Number — hide placeholder numbers while still processing */}
+                                {giftCard.card_number && !isProcessingStatus && (
                                     <div>
                                         <p className="text-sm font-medium mb-3">Card Number</p>
                                         <div className="flex items-center gap-2">
@@ -476,7 +571,7 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                 )}
 
                                 {/* Voucher Code */}
-                                {giftCard.voucher && (
+                                {giftCard.voucher && !isProcessingStatus && (
                                     <div>
                                         <p className="text-sm font-medium mb-3">Voucher Code</p>
                                         <div className="flex items-center gap-2">
@@ -570,6 +665,61 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {(isProcessingStatus || fulfillmentAudit.length > 0 || giftCard.fulfilled_at) && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2 dark:text-white">
+                                        <ListOrdered className="h-5 w-5" />
+                                        Status & activity
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Track progress from purchase through fulfillment.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div className="rounded-lg border p-3 dark:border-gray-700">
+                                            <p className="text-xs text-muted-foreground">Current status</p>
+                                            <div className="mt-1">{getStatusBadge(giftCard.status)}</div>
+                                        </div>
+                                        {giftCard.requested_at && (
+                                            <div className="rounded-lg border p-3 dark:border-gray-700">
+                                                <p className="text-xs text-muted-foreground">Requested</p>
+                                                <p className="mt-1 text-sm font-medium">{formatDateTime(giftCard.requested_at)}</p>
+                                            </div>
+                                        )}
+                                        {giftCard.scheduled_fulfillment_at && (
+                                            <div className="rounded-lg border p-3 dark:border-gray-700">
+                                                <p className="text-xs text-muted-foreground">Scheduled availability</p>
+                                                <p className="mt-1 text-sm font-medium">{formatDateTime(giftCard.scheduled_fulfillment_at)}</p>
+                                            </div>
+                                        )}
+                                        {giftCard.fulfilled_at && (
+                                            <div className="rounded-lg border p-3 dark:border-gray-700">
+                                                <p className="text-xs text-muted-foreground">Fulfilled</p>
+                                                <p className="mt-1 text-sm font-medium">{formatDateTime(giftCard.fulfilled_at)}</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {fulfillmentAudit.length > 0 && (
+                                        <div className="space-y-3">
+                                            <p className="text-sm font-medium">Activity log</p>
+                                            <ol className="space-y-3 border-l border-border pl-4">
+                                                {[...fulfillmentAudit].reverse().map((entry, index) => (
+                                                    <li key={`${entry.event ?? 'event'}-${entry.at ?? index}`} className="relative">
+                                                        <span className="absolute -left-[1.3rem] top-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
+                                                        <p className="text-sm font-medium dark:text-white">{formatAuditEvent(entry.event)}</p>
+                                                        <p className="text-xs text-muted-foreground">{formatDateTime(entry.at) ?? '—'}</p>
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* Brand Details from Meta */}
                         {(getMetaValue('productDescription') || getMetaValue('howToUse') || getMetaValue('termsAndConditions') || getMetaValue('expiryAndValidity')) && (

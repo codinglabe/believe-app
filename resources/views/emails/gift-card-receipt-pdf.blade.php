@@ -171,9 +171,28 @@
                 <span class="card-number">{{ $giftCard->card_number ?? $giftCard->voucher ?? 'N/A' }}</span>
             </div>
 
+            @php
+                $faceAmount = (float) ($giftCard->meta['gift_card_face_value'] ?? $giftCard->amount);
+                $platformFee = (float) ($giftCard->meta['platform_fee'] ?? $giftCard->meta['biu_fee'] ?? 0);
+                $totalCharged = (float) ($giftCard->meta['gift_card_total_charged'] ?? ($faceAmount + $platformFee));
+                $currency = $giftCard->currency ?? 'USD';
+            @endphp
+
             <div class="info-row" style="margin-top: 15px;">
-                <span class="label">Amount:</span>
-                <span class="value amount">{{ number_format($giftCard->amount, 2) }} {{ $giftCard->currency ?? 'USD' }}</span>
+                <span class="label">Gift Card Amount:</span>
+                <span class="value">{{ number_format($faceAmount, 2) }} {{ $currency }}</span>
+            </div>
+
+            @if($platformFee > 0)
+            <div class="info-row" style="margin-top: 8px;">
+                <span class="label">Platform Fee:</span>
+                <span class="value">{{ number_format($platformFee, 2) }} {{ $currency }}</span>
+            </div>
+            @endif
+
+            <div class="info-row" style="margin-top: 8px;">
+                <span class="label">Total Charged:</span>
+                <span class="value amount">{{ number_format($totalCharged, 2) }} {{ $currency }}</span>
             </div>
 
             @if($giftCard->expires_at)

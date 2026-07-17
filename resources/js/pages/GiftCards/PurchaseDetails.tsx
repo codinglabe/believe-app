@@ -71,6 +71,7 @@ interface PurchaseDetailsProps {
     } | null
     organizations: Organization[]
     giftCardPurchaseOrganizations?: OrganizationGiftCardPurchase[]
+    platformFeeUsd?: number
 }
 
 /** Phaze HTML often includes inline dark colors; force readable text in light + dark mode */
@@ -86,11 +87,13 @@ export default function PurchaseDetailsPage({
     user,
     organizations: organizationsProp,
     giftCardPurchaseOrganizations: giftCardPurchaseOrganizationsProp = [],
+    platformFeeUsd: platformFeeUsdProp = 0.5,
 }: PurchaseDetailsProps) {
     const page = usePage()
     const pageProps = page.props as PurchaseDetailsProps & { auth?: unknown }
     const organizations = pageProps.organizations ?? organizationsProp
     const giftCardPurchaseOrganizations = pageProps.giftCardPurchaseOrganizations ?? giftCardPurchaseOrganizationsProp
+    const platformFeeUsd = Number(pageProps.platformFeeUsd ?? platformFeeUsdProp ?? 0.5) || 0
     const auth = (page.props as any).auth
     const purchasedBelievePoints = parseFloat(auth?.user?.believe_points) || 0
     const giftedBelievePoints = parseFloat(auth?.user?.gifted_believe_points) || 0
@@ -233,8 +236,9 @@ export default function PurchaseDetailsPage({
                           data.amount > 0
     const isValidForm = isValidAmount && selectedOrganizationId
 
+    const totalChargedBp = data.amount > 0 ? Number((data.amount + platformFeeUsd).toFixed(2)) : 0
     const believePointsSufficientForSku =
-        data.amount > 0 && purchasedBelievePoints >= data.amount
+        data.amount > 0 && purchasedBelievePoints >= totalChargedBp
 
     return (
         <FrontendLayout>
@@ -517,12 +521,18 @@ export default function PurchaseDetailsPage({
                                         {/* Selected Amount Display */}
                                         {isValidAmount && (
                                             <div className="p-6 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 dark:from-primary/20 dark:via-primary/10 border-2 border-primary/20 shadow-lg">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <div className="space-y-2">
+                                                        <p className="text-sm text-muted-foreground">Total charged</p>
                                                         <p className="text-4xl font-bold text-primary">
-                                                            {formatCurrency(data.amount)}
+                                                            {formatCurrency(totalChargedBp)}
                                                         </p>
+                                                        <div className="text-sm text-muted-foreground space-y-0.5">
+                                                            <p>Gift card: {formatCurrency(data.amount)}</p>
+                                                            {platformFeeUsd > 0 && (
+                                                                <p>Platform fee: {formatCurrency(platformFeeUsd)}</p>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <div className="p-4 rounded-full bg-primary/20 dark:bg-primary/30">
                                                         <DollarSign className="h-10 w-10 text-primary" />
@@ -556,7 +566,7 @@ export default function PurchaseDetailsPage({
                                                             )}
                                                             {believePointsSufficientForSku && (
                                                                 <span className="text-green-600 dark:text-green-400 ml-2 block sm:inline">
-                                                                    ({(purchasedBelievePoints - data.amount).toFixed(2)} Available BP remaining after redemption)
+                                                                    ({(purchasedBelievePoints - totalChargedBp).toFixed(2)} Available BP remaining after redemption)
                                                                 </span>
                                                             )}
                                                         </div>
@@ -572,12 +582,16 @@ export default function PurchaseDetailsPage({
                                                 {!believePointsSufficientForSku && (
                                                     <p className="text-sm text-destructive flex items-center gap-1">
                                                         <CheckCircle className="h-4 w-4" />
-                                                        {`You need ${data.amount.toFixed(2)} Available BP but only have ${purchasedBelievePoints.toFixed(2)}.`}
+                                                        {platformFeeUsd > 0
+                                                            ? `You need ${totalChargedBp.toFixed(2)} Available BP (gift card ${data.amount.toFixed(2)} + platform fee ${platformFeeUsd.toFixed(2)}) but only have ${purchasedBelievePoints.toFixed(2)}.`
+                                                            : `You need ${totalChargedBp.toFixed(2)} Available BP but only have ${purchasedBelievePoints.toFixed(2)}.`}
                                                     </p>
                                                 )}
 
                                                 <p className="text-xs text-muted-foreground">
-                                                    Your Believe Points will be deducted immediately. Gift card issuance begins after a 72-hour waiting period.
+                                                    Your Believe Points will be deducted immediately
+                                                    {platformFeeUsd > 0 ? ` (includes a ${formatCurrency(platformFeeUsd)} platform fee)` : ''}.
+                                                    Gift card issuance begins after a 72-hour waiting period.
                                                 </p>
                                             </div>
                                         )}
@@ -691,12 +705,23 @@ export default function PurchaseDetailsPage({
 
                                     {/* Selected Amount Display */}
                                     {isValidAmount && (
-                                        <div className="pt-3 border-t dark:border-gray-700">
+                                        <div className="pt-3 border-t dark:border-gray-700 space-y-2">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-muted-foreground">Gift card amount</span>
+                                                <span className="font-medium dark:text-white">{formatCurrency(data.amount)}</span>
+                                            </div>
+                                            {platformFeeUsd > 0 && (
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-muted-foreground">Platform fee</span>
+                                                    <span className="font-medium dark:text-white">{formatCurrency(platformFeeUsd)}</span>
+                                                </div>
+                                            )}
                                             <div className="p-4 rounded-lg bg-primary/10 dark:bg-primary/20 border-2 border-primary/20">
-                                                <p className="text-xs text-muted-foreground mb-1">Selected Amount</p>
+                                                <p className="text-xs text-muted-foreground mb-1">Total charged</p>
                                                 <p className="text-2xl font-bold text-primary">
-                                                    {formatCurrency(data.amount)}
+                                                    {formatCurrency(totalChargedBp)}
                                                 </p>
+                                                <p className="text-xs text-muted-foreground mt-1">Believe Points</p>
                                             </div>
                                         </div>
                                     )}
@@ -716,7 +741,10 @@ export default function PurchaseDetailsPage({
                                 <CardContent className="space-y-3">
                                     <div className="flex items-start gap-3 text-sm">
                                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                        <span className="text-muted-foreground dark:text-gray-300">Pay using Believe Points only</span>
+                                        <span className="text-muted-foreground dark:text-gray-300">
+                                            Pay using Believe Points only
+                                            {platformFeeUsd > 0 ? ` (includes ${formatCurrency(platformFeeUsd)} platform fee)` : ''}
+                                        </span>
                                     </div>
                                     <div className="flex items-start gap-3 text-sm">
                                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
