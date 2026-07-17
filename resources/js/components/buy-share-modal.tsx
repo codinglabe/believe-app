@@ -306,7 +306,7 @@ export default function BuyShareModal({ isOpen, onClose, nodebox, onPurchaseSucc
                     <span className="font-medium text-gray-900 dark:text-white">${getCurrentAmount().toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-300">Processing Fee:</span>
+                    <span className="text-gray-600 dark:text-gray-300">Payment Provider Fee:</span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       ${(getCurrentAmount() * 0.029 + 0.3).toFixed(2)}
                     </span>

@@ -547,7 +547,7 @@ export default function OrderDetails() {
                   {Number(order?.stripe_processing_fee_addon) > 0 && (
                     <div className="flex justify-between items-baseline gap-2">
                       <div>
-                        <span className="text-gray-600 dark:text-gray-400">Card processing fee (pass-through)</span>
+                        <span className="text-gray-600 dark:text-gray-400">Payment Provider Fee (pass-through)</span>
                         <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 max-w-[14rem]">
                           Estimated Stripe fee included in your charge so the order subtotal, shipping, and tax match what sellers receive.
                         </p>
@@ -559,7 +559,7 @@ export default function OrderDetails() {
                   )}
                   {Number(order?.stripe_fee_amount) > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Stripe processing fee (actual)</span>
+                      <span className="text-gray-600 dark:text-gray-400">Payment Provider Fee (actual)</span>
                       <span className="font-medium text-gray-900 dark:text-white">
                         ${(Number(order?.stripe_fee_amount) || 0).toFixed(2)}
                       </span>

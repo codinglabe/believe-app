@@ -425,7 +425,7 @@ export function QuickAddBelievePointsModal({
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Includes platform fee ({feePreview.platform_fee_percent}%) and processing fee ({feePreview.processing_fee_percent}%)
+                  Includes platform fee ({feePreview.platform_fee_percent}%) and payment provider fee ({feePreview.processing_fee_percent}%)
                 </p>
               </div>
             )}

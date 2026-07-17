@@ -598,7 +598,7 @@ export default function CareAllianceFinancialSettingsSection({ allianceDisplayNa
             </div>
             <CardDescription>
               Live preview for a <span className="font-medium text-gray-800 dark:text-gray-200">$100.00</span> donation
-              (before payment processing fees).
+              (before payment provider fees).
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">

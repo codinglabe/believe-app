@@ -29,7 +29,7 @@ final class BelievePointsPurchaseCalculationService
     /**
      * Stripe payment processing fee, computed as a gross-up over the amount BIU must
      * net ($bp + platform fee) so the full BP value is funded in the Master Reserve.
-     * Charged to the supporter only when "Supporter Pays Processing Fee" is enabled.
+     * Charged to the supporter only when "Supporter Pays Payment Provider Fee" is enabled.
      */
     public static function processingFeeUsd(float $netToFundUsd, string $rail = 'card'): float
     {

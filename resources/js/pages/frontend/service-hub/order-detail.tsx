@@ -945,7 +945,7 @@ export default function OrderDetail() {
                         <span className="font-medium">-${order.platformFee.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-red-600 dark:text-red-400">
-                        <span className="text-muted-foreground">Stripe processing fee</span>
+                        <span className="text-muted-foreground">Payment Provider Fee</span>
                         <span className="font-medium">-${order.transactionFee.toFixed(2)}</span>
                       </div>
                       {order.salesTax > 0 && (

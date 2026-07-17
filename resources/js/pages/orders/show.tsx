@@ -785,7 +785,7 @@ export default function Show({ order, userRole }: Props) {
                                 </div>
                                 {Number(order.stripe_fee_amount) > 0 && (
                                     <div className="flex justify-between gap-4">
-                                        <span className="text-muted-foreground">Stripe processing fee</span>
+                                        <span className="text-muted-foreground">Payment Provider Fee</span>
                                         <span className="font-medium">{formatCurrency(Number(order.stripe_fee_amount))}</span>
                                     </div>
                                 )}

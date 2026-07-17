@@ -961,7 +961,7 @@ function Step2Form({
                   </div>
                   <div className="flex justify-between text-sm items-baseline gap-2">
                     <div>
-                      <span className="text-gray-600 dark:text-gray-400">Estimated card processing fee</span>
+                      <span className="text-gray-600 dark:text-gray-400">Estimated payment provider fee</span>
                       <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 max-w-[14rem]">
                         Pass-through estimate (same model as Stripe). Your card is charged the total below.
                       </p>
@@ -1032,7 +1032,7 @@ function Step2Form({
               <span className="text-sm font-medium">
                 {paymentMethod === "stripe" &&
                 stripeProcessingFeeAddon > 0.0005
-                  ? "Estimated Stripe processing fee is shown above and included in your card total."
+                  ? "Estimated payment provider fee is shown above and included in your card total."
                   : "Platform fee, shipping, and tax are shown in your order summary."}
               </span>
             </div>

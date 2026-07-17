@@ -764,7 +764,7 @@ export default function BrpCampaignFund({ wallet }: Props) {
                       <span>+${platformFee.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Processing (3.5%)</span>
+                      <span>Payment Provider Fee (3.5%)</span>
                       <span>+${processingFee.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between font-semibold text-white pt-1">

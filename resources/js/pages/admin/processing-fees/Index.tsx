@@ -48,8 +48,8 @@ export default function AdminProcessingFeesIndex({ rates }: Props) {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Payment Provider Fee</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1.5 w-full">
             Configure the card and ACH payment provider fee model used for donation and other Stripe checkout
-            previews. Believe In Unity does not charge a separate processing fee on donations — this is only the
-            payment provider’s fee estimate (for example Stripe card or ACH pricing). Only administrators can
+            previews. Believe In Unity does not charge this fee on donations — this is only the payment
+            provider’s fee estimate (for example Stripe card or ACH pricing). Only administrators can
             change these values.
           </p>
         </div>
