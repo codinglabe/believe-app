@@ -29,6 +29,13 @@ class GiftCardRedemptionDomainTest extends TestCase
         $this->assertFalse(GiftCardStatus::isRetryEligible(GiftCardStatus::PendingFulfillment->value));
     }
 
+    public function test_force_fulfill_eligible_statuses(): void
+    {
+        $this->assertTrue(GiftCardStatus::isForceFulfillEligible(GiftCardStatus::PendingFulfillment->value));
+        $this->assertFalse(GiftCardStatus::isForceFulfillEligible(GiftCardStatus::Failed->value));
+        $this->assertFalse(GiftCardStatus::isForceFulfillEligible(GiftCardStatus::Completed->value));
+    }
+
     public function test_capacity_reached_exception_user_message(): void
     {
         $exception = new GiftCardRedemptionCapacityReachedException(25.0, 10.0);

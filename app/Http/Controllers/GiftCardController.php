@@ -6,6 +6,7 @@ use App\Exceptions\InsufficientPhazeBalanceException;
 use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use App\Services\GiftCardGiftedPointsPolicy;
 use App\Services\GiftCardRedemptionService;
 use App\Services\GiftCardRevenueShareService;
@@ -562,13 +563,16 @@ class GiftCardController extends Controller
                 ], 403);
             }
 
-            $pointsRequired = $purchaseAmount;
+            $platformFee = BiuPlatformFeeService::getGiftCardPlatformFeeUsd();
+            $pointsRequired = BiuPlatformFeeService::giftCardTotalChargedUsd((float) $purchaseAmount);
             $user->refresh();
 
             if ($user->currentBelievePoints() < $pointsRequired) {
                 DB::rollBack();
                 $have = $user->currentBelievePoints();
-                $message = "Insufficient Believe Points. You need {$pointsRequired} Available BP but only have {$have}.";
+                $message = $platformFee > 0
+                    ? "Insufficient Believe Points. You need {$pointsRequired} Available BP (gift card {$purchaseAmount} + platform fee {$platformFee}) but only have {$have}."
+                    : "Insufficient Believe Points. You need {$pointsRequired} Available BP but only have {$have}.";
 
                 if ($isInertiaRequest) {
                     return back()->withErrors([
@@ -1375,6 +1379,7 @@ class GiftCardController extends Controller
                 ] : null,
                 'organizations' => $organizations,
                 'giftCardPurchaseOrganizations' => $giftCardPurchaseOrganizations,
+                'platformFeeUsd' => BiuPlatformFeeService::getGiftCardPlatformFeeUsd(),
             ]);
         }
 
@@ -1571,10 +1576,18 @@ class GiftCardController extends Controller
                     'country' => $giftCardModel->country,
                     'currency' => $giftCardModel->currency,
                     'status' => $giftCardModel->status,
+                    'payment_method' => $giftCardModel->payment_method,
                     'purchased_at' => $giftCardModel->purchased_at?->toISOString(),
+                    'requested_at' => $giftCardModel->requested_at?->toISOString(),
+                    'scheduled_fulfillment_at' => $giftCardModel->scheduled_fulfillment_at?->toISOString(),
+                    'fulfilled_at' => $giftCardModel->fulfilled_at?->toISOString(),
+                    'failure_reason' => $giftCardModel->failure_reason,
                     'expires_at' => $giftCardModel->expires_at?->toISOString(),
                     'created_at' => $giftCardModel->created_at->toISOString(),
                     'meta' => $giftCardModel->meta,
+                    'fulfillment_audit' => is_array($giftCardModel->meta['fulfillment_audit'] ?? null)
+                        ? $giftCardModel->meta['fulfillment_audit']
+                        : [],
                     'organization' => $giftCardModel->organization ? [
                         'id' => $giftCardModel->organization->id,
                         'name' => $giftCardModel->organization->name,

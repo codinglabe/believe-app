@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { BreadcrumbItem } from "@/types"
-import { Clock, Gift, RefreshCw } from "lucide-react"
+import { Clock, Gift, Play, RefreshCw } from "lucide-react"
 
 interface RedemptionUser {
   id: number
@@ -34,6 +34,7 @@ interface RedemptionRow {
   failure_reason: string | null
   external_id: string | null
   can_retry: boolean
+  can_force_fulfill: boolean
   user: RedemptionUser | null
   organization: RedemptionOrganization | null
 }
@@ -107,6 +108,13 @@ export default function GiftCardRedemptionsIndex({ redemptions, filters, counts,
 
   const retry = (id: number) => {
     router.post(route("admin.gift-card-redemptions.retry", id), {}, { preserveScroll: true })
+  }
+
+  const forceFulfill = (id: number) => {
+    if (!window.confirm("Fulfill this gift card now and skip the remaining wait time?")) {
+      return
+    }
+    router.post(route("admin.gift-card-redemptions.force-fulfill", id), {}, { preserveScroll: true })
   }
 
   return (
@@ -199,14 +207,23 @@ export default function GiftCardRedemptionsIndex({ redemptions, filters, counts,
                       </td>
                       <td className="py-3 pr-4">{row.fulfillment_attempt_count}</td>
                       <td className="py-3">
-                        {row.can_retry ? (
-                          <Button size="sm" variant="outline" onClick={() => retry(row.id)}>
-                            <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                            Retry
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                        <div className="flex flex-col gap-2">
+                          {row.can_force_fulfill && (
+                            <Button size="sm" onClick={() => forceFulfill(row.id)}>
+                              <Play className="mr-1 h-3.5 w-3.5" />
+                              Fulfill now
+                            </Button>
+                          )}
+                          {row.can_retry && (
+                            <Button size="sm" variant="outline" onClick={() => retry(row.id)}>
+                              <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                              Retry
+                            </Button>
+                          )}
+                          {!row.can_force_fulfill && !row.can_retry && (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))

@@ -258,3 +258,21 @@ export function donationNotificationTarget(notification: Notification): string |
 
   return null
 }
+
+/** Navigate when a gift-card in-app notification is opened. */
+export function giftCardNotificationTarget(notification: Notification): string | null {
+  const type = (notification.type || "").toLowerCase()
+  if (!type.includes("gift_card")) {
+    return null
+  }
+
+  if (typeof notification.meta?.gift_card_url === "string" && notification.meta.gift_card_url) {
+    return notification.meta.gift_card_url
+  }
+
+  if (notification.meta?.gift_card_id != null) {
+    return route("gift-cards.show.id", notification.meta.gift_card_id)
+  }
+
+  return route("gift-cards.my-cards")
+}

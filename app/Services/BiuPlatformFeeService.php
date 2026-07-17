@@ -10,11 +10,13 @@ use App\Models\Product;
 use App\Support\ConnectionHubType;
 
 /**
- * BIU platform fee % for sales modules that charge buyers (marketplace, service hub, courses, raffles, merchant hub).
+ * BIU platform fee % for sales modules that charge buyers (marketplace, service hub, courses, raffles, merchant hub),
+ * plus the fixed gift-card buyer platform fee.
  *
- * Gift cards are excluded: face-value checkout with no buyer platform fee; BIU share is taken from provider commission via {@see GiftCardRevenueShareService}.
+ * Gift cards: face-value card amount + fixed BIU platform fee (default $0.50) charged in Believe Points.
+ * BIU also earns a share of provider commission via {@see GiftCardRevenueShareService}.
  *
- * Applied to the sale base amount (product subtotal, ticket total, course fee, merchant cash spent — not tax/shipping).
+ * Percent fees are applied to the sale base amount (product subtotal, ticket total, course fee, merchant cash spent — not tax/shipping).
  * For marketplace product orders this fee is added to the buyer-facing order total and should appear on receipts / invoices.
  */
 final class BiuPlatformFeeService
@@ -24,6 +26,9 @@ final class BiuPlatformFeeService
     public const DEFAULT_MARKETPLACE_PRINTIFY_ORGANIZATION_FEE_PERCENTAGE = 10.0;
 
     public const DEFAULT_MARKETPLACE_MERCHANT_POOL_FEE_PERCENTAGE = 3.0;
+
+    /** Fixed USD / BP platform fee added on top of gift card face value. */
+    public const DEFAULT_GIFT_CARD_PLATFORM_FEE_USD = 0.50;
 
     /** Canonical admin setting (single knob on /admin/biu-fee). */
     public const SETTING_KEY_SALES = 'biu_sales_platform_fee_percentage';
@@ -45,6 +50,9 @@ final class BiuPlatformFeeService
 
     /** Connection Hub meetups / events listings. */
     public const SETTING_KEY_EVENT = 'biu_event_platform_fee_percentage';
+
+    /** Gift card fixed buyer platform fee (USD / Believe Points). */
+    public const SETTING_KEY_GIFT_CARD = 'biu_gift_card_platform_fee_usd';
 
     public static function getSalesPlatformFeePercentage(): float
     {
@@ -102,6 +110,63 @@ final class BiuPlatformFeeService
         }
 
         return self::getSalesPlatformFeePercentage();
+    }
+
+    /**
+     * Fixed platform fee charged to the buyer on each gift card purchase (Believe Points).
+     */
+    public static function getGiftCardPlatformFeeUsd(): float
+    {
+        try {
+            $v = AdminSetting::get(self::SETTING_KEY_GIFT_CARD);
+        } catch (\Throwable) {
+            return self::DEFAULT_GIFT_CARD_PLATFORM_FEE_USD;
+        }
+
+        if ($v !== null && $v !== '') {
+            return max(0.0, round((float) $v, 2));
+        }
+
+        return self::DEFAULT_GIFT_CARD_PLATFORM_FEE_USD;
+    }
+
+    /**
+     * Total Believe Points charged for a gift card: face value + fixed platform fee.
+     */
+    public static function giftCardTotalChargedUsd(float $faceValueUsd): float
+    {
+        return round(max(0.0, $faceValueUsd) + self::getGiftCardPlatformFeeUsd(), 2);
+    }
+
+    /**
+     * Ledger / transaction meta slice for gift card buyer platform fee.
+     *
+     * @return array{
+     *   platform_fee: float,
+     *   biu_fee: float,
+     *   believe_biu_fee: float,
+     *   gift_card_face_value: float,
+     *   gift_card_total_charged: float,
+     *   amount_gross: float,
+     *   gross_amount: float
+     * }
+     */
+    public static function giftCardLedgerMetaSlice(float $faceValueUsd): array
+    {
+        $face = round(max(0.0, $faceValueUsd), 2);
+        $fee = self::getGiftCardPlatformFeeUsd();
+        $total = round($face + $fee, 2);
+
+        return [
+            'platform_fee' => $fee,
+            'biu_fee' => $fee,
+            'believe_biu_fee' => $fee,
+            'gift_card_face_value' => $face,
+            'gift_card_total_charged' => $total,
+            'amount_gross' => $total,
+            'gross_amount' => $total,
+            'subtotal' => $face,
+        ];
     }
 
     public static function getConnectionHubPlatformFeePercentage(Course|string|null $courseOrType): float

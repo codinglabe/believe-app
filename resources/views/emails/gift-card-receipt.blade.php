@@ -3,7 +3,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gift Card Purchase Receipt</title>
+    <title>
+        @if(!empty($readyNotification))
+            Your gift card is ready
+        @else
+            Gift Card Purchase Receipt
+        @endif
+    </title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -55,6 +61,14 @@
             color: #667eea;
             letter-spacing: 2px;
         }
+        .notice {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+            color: #92400e;
+        }
         .footer {
             text-align: center;
             margin-top: 30px;
@@ -66,64 +80,185 @@
     </style>
 </head>
 <body>
+    @php
+        $delayHours = $delayHours ?? 72;
+        $orderNumber = $orderNumber ?? ('GC-'.$giftCard->id);
+        $purchaseDate = $giftCard->purchased_at ?? $giftCard->requested_at ?? $giftCard->created_at;
+        $faceAmount = (float) $giftCard->amount;
+        $platformFee = (float) ($giftCard->meta['platform_fee'] ?? 0);
+        $totalCharged = (float) ($giftCard->meta['gift_card_total_charged'] ?? ($faceAmount + $platformFee));
+        $amountLabel = number_format($faceAmount, 2).' '.($giftCard->currency ?? 'USD');
+        $totalChargedLabel = number_format($totalCharged, 2).' '.($giftCard->currency ?? 'USD');
+        $platformFeeLabel = number_format($platformFee, 2).' '.($giftCard->currency ?? 'USD');
+    @endphp
+
     <div class="header">
-        <h1>🎁 Gift Card Purchase Receipt</h1>
-        <p>Thank you for your purchase!</p>
+        @if(!empty($readyNotification))
+            <h1>Your gift card is ready</h1>
+            <p>You can use it now in your Believe In Unity account.</p>
+        @else
+            <h1>Gift Card Purchase Receipt</h1>
+            <p>Thank you for your purchase!</p>
+        @endif
     </div>
 
     <div class="content">
-        <p>Dear {{ $giftCard->user->name ?? 'Valued Customer' }},</p>
+        <p>Hello{{ $giftCard->user?->name ? ', '.$giftCard->user->name : '' }},</p>
 
-        <p>Your gift card purchase has been confirmed. Please find the details below:</p>
+        @if(!empty($readyNotification))
+            <p>Great news — your gift card has been processed and is ready to use.</p>
 
-        <div class="receipt-box">
-            <h2 style="margin-top: 0;">Receipt Details</h2>
+            <div class="receipt-box">
+                <h2 style="margin-top: 0;">Gift Card Details</h2>
 
-            <div class="receipt-item">
-                <span class="label">Gift Card:</span>
-                <span class="value">{{ $giftCard->brand_name }}</span>
+                <div class="receipt-item">
+                    <span class="label">Order Status:</span>
+                    <span class="value">Ready</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Gift Card:</span>
+                    <span class="value">{{ $giftCard->brand_name }}</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Gift Card Amount:</span>
+                    <span class="value"><strong>{{ $amountLabel }}</strong></span>
+                </div>
+
+                @if($platformFee > 0)
+                <div class="receipt-item">
+                    <span class="label">Platform Fee:</span>
+                    <span class="value">{{ $platformFeeLabel }}</span>
+                </div>
+                @endif
+
+                <div class="receipt-item">
+                    <span class="label">Total Charged:</span>
+                    <span class="value"><strong>{{ $totalChargedLabel }}</strong></span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Order Number:</span>
+                    <span class="value">{{ $orderNumber }}</span>
+                </div>
+
+                @if($giftCard->card_number)
+                <div class="receipt-item">
+                    <span class="label">Card Number:</span>
+                    <span class="value card-number">{{ $giftCard->card_number }}</span>
+                </div>
+                @endif
+
+                @if($giftCard->voucher)
+                <div class="receipt-item">
+                    <span class="label">Voucher Code:</span>
+                    <span class="value card-number">{{ $giftCard->voucher }}</span>
+                </div>
+                @endif
             </div>
 
-            <div class="receipt-item">
-                <span class="label">Card Number:</span>
-                <span class="value card-number">{{ $giftCard->card_number ?? 'N/A' }}</span>
+            <p>Open your gift card in the app to view and use your code.</p>
+        @elseif(!empty($pendingFulfillment))
+            <p>Thank you for your purchase! Your payment has been successfully received.</p>
+
+            <div class="receipt-box">
+                <h2 style="margin-top: 0;">Gift Card Purchase Receipt</h2>
+
+                <div class="receipt-item">
+                    <span class="label">Order Status:</span>
+                    <span class="value">Processing</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Purchase Date:</span>
+                    <span class="value">{{ $purchaseDate?->format('F j, Y g:i A') }}</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Order Number:</span>
+                    <span class="value">{{ $orderNumber }}</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Gift Card:</span>
+                    <span class="value">{{ $giftCard->brand_name }}</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Gift Card Amount:</span>
+                    <span class="value"><strong>{{ $amountLabel }}</strong></span>
+                </div>
+
+                @if($platformFee > 0)
+                <div class="receipt-item">
+                    <span class="label">Platform Fee:</span>
+                    <span class="value">{{ $platformFeeLabel }}</span>
+                </div>
+                @endif
+
+                <div class="receipt-item">
+                    <span class="label">Total Charged:</span>
+                    <span class="value"><strong>{{ $totalChargedLabel }}</strong></span>
+                </div>
             </div>
 
-            <div class="receipt-item">
-                <span class="label">Amount:</span>
-                <span class="value"><strong>{{ number_format($giftCard->amount, 2) }} {{ $giftCard->currency ?? 'USD' }}</strong></span>
+            <div class="notice">
+                Your gift card is currently being prepared and will be available within {{ $delayHours }} hours.
+                We'll send you another email as soon as your gift card is ready.
+            </div>
+        @else
+            <p>Your gift card purchase has been confirmed. Please find the details below:</p>
+
+            <div class="receipt-box">
+                <h2 style="margin-top: 0;">Receipt Details</h2>
+
+                <div class="receipt-item">
+                    <span class="label">Gift Card:</span>
+                    <span class="value">{{ $giftCard->brand_name }}</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Card Number:</span>
+                    <span class="value card-number">{{ $giftCard->card_number ?? 'N/A' }}</span>
+                </div>
+
+                <div class="receipt-item">
+                    <span class="label">Amount:</span>
+                    <span class="value"><strong>{{ $amountLabel }}</strong></span>
+                </div>
+
+                @if($giftCard->expires_at)
+                <div class="receipt-item">
+                    <span class="label">Expires:</span>
+                    <span class="value">{{ $giftCard->expires_at->format('F j, Y') }}</span>
+                </div>
+                @endif
+
+                <div class="receipt-item">
+                    <span class="label">Purchase Date:</span>
+                    <span class="value">{{ $purchaseDate?->format('F j, Y g:i A') }}</span>
+                </div>
+
+                @if($giftCard->organization)
+                <div class="receipt-item">
+                    <span class="label">From Organization:</span>
+                    <span class="value">{{ $giftCard->organization->name }}</span>
+                </div>
+                @endif
+
+                <div class="receipt-item">
+                    <span class="label">Receipt Number:</span>
+                    <span class="value">GC-{{ $giftCard->id }}-{{ substr($giftCard->card_number ?? uniqid(), 0, 8) }}</span>
+                </div>
             </div>
 
-            @if($giftCard->expires_at)
-            <div class="receipt-item">
-                <span class="label">Expires:</span>
-                <span class="value">{{ $giftCard->expires_at->format('F j, Y') }}</span>
-            </div>
-            @endif
+            <p><strong>Important:</strong> Your gift card receipt is attached to this email as a PDF. Please keep it for your records.</p>
+        @endif
 
-            <div class="receipt-item">
-                <span class="label">Purchase Date:</span>
-                <span class="value">{{ $giftCard->purchased_at->format('F j, Y g:i A') }}</span>
-            </div>
+        <p>Thank you for choosing Believe In Unity.</p>
 
-            @if($giftCard->organization)
-            <div class="receipt-item">
-                <span class="label">From Organization:</span>
-                <span class="value">{{ $giftCard->organization->name }}</span>
-            </div>
-            @endif
-
-            <div class="receipt-item">
-                <span class="label">Receipt Number:</span>
-                <span class="value">GC-{{ $giftCard->id }}-{{ substr($giftCard->card_number ?? uniqid(), 0, 8) }}</span>
-            </div>
-        </div>
-
-        <p><strong>Important:</strong> Your gift card receipt is attached to this email as a PDF. Please keep it for your records.</p>
-
-        <p>If you have any questions, please don't hesitate to contact us.</p>
-
-        <p>Best regards,<br>{{ config('app.name') }}</p>
+        <p>Believe In Unity Team</p>
     </div>
 
     <div class="footer">
@@ -132,4 +267,3 @@
     </div>
 </body>
 </html>
-

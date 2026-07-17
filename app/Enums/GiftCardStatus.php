@@ -51,6 +51,14 @@ enum GiftCardStatus: string
         return in_array($status, [self::Failed->value, self::CapacityReached->value], true);
     }
 
+    /**
+     * Admin may skip the delay queue and fulfill immediately.
+     */
+    public static function isForceFulfillEligible(?string $status): bool
+    {
+        return $status === self::PendingFulfillment->value;
+    }
+
     public static function isAwaitingFulfillment(?string $status): bool
     {
         return $status === self::PendingFulfillment->value;
