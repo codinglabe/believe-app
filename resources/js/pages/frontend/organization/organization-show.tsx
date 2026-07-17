@@ -961,7 +961,7 @@ export default function OrganizationPage({
                         ? `${(believePointsBalance / 1000).toFixed(1)}K`
                         : believePointsBalance.toLocaleString()}
                     </span>
-                    <span className="text-gray-900 dark:text-white">Believer Points</span>
+                    <span className="text-gray-900 dark:text-white">Believe Points</span>
                   </div>
                 )}
                 <div className="flex items-center gap-1.5">
@@ -1093,7 +1093,7 @@ export default function OrganizationPage({
                               ? `${(believePointsBalance / 1000).toFixed(1)}k`
                               : believePointsBalance.toLocaleString()}
                           </p>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-500">Believe Points</p>
                           <div className="mt-1 space-y-0.5">
                             <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
                             {believePointsSpent > 0 && (
