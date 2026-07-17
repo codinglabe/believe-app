@@ -235,11 +235,26 @@ class GiftCardRedemptionService
         ]);
 
         if (! $phazePurchaseResult || ! $this->giftCardService->isPurchaseSuccessful($phazePurchaseResult)) {
-            $phazeError = is_array($phazePurchaseResult)
-                ? ($phazePurchaseResult['error'] ?? json_encode($phazePurchaseResult))
-                : 'No response from Phaze purchase API';
+            $rawError = $this->giftCardService->extractPhazeErrorMessage(
+                is_array($phazePurchaseResult) ? $phazePurchaseResult : null,
+                'No response from Phaze purchase API',
+            );
+            $userError = $this->giftCardService->humanizePhazeErrorForUser(
+                is_array($phazePurchaseResult) ? $phazePurchaseResult : null,
+                $rawError,
+            );
+            $adminError = $this->giftCardService->humanizePhazeErrorForAdmin(
+                is_array($phazePurchaseResult) ? $phazePurchaseResult : null,
+                $rawError,
+            );
 
-            $this->markFulfillmentPhazeFailed($claim['id'], (string) $phazeError, $phazePurchaseResult);
+            $this->markFulfillmentPhazeFailed(
+                $claim['id'],
+                $userError,
+                $adminError,
+                $rawError,
+                is_array($phazePurchaseResult) ? $phazePurchaseResult : null,
+            );
 
             return;
         }
@@ -438,10 +453,12 @@ class GiftCardRedemptionService
      */
     private function markFulfillmentPhazeFailed(
         int $giftCardId,
-        string $phazeError,
+        string $userError,
+        string $adminError,
+        string $rawError,
         ?array $phazePurchaseResult,
     ): void {
-        DB::transaction(function () use ($giftCardId, $phazeError, $phazePurchaseResult) {
+        DB::transaction(function () use ($giftCardId, $userError, $adminError, $rawError, $phazePurchaseResult) {
             /** @var GiftCard|null $giftCard */
             $giftCard = GiftCard::query()->lockForUpdate()->find($giftCardId);
 
@@ -453,25 +470,31 @@ class GiftCardRedemptionService
 
             $giftCard->update([
                 'status' => GiftCardStatus::Failed->value,
-                'failure_reason' => $phazeError,
+                // Shown on supporter-facing pages; admin UI also reads this + meta.
+                'failure_reason' => $userError,
                 'fulfillment_locked_at' => null,
                 'meta' => array_merge($meta, [
                     'phaze_fulfillment_failure' => [
                         'at' => now()->toIso8601String(),
-                        'error' => $phazeError,
+                        'error' => $rawError,
+                        'error_user' => $userError,
+                        'error_admin' => $adminError,
+                        'http_status' => $phazePurchaseResult['httpStatusCode'] ?? null,
                         'response' => $phazePurchaseResult,
                     ],
                 ]),
             ]);
 
             $this->appendAudit($giftCard, 'phaze_api_failed', [
-                'error' => $phazeError,
+                'error' => $rawError,
+                'error_admin' => $adminError,
             ]);
         });
 
         Log::error('Gift card Phaze fulfillment failed', [
             'gift_card_id' => $giftCardId,
-            'error' => $phazeError,
+            'error' => $rawError,
+            'error_admin' => $adminError,
             'response' => $phazePurchaseResult,
         ]);
     }

@@ -32,46 +32,90 @@ class GiftCardService
 
     private function getApiKey(): string
     {
-        return config('services.phaze.api_key', env('PHAZE_API_KEY'));
+        return trim((string) config('services.phaze.api_key', env('PHAZE_API_KEY')));
     }
 
     private function getApiSecret(): string
     {
-        return config('services.phaze.api_secret', env('PHAZE_API_SECRET'));
+        return trim((string) config('services.phaze.api_secret', env('PHAZE_API_SECRET')));
     }
 
     /**
-     * Generate signature for Phaze API request
+     * Stable JSON encoding for Phaze request bodies.
+     * Signature and POST body MUST use this exact same string.
+     *
+     * @param  array<string, mixed>  $body
      */
-    private function generateSignature(string $method, string $endpoint, $body = null): ?string
+    private function encodeJsonBody(array $body): string
+    {
+        $encoded = json_encode(
+            $body,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+        );
+
+        if ($encoded === false) {
+            throw new \RuntimeException('Failed to JSON-encode Phaze request body.');
+        }
+
+        return $encoded;
+    }
+
+    /**
+     * Normalize face value so JSON does not emit float noise (e.g. 0.49000000000000005),
+     * which causes Phaze "Signature did not match" when their verifier re-serializes the body.
+     */
+    private function normalizePhazePrice(float|int|string $amount): int|float
+    {
+        $rounded = round((float) $amount, 2);
+
+        if (abs($rounded - (int) round($rounded)) < 0.001) {
+            return (int) round($rounded);
+        }
+
+        return $rounded;
+    }
+
+    /**
+     * Generate signature for Phaze API request.
+     *
+     * Phaze: sha256(METHOD + path + secret + rawJsonBody)
+     *
+     * @param  array<string, mixed>|string|null  $body  Pre-encoded JSON string preferred for POSTs
+     */
+    private function generateSignature(string $method, string $endpoint, array|string|null $body = null): ?string
     {
         $apiSecret = $this->getApiSecret();
 
-        if (empty($apiSecret)) {
+        if ($apiSecret === '') {
             return null;
         }
 
         $requestMethod = strtoupper($method);
-        $requestPath = $endpoint;
-
         $requestBody = '';
-        if ($body !== null && in_array($method, ['POST', 'PUT', 'PATCH'])) {
-            $requestBody = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        if ($body !== null && in_array($requestMethod, ['POST', 'PUT', 'PATCH'], true)) {
+            $requestBody = is_string($body) ? $body : $this->encodeJsonBody($body);
         }
 
-        $stringToSign = $requestMethod.$requestPath.$apiSecret.$requestBody;
-
-        return hash('sha256', $stringToSign);
+        return hash('sha256', $requestMethod.$endpoint.$apiSecret.$requestBody);
     }
 
     /**
-     * Make cURL request to Phaze API
-     * Optimized for performance
+     * Make cURL request to Phaze API.
+     *
+     * @param  array<string, mixed>|string|null  $body  Array or pre-encoded JSON string
      */
-    private function makeCurlRequest(string $method, string $endpoint, array $headers = [], $body = null): ?array
+    private function makeCurlRequest(string $method, string $endpoint, array $headers = [], array|string|null $body = null): ?array
     {
         $baseUrl = $this->getBaseUrl();
         $fullUrl = rtrim($baseUrl, '/').$endpoint;
+
+        $rawBody = null;
+        if (is_string($body)) {
+            $rawBody = $body;
+        } elseif (is_array($body)) {
+            $rawBody = $this->encodeJsonBody($body);
+        }
 
         $ch = curl_init();
 
@@ -79,13 +123,12 @@ class GiftCardService
         curl_setopt_array($ch, [
             CURLOPT_URL => $fullUrl,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_TIMEOUT => 10, // Reduced timeout for faster failure
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_2_0, // Use HTTP/2 if available
-            CURLOPT_ENCODING => '', // Enable compression
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_ENCODING => '',
         ]);
 
         // Set headers
@@ -95,16 +138,16 @@ class GiftCardService
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headerArray);
 
-        // Set method and body
+        // Set method and body — use the exact bytes that were signed
         if ($method === 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
-            if ($body !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            if ($rawBody !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $rawBody);
             }
         } elseif ($method !== 'GET') {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-            if ($body !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            if ($rawBody !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $rawBody);
             }
         }
 
@@ -276,6 +319,76 @@ class GiftCardService
     }
 
     /**
+     * Extract raw Phaze error text from a purchase/status response.
+     */
+    public function extractPhazeErrorMessage(?array $result, string $fallback = 'Phaze purchase failed.'): string
+    {
+        if ($result === null || $result === []) {
+            return $fallback;
+        }
+
+        $error = $result['error'] ?? $result['message'] ?? null;
+
+        if (is_string($error) && trim($error) !== '') {
+            return trim($error);
+        }
+
+        if (isset($result['httpStatusCode'])) {
+            return 'Phaze API error (HTTP '.(int) $result['httpStatusCode'].').';
+        }
+
+        return $fallback;
+    }
+
+    /**
+     * Admin-facing Phaze error with actionable guidance.
+     */
+    public function humanizePhazeErrorForAdmin(?array $result, ?string $rawError = null): string
+    {
+        $raw = trim((string) ($rawError ?? $this->extractPhazeErrorMessage($result)));
+        $code = is_array($result) ? (int) ($result['httpStatusCode'] ?? 0) : 0;
+        $lower = strtolower($raw);
+
+        if (str_contains($lower, 'signature')) {
+            return 'Phaze signature mismatch. Confirm PHAZE_API_KEY / PHAZE_API_SECRET / PHAZE_BASE_URL match the Phaze dashboard (quote secrets in .env), then run config:clear and retry.';
+        }
+
+        if ($code === 402 || str_contains($lower, 'balance too low') || str_contains($lower, 'pre-funded') || str_contains($lower, 'prefunded')) {
+            return 'Phaze account balance is too low to place this order. Prefund the live Phaze account (not the internal ledger), then retry fulfillment.';
+        }
+
+        if ($code === 401 || str_contains($lower, 'unauthorized') || str_contains($lower, 'api-key') || str_contains($lower, 'api key')) {
+            return 'Phaze rejected the API key. Verify PHAZE_API_KEY for the production environment.';
+        }
+
+        return $raw !== '' ? $raw : 'Phaze purchase failed.';
+    }
+
+    /**
+     * Supporter-facing Phaze error (no env/credential details).
+     */
+    public function humanizePhazeErrorForUser(?array $result, ?string $rawError = null): string
+    {
+        $raw = trim((string) ($rawError ?? $this->extractPhazeErrorMessage($result)));
+        $code = is_array($result) ? (int) ($result['httpStatusCode'] ?? 0) : 0;
+        $lower = strtolower($raw);
+
+        if (str_contains($lower, 'signature') || $code === 401) {
+            return 'Gift card issuance failed due to a provider authentication error. Our team has been notified — please try again later or contact support.';
+        }
+
+        if ($code === 402 || str_contains($lower, 'balance too low') || str_contains($lower, 'pre-funded') || str_contains($lower, 'prefunded')) {
+            return 'Gift card issuance is temporarily unavailable because the gift card reserve needs funding. Please try again later or contact support.';
+        }
+
+        if ($raw !== '') {
+            return 'Gift card issuance failed: '.$raw;
+        }
+
+        return 'Gift card issuance failed. Please try again later or contact support.';
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     private function extractBalanceFromAccountStatus(array $payload): ?float
@@ -411,20 +524,23 @@ class GiftCardService
     public function purchaseGiftCard(array $data): ?array
     {
         try {
+            // Field order matches Phaze docs examples (orderId, productId, price, externalUserId).
             $purchaseData = [
-                'productId' => $data['productId'],
-                'price' => $data['amount'], // Face value of the gift card (required parameter)
-                'orderId' => $data['orderId'], // Must be Version 4 UUID
-                'externalUserId' => $data['externalUserId'], // User ID from our system
+                'orderId' => (string) $data['orderId'],
+                'productId' => (int) $data['productId'],
+                'price' => $this->normalizePhazePrice($data['amount'] ?? 0),
+                'externalUserId' => (string) $data['externalUserId'],
             ];
 
-            // Optional fields
-            if (isset($data['currency'])) {
-                $purchaseData['baseCurrency'] = $data['currency'];
+            $currency = strtoupper(trim((string) ($data['currency'] ?? $data['baseCurrency'] ?? '')));
+            if ($currency !== '') {
+                $purchaseData['baseCurrency'] = $currency;
             }
 
             $endpoint = '/purchase';
-            $signature = $this->generateSignature('POST', $endpoint, $purchaseData);
+            // Encode once — signature and POST body must be byte-identical.
+            $rawBody = $this->encodeJsonBody($purchaseData);
+            $signature = $this->generateSignature('POST', $endpoint, $rawBody);
 
             $headers = [
                 'API-Key' => $this->getApiKey(),
@@ -434,21 +550,17 @@ class GiftCardService
 
             if ($signature) {
                 $headers['Signature'] = $signature;
+            } else {
+                Log::error('Phaze purchase aborted: PHAZE_API_SECRET is empty');
+
+                return [
+                    'httpStatusCode' => 400,
+                    'error' => 'Signature did not match',
+                    'message' => 'PHAZE_API_SECRET is missing on this server.',
+                ];
             }
 
-            $response = $this->makeCurlRequest('POST', $endpoint, $headers, $purchaseData);
-
-            if (! $response) {
-                // Try without signature as fallback
-                if ($signature) {
-                    Log::info('Phaze purchase: Retrying without signature', [
-                        'orderId' => $purchaseData['orderId'],
-                        'productId' => $purchaseData['productId'],
-                    ]);
-                    unset($headers['Signature']);
-                    $response = $this->makeCurlRequest('POST', $endpoint, $headers, $purchaseData);
-                }
-            }
+            $response = $this->makeCurlRequest('POST', $endpoint, $headers, $rawBody);
 
             if (! $response) {
                 Log::warning('Phaze purchase API call failed', [
@@ -456,6 +568,16 @@ class GiftCardService
                     'productId' => $purchaseData['productId'],
                     'price' => $purchaseData['price'],
                     'externalUserId' => $purchaseData['externalUserId'],
+                    'body' => $rawBody,
+                ]);
+            } elseif (! $this->isPurchaseSuccessful($response)) {
+                Log::warning('Phaze purchase rejected', [
+                    'orderId' => $purchaseData['orderId'],
+                    'productId' => $purchaseData['productId'],
+                    'price' => $purchaseData['price'],
+                    'http_status' => $response['httpStatusCode'] ?? null,
+                    'error' => $this->extractPhazeErrorMessage($response),
+                    'body' => $rawBody,
                 ]);
             }
 

@@ -362,7 +362,17 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                             )}
                                             {card.status === 'pending_fulfillment' && card.failure_reason && (
                                                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 pl-13">
-                                                    Issuance delayed — awaiting gift card reserve availability.
+                                                    Issuance delayed — {card.failure_reason}
+                                                </p>
+                                            )}
+                                            {card.status === 'failed' && (
+                                                <p className="text-xs text-red-700 dark:text-red-300 mt-1 pl-13">
+                                                    Failed — {card.failure_reason || 'Gift card could not be issued from the provider. An admin can retry fulfillment.'}
+                                                </p>
+                                            )}
+                                            {card.status === 'capacity_reached' && (
+                                                <p className="text-xs text-orange-700 dark:text-orange-300 mt-1 pl-13">
+                                                    Capacity reached — {card.failure_reason || 'Gift card reserve capacity was reached. Please try again later.'}
                                                 </p>
                                             )}
                                         </div>

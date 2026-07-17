@@ -17,6 +17,7 @@ import {
     CreditCard,
     Clock,
     ListOrdered,
+    AlertCircle,
 } from "lucide-react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
@@ -92,6 +93,7 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
     }
 
     const isProcessingStatus = ['pending_fulfillment', 'processing', 'capacity_reached'].includes(giftCard.status)
+    const isFailedStatus = giftCard.status === 'failed'
     const fulfillmentAudit: FulfillmentAuditEntry[] = Array.isArray(giftCard.fulfillment_audit)
         ? giftCard.fulfillment_audit
         : Array.isArray(giftCard.meta?.fulfillment_audit)
@@ -476,6 +478,21 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6">
+                                {isFailedStatus && (
+                                    <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-950 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100">
+                                        <div className="flex items-start gap-3">
+                                            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                                            <div className="space-y-1">
+                                                <p className="font-semibold">Gift card issuance failed</p>
+                                                <p className="text-sm">
+                                                    {giftCard.failure_reason ||
+                                                        'We could not issue this gift card from the provider. Your Believe Points remain recorded on this redemption — contact support or wait for an admin retry.'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {isProcessingStatus && (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
                                         <div className="flex items-start gap-3">
@@ -543,8 +560,8 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                     )
                                 })()}
 
-                                {/* Card Number — hide placeholder numbers while still processing */}
-                                {giftCard.card_number && !isProcessingStatus && (
+                                {/* Card Number — hide placeholders until Phaze issuance succeeds */}
+                                {giftCard.card_number && !isProcessingStatus && !isFailedStatus && (
                                     <div>
                                         <p className="text-sm font-medium mb-3">Card Number</p>
                                         <div className="flex items-center gap-2">
@@ -571,7 +588,7 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                 )}
 
                                 {/* Voucher Code */}
-                                {giftCard.voucher && !isProcessingStatus && (
+                                {giftCard.voucher && !isProcessingStatus && !isFailedStatus && (
                                     <div>
                                         <p className="text-sm font-medium mb-3">Voucher Code</p>
                                         <div className="flex items-center gap-2">
