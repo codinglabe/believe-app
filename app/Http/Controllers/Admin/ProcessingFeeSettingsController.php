@@ -42,6 +42,6 @@ class ProcessingFeeSettingsController extends Controller
         StripeProcessingFeeEstimator::forgetRatesCache();
 
         return redirect()->route('admin.processing-fees.index')
-            ->with('success', 'Stripe processing fee estimates saved. They apply anywhere the app estimates card or ACH fees.');
+            ->with('success', 'Payment provider fee estimates saved. They apply anywhere the app estimates card or ACH fees.');
     }
 }

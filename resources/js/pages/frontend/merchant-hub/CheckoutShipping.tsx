@@ -449,7 +449,7 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                   {paymentMethod === 'cash' && stripeProcessingFeeAddon > 0 && (
                     <>
                       <div className="flex justify-between text-muted-foreground">
-                        <span className="text-xs sm:text-sm">Est. card processing fee</span>
+                        <span className="text-xs sm:text-sm">Est. payment provider fee</span>
                         <span>{offer.currency} {stripeProcessingFeeAddon.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between font-semibold">

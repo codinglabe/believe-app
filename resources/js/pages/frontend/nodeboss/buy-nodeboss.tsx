@@ -479,7 +479,7 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-600 dark:text-gray-300">Processing Fee (2.9% + $0.30):</span>
+                          <span className="text-gray-600 dark:text-gray-300">Payment Provider Fee (2.9% + $0.30):</span>
                           <span className="font-medium text-gray-900 dark:text-white">${processingFee.toFixed(2)}</span>
                         </div>
                         <Separator />

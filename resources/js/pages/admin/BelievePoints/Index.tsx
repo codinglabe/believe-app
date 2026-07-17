@@ -196,7 +196,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
     }
     const processingFee = parseFloat(formData.processing_fee_percent)
     if (!formData.processing_fee_percent || Number.isNaN(processingFee) || processingFee < 0 || processingFee > 100) {
-      newErrors.processing_fee_percent = "Processing fee must be between 0 and 100"
+      newErrors.processing_fee_percent = "Payment provider fee must be between 0 and 100"
     }
     const freeBrp = parseFloat(formData.free_brp_award)
     if (formData.free_brp_award === "" || Number.isNaN(freeBrp) || freeBrp < 0) {
@@ -506,7 +506,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                     <div className="min-w-0 pr-4">
                       <Label htmlFor="payer_covers_transaction_fee" className="text-sm font-medium">Purchaser Covers Transaction Fee</Label>
                       <p className="text-xs text-muted-foreground mt-1">
-                        When on, the supporter is charged enough to cover Believe Points, the payment processing fee, and the platform fee.
+                        When on, the supporter is charged enough to cover Believe Points, the payment provider fee, and the platform fee.
                       </p>
                     </div>
                     <Switch
@@ -539,8 +539,8 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
 
                   <div className="flex items-center justify-between p-3 border rounded-lg sm:col-span-2">
                     <div className="min-w-0 pr-4">
-                      <Label htmlFor="supporter_pays_processing_fee" className="text-sm font-medium">Supporter Pays Processing Fee</Label>
-                      <p className="text-xs text-muted-foreground mt-1">When on, the Stripe payment processing fee is added on top so BIU receives the full BP value. When off, BIU absorbs it.</p>
+                      <Label htmlFor="supporter_pays_processing_fee" className="text-sm font-medium">Supporter Pays Payment Provider Fee</Label>
+                      <p className="text-xs text-muted-foreground mt-1">When on, the payment provider fee (e.g. Stripe) is added on top so BIU receives the full BP value. When off, BIU absorbs it.</p>
                     </div>
                     <Switch
                       id="supporter_pays_processing_fee"
@@ -579,7 +579,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="processing_fee_percent">Processing Fee (%)</Label>
+                    <Label htmlFor="processing_fee_percent">Payment Provider Fee (%)</Label>
                     <Input
                       id="processing_fee_percent"
                       type="text"
@@ -589,7 +589,7 @@ export default function AdminBelievePointsIndex({ settings, statistics, recentPu
                       disabled={isSubmitting}
                     />
                     {errors.processing_fee_percent && <p className="text-sm text-red-600">{errors.processing_fee_percent}</p>}
-                    <p className="text-xs text-muted-foreground">Legacy estimate only. The processing fee charged to supporters is now derived from actual Stripe rates so BIU nets the full BP value.</p>
+                    <p className="text-xs text-muted-foreground">Legacy estimate only. The payment provider fee charged to supporters is now derived from actual Stripe rates so BIU nets the full BP value.</p>
                   </div>
 
                   <div className="space-y-2">

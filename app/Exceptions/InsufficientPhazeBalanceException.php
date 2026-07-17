@@ -9,13 +9,13 @@ class InsufficientPhazeBalanceException extends Exception
     public function __construct(
         public readonly float $required,
         public readonly float $available,
-        string $message = 'Insufficient Phaze prefunded balance for this gift card purchase.',
+        string $message = 'Insufficient live Phaze balance for this gift card purchase.',
     ) {
         parent::__construct($message);
     }
 
     public function userMessage(): string
     {
-        return 'Gift card purchases are temporarily unavailable due to provider funding limits. Please try again later or contact support.';
+        return 'Gift card purchases are temporarily unavailable because the Phaze account balance is too low. Please try again later or contact support.';
     }
 }

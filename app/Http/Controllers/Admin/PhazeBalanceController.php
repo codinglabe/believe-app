@@ -74,7 +74,7 @@ class PhazeBalanceController extends Controller
 
         return redirect()
             ->route('admin.phaze-balance.index')
-            ->with('success', 'Phaze prefunded balance top-up recorded successfully.');
+            ->with('success', 'Internal Phaze ledger top-up recorded. Purchase validation still uses the live Phaze API balance when available.');
     }
 
     private function authorizePhazeBalanceRead(Request $request): void

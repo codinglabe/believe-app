@@ -51,7 +51,7 @@ final class DonationStripeDescriptionBuilder
         );
 
         if ($donorCoversFees && $processingFeeUsd !== null && $processingFeeUsd > 0 && $checkoutTotalUsd !== null) {
-            $line .= sprintf(' (donor covered $%s in processing fees)', self::formatUsd($processingFeeUsd));
+            $line .= sprintf(' (donor covered $%s in payment provider fees)', self::formatUsd($processingFeeUsd));
         }
 
         return self::truncate($line, self::PI_DESCRIPTION_MAX);

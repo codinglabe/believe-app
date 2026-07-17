@@ -231,7 +231,7 @@ export default function BuyBrp({ wallet, packages, feePreview = null }: Props) {
                               <span className="tabular-nums">+${(feePreview?.platform_fee_usd ?? platformFee).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-gray-400">
-                              <span>Processing (3.5%)</span>
+                              <span>Payment Provider Fee (3.5%)</span>
                               <span className="tabular-nums">+${(feePreview?.processing_fee_usd ?? processingFee).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between font-semibold text-white pt-1 border-t border-gray-800/60 mt-2">

@@ -143,6 +143,7 @@ class GiftCardService
                 'error_data' => $data,
             ]);
 
+
             // Return error data with httpStatusCode so caller can check for errors
             if (is_array($data)) {
                 $data['httpStatusCode'] = $httpCode;
@@ -197,7 +198,7 @@ class GiftCardService
     }
 
     /**
-     * Fetch live prefunded balance from Phaze for admin reconciliation (read-only).
+     * Fetch live Phaze account balance (primary source for purchase / fulfillment affordability).
      *
      * @return array{
      *     available: float|null,
