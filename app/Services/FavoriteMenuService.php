@@ -72,7 +72,6 @@ class FavoriteMenuService
     public function payloadForUser(User $user): array
     {
         $this->ensureDefaults($user);
-        $this->ensureGiftCardsInQuickFavorites($user);
 
         $catalog = $this->visibleCatalogForUser($user);
         $favoriteKeys = $this->favoriteKeysForUser($user);
@@ -107,47 +106,6 @@ class FavoriteMenuService
         }
 
         $this->seedDefaults($user);
-    }
-
-    /**
-     * Make Gift Cards easy to find in My Favorites (users can remove it anytime).
-     */
-    public function ensureGiftCardsInQuickFavorites(User $user): void
-    {
-        if (! $this->isSupporterUser($user) && ! $user->hasNonprofitDashboardRole()) {
-            return;
-        }
-
-        if (! MenuItem::query()->where('menu_key', 'gift_cards')->where('is_active', true)->exists()) {
-            return;
-        }
-
-        $alreadyPinned = UserFavoriteMenu::query()
-            ->where('user_id', $user->id)
-            ->where('menu_key', 'gift_cards')
-            ->where('placement', UserFavoriteMenu::PLACEMENT_QUICK)
-            ->exists();
-
-        if ($alreadyPinned) {
-            return;
-        }
-
-        $count = UserFavoriteMenu::query()
-            ->where('user_id', $user->id)
-            ->where('placement', UserFavoriteMenu::PLACEMENT_QUICK)
-            ->count();
-
-        if ($count >= self::MAX_QUICK_FAVORITES) {
-            return;
-        }
-
-        UserFavoriteMenu::query()->create([
-            'user_id' => $user->id,
-            'menu_key' => 'gift_cards',
-            'sort_order' => $count + 1,
-            'placement' => UserFavoriteMenu::PLACEMENT_QUICK,
-            'is_active' => true,
-        ]);
     }
 
     public function seedDefaults(User $user): void
@@ -483,7 +441,7 @@ class FavoriteMenuService
     {
         $serialized = [
             'menuKey' => $item->menu_key,
-            'title' => $item->title,
+            'title' => $item->menu_key === 'gift_cards' ? 'My Gift Cards' : $item->title,
             'href' => $this->resolveHref($item, $user),
             'icon' => $item->icon,
             'category' => $item->category,
