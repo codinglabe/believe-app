@@ -11,7 +11,7 @@ import { TermsOfService } from './TermsOfService'
 import { ImageUploadDropzone } from './ImageUploadDropzone'
 import { DocumentUploadDropzone } from './DocumentUploadDropzone'
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal'
-import { usePage } from '@inertiajs/react'
+import { usePage, router } from '@inertiajs/react'
 import {
     applyWalletBridgeStatusPayload,
     isBridgeKycPending,
@@ -3537,6 +3537,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             hasBankAccounts={hasBankAccounts}
                                             isCheckingBankAccounts={isLoadingExternalAccounts && hasBankAccounts === null}
                                             onAddBankAccount={goToAddBankAccount}
+                                            onOpenMyGiftCards={() => {
+                                                onClose()
+                                                router.visit(route('gift-cards.my-cards'))
+                                            }}
                                         />
                                     ) : !showSuccess && actionView === 'activity' ? (
                                         <ActivityScreen

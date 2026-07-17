@@ -196,10 +196,10 @@ const navigationItems = [
     color: "from-yellow-500 to-orange-600",
   },
   {
-    name: "Gift Cards",
+    name: "My Gift Cards",
     href: "/gift-cards/my-cards",
     icon: Gift,
-    description: "My gift cards",
+    description: "View, redeem & check balances",
     color: "from-pink-500 to-rose-600",
   },
   {
