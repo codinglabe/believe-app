@@ -249,9 +249,10 @@ class GiftCardRedemptionService
             $purchaseAmount = (float) $giftCard->amount;
 
             if (! $this->phazeBalanceService->canAfford($purchaseAmount)) {
-                $wallet = $this->phazeBalanceService->getWallet();
-                $available = round((float) $wallet->available_balance, 2);
-                $reason = "Insufficient internal Phaze prefund balance at fulfillment. Required {$purchaseAmount}, available {$available}.";
+                $resolved = $this->phazeBalanceService->resolveAffordabilityBalance();
+                $available = round((float) $resolved['available'], 2);
+                $source = $resolved['source'] === 'live' ? 'live Phaze balance' : 'internal Phaze wallet (live API unavailable)';
+                $reason = "Insufficient {$source} at fulfillment. Required {$purchaseAmount}, available {$available}.";
 
                 $giftCard->update([
                     'status' => GiftCardStatus::PendingFulfillment->value,
@@ -262,14 +263,18 @@ class GiftCardRedemptionService
                 $this->appendAudit($giftCard, 'reserve_insufficient', [
                     'required' => $purchaseAmount,
                     'available' => $available,
+                    'balance_source' => $resolved['source'],
+                    'live_available' => $resolved['live_available'],
+                    'internal_available' => $resolved['internal_available'],
                 ]);
 
                 $this->notifyReserveDelayIfNeeded($giftCard->fresh(['user']));
 
-                Log::warning('Gift card fulfillment delayed — insufficient Phaze reserve', [
+                Log::warning('Gift card fulfillment delayed — insufficient Phaze balance', [
                     'gift_card_id' => $giftCard->id,
                     'required' => $purchaseAmount,
                     'available' => $available,
+                    'balance_source' => $resolved['source'],
                 ]);
 
                 return;
@@ -499,7 +504,7 @@ class GiftCardRedemptionService
         try {
             $this->phazeBalanceService->deductForPurchase($purchaseAmount, $giftCard, $orderId);
         } catch (\Throwable $e) {
-            Log::critical('Phaze purchase succeeded but internal balance deduction failed during delayed fulfillment', [
+            Log::critical('Phaze purchase succeeded but balance ledger recording failed during delayed fulfillment', [
                 'gift_card_id' => $giftCard->id,
                 'order_id' => $orderId,
                 'message' => $e->getMessage(),

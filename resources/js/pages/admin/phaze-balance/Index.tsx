@@ -26,6 +26,8 @@ interface Summary {
   total_consumed: number
   remaining_balance: number
   currency: string
+  effective_available: number
+  primary_source: "live" | "internal_fallback"
   phaze_live: PhazeLiveBalance
 }
 
@@ -112,16 +114,21 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
     })
   }
 
-  const internalMetrics = [
-    { label: "Internal available balance", value: summary.available_balance, highlight: true },
-    { label: "Total funds added", value: summary.total_funded },
-    { label: "Total funds consumed", value: summary.total_consumed },
-    { label: "Remaining balance", value: summary.remaining_balance },
-  ]
-
   const live = summary.phaze_live
   const variance = live.variance
   const hasVarianceMismatch = variance !== null && Math.abs(variance) >= 0.01
+  const usingLive = summary.primary_source === "live" && live.available !== null
+
+  const metrics = [
+    {
+      label: "Effective available (purchase gate)",
+      value: summary.effective_available,
+      highlight: true,
+    },
+    { label: "Live Phaze balance", value: live.available },
+    { label: "Internal ledger balance", value: summary.available_balance },
+    { label: "Total funds consumed (ledger)", value: summary.total_consumed },
+  ]
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -130,12 +137,12 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
             <Landmark className="h-3.5 w-3.5" />
-            Admin · Phaze prefunding
+            Admin · Phaze balance
           </div>
           <h1 className="text-3xl font-bold text-foreground">Phaze balance management</h1>
           <p className="max-w-3xl text-muted-foreground">
-            Internal balance is the source of truth for purchase validation. Live Phaze balance is fetched read-only
-            for reconciliation when the API is available.
+            Live Phaze API balance is the main balance for purchase and fulfillment checks. The internal ledger is
+            kept for audit and local testing; top-ups only affect the internal wallet when the live API is unavailable.
           </p>
         </div>
 
@@ -146,7 +153,7 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {internalMetrics.map((metric) => (
+          {metrics.map((metric) => (
             <Card key={metric.label} className={metric.highlight ? "border-l-4 border-l-emerald-500" : undefined}>
               <CardHeader className="pb-2">
                 <CardDescription className="text-xs">{metric.label}</CardDescription>
@@ -160,10 +167,10 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RefreshCw className="h-4 w-4" />
-              Live Phaze balance (read-only)
+              Live Phaze balance
             </CardTitle>
             <CardDescription>
-              Pulled from Phaze account status API for auditing. Purchases validate against the internal balance only.
+              Pulled from Phaze account status API. This is the primary gate for gift card purchases and fulfillment.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -174,6 +181,9 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
                   {live.available !== null ? formatUsd(live.available) : "Unavailable"}
                 </p>
               </div>
+              <Badge variant={usingLive ? "secondary" : "outline"} className="text-xs">
+                {usingLive ? "Primary source" : "Fallback to internal ledger"}
+              </Badge>
               {live.fetched_at ? (
                 <Badge variant="outline" className="text-xs">
                   Fetched {new Date(live.fetched_at).toLocaleString()}
@@ -181,7 +191,7 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
               ) : null}
               {variance !== null ? (
                 <Badge variant={hasVarianceMismatch ? "destructive" : "secondary"}>
-                  Variance {variance >= 0 ? "+" : ""}
+                  vs internal {variance >= 0 ? "+" : ""}
                   {formatUsd(variance)}
                 </Badge>
               ) : null}
@@ -189,13 +199,15 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
             {live.error ? (
               <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{live.error}</span>
+                <span>
+                  {live.error} Purchases will use the internal ledger until the live API responds again.
+                </span>
               </div>
             ) : null}
             {hasVarianceMismatch ? (
               <p className="text-sm text-muted-foreground">
-                Internal and Phaze balances differ. Record a top-up or manual adjustment after verifying deposits in
-                Phaze.
+                Live Phaze and the internal ledger differ. That is expected when top-ups are only used for local
+                testing — purchases still follow the live balance.
               </p>
             ) : null}
           </CardContent>
@@ -206,10 +218,11 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Wallet className="h-4 w-4" />
-                Record fund top-up
+                Internal ledger top-up
               </CardTitle>
               <CardDescription>
-                Add funds when you deposit more money into your Phaze prefunded account.
+                Optional. Use for local testing or accidental fallback when the live Phaze API is down. Does not
+                change the live Phaze account balance.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -271,7 +284,9 @@ export default function AdminPhazeBalanceIndex({ summary, ledger, filters, canTo
         <Card>
           <CardHeader>
             <CardTitle>Balance ledger</CardTitle>
-            <CardDescription>Complete audit trail of internal Phaze prefunded balance movements.</CardDescription>
+            <CardDescription>
+              Audit trail of internal ledger movements (top-ups, purchase deductions, adjustments).
+            </CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full text-sm">

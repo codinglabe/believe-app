@@ -934,7 +934,7 @@ class GiftCardController extends Controller
                 try {
                     $this->phazeBalanceService->assertCanAfford($purchaseAmount);
                 } catch (InsufficientPhazeBalanceException $e) {
-                    Log::error('Insufficient internal Phaze balance after Stripe payment succeeded', [
+                    Log::error('Insufficient Phaze balance after Stripe payment succeeded', [
                         'gift_card_id' => $giftCard->id,
                         'purchase_amount' => $purchaseAmount,
                         'available' => $e->available,
@@ -1936,7 +1936,7 @@ class GiftCardController extends Controller
         try {
             $this->phazeBalanceService->assertCanAfford($purchaseAmount);
         } catch (InsufficientPhazeBalanceException $e) {
-            Log::warning('Gift card purchase blocked due to insufficient internal Phaze balance', [
+            Log::warning('Gift card purchase blocked due to insufficient Phaze balance', [
                 'required' => $e->required,
                 'available' => $e->available,
             ]);
@@ -1964,7 +1964,7 @@ class GiftCardController extends Controller
         try {
             $this->phazeBalanceService->deductForPurchase($purchaseAmount, $giftCard, $orderId);
         } catch (InsufficientPhazeBalanceException $e) {
-            Log::critical('Phaze purchase succeeded but internal balance deduction failed', [
+            Log::critical('Phaze purchase succeeded but balance ledger recording failed', [
                 'gift_card_id' => $giftCard->id,
                 'required' => $e->required,
                 'available' => $e->available,

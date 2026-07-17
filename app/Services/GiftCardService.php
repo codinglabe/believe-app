@@ -198,7 +198,7 @@ class GiftCardService
     }
 
     /**
-     * Fetch live prefunded balance from Phaze for admin reconciliation (read-only).
+     * Fetch live Phaze account balance (primary source for purchase / fulfillment affordability).
      *
      * @return array{
      *     available: float|null,
