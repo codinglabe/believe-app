@@ -7,7 +7,7 @@ import { prepareLogout } from "@/lib/logout"
 import { cn } from "@/lib/utils"
 import { Link, router } from "@inertiajs/react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronRight, Heart, LogOut, Settings2, Star, User, X } from "lucide-react"
+import { ChevronRight, Gift, Heart, LogOut, Settings2, Star, User, X } from "lucide-react"
 import { useState } from "react"
 
 const smoothEase = [0.25, 0.1, 0.25, 1] as const
@@ -441,10 +441,14 @@ export function MobileProfileMenuSheet({
   open,
   onClose,
   profileHref,
+  onOpenFavorites,
+  giftCardsHref,
 }: {
   open: boolean
   onClose: () => void
   profileHref: string
+  onOpenFavorites?: () => void
+  giftCardsHref?: string
 }) {
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -489,6 +493,32 @@ export function MobileProfileMenuSheet({
               </span>
               Profile
             </Link>
+            {giftCardsHref ? (
+              <Link
+                href={giftCardsHref}
+                role="menuitem"
+                onClick={onClose}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-foreground transition-colors active:bg-muted"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                  <Gift className="h-4 w-4 stroke-[2px]" />
+                </span>
+                Gift Cards
+              </Link>
+            ) : null}
+            {onOpenFavorites ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onOpenFavorites}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-foreground transition-colors active:bg-muted"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                  <Star className="h-4 w-4 stroke-[2px]" />
+                </span>
+                My Favorites
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"
