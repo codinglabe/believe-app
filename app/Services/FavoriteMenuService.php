@@ -20,13 +20,13 @@ class FavoriteMenuService
     /** @var list<string> */
     public const DEFAULT_QUICK_KEYS = [
         'donate',
+        'gift_cards',
         'organizations',
         'events',
         'marketplace',
         'merchant_deals',
         'challenge_hub',
         'chat',
-        'groups',
     ];
 
     /** @var array<int, string> */
@@ -385,7 +385,21 @@ class FavoriteMenuService
 
         $result = [];
         foreach ([1, 2, 3, 4, 5] as $slot) {
+            // Supporters: Gift Cards as the center tab (1-tap manage/redeem).
+            // Orgs/admins keep the Favorites hub in the center.
             if ($slot === 3) {
+                if ($this->isSupporterUser($user)) {
+                    $giftItem = $catalog->firstWhere('menu_key', 'gift_cards');
+                    if ($giftItem) {
+                        $result[] = array_merge($this->serializeMenuItem($giftItem, $user), [
+                            'slot' => 3,
+                            'isCenterGift' => true,
+                        ]);
+
+                        continue;
+                    }
+                }
+
                 $result[] = [
                     'slot' => 3,
                     'menuKey' => 'my_favorites',
@@ -525,6 +539,21 @@ class FavoriteMenuService
                 return $this->dashboardHrefForUser($user);
             }
 
+            // Supporters manage/redeem owned cards; orgs see purchased-for-org list.
+            if ($item->menu_key === 'gift_cards') {
+                if ($this->isSupporterUser($user)) {
+                    return Route::has('gift-cards.my-cards')
+                        ? route('gift-cards.my-cards')
+                        : '/gift-cards/my-cards';
+                }
+
+                if ($user->hasNonprofitDashboardRole() || $user->role === 'admin') {
+                    return Route::has('gift-cards.created')
+                        ? route('gift-cards.created')
+                        : (Route::has('gift-cards.index') ? route('gift-cards.index') : '/gift-cards');
+                }
+            }
+
             if ($item->menu_key === 'unity_meet' && ! $this->canAccessUnityMeet($user)) {
                 return $this->dashboardHrefForUser($user);
             }
@@ -640,6 +669,10 @@ class FavoriteMenuService
 
         if ($item->menu_key === 'profile') {
             return $this->profileActivePathForUser($user);
+        }
+
+        if ($item->menu_key === 'gift_cards' && $this->isSupporterUser($user)) {
+            return '/gift-cards/my-cards';
         }
 
         return $item->active_path_prefix;

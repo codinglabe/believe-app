@@ -8,6 +8,7 @@ export type MobileNavMenuItem = {
   requiresAuth?: boolean
   bottomNavEligible?: boolean
   isHub?: boolean
+  isCenterGift?: boolean
   opensWallet?: boolean
   slot?: number
 }
