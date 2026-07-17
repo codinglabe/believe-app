@@ -13,6 +13,7 @@ import {
   SUPPORTER_BIRTHDAY_TYPE,
   UNITY_MEET_INVITATION_TYPE,
   donationNotificationTarget,
+  giftCardNotificationTarget,
   mapDatabaseNotification,
   notificationSenderLabel,
   parseNotificationPayload,
@@ -125,6 +126,11 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         const donationTarget = donationNotificationTarget(notification)
         if (donationTarget) {
           router.visit(donationTarget)
+        } else {
+          const giftCardTarget = giftCardNotificationTarget(notification)
+          if (giftCardTarget) {
+            router.visit(giftCardTarget)
+          }
         }
       }
 
@@ -229,11 +235,16 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                       type: newNotification.type,
                       click_action: donationNotificationTarget(newNotification) ?? undefined,
                     }
-                  : {
-                      click_action: newNotification.content_item_id
-                        ? `/notifications/content/${newNotification.content_item_id}`
-                        : undefined,
-                    },
+                  : giftCardNotificationTarget(newNotification)
+                    ? {
+                        type: newNotification.type,
+                        click_action: giftCardNotificationTarget(newNotification) ?? undefined,
+                      }
+                    : {
+                        click_action: newNotification.content_item_id
+                          ? `/notifications/content/${newNotification.content_item_id}`
+                          : undefined,
+                      },
           })
         })
 
@@ -285,11 +296,16 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                       type: newNotification.type,
                       click_action: donationNotificationTarget(newNotification) ?? undefined,
                     }
-                  : {
-                      click_action: newNotification.content_item_id
-                        ? `/notifications/content/${newNotification.content_item_id}`
-                        : undefined,
-                    },
+                  : giftCardNotificationTarget(newNotification)
+                    ? {
+                        type: newNotification.type,
+                        click_action: giftCardNotificationTarget(newNotification) ?? undefined,
+                      }
+                    : {
+                        click_action: newNotification.content_item_id
+                          ? `/notifications/content/${newNotification.content_item_id}`
+                          : undefined,
+                      },
           })
         })
 

@@ -15,6 +15,7 @@ interface Props {
   event_platform_fee_percentage: number
   marketplace_printify_organization_fee_percentage: number
   marketplace_merchant_pool_fee_percentage: number
+  gift_card_platform_fee_usd: number
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -29,6 +30,7 @@ export default function AdminBiuFeeIndex({
   event_platform_fee_percentage,
   marketplace_printify_organization_fee_percentage,
   marketplace_merchant_pool_fee_percentage,
+  gift_card_platform_fee_usd,
 }: Props) {
   const { data, setData, put, processing, errors } = useForm({
     sales_platform_fee_percentage: String(sales_platform_fee_percentage ?? 0),
@@ -38,6 +40,7 @@ export default function AdminBiuFeeIndex({
       marketplace_printify_organization_fee_percentage ?? 0,
     ),
     marketplace_merchant_pool_fee_percentage: String(marketplace_merchant_pool_fee_percentage ?? 0),
+    gift_card_platform_fee_usd: String(gift_card_platform_fee_usd ?? 0.5),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,6 +53,7 @@ export default function AdminBiuFeeIndex({
   const eventPct = parseFloat(data.event_platform_fee_percentage) || 0
   const printifyOrgPct = parseFloat(data.marketplace_printify_organization_fee_percentage) || 0
   const merchantPoolPct = parseFloat(data.marketplace_merchant_pool_fee_percentage) || 0
+  const giftCardFee = parseFloat(data.gift_card_platform_fee_usd) || 0
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -68,8 +72,8 @@ export default function AdminBiuFeeIndex({
             <span className="font-medium text-foreground">Connection Hub</span> courses and meetups use dedicated module rates (platform fees are never
             refunded when a host cancels).{" "}
             <span className="font-medium text-foreground">Other sales modules</span> (Service Hub, raffles, merchant hub cash) use the global sales rate
-            below. <span className="font-medium text-foreground">Gift cards</span> sell at face value with no buyer platform fee; BIU revenue is a share of
-            provider commissions (see Gift card revenue).
+            below. <span className="font-medium text-foreground">Gift cards</span> charge a fixed platform fee on top of face value (Believe Points); BIU
+            also earns a share of provider commissions (see Gift card revenue).
           </p>
         </div>
 
@@ -91,6 +95,9 @@ export default function AdminBiuFeeIndex({
             </p>
             <p>
               Connection Hub meetup @ {eventPct}% → ${((100 * eventPct) / 100).toFixed(2)} platform fee on a $100 registration fee.
+            </p>
+            <p>
+              Gift card $25 face + ${giftCardFee.toFixed(2)} platform fee → ${(25 + giftCardFee).toFixed(2)} total charged in Believe Points.
             </p>
           </CardContent>
         </Card>
@@ -201,6 +208,36 @@ export default function AdminBiuFeeIndex({
                 {errors.marketplace_merchant_pool_fee_percentage && (
                   <p className="text-sm text-red-600">{errors.marketplace_merchant_pool_fee_percentage}</p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Gift cards — fixed platform fee</CardTitle>
+              <CardDescription>
+                Added on top of the gift card face value and charged in Believe Points at purchase. The card face value sent to Phaze is unchanged.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="gift_card_platform_fee_usd">Fixed fee (USD / BP)</Label>
+                <Input
+                  id="gift_card_platform_fee_usd"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  value={data.gift_card_platform_fee_usd}
+                  onChange={(e) => setData("gift_card_platform_fee_usd", e.target.value)}
+                  className="font-mono max-w-xs"
+                />
+                {errors.gift_card_platform_fee_usd && (
+                  <p className="text-sm text-red-600">{errors.gift_card_platform_fee_usd}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Default is $0.50. Example: $25 gift card → ${(25 + giftCardFee).toFixed(2)} Believe Points charged.
+                </p>
               </div>
             </CardContent>
           </Card>

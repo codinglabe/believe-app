@@ -3,7 +3,7 @@
 namespace App\Services;
 
 /**
- * Gift card revenue: face-value sales with no buyer platform fee.
+ * Gift card revenue: face-value card amount + fixed buyer platform fee (see {@see BiuPlatformFeeService}).
  * Provider (Phaze) commission is split — BIU share % and remainder to the beneficiary organization.
  * Merchant revenue is always zero (no merchant pool on gift cards).
  */
@@ -100,7 +100,7 @@ final class GiftCardRevenueShareService
                 'biu_revenue_share' => $platformCommission,
                 'organization_revenue' => $nonprofitCommission,
                 'merchant_revenue' => $merchantRevenue,
-                'gift_card_sales_basis' => 'face_value_no_buyer_platform_fee',
+                'gift_card_sales_basis' => 'face_value_plus_fixed_buyer_platform_fee',
             ],
         ];
     }
@@ -131,37 +131,35 @@ final class GiftCardRevenueShareService
     }
 
     /**
-     * Ledger / export meta: no buyer BIU platform fee; commission splits when known.
+     * Ledger / export meta: buyer platform fee + commission splits when known.
      *
      * @return array<string, float|null>
      */
     public static function ledgerMetaSlice(float $saleAmount, ?float $providerCommission = null, ?float $biuShare = null, ?float $organizationRevenue = null, ?float $merchantRevenue = null): array
     {
-        $g = round(max(0.0, $saleAmount), 2);
+        $face = round(max(0.0, $saleAmount), 2);
+        $feeSlice = BiuPlatformFeeService::giftCardLedgerMetaSlice($face);
+        $platformFee = (float) $feeSlice['platform_fee'];
         $merchant = round(max(0.0, (float) ($merchantRevenue ?? 0)), 2);
         $biu = $biuShare !== null ? round(max(0.0, $biuShare), 2) : null;
         $org = $organizationRevenue !== null ? round(max(0.0, $organizationRevenue), 2) : null;
         $provider = $providerCommission !== null ? round(max(0.0, $providerCommission), 2) : null;
 
-        $meta = [
-            'gross_amount' => $g,
-            'subtotal' => $g,
-            'amount_gross' => $g,
-            'gift_card_sales' => $g,
-            'biu_fee' => 0.0,
-            'believe_biu_fee' => 0.0,
-            'platform_fee' => 0.0,
+        $meta = array_merge($feeSlice, [
+            'gift_card_sales' => $face,
             'merchant_revenue' => $merchant,
             'merchant_payout' => $merchant,
             'supplier_payout' => 0.0,
-        ];
+        ]);
 
         if ($provider !== null) {
             $meta['provider_commission'] = $provider;
         }
         if ($biu !== null) {
             $meta['biu_revenue_share'] = $biu;
-            $meta['platform_payout'] = $biu;
+            $meta['platform_payout'] = round($platformFee + $biu, 2);
+        } else {
+            $meta['platform_payout'] = $platformFee;
         }
         if ($org !== null) {
             $meta['organization_revenue'] = $org;

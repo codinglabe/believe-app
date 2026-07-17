@@ -362,6 +362,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::get('/admin/gift-card-revenue', [\App\Http\Controllers\Admin\GiftCardRevenueShareController::class, 'index'])->name('admin.gift-card-revenue.index');
     Route::get('/admin/gift-card-redemptions', [\App\Http\Controllers\Admin\GiftCardRedemptionController::class, 'index'])->name('admin.gift-card-redemptions.index');
     Route::post('/admin/gift-card-redemptions/{giftCard}/retry', [\App\Http\Controllers\Admin\GiftCardRedemptionController::class, 'retry'])->name('admin.gift-card-redemptions.retry');
+    Route::post('/admin/gift-card-redemptions/{giftCard}/force-fulfill', [\App\Http\Controllers\Admin\GiftCardRedemptionController::class, 'forceFulfill'])->name('admin.gift-card-redemptions.force-fulfill');
     Route::get('/admin/phaze-balance', [\App\Http\Controllers\Admin\PhazeBalanceController::class, 'index'])->name('admin.phaze-balance.index');
     Route::post('/admin/phaze-balance/top-up', [\App\Http\Controllers\Admin\PhazeBalanceController::class, 'topUp'])->name('admin.phaze-balance.top-up');
 

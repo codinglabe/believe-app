@@ -4,16 +4,13 @@ namespace App\Services;
 
 use App\Enums\GiftCardStatus;
 use App\Jobs\FulfillGiftCardRedemptionJob;
-use App\Mail\GiftCardPurchaseReceipt;
 use App\Models\GiftCard;
 use App\Models\Transaction;
 use App\Models\User;
-use App\Notifications\GiftCardRedemptionDelayedNotification;
 use App\Support\BrpParticipationModule;
 use App\Services\ParticipationActivityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class GiftCardRedemptionService
@@ -21,6 +18,7 @@ class GiftCardRedemptionService
     public function __construct(
         private readonly PhazeBalanceService $phazeBalanceService,
         private readonly GiftCardService $giftCardService,
+        private readonly GiftCardRedemptionNotifier $redemptionNotifier,
     ) {}
 
     public function fulfillmentDelayHours(): int
@@ -42,7 +40,10 @@ class GiftCardRedemptionService
         float $purchaseAmount,
         string $currency,
     ): GiftCard {
-        $pointsRequired = round($purchaseAmount, 2);
+        $faceValue = round($purchaseAmount, 2);
+        $platformFee = BiuPlatformFeeService::getGiftCardPlatformFeeUsd();
+        $pointsRequired = BiuPlatformFeeService::giftCardTotalChargedUsd($faceValue);
+        $feeMeta = BiuPlatformFeeService::giftCardLedgerMetaSlice($faceValue);
         $orderId = Str::uuid()->toString();
         $delayHours = $this->fulfillmentDelayHours();
         $requestedAt = now();
@@ -57,9 +58,11 @@ class GiftCardRedemptionService
             $user,
             $validated,
             $selectedBrand,
-            $purchaseAmount,
+            $faceValue,
+            $platformFee,
             $currency,
             $pointsRequired,
+            $feeMeta,
             $orderId,
             $requestedAt,
             $scheduledAt,
@@ -87,7 +90,7 @@ class GiftCardRedemptionService
                 'user_id' => $lockedUser->id,
                 'organization_id' => $validated['organization_id'],
                 'card_number' => GiftCard::generateUniqueCardNumber(),
-                'amount' => $purchaseAmount,
+                'amount' => $faceValue,
                 'brand' => $finalBrandName,
                 'brand_name' => $finalBrandName,
                 'country' => $validated['country'] ?? null,
@@ -98,7 +101,7 @@ class GiftCardRedemptionService
                 'requested_at' => $requestedAt,
                 'scheduled_fulfillment_at' => $scheduledAt,
                 'expires_at' => $requestedAt->copy()->addYear(),
-                'meta' => array_merge($brandMeta, [
+                'meta' => array_merge($brandMeta, $feeMeta, [
                     'orderId' => $orderId,
                     'productId' => (int) $validated['productId'],
                     'believe_points_used' => $pointsRequired,
@@ -110,7 +113,9 @@ class GiftCardRedemptionService
                     'fulfillment_audit' => [[
                         'event' => 'submitted',
                         'at' => $requestedAt->toIso8601String(),
-                        'amount' => $purchaseAmount,
+                        'amount' => $faceValue,
+                        'platform_fee' => $platformFee,
+                        'total_charged' => $pointsRequired,
                         'order_id' => $orderId,
                     ]],
                 ]),
@@ -122,12 +127,12 @@ class GiftCardRedemptionService
                 'related_type' => GiftCard::class,
                 'type' => 'purchase',
                 'status' => Transaction::STATUS_PENDING,
-                'amount' => $purchaseAmount,
-                'fee' => 0,
+                'amount' => $pointsRequired,
+                'fee' => $platformFee,
                 'currency' => $currency,
                 'payment_method' => 'believe_points',
                 'transaction_id' => 'believe_points_gift_card_pending_'.$giftCard->id,
-                'meta' => [
+                'meta' => array_merge($feeMeta, [
                     'gift_card_id' => $giftCard->id,
                     'believe_points_used' => $pointsRequired,
                     'believe_points_from_gifted' => 0.0,
@@ -135,11 +140,14 @@ class GiftCardRedemptionService
                     'phaze_order_id' => $orderId,
                     'brand' => $validated['brand_name'],
                     'fulfillment_status' => GiftCardStatus::PendingFulfillment->value,
-                ],
+                    'gift_card_sales' => $faceValue,
+                ]),
             ]);
 
             $this->appendAudit($giftCard, 'bp_deducted', [
                 'amount' => $pointsRequired,
+                'face_value' => $faceValue,
+                'platform_fee' => $platformFee,
                 'from_purchased' => $pointsRequired,
             ]);
 
@@ -149,12 +157,17 @@ class GiftCardRedemptionService
         Log::info('Gift card BP redemption submitted for delayed fulfillment', [
             'gift_card_id' => $giftCard->id,
             'user_id' => $user->id,
-            'amount' => $purchaseAmount,
+            'amount' => $faceValue,
+            'platform_fee' => $platformFee,
+            'total_charged' => $pointsRequired,
             'scheduled_fulfillment_at' => $giftCard->scheduled_fulfillment_at?->toIso8601String(),
             'order_id' => $orderId,
         ]);
 
-        return $giftCard->fresh(['user', 'organization']);
+        $giftCard = $giftCard->fresh(['user', 'organization']);
+        $this->redemptionNotifier->notifySubmitted($giftCard);
+
+        return $giftCard;
     }
 
     public function scheduleFulfillmentJob(GiftCard $giftCard): void
@@ -348,6 +361,35 @@ class GiftCardRedemptionService
         return $giftCard->fresh(['user', 'organization']);
     }
 
+    /**
+     * Skip the delay queue and fulfill a pending redemption immediately.
+     */
+    public function queueAdminForceFulfill(GiftCard $giftCard, User $admin): GiftCard
+    {
+        if ($giftCard->payment_method !== 'believe_points') {
+            throw new \InvalidArgumentException('Only Believe Points redemptions support forced fulfillment.');
+        }
+
+        if (! GiftCardStatus::isForceFulfillEligible($giftCard->status)) {
+            throw new \InvalidArgumentException('Only pending fulfillment redemptions can be fulfilled early.');
+        }
+
+        $giftCard->update([
+            'scheduled_fulfillment_at' => now(),
+            'fulfillment_locked_at' => null,
+            'failure_reason' => null,
+        ]);
+
+        $this->appendAudit($giftCard, 'admin_force_fulfill_queued', [
+            'admin_id' => $admin->id,
+            'admin_email' => $admin->email,
+        ]);
+
+        FulfillGiftCardRedemptionJob::dispatch($giftCard->id, adminRetry: true);
+
+        return $giftCard->fresh(['user', 'organization']);
+    }
+
     private function notifyReserveDelayIfNeeded(GiftCard $giftCard): void
     {
         $meta = $giftCard->meta ?? [];
@@ -356,27 +398,13 @@ class GiftCardRedemptionService
             return;
         }
 
-        $user = $giftCard->user;
-        if (! $user) {
-            return;
-        }
-
-        try {
-            $user->notify(new GiftCardRedemptionDelayedNotification($giftCard));
-        } catch (\Throwable $e) {
-            Log::error('Failed to send gift card reserve delay notification', [
-                'gift_card_id' => $giftCard->id,
-                'message' => $e->getMessage(),
-            ]);
-
-            return;
-        }
-
         $giftCard->update([
             'meta' => array_merge($meta, [
                 'reserve_delay_notified_at' => now()->toIso8601String(),
             ]),
         ]);
+
+        $this->redemptionNotifier->notifyDelayed($giftCard->fresh(['user', 'organization']));
     }
 
     private function hasCompletedPhazeFulfillment(GiftCard $giftCard): bool
@@ -523,31 +551,15 @@ class GiftCardRedemptionService
 
     private function sendFulfillmentNotifications(GiftCard $giftCard): void
     {
-        $user = $giftCard->user;
-        if (! $user) {
+        if (! $giftCard->user || $giftCard->status === GiftCardStatus::Failed->value) {
             return;
         }
 
-        try {
-            $user->notify(new GiftCardRedemptionReadyNotification($giftCard));
-        } catch (\Throwable $e) {
-            Log::error('Failed to send gift card ready in-app notification', [
-                'gift_card_id' => $giftCard->id,
-                'message' => $e->getMessage(),
-            ]);
-        }
+        $this->appendAudit($giftCard, 'ready_notified', [
+            'channels' => ['database', 'broadcast', 'push', 'mail'],
+        ]);
 
-        if ($user->email && $giftCard->status !== GiftCardStatus::Failed->value) {
-            try {
-                Mail::to($user->email)->send(new GiftCardPurchaseReceipt($giftCard, null, readyNotification: true));
-                $giftCard->update(['is_sent' => true]);
-            } catch (\Throwable $e) {
-                Log::error('Failed to send gift card ready email', [
-                    'gift_card_id' => $giftCard->id,
-                    'message' => $e->getMessage(),
-                ]);
-            }
-        }
+        $this->redemptionNotifier->notifyReady($giftCard->fresh(['user', 'organization']));
     }
 
     /**
