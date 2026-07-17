@@ -53,10 +53,14 @@ enum GiftCardStatus: string
 
     /**
      * Admin may skip the delay queue and fulfill immediately.
+     * Processing is included so a stuck lock can be forced through.
      */
     public static function isForceFulfillEligible(?string $status): bool
     {
-        return $status === self::PendingFulfillment->value;
+        return in_array($status, [
+            self::PendingFulfillment->value,
+            self::Processing->value,
+        ], true);
     }
 
     public static function isAwaitingFulfillment(?string $status): bool
