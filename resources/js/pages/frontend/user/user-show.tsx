@@ -643,7 +643,7 @@ export default function UserPage({
                       ? `${(believePointsBalance / 1000).toFixed(1)}K`
                       : believePointsBalance.toLocaleString()}
                   </span>
-                  <span>Believer Points</span>
+                  <span>Believe Points</span>
                 </div>
               )}
               <div className="flex items-center gap-1.5">
@@ -723,7 +723,7 @@ export default function UserPage({
                             ? `${(believePointsBalance / 1000).toFixed(1)}k`
                             : believePointsBalance.toLocaleString()}
                         </p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Believe Points</p>
                         <div className="mt-1">
                           <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
                         </div>
