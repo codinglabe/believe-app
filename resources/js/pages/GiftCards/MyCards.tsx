@@ -17,7 +17,6 @@ import {
 } from "lucide-react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
-import { router } from "@inertiajs/react"
 
 interface GiftCard {
     id: number

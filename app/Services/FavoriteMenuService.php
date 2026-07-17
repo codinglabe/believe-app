@@ -20,13 +20,13 @@ class FavoriteMenuService
     /** @var list<string> */
     public const DEFAULT_QUICK_KEYS = [
         'donate',
+        'gift_cards',
         'organizations',
         'events',
         'marketplace',
         'merchant_deals',
         'challenge_hub',
         'chat',
-        'groups',
     ];
 
     /** @var array<int, string> */
@@ -441,7 +441,7 @@ class FavoriteMenuService
     {
         $serialized = [
             'menuKey' => $item->menu_key,
-            'title' => $item->title,
+            'title' => $item->menu_key === 'gift_cards' ? 'My Gift Cards' : $item->title,
             'href' => $this->resolveHref($item, $user),
             'icon' => $item->icon,
             'category' => $item->category,
@@ -523,6 +523,21 @@ class FavoriteMenuService
 
             if ($item->menu_key === 'dashboard') {
                 return $this->dashboardHrefForUser($user);
+            }
+
+            // Supporters manage/redeem owned cards; orgs see purchased-for-org list.
+            if ($item->menu_key === 'gift_cards') {
+                if ($this->isSupporterUser($user)) {
+                    return Route::has('gift-cards.my-cards')
+                        ? route('gift-cards.my-cards')
+                        : '/gift-cards/my-cards';
+                }
+
+                if ($user->hasNonprofitDashboardRole() || $user->role === 'admin') {
+                    return Route::has('gift-cards.created')
+                        ? route('gift-cards.created')
+                        : (Route::has('gift-cards.index') ? route('gift-cards.index') : '/gift-cards');
+                }
             }
 
             if ($item->menu_key === 'unity_meet' && ! $this->canAccessUnityMeet($user)) {
@@ -640,6 +655,10 @@ class FavoriteMenuService
 
         if ($item->menu_key === 'profile') {
             return $this->profileActivePathForUser($user);
+        }
+
+        if ($item->menu_key === 'gift_cards' && $this->isSupporterUser($user)) {
+            return '/gift-cards/my-cards';
         }
 
         return $item->active_path_prefix;
