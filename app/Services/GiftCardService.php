@@ -143,6 +143,7 @@ class GiftCardService
                 'error_data' => $data,
             ]);
 
+
             // Return error data with httpStatusCode so caller can check for errors
             if (is_array($data)) {
                 $data['httpStatusCode'] = $httpCode;
