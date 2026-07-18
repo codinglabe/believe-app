@@ -32,7 +32,25 @@ class EmailInviteController extends BaseController
             abort(404, 'Organization not found');
         }
 
-        $connections = $organization->emailConnections()->with('contacts')->get();
+        // Drop abandoned OAuth drafts so they never show as "Connected".
+        $organization->emailConnections()
+            ->where(function ($q) {
+                $q->where('is_active', false)
+                    ->orWhereNull('email')
+                    ->orWhere('email', '');
+            })
+            ->where(function ($q) {
+                $q->whereNull('access_token')
+                    ->orWhere('is_active', false);
+            })
+            ->delete();
+
+        $connections = $organization->emailConnections()
+            ->where('is_active', true)
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->with('contacts')
+            ->get();
 
         // Get pagination and filter parameters from request
         $perPage = $request->input('per_page', 50); // Default to 50 for initial load
@@ -294,8 +312,13 @@ class EmailInviteController extends BaseController
         // Refresh the connection to get latest data
         $connection->refresh();
 
-        // Get all connections for the response
-        $connections = $organization->emailConnections()->with('contacts')->get();
+        // Get active connected accounts only (hide incomplete OAuth drafts)
+        $connections = $organization->emailConnections()
+            ->where('is_active', true)
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->with('contacts')
+            ->get();
 
         // Get pagination and filter parameters from request (same as index method)
         $perPage = $request->input('per_page', 50);
