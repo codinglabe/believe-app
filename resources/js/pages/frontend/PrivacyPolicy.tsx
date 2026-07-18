@@ -155,23 +155,15 @@ const PrivacyPolicy = () => {
                                 Connecting Gmail for Email Invites (Google OAuth)
                             </h2>
                             <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                                If your nonprofit chooses to connect Gmail under <strong>Email Invite</strong>, we use Google OAuth only to help you import contacts and send invitation emails you initiate. We do not sell Google user data. We do not use Gmail data for advertising or unrelated purposes.
+                                If your nonprofit chooses to connect Google under <strong>Email Invite</strong>, we use Google OAuth only to import Google Contacts so you can send invitation emails you initiate. We do not sell Google user data. We do not read Gmail inbox messages. We do not use Google contact data for advertising or unrelated purposes.
                             </p>
                             <div className="space-y-4">
-                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
-                                        View email messages (gmail.readonly)
-                                    </h3>
-                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        We use read-only Gmail access only as needed to support contact import and deliverability checks for invitations you send through Email Invite. We do not read your inbox for unrelated purposes and we do not send email on your behalf without your explicit action in the app.
-                                    </p>
-                                </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
                                         View your contacts (contacts.readonly)
                                     </h3>
                                     <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        We import contact names and email addresses you choose to sync so you can invite supporters to join your organization on Believe In Unity. Imported contacts are stored only for your organization&apos;s invite workflow.
+                                        We import contact names and email addresses from Google Contacts so you can invite supporters to join your organization on Believe In Unity. Imported contacts are stored only for your organization&apos;s invite workflow. We do not request Gmail inbox access.
                                     </p>
                                 </div>
                             </div>

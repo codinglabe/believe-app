@@ -678,11 +678,11 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                     </CardHeader>
                     <CardContent>
                         <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground space-y-2 mb-4">
-                            <p className="font-medium text-foreground">Gmail permissions (Google OAuth)</p>
+                            <p className="font-medium text-foreground">Google permissions (OAuth)</p>
                             <ul className="list-disc pl-5 space-y-1">
-                                <li><strong>gmail.readonly</strong> — read-only access to support contact import for invites you send.</li>
-                                <li><strong>contacts.readonly</strong> — import contact names and emails you choose to sync.</li>
+                                <li><strong>contacts.readonly</strong> — import Google Contacts (names and emails) so you can send invites.</li>
                             </ul>
+                            <p>We do not request access to read your Gmail inbox.</p>
                             <p>
                                 See our{" "}
                                 <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">

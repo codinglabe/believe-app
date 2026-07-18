@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\EmailConnection;
 use Google_Client;
-use Google_Service_Gmail;
 use Google_Service_PeopleService;
 use Illuminate\Support\Facades\Log;
 
@@ -29,8 +28,8 @@ class GmailService
         $this->client->setClientId($clientId);
         $this->client->setClientSecret($clientSecret);
         $this->client->setRedirectUri($redirectUri);
+        // Least privilege for Google OAuth verification: Contacts only (no gmail.readonly).
         $this->client->setScopes([
-            'https://www.googleapis.com/auth/gmail.readonly',
             'https://www.googleapis.com/auth/contacts.readonly',
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/userinfo.profile',
@@ -208,116 +207,29 @@ class GmailService
                     $pageToken = $results->getNextPageToken();
                 } while ($pageToken);
             } catch (\Exception $e) {
-                // People API might not be enabled - log warning but continue
-                Log::warning('Gmail People API not available: ' . $e->getMessage());
-                Log::info('Will attempt to get contacts from recent senders instead');
+                // People API might not be enabled - log warning
+                Log::warning('Google People API not available: ' . $e->getMessage());
             }
 
             return $contacts;
         } catch (\Exception $e) {
             Log::error('Gmail get contacts error: ' . $e->getMessage());
-            // Return empty array instead of throwing - we can still get contacts from recent senders
+
             return $contacts;
         }
     }
 
     /**
-     * Get recent senders from Gmail
-     * Fetches all messages by paginating through results
+     * Disabled: previously scanned Gmail for recent senders (required gmail.readonly).
+     * Email Invite now uses Google Contacts only for least-privilege OAuth verification.
+     *
+     * @return array<int, array<string, mixed>>
      */
     public function getRecentSenders(int $limit = 1000): array
     {
-        try {
-            // Ensure token is valid
-            if ($this->connection->isTokenExpired()) {
-                $this->refreshToken();
-            }
-
-            $gmailService = new Google_Service_Gmail($this->client);
-            $senders = [];
-            $seenEmails = [];
-            $pageToken = null;
-            $maxResults = 500; // Gmail API max per page
-            $totalFetched = 0;
-
-            do {
-                $params = [
-                    'maxResults' => min($maxResults, $limit - $totalFetched),
-                ];
-                
-                if ($pageToken) {
-                    $params['pageToken'] = $pageToken;
-                }
-
-                $messagesResponse = $gmailService->users_messages->listUsersMessages('me', $params);
-                $messages = $messagesResponse->getMessages() ?? [];
-
-                foreach ($messages as $message) {
-                    try {
-                        $msg = $gmailService->users_messages->get('me', $message->getId(), ['format' => 'metadata']);
-                        $headers = $msg->getPayload()->getHeaders();
-
-                        $from = null;
-                        $subject = null;
-                        foreach ($headers as $header) {
-                            if ($header->getName() === 'From') {
-                                $from = $header->getValue();
-                            }
-                            if ($header->getName() === 'Subject') {
-                                $subject = $header->getValue();
-                            }
-                        }
-
-                        if ($from) {
-                            // Extract email from "Name <email@example.com>" format
-                            if (preg_match('/<(.+)>/', $from, $matches)) {
-                                $email = $matches[1];
-                            } else {
-                                $email = trim($from);
-                            }
-
-                            // Extract name if available
-                            $name = null;
-                            if (preg_match('/^(.+)\s*<.+>$/', $from, $matches)) {
-                                $name = trim($matches[1], '"\' ');
-                            }
-
-                            $emailLower = strtolower($email);
-                            if ($email && !in_array($emailLower, $seenEmails) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                                $seenEmails[] = $emailLower;
-                                $senders[] = [
-                                    'email' => $email,
-                                    'name' => $name,
-                                    'provider_contact_id' => $message->getId(),
-                                    'metadata' => [
-                                        'subject' => $subject,
-                                        'message_id' => $message->getId(),
-                                    ],
-                                ];
-                            }
-                        }
-                    } catch (\Exception $e) {
-                        // Skip individual message errors and continue
-                        Log::warning('Error processing message ' . $message->getId() . ': ' . $e->getMessage());
-                        continue;
-                    }
-                }
-
-                $totalFetched += count($messages);
-                $pageToken = $messagesResponse->getNextPageToken();
-                
-                // Stop if we've reached the limit or no more pages
-                if ($totalFetched >= $limit || !$pageToken) {
-                    break;
-                }
-            } while ($pageToken && $totalFetched < $limit);
-
-            Log::info("Fetched {$totalFetched} messages, extracted " . count($senders) . " unique senders");
-            return $senders;
-        } catch (\Exception $e) {
-            Log::error('Gmail get recent senders error: ' . $e->getMessage());
-            throw $e;
-        }
+        throw new \RuntimeException(
+            'Gmail recent-sender sync is disabled. Email Invite uses contacts.readonly (Google Contacts) only.'
+        );
     }
 }
 

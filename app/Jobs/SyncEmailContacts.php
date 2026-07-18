@@ -42,14 +42,11 @@ class SyncEmailContacts implements ShouldQueue
 
             if ($this->emailConnection->provider === 'gmail') {
                 $service = new GmailService($this->emailConnection);
+                // Google Contacts only (contacts.readonly) — no Gmail inbox / recent-sender scan.
                 $contacts = $service->getContacts();
-                // Also get recent senders - fetch more to ensure 100% coverage
-                $senders = $service->getRecentSenders(1000);
-                $contacts = array_merge($contacts, $senders);
             } else {
                 $service = new OutlookService($this->emailConnection);
                 $contacts = $service->getContacts();
-                // Also get recent senders - fetch more to ensure 100% coverage
                 $senders = $service->getRecentSenders(1000);
                 $contacts = array_merge($contacts, $senders);
             }
