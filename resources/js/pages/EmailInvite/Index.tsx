@@ -696,14 +696,16 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                             </p>
                         </div>
                         <div className="space-y-4">
-                            {connections.length === 0 ? (
+                            {connections.filter((c) => c.is_active && !!c.email).length === 0 ? (
                                 <div className="text-center py-8 text-muted-foreground">
                                     <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
                                     <p>No email accounts connected</p>
                                     <p className="text-sm mt-2">Connect an account to get started</p>
                                 </div>
                             ) : (
-                                connections.map((connection) => (
+                                connections
+                                    .filter((c) => c.is_active && !!c.email)
+                                    .map((connection) => (
                                     <div
                                         key={connection.id}
                                         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border rounded-lg"
