@@ -58,19 +58,16 @@ class SyncEmailContacts extends Command
             try {
                 if ($connection->provider === 'gmail') {
                     $service = new GmailService($connection);
-                    $contacts = $service->getContacts(); // May return empty if People API not enabled
-                    $senders = $service->getRecentSenders(1000); // Fetch up to 1000 to ensure 100% coverage
-                    $contacts = array_merge($contacts, $senders);
-                    
-                    if (empty($contacts) && empty($senders)) {
-                        $this->warn("⚠ No contacts found. Make sure Gmail API is enabled in Google Cloud Console.");
-                    } elseif (empty($contacts) && !empty($senders)) {
-                        $this->info("ℹ People API not available - using recent senders only. Enable People API for full contact list.");
+                    // Google Contacts only (contacts.readonly) — no Gmail inbox scan.
+                    $contacts = $service->getContacts();
+
+                    if (empty($contacts)) {
+                        $this->warn('⚠ No contacts found. Enable People API and grant contacts.readonly.');
                     }
                 } else {
                     $service = new OutlookService($connection);
                     $contacts = $service->getContacts();
-                    $senders = $service->getRecentSenders(1000); // Fetch up to 1000 to ensure 100% coverage
+                    $senders = $service->getRecentSenders(1000);
                     $contacts = array_merge($contacts, $senders);
                 }
 

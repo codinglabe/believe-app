@@ -678,11 +678,11 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                     </CardHeader>
                     <CardContent>
                         <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground space-y-2 mb-4">
-                            <p className="font-medium text-foreground">Gmail permissions (Google OAuth)</p>
+                            <p className="font-medium text-foreground">Google permissions (OAuth)</p>
                             <ul className="list-disc pl-5 space-y-1">
-                                <li><strong>gmail.readonly</strong> — read-only access to support contact import for invites you send.</li>
-                                <li><strong>contacts.readonly</strong> — import contact names and emails you choose to sync.</li>
+                                <li><strong>contacts.readonly</strong> — import Google Contacts (names and emails) so you can send invites.</li>
                             </ul>
+                            <p>We do not request access to read your Gmail inbox.</p>
                             <p>
                                 See our{" "}
                                 <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
@@ -696,14 +696,16 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                             </p>
                         </div>
                         <div className="space-y-4">
-                            {connections.length === 0 ? (
+                            {connections.filter((c) => c.is_active && !!c.email).length === 0 ? (
                                 <div className="text-center py-8 text-muted-foreground">
                                     <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
                                     <p>No email accounts connected</p>
                                     <p className="text-sm mt-2">Connect an account to get started</p>
                                 </div>
                             ) : (
-                                connections.map((connection) => (
+                                connections
+                                    .filter((c) => c.is_active && !!c.email)
+                                    .map((connection) => (
                                     <div
                                         key={connection.id}
                                         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 border rounded-lg"
