@@ -62,11 +62,33 @@ Route::middleware('guest')->group(function () {
             }
         }
 
+        $giftInviteEmail = null;
+        $giftInviteToken = null;
+        if ($request->filled('gift_invite')) {
+            $invite = \App\Models\BelievePointGiftInvite::query()
+                ->where('token', (string) $request->query('gift_invite'))
+                ->where('status', \App\Models\BelievePointGiftInvite::STATUS_PENDING)
+                ->where('expires_at', '>', now())
+                ->first();
+            if ($invite) {
+                $giftInviteToken = $invite->token;
+                $giftInviteEmail = $invite->recipient_email;
+            }
+        }
+        if ($giftInviteEmail === null && $request->filled('email')) {
+            $candidate = strtolower(trim((string) $request->query('email')));
+            if (filter_var($candidate, FILTER_VALIDATE_EMAIL)) {
+                $giftInviteEmail = $candidate;
+            }
+        }
+
         return Inertia::render('frontend/register/user', [
             'seo' => $seo,
             'referralCode' => $referralCode ?? '',
             'positions' => $positions,
             'lockOrganization' => $lockOrganization,
+            'giftInviteEmail' => $giftInviteEmail,
+            'giftInviteToken' => $giftInviteToken,
         ]);
     })->name('register.user');
 

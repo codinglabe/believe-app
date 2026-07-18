@@ -115,7 +115,16 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       } else if (notification.type === CARE_ALLIANCE_INVITATION_TYPE) {
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
       } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
-        router.visit(`/supporters/gift/${notification.meta.celebrant_id}`)
+        router.visit(`/gift-bp?recipient=${notification.meta.celebrant_id}`)
+      } else if (
+        notification.type === "gift_invite_pending" ||
+        notification.type === "gift_invite_claimed" ||
+        notification.type === "gift_invite_expired" ||
+        notification.type === "gift_sent"
+      ) {
+        router.visit("/gift-bp")
+      } else if (notification.type === "gift_received") {
+        router.visit("/believe-points")
       } else if (notification.type === UNITY_MEET_INVITATION_TYPE) {
         const joinUrl =
           typeof notification.meta?.join_url === "string" ? notification.meta.join_url : null
@@ -588,7 +597,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                                 const id = notification.meta?.celebrant_id
                                 if (id == null) return
                                 await markAsRead(notification)
-                                router.visit(`/supporters/gift/${id}`)
+                                router.visit(`/gift-bp?recipient=${id}`)
                               }}
                             >
                               <Gift className="mr-1.5 h-3.5 w-3.5" />

@@ -1,6 +1,10 @@
 export const CARE_ALLIANCE_INVITATION_TYPE = "care_alliance_invitation"
 export const SUPPORTER_BIRTHDAY_TYPE = "supporter_birthday"
 export const BELIEVE_POINTS_GIFT_RECEIVED_TYPE = "gift_received"
+export const BELIEVE_POINTS_GIFT_SENT_TYPE = "gift_sent"
+export const BELIEVE_POINTS_GIFT_INVITE_PENDING_TYPE = "gift_invite_pending"
+export const BELIEVE_POINTS_GIFT_INVITE_CLAIMED_TYPE = "gift_invite_claimed"
+export const BELIEVE_POINTS_GIFT_INVITE_EXPIRED_TYPE = "gift_invite_expired"
 export const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation"
 export const DONATION_CONFIRMED_TYPE = "donation_confirmed"
 export const DONATION_RECEIVED_TYPE = "donation_received"
@@ -62,6 +66,14 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
       ? SUPPORTER_BIRTHDAY_TYPE
       : typeof rawType === "string" && (rawType.includes("BelievePointGiftReceived") || rawType === "gift_received" || rawType === "believe_points_gift_received")
         ? BELIEVE_POINTS_GIFT_RECEIVED_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftSent") || rawType === "gift_sent")
+          ? BELIEVE_POINTS_GIFT_SENT_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftInvitePending") || rawType === "gift_invite_pending")
+          ? BELIEVE_POINTS_GIFT_INVITE_PENDING_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftClaimed") || rawType === "gift_invite_claimed")
+          ? BELIEVE_POINTS_GIFT_INVITE_CLAIMED_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftRefunded") || rawType === "gift_invite_expired")
+          ? BELIEVE_POINTS_GIFT_INVITE_EXPIRED_TYPE
         : typeof rawType === "string" && (rawType.includes("DonationConfirmedForDonor") || rawType === DONATION_CONFIRMED_TYPE)
           ? DONATION_CONFIRMED_TYPE
           : typeof rawType === "string" && (rawType.includes("DonationReceivedForOrganization") || rawType === DONATION_RECEIVED_TYPE)

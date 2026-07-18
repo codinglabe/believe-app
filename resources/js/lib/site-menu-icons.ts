@@ -20,6 +20,7 @@ import {
   Newspaper,
   Radio,
   ShoppingBag,
+  Sparkles,
   Star,
   Store,
   Ticket,
@@ -61,6 +62,7 @@ export const siteMenuIconMap: Record<string, LucideIcon> = {
   Star,
   Circle,
   Wallet,
+  Sparkles,
 }
 
 export function resolveSiteMenuIcon(name?: string): LucideIcon {

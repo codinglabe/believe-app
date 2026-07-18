@@ -9,7 +9,7 @@ import { PageHead } from "@/components/frontend/PageHead"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
-import { Search, MapPin, ChevronDown, Loader2, Gift, UserPlus, UserCheck } from "lucide-react"
+import { Search, MapPin, ChevronDown, Loader2, Gift, UserPlus, UserCheck, ArrowRight, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CauseBadge } from "@/components/frontend/cause-badge"
 
@@ -243,14 +243,46 @@ export default function FindSupportersPage() {
         <div className="relative overflow-hidden border-b border-slate-200/80 bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:border-white/5 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.06),_transparent_55%),radial-gradient(ellipse_at_bottom,_rgba(147,51,234,0.05),_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.12),_transparent_55%),radial-gradient(ellipse_at_bottom,_rgba(147,51,234,0.08),_transparent_55%)]" />
           <div className="relative container mx-auto px-4 py-10">
-            <header className="mb-8 max-w-3xl">
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
-                Supporters
-              </h1>
-              <p className="mt-3 text-base text-slate-600 dark:text-slate-400">
-                Discover and connect with supporters who care about making a difference.
-              </p>
+            <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+              <div className="max-w-2xl">
+                <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+                  Supporters
+                </h1>
+                <p className="mt-3 text-base text-slate-600 dark:text-slate-400">
+                  Discover and connect with supporters who care about making a difference.
+                </p>
+              </div>
+              {currentUser ? (
+                <Button
+                  type="button"
+                  onClick={() => router.visit("/gift-bp")}
+                  className="h-12 shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-5 font-semibold text-white shadow-md hover:from-violet-700 hover:to-blue-700"
+                >
+                  <Gift className="mr-2 h-4 w-4" />
+                  Gift BP
+                  <Sparkles className="ml-2 h-3.5 w-3.5 opacity-90" />
+                </Button>
+              ) : null}
             </header>
+
+            {currentUser ? (
+              <button
+                type="button"
+                onClick={() => router.visit("/gift-bp")}
+                className="mb-6 flex w-full items-center gap-4 rounded-2xl border border-violet-400/40 bg-gradient-to-r from-violet-50 to-blue-50 p-4 text-left shadow-sm transition hover:border-violet-500 hover:shadow-md dark:from-violet-950/40 dark:to-blue-950/30 dark:border-violet-500/40"
+              >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow">
+                  <Gift className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-900 dark:text-white">Send Believe Points to anyone</p>
+                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                    Gift registered supporters instantly — or invite someone by email and hold BP until they join.
+                  </p>
+                </div>
+                <ArrowRight className="h-5 w-5 shrink-0 text-violet-600" />
+              </button>
+            ) : null}
 
             <form onSubmit={handleSearch} className="relative mb-6">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
@@ -392,11 +424,11 @@ export default function FindSupportersPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="rounded-lg border-amber-400/80 font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-400/60 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10 dark:hover:text-amber-100"
-                              onClick={() => router.visit(`/supporters/gift/${supporter.id}`)}
+                              className="rounded-lg border-violet-400/80 font-semibold text-violet-800 hover:bg-violet-50 dark:border-violet-400/60 dark:bg-transparent dark:text-violet-200 dark:hover:bg-violet-500/10 dark:hover:text-violet-100"
+                              onClick={() => router.visit(`/gift-bp?recipient=${supporter.id}`)}
                             >
                               <Gift className="mr-1.5 h-4 w-4" />
-                              Gift
+                              Gift BP
                             </Button>
                           ) : (
                             <span className="text-slate-400 dark:text-slate-600">—</span>
@@ -470,6 +502,21 @@ export default function FindSupportersPage() {
               </div>
               <h3 className="mb-2 text-lg font-semibold text-slate-900 dark:text-white">No supporters found</h3>
               <p className="text-slate-600 dark:text-slate-400">Try adjusting your filters or search terms.</p>
+              {currentUser ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+                    Looking for someone who isn’t registered yet?
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => router.visit("/gift-bp")}
+                    className="rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 font-semibold text-white"
+                  >
+                    <Gift className="mr-2 h-4 w-4" />
+                    Invite &amp; Gift BP by email
+                  </Button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

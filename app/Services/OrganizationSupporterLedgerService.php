@@ -270,7 +270,7 @@ class OrganizationSupporterLedgerService
         $links[] = [
             'key' => 'gift',
             'label' => 'Gift Believe Points',
-            'href' => route('supporters.gift', $supporterId),
+            'href' => route('gift-bp.index', ['recipient' => $supporterId]),
             'external' => false,
         ];
 

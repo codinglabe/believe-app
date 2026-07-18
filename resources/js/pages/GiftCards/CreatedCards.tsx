@@ -245,6 +245,24 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                             : 'All gift cards purchased for organizations'}
                                 </p>
                             </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => router.visit(route('gift-cards.index'))}
+                                >
+                                    Browse gift cards
+                                </Button>
+                                <Button
+                                    type="button"
+                                    className="rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 font-semibold text-white hover:from-violet-700 hover:to-blue-700"
+                                    onClick={() => router.visit('/gift-bp')}
+                                >
+                                    <Gift className="mr-2 h-4 w-4" />
+                                    Gift BP
+                                </Button>
+                            </div>
                         </div>
 
                         {isAdmin && (

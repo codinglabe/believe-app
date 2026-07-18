@@ -34,6 +34,7 @@ use App\Observers\OrganizationObserver;
 use App\Observers\UserFavoriteOrganizationObserver;
 use App\Models\User;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -98,6 +99,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Register event listener for email verification
         Event::listen(Login::class, AwardDailyLoginBrp::class);
+        Event::listen(Registered::class, \App\Listeners\ClaimBelievePointGiftInvites::class);
         Event::listen(Verified::class, AwardInviteRewardPoints::class);
         Event::listen(Verified::class, AwardSupporterReferralBrp::class);
 

@@ -114,13 +114,41 @@ export default function MyCardsPage({ giftCards, user }: MyCardsProps) {
             <Head title="My Gift Cards" />
 
             <div className="space-y-6">
-                {/* Header Actions */}
-                <div className="flex justify-end">
-                    <Link href={route('gift-cards.index')}>
-                        <Button>
-                            Browse Gift Cards
-                            <ArrowRight className="h-4 w-4 ml-2" />
-                        </Button>
+                {/* Primary actions */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Link
+                        href={route('gift-cards.index')}
+                        className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-violet-400/50 hover:shadow-md dark:border-white/10 dark:bg-slate-900/60 dark:hover:border-violet-500/40"
+                    >
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow">
+                            <Gift className="h-6 w-6" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-900 dark:text-white">Browse Gift Cards</p>
+                            <p className="mt-0.5 text-sm text-muted-foreground">
+                                Explore and purchase from hundreds of top brands.
+                            </p>
+                        </div>
+                        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-violet-600" />
+                    </Link>
+
+                    <Link
+                        href="/gift-bp"
+                        className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border border-violet-400/40 bg-gradient-to-br from-violet-50 to-blue-50 p-4 shadow-sm transition hover:border-violet-500 hover:shadow-md dark:from-violet-950/50 dark:to-blue-950/40 dark:border-violet-500/40"
+                    >
+                        <Badge className="absolute right-3 top-3 bg-violet-600 text-white hover:bg-violet-600">
+                            New
+                        </Badge>
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow">
+                            <Gift className="h-6 w-6" />
+                        </div>
+                        <div className="min-w-0 flex-1 pr-8">
+                            <p className="font-semibold text-slate-900 dark:text-white">Gift BP</p>
+                            <p className="mt-0.5 text-sm text-muted-foreground">
+                                Send Believe Points to anyone. They can choose any gift card they want.
+                            </p>
+                        </div>
+                        <ArrowRight className="h-5 w-5 shrink-0 text-violet-600 transition group-hover:translate-x-0.5" />
                     </Link>
                 </div>
 
