@@ -151,4 +151,53 @@ class GiftBelievePointsController extends Controller
             'Invitation sent to '.$invite->recipient_email.'. '.BelievePointGiftInviteService::formatAmount((float) $invite->amount).' BP is holding until they register ('.BelievePointGiftInviteService::holdDays().' days).'
         );
     }
+
+    public function cancel(Request $request, BelievePointGiftInvite $invite)
+    {
+        $sender = Auth::user();
+        if (! $sender instanceof User) {
+            return redirect()->guest(route('login'));
+        }
+
+        $this->giftService->cancelInvite($sender, $invite);
+
+        return back()->with(
+            'success',
+            'Invitation cancelled. '.BelievePointGiftInviteService::formatAmount((float) $invite->amount).' BP was returned to your Available balance.'
+        );
+    }
+
+    public function resend(Request $request, BelievePointGiftInvite $invite)
+    {
+        $sender = Auth::user();
+        if (! $sender instanceof User) {
+            return redirect()->guest(route('login'));
+        }
+
+        $this->giftService->resendInvite($sender, $invite);
+
+        return back()->with(
+            'success',
+            'Invitation resent to '.$invite->fresh()->recipient_email.'.'
+        );
+    }
+
+    public function updateEmail(Request $request, BelievePointGiftInvite $invite)
+    {
+        $sender = Auth::user();
+        if (! $sender instanceof User) {
+            return redirect()->guest(route('login'));
+        }
+
+        $validated = $request->validate([
+            'email' => 'required|email|max:255',
+        ]);
+
+        $updated = $this->giftService->changeInviteEmail($sender, $invite, (string) $validated['email']);
+
+        return back()->with(
+            'success',
+            'Invitation email updated to '.$updated->recipient_email.'. Holding BP is unchanged.'
+        );
+    }
 }

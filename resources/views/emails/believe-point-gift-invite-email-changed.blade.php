@@ -3,25 +3,23 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gift invite pending</title>
+    <title>Gift invitation email updated</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #7c3aed, #2563eb); padding: 28px; border-radius: 8px 8px 0 0; text-align: center;">
-        <h1 style="color: #fff; margin: 0; font-size: 22px;">Your gift is holding</h1>
+        <h1 style="color: #fff; margin: 0; font-size: 22px;">Invitation email updated</h1>
     </div>
     <div style="background-color: #f8f9fa; padding: 28px; border-radius: 0 0 8px 8px;">
         <p style="font-size: 16px;">
-            You sent <strong>{{ $amountLabel }} BP</strong> to <strong>{{ $invite->recipient_email }}</strong>.
+            Your pending gift of <strong>{{ $amountLabel }} BP</strong> was updated.
         </p>
         <p style="font-size: 15px; color: #555;">
-            Those points moved to <strong>Holding</strong> for {{ $holdDays }} days (until {{ $expiresAt }}).
-            When they register as a supporter with that email, the gift is credited to their Gifted BP balance.
-            If they don’t register in time, the points return to your Available balance.
+            Previous email: <strong>{{ $previousEmail }}</strong><br>
+            New email: <strong>{{ $newEmail }}</strong>
         </p>
         <p style="font-size: 15px; color: #555;">
-            Changed your mind or used the wrong email? On Gift BP you can <strong>Resend</strong>,
-            <strong>Change Email</strong>, or <strong>Cancel</strong> the invitation anytime while it is still pending —
-            Cancel returns Holding BP to Available immediately.
+            Holding BP is unchanged. A fresh invitation was sent to the new address
+            (still expires {{ $expiresAt }}). The previous address was notified that the gift was cancelled for them.
         </p>
         <p style="text-align: center; margin: 24px 0;">
             <a href="{{ $manageUrl }}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;">

@@ -120,9 +120,14 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         notification.type === "gift_invite_pending" ||
         notification.type === "gift_invite_claimed" ||
         notification.type === "gift_invite_expired" ||
+        notification.type === "gift_invite_cancelled" ||
+        notification.type === "gift_invite_email_changed" ||
+        notification.type === "gift_invite_resent" ||
         notification.type === "gift_sent"
       ) {
         router.visit("/gift-bp")
+      } else if (notification.type === "gift_invite_cancellation_brp") {
+        router.visit("/profile/reward-points-ledger")
       } else if (notification.type === "gift_received") {
         router.visit("/believe-points")
       } else if (notification.type === UNITY_MEET_INVITATION_TYPE) {
