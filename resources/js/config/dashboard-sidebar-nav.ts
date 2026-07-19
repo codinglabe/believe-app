@@ -358,12 +358,25 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
             {
                 title: 'Gift cards',
                 icon: Gift,
-                role: ['organization', 'admin'],
+                role: ['organization', 'organization_pending', 'admin', 'care_alliance'],
                 items: [
                     {
                         title: 'Purchased cards',
                         href: route('gift-cards.created'),
                         icon: Gift,
+                        role: ['organization', 'organization_pending', 'admin'],
+                    },
+                    {
+                        title: 'Browse gift cards',
+                        href: route('gift-cards.index'),
+                        icon: ShoppingBag,
+                        role: ['organization', 'organization_pending', 'admin', 'care_alliance'],
+                    },
+                    {
+                        title: 'Gift BP',
+                        href: '/gift-bp',
+                        icon: Sparkles,
+                        role: ['organization', 'organization_pending', 'admin', 'care_alliance'],
                     },
                 ],
             },
@@ -453,6 +466,18 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: Users,
                 permission: 'organization.followers.read',
                 role: 'organization',
+            },
+            {
+                title: 'Find Supporters',
+                href: route('find-supporters.index'),
+                icon: Search,
+                role: ['organization', 'organization_pending', 'care_alliance', 'user'],
+            },
+            {
+                title: 'Gift BP',
+                href: '/gift-bp',
+                icon: Sparkles,
+                role: ['organization', 'organization_pending', 'care_alliance', 'user'],
             },
             {
                 title: 'Kiosk listings',

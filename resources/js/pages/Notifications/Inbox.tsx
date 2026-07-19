@@ -252,7 +252,16 @@ export default function NotificationsInbox() {
       } else if (notification.type === CARE_ALLIANCE_INVITATION_TYPE) {
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
       } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
-        router.visit(`/supporters/gift/${notification.meta.celebrant_id}`)
+        router.visit(`/gift-bp?recipient=${notification.meta.celebrant_id}`)
+      } else if (
+        notification.type === "gift_invite_pending" ||
+        notification.type === "gift_invite_claimed" ||
+        notification.type === "gift_invite_expired" ||
+        notification.type === "gift_sent"
+      ) {
+        router.visit("/gift-bp")
+      } else if (notification.type === "gift_received") {
+        router.visit("/believe-points")
       } else {
         const donationTarget = donationNotificationTarget(notification)
         if (donationTarget) {
@@ -525,7 +534,7 @@ export default function NotificationsInbox() {
                                       toast.error("Could not update notification.")
                                       return
                                     }
-                                    router.visit(`/supporters/gift/${id}`)
+                                    router.visit(`/gift-bp?recipient=${id}`)
                                   }}
                                 >
                                   Send Gift

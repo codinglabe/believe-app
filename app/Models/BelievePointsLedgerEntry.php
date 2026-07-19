@@ -25,6 +25,10 @@ class BelievePointsLedgerEntry extends Model
 
     public const TYPE_GIFT_RECEIVED = 'gift_received';
 
+    public const TYPE_GIFT_HOLD = 'gift_hold';
+
+    public const TYPE_GIFT_HOLD_REFUND = 'gift_hold_refund';
+
     public const TYPE_REFUND = 'refund';
 
     protected $fillable = [

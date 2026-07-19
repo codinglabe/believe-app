@@ -16,4 +16,20 @@ return [
 
     'bridge_reserve_confirmation_enabled' => env('BP_BRIDGE_RESERVE_CONFIRMATION_ENABLED', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Gift invite holding window
+    |--------------------------------------------------------------------------
+    |
+    | When BP is gifted to an email that is not yet registered, points move from
+    | Available → Holding. If the invitee does not register within this many
+    | days, Holding is refunded to the sender.
+    |
+    | 14 days balances enough time to register (including weekends) without
+    | leaving sender funds locked for too long.
+    |
+    */
+
+    'gift_invite_hold_days' => (int) env('BP_GIFT_INVITE_HOLD_DAYS', 14),
+
 ];

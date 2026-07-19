@@ -30,9 +30,17 @@ interface UserRegisterPageProps {
   referralCode?: string
   positions: { id: number; name: string }[]
   lockOrganization?: { id: number; name: string } | null
+  giftInviteEmail?: string | null
+  giftInviteToken?: string | null
 }
 
-export default function UserRegisterPage({ seo, referralCode = '', positions, lockOrganization = null }: UserRegisterPageProps) {
+export default function UserRegisterPage({
+  seo,
+  referralCode = '',
+  positions,
+  lockOrganization = null,
+  giftInviteEmail = null,
+}: UserRegisterPageProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   //   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -40,7 +48,7 @@ export default function UserRegisterPage({ seo, referralCode = '', positions, lo
 
   const { data, setData, post, processing, errors, reset } = useForm<Required<RegisterForm>>({
     name: '',
-    email: '',
+    email: giftInviteEmail || '',
     password: '',
     password_confirmation: '',
     agreeToTerms: false,
@@ -188,6 +196,17 @@ export default function UserRegisterPage({ seo, referralCode = '', positions, lo
                     </div>
                   )}
 
+                  {giftInviteEmail && (
+                    <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-900/20">
+                      <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+                        You have a Believe Points gift waiting
+                      </p>
+                      <p className="mt-1 text-sm text-violet-700 dark:text-violet-300">
+                        Register with <strong>{giftInviteEmail}</strong> to claim Holding BP into your Gifted balance.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Grid Layout for Form Fields */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     {/* Full Name */}
@@ -224,7 +243,8 @@ export default function UserRegisterPage({ seo, referralCode = '', positions, lo
                           placeholder="john@example.com"
                           value={data.email}
                           onChange={(e) => setData('email', e.target.value)}
-                          disabled={processing}
+                          disabled={processing || !!giftInviteEmail}
+                          readOnly={!!giftInviteEmail}
                           className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
                           required
                         />

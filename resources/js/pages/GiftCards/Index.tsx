@@ -169,15 +169,47 @@ export default function GiftCardsIndex({ giftCards, user, filters, availableCoun
             <div className="container mx-auto flex h-full flex-1 flex-col gap-6 rounded-xl px-4 py-4 md:px-10 md:py-6">
                 {/* Header */}
                 <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-primary/10 dark:bg-primary/20 rounded-xl p-3">
-                            <Gift className="text-primary h-8 w-8" />
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-primary/10 dark:bg-primary/20 rounded-xl p-3">
+                                <Gift className="text-primary h-8 w-8" />
+                            </div>
+                            <div>
+                                <h1 className="text-3xl font-bold dark:text-white">Gift Cards Marketplace</h1>
+                                <p className="text-muted-foreground">Browse and purchase gift cards from brands worldwide</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-3xl font-bold dark:text-white">Gift Cards Marketplace</h1>
-                            <p className="text-muted-foreground">Browse and purchase gift cards from brands worldwide</p>
-                        </div>
+                        {user ? (
+                            <Button
+                                type="button"
+                                onClick={() => router.visit('/gift-bp')}
+                                className="h-11 shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-5 font-semibold text-white shadow-md hover:from-violet-700 hover:to-blue-700"
+                            >
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                Gift BP
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        ) : null}
                     </div>
+
+                    {user ? (
+                        <button
+                            type="button"
+                            onClick={() => router.visit('/gift-bp')}
+                            className="flex w-full items-center gap-4 rounded-2xl border border-violet-400/40 bg-gradient-to-r from-violet-50 to-blue-50 p-4 text-left transition hover:border-violet-500 hover:shadow-md dark:from-violet-950/40 dark:to-blue-950/30 dark:border-violet-500/40"
+                        >
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow">
+                                <Gift className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-foreground">Gift Believe Points instead</p>
+                                <p className="mt-0.5 text-sm text-muted-foreground">
+                                    Send BP to a supporter — or invite someone new by email. They can redeem any gift card they want.
+                                </p>
+                            </div>
+                            <ArrowRight className="h-5 w-5 shrink-0 text-violet-600" />
+                        </button>
+                    ) : null}
 
                     {/* Search and Filter */}
                     <div className="flex flex-col gap-4 sm:flex-row">
