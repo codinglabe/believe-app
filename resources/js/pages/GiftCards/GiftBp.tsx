@@ -1,6 +1,6 @@
 "use client"
 
-import { Head, useForm, usePage, Link } from "@inertiajs/react"
+import { Head, router, useForm, usePage, Link } from "@inertiajs/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
@@ -18,7 +18,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/frontend/ui/select"
-import { Gift, Loader2, Search, ArrowLeft, Clock, Mail, UserRound, Sparkles } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/frontend/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
+import {
+  Gift,
+  Loader2,
+  Search,
+  ArrowLeft,
+  Clock,
+  Mail,
+  UserRound,
+  Sparkles,
+  RefreshCw,
+  Pencil,
+  XCircle,
+} from "lucide-react"
 import toast from "react-hot-toast"
 
 interface GiftOccasion {
@@ -91,6 +121,11 @@ export default function GiftBpPage() {
   const [selected, setSelected] = useState<SearchResult | null>(preselectedRecipient)
   const [mode, setMode] = useState<"user" | "invite" | null>(preselectedRecipient ? "user" : null)
   const [preset, setPreset] = useState<number | "custom">(10)
+  const [cancelTarget, setCancelTarget] = useState<PendingInvite | null>(null)
+  const [editTarget, setEditTarget] = useState<PendingInvite | null>(null)
+  const [editEmail, setEditEmail] = useState("")
+  const [inviteActionId, setInviteActionId] = useState<number | null>(null)
+  const [inviteAction, setInviteAction] = useState<"resend" | "cancel" | "email" | null>(null)
 
   const defaultOccasionId = giftOccasions[0]?.id ?? 0
 
@@ -210,6 +245,57 @@ export default function GiftBpPage() {
         toast.error(msg)
       },
     })
+  }
+
+  const runInviteAction = (
+    invite: PendingInvite,
+    action: "resend" | "cancel" | "email",
+    payload?: Record<string, string>,
+  ) => {
+    const urls = {
+      resend: `/gift-bp/invites/${invite.id}/resend`,
+      cancel: `/gift-bp/invites/${invite.id}/cancel`,
+      email: `/gift-bp/invites/${invite.id}/email`,
+    } as const
+
+    setInviteActionId(invite.id)
+    setInviteAction(action)
+
+    router.post(urls[action], payload ?? {}, {
+      preserveScroll: true,
+      onSuccess: () => {
+        if (action === "cancel") setCancelTarget(null)
+        if (action === "email") {
+          setEditTarget(null)
+          setEditEmail("")
+        }
+      },
+      onError: (errs) => {
+        const msg =
+          errs.invite || errs.email || errs.error || "Could not update this invitation."
+        toast.error(typeof msg === "string" ? msg : "Could not update this invitation.")
+      },
+      onFinish: () => {
+        setInviteActionId(null)
+        setInviteAction(null)
+      },
+    })
+  }
+
+  const openEditEmail = (invite: PendingInvite) => {
+    setEditTarget(invite)
+    setEditEmail(invite.recipient_email)
+  }
+
+  const submitEditEmail = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editTarget) return
+    const next = editEmail.trim().toLowerCase()
+    if (!next || next === editTarget.recipient_email.toLowerCase()) {
+      toast.error("Enter a different email address.")
+      return
+    }
+    runInviteAction(editTarget, "email", { email: next })
   }
 
   const pageBody = (
@@ -439,8 +525,9 @@ export default function GiftBpPage() {
                     <Clock className="mt-0.5 h-4 w-4 shrink-0" />
                     <p>
                       {data.amount.toFixed(2)} BP will move to Holding. If {data.email} does not register within{" "}
-                      {holdDays} days, it returns to your Available balance. Both of you get email and app
-                      notifications.
+                      {holdDays} days, it returns to your Available balance. You can also Resend, Change Email,
+                      or Cancel from Pending invitations anytime before they claim — Cancel returns BP
+                      immediately. Both of you get email and app notifications.
                     </p>
                   </div>
                 )}
@@ -471,38 +558,189 @@ export default function GiftBpPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Clock className="h-5 w-5 text-amber-500" />
-                Pending invites
+                Pending invitations
               </CardTitle>
-              <CardDescription>Holding BP waiting for registration</CardDescription>
+              <CardDescription>
+                Holding BP waiting for registration. Resend, change email, or cancel anytime before claim.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {pendingInvites.map((invite) => (
-                <div
-                  key={invite.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 dark:border-white/10"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium dark:text-white">{invite.recipient_email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {invite.occasion ? `${invite.occasion} · ` : ""}
-                      Expires{" "}
-                      {invite.expires_at
-                        ? new Date(invite.expires_at).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
-                    </p>
+              {pendingInvites.map((invite) => {
+                const busy = inviteActionId === invite.id
+                return (
+                  <div
+                    key={invite.id}
+                    className="rounded-xl border px-4 py-3 dark:border-white/10"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium dark:text-white">{invite.recipient_email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {invite.occasion ? `${invite.occasion} · ` : ""}
+                          Expires{" "}
+                          {invite.expires_at
+                            ? new Date(invite.expires_at).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })
+                            : "—"}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className="mt-2 border-amber-500/40 text-amber-800 dark:text-amber-200"
+                        >
+                          {Number(invite.amount).toFixed(2)} BP holding
+                        </Badge>
+                      </div>
+                      <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-10 touch-manipulation sm:h-9"
+                          disabled={busy}
+                          onClick={() => runInviteAction(invite, "resend")}
+                        >
+                          {busy && inviteAction === "resend" ? (
+                            <Loader2 className="h-4 w-4 animate-spin sm:mr-1.5" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4 sm:mr-1.5" />
+                          )}
+                          <span className="hidden sm:inline">Resend</span>
+                          <span className="sm:hidden text-xs">Resend</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-10 touch-manipulation sm:h-9"
+                          disabled={busy}
+                          onClick={() => openEditEmail(invite)}
+                        >
+                          <Pencil className="h-4 w-4 sm:mr-1.5" />
+                          <span className="hidden sm:inline">Change Email</span>
+                          <span className="sm:hidden text-xs">Edit</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-10 touch-manipulation border-rose-500/40 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300 sm:h-9"
+                          disabled={busy}
+                          onClick={() => setCancelTarget(invite)}
+                        >
+                          <XCircle className="h-4 w-4 sm:mr-1.5" />
+                          <span className="hidden sm:inline">Cancel</span>
+                          <span className="sm:hidden text-xs">Cancel</span>
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <Badge variant="outline" className="border-amber-500/40 text-amber-800 dark:text-amber-200">
-                    {Number(invite.amount).toFixed(2)} BP holding
-                  </Badge>
-                </div>
-              ))}
+                )
+              })}
             </CardContent>
           </Card>
         )}
+
+        <AlertDialog
+          open={!!cancelTarget}
+          onOpenChange={(open) => {
+            if (!open && inviteAction !== "cancel") setCancelTarget(null)
+          }}
+        >
+          <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-lg">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel Gift Invitation?</AlertDialogTitle>
+              <AlertDialogDescription className="text-left">
+                This gift has not yet been claimed. The invitation will be cancelled and the BP will be
+                returned to your Available BP wallet immediately.
+                {cancelTarget ? (
+                  <span className="mt-2 block text-foreground">
+                    {Number(cancelTarget.amount).toFixed(2)} BP · {cancelTarget.recipient_email}
+                  </span>
+                ) : null}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-2 sm:gap-0">
+              <AlertDialogCancel disabled={inviteAction === "cancel"}>Keep Invitation</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+                disabled={!cancelTarget || inviteAction === "cancel"}
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (cancelTarget) runInviteAction(cancelTarget, "cancel")
+                }}
+              >
+                {inviteAction === "cancel" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Cancelling…
+                  </>
+                ) : (
+                  "Cancel & Return BP"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog
+          open={!!editTarget}
+          onOpenChange={(open) => {
+            if (!open && inviteAction !== "email") {
+              setEditTarget(null)
+              setEditEmail("")
+            }
+          }}
+        >
+          <DialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Change invitation email</DialogTitle>
+              <DialogDescription>
+                Holding BP stays the same. We’ll notify the previous address that the gift was cancelled
+                for them, and send a fresh invite to the new email.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={submitEditEmail} className="space-y-4">
+              <div>
+                <Label htmlFor="gift-invite-edit-email">New email</Label>
+                <Input
+                  id="gift-invite-edit-email"
+                  type="email"
+                  className="mt-2 h-12"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={inviteAction === "email"}
+                  onClick={() => {
+                    setEditTarget(null)
+                    setEditEmail("")
+                  }}
+                >
+                  Back
+                </Button>
+                <Button type="submit" disabled={inviteAction === "email" || !editTarget}>
+                  {inviteAction === "email" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Update email"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
   )
 

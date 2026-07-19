@@ -32,4 +32,25 @@ return [
 
     'gift_invite_hold_days' => (int) env('BP_GIFT_INVITE_HOLD_DAYS', 14),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cancellation goodwill BRP
+    |--------------------------------------------------------------------------
+    |
+    | When a sender cancels (or changes the email on) a pending gift invite,
+    | the former recipient email is offered this many Believe Reward Points
+    | if they later create a free supporter account with that email.
+    |
+    */
+
+    'gift_invite_cancellation_brp' => (float) env('BP_GIFT_INVITE_CANCELLATION_BRP', 10),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Resend cooldown (minutes)
+    |--------------------------------------------------------------------------
+    */
+
+    'gift_invite_resend_cooldown_minutes' => (int) env('BP_GIFT_INVITE_RESEND_COOLDOWN_MINUTES', 2),
+
 ];

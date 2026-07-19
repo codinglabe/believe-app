@@ -5,6 +5,10 @@ export const BELIEVE_POINTS_GIFT_SENT_TYPE = "gift_sent"
 export const BELIEVE_POINTS_GIFT_INVITE_PENDING_TYPE = "gift_invite_pending"
 export const BELIEVE_POINTS_GIFT_INVITE_CLAIMED_TYPE = "gift_invite_claimed"
 export const BELIEVE_POINTS_GIFT_INVITE_EXPIRED_TYPE = "gift_invite_expired"
+export const BELIEVE_POINTS_GIFT_INVITE_CANCELLED_TYPE = "gift_invite_cancelled"
+export const BELIEVE_POINTS_GIFT_INVITE_EMAIL_CHANGED_TYPE = "gift_invite_email_changed"
+export const BELIEVE_POINTS_GIFT_INVITE_RESENT_TYPE = "gift_invite_resent"
+export const BELIEVE_POINTS_GIFT_INVITE_CANCELLATION_BRP_TYPE = "gift_invite_cancellation_brp"
 export const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation"
 export const DONATION_CONFIRMED_TYPE = "donation_confirmed"
 export const DONATION_RECEIVED_TYPE = "donation_received"
@@ -74,6 +78,14 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
           ? BELIEVE_POINTS_GIFT_INVITE_CLAIMED_TYPE
         : typeof rawType === "string" && (rawType.includes("BelievePointGiftRefunded") || rawType === "gift_invite_expired")
           ? BELIEVE_POINTS_GIFT_INVITE_EXPIRED_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftInviteCancelled") || rawType === "gift_invite_cancelled")
+          ? BELIEVE_POINTS_GIFT_INVITE_CANCELLED_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftInviteEmailChanged") || rawType === "gift_invite_email_changed")
+          ? BELIEVE_POINTS_GIFT_INVITE_EMAIL_CHANGED_TYPE
+        : typeof rawType === "string" && (rawType.includes("BelievePointGiftInviteResent") || rawType === "gift_invite_resent")
+          ? BELIEVE_POINTS_GIFT_INVITE_RESENT_TYPE
+        : typeof rawType === "string" && rawType === "gift_invite_cancellation_brp"
+          ? BELIEVE_POINTS_GIFT_INVITE_CANCELLATION_BRP_TYPE
         : typeof rawType === "string" && (rawType.includes("DonationConfirmedForDonor") || rawType === DONATION_CONFIRMED_TYPE)
           ? DONATION_CONFIRMED_TYPE
           : typeof rawType === "string" && (rawType.includes("DonationReceivedForOrganization") || rawType === DONATION_RECEIVED_TYPE)
