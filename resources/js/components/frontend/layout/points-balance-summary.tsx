@@ -15,6 +15,7 @@ interface PointsUser {
   processing_believe_points?: number
   believe_points_total?: number
   gifted_believe_points?: number
+  holding_believe_points?: number
 }
 
 const fmt = (value: unknown) =>
@@ -71,6 +72,7 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
   // Dashboard total = processing + available (gifted is shown separately below).
   const believeTotal = believeAvailable + believeProcessing
   const giftedBelieve = Number(user?.gifted_believe_points) || 0
+  const holdingBelieve = Number(user?.holding_believe_points) || 0
 
   return (
     <div className="space-y-3">
@@ -178,6 +180,15 @@ export function PointsBalanceSummary({ user }: { user: PointsUser }) {
             </span>
             <ChevronRight className="h-5 w-5" />
           </Link>
+          {holdingBelieve > 0 && (
+            <Link
+              href="/gift-bp"
+              className="mt-2 flex items-center justify-between gap-1 border-t border-purple-200/70 pt-2 text-sm font-semibold text-amber-700 dark:border-purple-800/70 dark:text-amber-300"
+            >
+              <span>{fmt(holdingBelieve)} Holding (pending invites)</span>
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          )}
         </div>
       )}
 

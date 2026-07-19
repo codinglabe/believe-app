@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BelievePointGiftInvite;
 use App\Models\BelievePointPurchase;
 use App\Models\BelievePointProcessingLot;
 use App\Models\BelievePointWalletTransfer;
@@ -231,6 +232,64 @@ final class BelievePointsWalletLedgerService
                 'supporter_believe_point_gift_id' => $gift->id,
                 'sender_id' => $gift->sender_id,
                 'transaction_number' => 'bp_gift:'.$gift->id,
+            ],
+        ]);
+    }
+
+    public static function recordGiftHold(BelievePointGiftInvite $invite): void
+    {
+        $amount = round((float) $invite->amount, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $exists = BelievePointsLedgerEntry::query()
+            ->where('user_id', $invite->sender_id)
+            ->where('entry_type', BelievePointsLedgerEntry::TYPE_GIFT_HOLD)
+            ->where('metadata->believe_point_gift_invite_id', $invite->id)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        BelievePointsLedgerEntry::query()->create([
+            'user_id' => $invite->sender_id,
+            'amount' => -$amount,
+            'entry_type' => BelievePointsLedgerEntry::TYPE_GIFT_HOLD,
+            'description' => 'Gift invite holding (awaiting registration)',
+            'metadata' => [
+                'believe_point_gift_invite_id' => $invite->id,
+                'recipient_email' => $invite->recipient_email,
+                'transaction_number' => 'bp_gift_hold:'.$invite->id,
+            ],
+        ]);
+    }
+
+    public static function recordGiftHoldRefund(BelievePointGiftInvite $invite, float $amount): void
+    {
+        $amount = round(max(0, $amount), 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $exists = BelievePointsLedgerEntry::query()
+            ->where('user_id', $invite->sender_id)
+            ->where('entry_type', BelievePointsLedgerEntry::TYPE_GIFT_HOLD_REFUND)
+            ->where('metadata->believe_point_gift_invite_id', $invite->id)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        BelievePointsLedgerEntry::query()->create([
+            'user_id' => $invite->sender_id,
+            'amount' => $amount,
+            'entry_type' => BelievePointsLedgerEntry::TYPE_GIFT_HOLD_REFUND,
+            'description' => 'Gift invite expired — holding refunded',
+            'metadata' => [
+                'believe_point_gift_invite_id' => $invite->id,
+                'recipient_email' => $invite->recipient_email,
+                'transaction_number' => 'bp_gift_hold_refund:'.$invite->id,
             ],
         ]);
     }

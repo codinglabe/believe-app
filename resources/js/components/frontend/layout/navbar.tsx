@@ -284,6 +284,7 @@ export default function Navbar() {
         ]
       : []),
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
+    ...(isLoggedIn ? [{ name: "Gift BP", href: "/gift-bp", icon: Gift }] : []),
   ]
 
   const earnSaveNavItems: LandingNavItem[] = [

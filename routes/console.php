@@ -122,6 +122,11 @@ Schedule::command('believe-points:process-wallet-transfers')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// Gift BP invites: refund Holding → Available when invitee does not register in time
+Schedule::command('believe-points:expire-gift-invites')
+    ->hourly()
+    ->withoutOverlapping();
+
 Schedule::command('unity-calls:expire-ringing')
     ->everyThirtySeconds()
     ->withoutOverlapping();

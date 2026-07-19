@@ -267,6 +267,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::post('/supporters/gift/{recipient}', [SupporterBelievePointGiftController::class, 'sendGift'])->name('supporters.gift.send');
     Route::get('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'showBirthdayGift'])->name('supporters.birthday-gift');
     Route::post('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'sendBirthdayGift'])->name('supporters.birthday-gift.send');
+
+    // Gift BP: search by name/email, gift existing supporters, or hold + invite unregistered emails
+    Route::get('/gift-bp', [\App\Http\Controllers\GiftBelievePointsController::class, 'index'])->name('gift-bp.index');
+    Route::get('/gift-bp/search', [\App\Http\Controllers\GiftBelievePointsController::class, 'search'])->name('gift-bp.search');
+    Route::post('/gift-bp/send', [\App\Http\Controllers\GiftBelievePointsController::class, 'send'])->name('gift-bp.send');
     Route::get('/search', [App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
     // Toggle favorite organization — supporter accounts only (see User::canFollowOrganizations)

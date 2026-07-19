@@ -203,6 +203,13 @@ const navigationItems = [
     color: "from-pink-500 to-rose-600",
   },
   {
+    name: "Gift BP",
+    href: "/gift-bp",
+    icon: Gift,
+    description: "Send Believe Points or invite by email",
+    color: "from-violet-500 to-blue-600",
+  },
+  {
     name: "My Applications",
     href: "/profile/job-applications",
     icon: Briefcase,
