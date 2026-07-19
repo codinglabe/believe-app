@@ -10,35 +10,33 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class BelievePointGiftInviteMail extends Mailable
+/** Confirmation to the sender after changing a pending invite email. */
+class BelievePointGiftInviteEmailChangedMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public BelievePointGiftInvite $invite)
-    {
-        $this->invite->loadMissing('sender');
-    }
+    public function __construct(
+        public BelievePointGiftInvite $invite,
+        public string $previousEmail,
+    ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "🎁 You've Received a Believe Points Gift!",
+            subject: 'Gift invitation email updated',
         );
     }
 
     public function content(): Content
     {
         return new Content(
-            view: 'emails.believe-point-gift-invite',
+            view: 'emails.believe-point-gift-invite-email-changed',
             with: [
-                'invite' => $this->invite,
-                'senderName' => $this->invite->sender?->name ?? 'A friend',
+                'previousEmail' => $this->previousEmail,
+                'newEmail' => $this->invite->recipient_email,
                 'amountLabel' => BelievePointGiftInviteService::formatAmount((float) $this->invite->amount),
-                'holdDays' => BelievePointGiftInviteService::holdDays(),
-                'registerUrl' => $this->invite->registerUrl(),
                 'expiresAt' => $this->invite->expires_at?->timezone(config('app.timezone'))->format('F j, Y'),
-                'messageText' => $this->invite->message,
-                'occasion' => $this->invite->occasion,
+                'manageUrl' => route('gift-bp.index', [], true),
             ],
         );
     }

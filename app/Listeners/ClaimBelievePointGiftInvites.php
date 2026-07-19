@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * When a supporter registers with an email that has pending Gift BP invites,
  * release Holding BP into their gifted_believe_points balance.
+ * Also awards cancellation goodwill BRP when applicable.
  */
 class ClaimBelievePointGiftInvites
 {
@@ -33,6 +34,21 @@ class ClaimBelievePointGiftInvites
             }
         } catch (\Throwable $e) {
             Log::error('ClaimBelievePointGiftInvites failed', [
+                'user_id' => $user->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $brp = $this->giftService->awardCancellationGoodwillForUser($user);
+            if ($brp > 0) {
+                Log::info('Awarded gift-invite cancellation goodwill BRP', [
+                    'user_id' => $user->id,
+                    'brp' => $brp,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Gift invite cancellation goodwill award failed', [
                 'user_id' => $user->id ?? null,
                 'error' => $e->getMessage(),
             ]);

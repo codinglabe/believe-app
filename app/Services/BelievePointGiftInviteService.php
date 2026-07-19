@@ -3,17 +3,24 @@
 namespace App\Services;
 
 use App\Mail\BelievePointGiftClaimedMail;
+use App\Mail\BelievePointGiftInviteCancelledMail;
+use App\Mail\BelievePointGiftInviteCancelledSenderMail;
+use App\Mail\BelievePointGiftInviteEmailChangedMail;
 use App\Mail\BelievePointGiftInviteMail;
 use App\Mail\BelievePointGiftInvitePendingMail;
 use App\Mail\BelievePointGiftReceivedMail;
 use App\Mail\BelievePointGiftRefundedMail;
 use App\Mail\BelievePointGiftSentMail;
 use App\Models\BelievePointGiftInvite;
+use App\Models\BelievePointGiftInviteGoodwill;
 use App\Models\GiftOccasion;
 use App\Models\SupporterBelievePointGift;
 use App\Models\User;
 use App\Notifications\BelievePointGiftClaimedNotification;
+use App\Notifications\BelievePointGiftInviteCancelledNotification;
+use App\Notifications\BelievePointGiftInviteEmailChangedNotification;
 use App\Notifications\BelievePointGiftInvitePendingNotification;
+use App\Notifications\BelievePointGiftInviteResentNotification;
 use App\Notifications\BelievePointGiftRefundedNotification;
 use App\Notifications\BelievePointGiftSentNotification;
 use App\Notifications\SupporterBelievePointGiftReceivedNotification;
@@ -45,6 +52,16 @@ class BelievePointGiftInviteService
     public static function holdDays(): int
     {
         return max(1, (int) config('believe_points.gift_invite_hold_days', 14));
+    }
+
+    public static function cancellationBrpAmount(): float
+    {
+        return max(0, round((float) config('believe_points.gift_invite_cancellation_brp', 10), 2));
+    }
+
+    public static function resendCooldownMinutes(): int
+    {
+        return max(1, (int) config('believe_points.gift_invite_resend_cooldown_minutes', 2));
     }
 
     public function assertCanSend(?User $sender): void
@@ -190,6 +207,17 @@ class BelievePointGiftInviteService
 
             throw ValidationException::withMessages([
                 'email' => 'This email is already registered on the platform, but gifts can only go to supporter accounts.',
+            ]);
+        }
+
+        $alreadyPending = BelievePointGiftInvite::query()
+            ->where('sender_id', $sender->id)
+            ->where('status', BelievePointGiftInvite::STATUS_PENDING)
+            ->whereRaw('LOWER(recipient_email) = ?', [$email])
+            ->exists();
+        if ($alreadyPending) {
+            throw ValidationException::withMessages([
+                'email' => 'You already have a pending invitation for this email. Resend, change the email, or cancel it from Pending invitations.',
             ]);
         }
 
@@ -415,6 +443,442 @@ class BelievePointGiftInviteService
         }
 
         return false;
+    }
+
+    /**
+     * Cancel a pending invite: return Holding BP to Available and mark cancelled.
+     */
+    public function cancelInvite(User $sender, BelievePointGiftInvite $invite): BelievePointGiftInvite
+    {
+        $this->assertCanSend($sender);
+        $this->assertOwnsPendingInvite($sender, $invite);
+
+        $cancelled = DB::transaction(function () use ($sender, $invite) {
+            /** @var BelievePointGiftInvite|null $lockedInvite */
+            $lockedInvite = BelievePointGiftInvite::query()->whereKey($invite->id)->lockForUpdate()->first();
+            if (! $lockedInvite || ! $lockedInvite->isPending()) {
+                throw ValidationException::withMessages([
+                    'invite' => 'This invitation can no longer be cancelled.',
+                ]);
+            }
+
+            if ((int) $lockedInvite->sender_id !== (int) $sender->id) {
+                throw ValidationException::withMessages([
+                    'invite' => 'You can only cancel invitations you sent.',
+                ]);
+            }
+
+            /** @var User $lockedSender */
+            $lockedSender = User::query()->whereKey($lockedInvite->sender_id)->lockForUpdate()->firstOrFail();
+            $amount = round((float) $lockedInvite->amount, 2);
+            $holding = round((float) ($lockedSender->holding_believe_points ?? 0), 2);
+            $refund = min($amount, $holding);
+
+            if ($refund > 0) {
+                $lockedSender->decrement('holding_believe_points', $refund);
+                $lockedSender->increment('believe_points', $refund);
+            }
+
+            $lockedInvite->update([
+                'status' => BelievePointGiftInvite::STATUS_CANCELLED,
+                'refunded_at' => now(),
+                'cancelled_at' => now(),
+            ]);
+
+            BelievePointsWalletLedgerService::recordGiftHoldRefund($lockedInvite->fresh(), $refund);
+
+            $this->createGoodwillRecord(
+                $lockedInvite,
+                $lockedSender,
+                $lockedInvite->recipient_email,
+                BelievePointGiftInviteGoodwill::REASON_CANCELLED,
+            );
+
+            return $lockedInvite->fresh(['sender']);
+        });
+
+        $this->notifyInviteCancelled($cancelled);
+
+        return $cancelled;
+    }
+
+    /**
+     * Resend the invite email for a pending invite (cooldown applies).
+     */
+    public function resendInvite(User $sender, BelievePointGiftInvite $invite): BelievePointGiftInvite
+    {
+        $this->assertCanSend($sender);
+        $this->assertOwnsPendingInvite($sender, $invite);
+
+        if ($invite->expires_at && $invite->expires_at->isPast()) {
+            throw ValidationException::withMessages([
+                'invite' => 'This invitation has expired. Cancel it to return Holding BP, or wait for automatic expiry.',
+            ]);
+        }
+
+        $cooldown = self::resendCooldownMinutes();
+        if ($invite->last_resent_at && $invite->last_resent_at->gt(now()->subMinutes($cooldown))) {
+            throw ValidationException::withMessages([
+                'invite' => "Please wait {$cooldown} minute(s) before resending this invitation.",
+            ]);
+        }
+
+        $invite->update(['last_resent_at' => now()]);
+        $invite->loadMissing('sender');
+
+        try {
+            Mail::to($invite->recipient_email)->send(new BelievePointGiftInviteMail($invite));
+        } catch (\Throwable $e) {
+            Log::warning('Gift invite resend email failed', ['error' => $e->getMessage()]);
+            throw ValidationException::withMessages([
+                'invite' => 'Could not resend the invitation email. Please try again shortly.',
+            ]);
+        }
+
+        try {
+            $sender->notify(new BelievePointGiftInviteResentNotification($invite));
+        } catch (\Throwable $e) {
+            Log::error('Gift invite resent notification failed', ['error' => $e->getMessage()]);
+        }
+
+        $amt = self::formatAmount((float) $invite->amount);
+        $this->pushToUser(
+            $sender->id,
+            'Gift invitation resent',
+            "Invitation for {$amt} BP was resent to {$invite->recipient_email}.",
+            [
+                'type' => 'gift_invite_resent',
+                'invite_id' => (string) $invite->id,
+                'url' => route('gift-bp.index', [], true),
+            ]
+        );
+
+        return $invite->fresh(['sender']);
+    }
+
+    /**
+     * Change the recipient email on a pending invite (Holding BP unchanged).
+     */
+    public function changeInviteEmail(User $sender, BelievePointGiftInvite $invite, string $newEmail): BelievePointGiftInvite
+    {
+        $this->assertCanSend($sender);
+        $this->assertOwnsPendingInvite($sender, $invite);
+
+        $newEmail = Str::lower(trim($newEmail));
+        if (! filter_var($newEmail, FILTER_VALIDATE_EMAIL)) {
+            throw ValidationException::withMessages([
+                'email' => 'Enter a valid email address.',
+            ]);
+        }
+
+        if (Str::lower((string) $sender->email) === $newEmail) {
+            throw ValidationException::withMessages([
+                'email' => 'You cannot send a gift to yourself.',
+            ]);
+        }
+
+        if (Str::lower($invite->recipient_email) === $newEmail) {
+            throw ValidationException::withMessages([
+                'email' => 'That is already the invitation email.',
+            ]);
+        }
+
+        $existing = User::query()->whereRaw('LOWER(email) = ?', [$newEmail])->first();
+        if ($existing) {
+            if ($existing->role === 'user') {
+                throw ValidationException::withMessages([
+                    'email' => 'This email already belongs to a supporter. Cancel this invite to reclaim Holding BP, then gift them directly from search.',
+                ]);
+            }
+
+            throw ValidationException::withMessages([
+                'email' => 'This email is already registered on the platform, but gifts can only go to supporter accounts.',
+            ]);
+        }
+
+        $pendingElsewhere = BelievePointGiftInvite::query()
+            ->where('status', BelievePointGiftInvite::STATUS_PENDING)
+            ->whereRaw('LOWER(recipient_email) = ?', [$newEmail])
+            ->where('id', '!=', $invite->id)
+            ->exists();
+        if ($pendingElsewhere) {
+            throw ValidationException::withMessages([
+                'email' => 'There is already a pending gift invitation for this email address.',
+            ]);
+        }
+
+        $previousEmail = $invite->recipient_email;
+
+        $updated = DB::transaction(function () use ($sender, $invite, $newEmail, $previousEmail) {
+            /** @var BelievePointGiftInvite|null $lockedInvite */
+            $lockedInvite = BelievePointGiftInvite::query()->whereKey($invite->id)->lockForUpdate()->first();
+            if (! $lockedInvite || ! $lockedInvite->isPending()) {
+                throw ValidationException::withMessages([
+                    'invite' => 'This invitation can no longer be edited.',
+                ]);
+            }
+
+            if ((int) $lockedInvite->sender_id !== (int) $sender->id) {
+                throw ValidationException::withMessages([
+                    'invite' => 'You can only edit invitations you sent.',
+                ]);
+            }
+
+            /** @var User $lockedSender */
+            $lockedSender = User::query()->whereKey($lockedInvite->sender_id)->lockForUpdate()->firstOrFail();
+
+            $lockedInvite->update([
+                'recipient_email' => $newEmail,
+                'token' => Str::random(48),
+                'last_resent_at' => null,
+            ]);
+
+            $this->createGoodwillRecord(
+                $lockedInvite,
+                $lockedSender,
+                $previousEmail,
+                BelievePointGiftInviteGoodwill::REASON_EMAIL_CHANGED,
+            );
+
+            return $lockedInvite->fresh(['sender']);
+        });
+
+        $this->notifyInviteEmailChanged($updated, $previousEmail);
+
+        return $updated;
+    }
+
+    /**
+     * Credit cancellation goodwill BRP when a former invitee registers.
+     *
+     * @return float Total BRP awarded
+     */
+    public function awardCancellationGoodwillForUser(User $user): float
+    {
+        if ($user->role !== 'user' || blank($user->email)) {
+            return 0.0;
+        }
+
+        $email = Str::lower(trim((string) $user->email));
+        $goodwills = BelievePointGiftInviteGoodwill::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->whereNull('awarded_at')
+            ->orderBy('id')
+            ->get();
+
+        if ($goodwills->isEmpty()) {
+            return 0.0;
+        }
+
+        $total = 0.0;
+
+        DB::transaction(function () use ($user, $goodwills, &$total) {
+            /** @var User $lockedUser */
+            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            foreach ($goodwills as $goodwill) {
+                /** @var BelievePointGiftInviteGoodwill|null $locked */
+                $locked = BelievePointGiftInviteGoodwill::query()->whereKey($goodwill->id)->lockForUpdate()->first();
+                if (! $locked || $locked->awarded_at !== null) {
+                    continue;
+                }
+
+                $amount = round((float) $locked->brp_amount, 2);
+                if ($amount <= 0) {
+                    $locked->update([
+                        'awarded_at' => now(),
+                        'awarded_user_id' => $lockedUser->id,
+                    ]);
+
+                    continue;
+                }
+
+                $lockedUser->addRewardPoints(
+                    $amount,
+                    'gift_invite_cancellation_goodwill',
+                    $locked->invite_id,
+                    'Thank-you BRP after a cancelled Believe Points gift invitation',
+                    [
+                        'goodwill_id' => $locked->id,
+                        'invite_id' => $locked->invite_id,
+                        'sender_id' => $locked->sender_id,
+                        'reason' => $locked->reason,
+                    ],
+                );
+
+                $locked->update([
+                    'awarded_at' => now(),
+                    'awarded_user_id' => $lockedUser->id,
+                ]);
+
+                $total += $amount;
+            }
+        });
+
+        if ($total > 0) {
+            $label = self::formatAmount($total);
+            $this->pushToUser(
+                $user->id,
+                'Welcome gift: Reward Points',
+                "{$label} BRP was added to your account as a thank-you for your understanding.",
+                [
+                    'type' => 'gift_invite_cancellation_brp',
+                    'url' => route('profile.reward-points-ledger', [], true),
+                ]
+            );
+        }
+
+        return $total;
+    }
+
+    private function assertOwnsPendingInvite(User $sender, BelievePointGiftInvite $invite): void
+    {
+        if ((int) $invite->sender_id !== (int) $sender->id) {
+            throw ValidationException::withMessages([
+                'invite' => 'You can only manage invitations you sent.',
+            ]);
+        }
+
+        if (! $invite->isPending()) {
+            throw ValidationException::withMessages([
+                'invite' => 'Only pending invitations can be managed. Once claimed, ownership has transferred.',
+            ]);
+        }
+    }
+
+    private function createGoodwillRecord(
+        BelievePointGiftInvite $invite,
+        User $sender,
+        string $email,
+        string $reason,
+    ): void {
+        $brp = self::cancellationBrpAmount();
+        if ($brp <= 0) {
+            return;
+        }
+
+        $email = Str::lower(trim($email));
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        // One unawarded goodwill per email is enough (avoid stacking BRP for repeated edits).
+        $exists = BelievePointGiftInviteGoodwill::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->whereNull('awarded_at')
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        BelievePointGiftInviteGoodwill::create([
+            'invite_id' => $invite->id,
+            'sender_id' => $sender->id,
+            'email' => $email,
+            'sender_name' => $sender->name,
+            'brp_amount' => $brp,
+            'reason' => $reason,
+        ]);
+    }
+
+    private function notifyInviteCancelled(BelievePointGiftInvite $invite): void
+    {
+        $sender = $invite->sender;
+        if (! $sender) {
+            return;
+        }
+
+        $senderName = $sender->name ?: 'A sender';
+        $brp = self::cancellationBrpAmount();
+
+        try {
+            $sender->notify(new BelievePointGiftInviteCancelledNotification($invite));
+        } catch (\Throwable $e) {
+            Log::error('Gift invite cancelled notification failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            Mail::to($invite->recipient_email)->send(new BelievePointGiftInviteCancelledMail(
+                $invite->recipient_email,
+                $senderName,
+                $brp,
+                $invite,
+                BelievePointGiftInviteGoodwill::REASON_CANCELLED,
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Gift invite cancelled email to recipient failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            Mail::to($sender->email)->send(new BelievePointGiftInviteCancelledSenderMail($invite));
+        } catch (\Throwable $e) {
+            Log::warning('Gift invite cancelled email to sender failed', ['error' => $e->getMessage()]);
+        }
+
+        $amt = self::formatAmount((float) $invite->amount);
+        $this->pushToUser(
+            $sender->id,
+            'Gift invitation cancelled',
+            "{$amt} BP was returned to your Available balance. Invitation to {$invite->recipient_email} was cancelled.",
+            [
+                'type' => 'gift_invite_cancelled',
+                'invite_id' => (string) $invite->id,
+                'url' => route('gift-bp.index', [], true),
+            ]
+        );
+    }
+
+    private function notifyInviteEmailChanged(BelievePointGiftInvite $invite, string $previousEmail): void
+    {
+        $sender = $invite->sender;
+        if (! $sender) {
+            return;
+        }
+
+        $senderName = $sender->name ?: 'A sender';
+        $brp = self::cancellationBrpAmount();
+
+        try {
+            $sender->notify(new BelievePointGiftInviteEmailChangedNotification($invite, $previousEmail));
+        } catch (\Throwable $e) {
+            Log::error('Gift invite email-changed notification failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            Mail::to($previousEmail)->send(new BelievePointGiftInviteCancelledMail(
+                $previousEmail,
+                $senderName,
+                $brp,
+                $invite,
+                BelievePointGiftInviteGoodwill::REASON_EMAIL_CHANGED,
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Gift invite previous-email cancellation notice failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            Mail::to($invite->recipient_email)->send(new BelievePointGiftInviteMail($invite));
+        } catch (\Throwable $e) {
+            Log::warning('Gift invite new-email invite failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            Mail::to($sender->email)->send(new BelievePointGiftInviteEmailChangedMail($invite, $previousEmail));
+        } catch (\Throwable $e) {
+            Log::warning('Gift invite email-changed sender email failed', ['error' => $e->getMessage()]);
+        }
+
+        $amt = self::formatAmount((float) $invite->amount);
+        $this->pushToUser(
+            $sender->id,
+            'Gift invitation email updated',
+            "Your {$amt} BP invite was moved from {$previousEmail} to {$invite->recipient_email}.",
+            [
+                'type' => 'gift_invite_email_changed',
+                'invite_id' => (string) $invite->id,
+                'url' => route('gift-bp.index', [], true),
+            ]
+        );
     }
 
     private function notifyImmediateGift(

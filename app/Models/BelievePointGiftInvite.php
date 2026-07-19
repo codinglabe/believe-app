@@ -28,6 +28,8 @@ class BelievePointGiftInvite extends Model
         'expires_at',
         'claimed_at',
         'refunded_at',
+        'cancelled_at',
+        'last_resent_at',
         'supporter_believe_point_gift_id',
     ];
 
@@ -36,6 +38,8 @@ class BelievePointGiftInvite extends Model
         'expires_at' => 'datetime',
         'claimed_at' => 'datetime',
         'refunded_at' => 'datetime',
+        'cancelled_at' => 'datetime',
+        'last_resent_at' => 'datetime',
     ];
 
     public function sender(): BelongsTo
@@ -61,6 +65,11 @@ class BelievePointGiftInvite extends Model
     public function isPending(): bool
     {
         return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === self::STATUS_CANCELLED;
     }
 
     public function registerUrl(): string
