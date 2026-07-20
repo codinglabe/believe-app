@@ -10,9 +10,9 @@
 
     <div class="content">
         @if($organizationName !== '')
-            A message from <strong>{{ $organizationName }}</strong>:
+            A Newsletter from <strong>{{ $organizationName }}</strong>.
         @else
-            Here's today's message:
+            Here's today's Newsletter:
         @endif
     </div>
 
@@ -27,7 +27,7 @@
 
     <div class="button-container">
         <a href="{{ $contentUrl }}" class="cta-button">
-            Open message
+            Open Newsletter
         </a>
     </div>
 @endsection
