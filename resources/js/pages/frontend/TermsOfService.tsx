@@ -55,6 +55,38 @@ const TermsOfService = () => {
                             </div>
                         </section>
 
+                        {/* Facebook Page Connection */}
+                        <section className="mb-8">
+                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+                                Facebook Page Connection
+                            </h2>
+                            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
+                                <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-3">
+                                    Facebook is not used for account login
+                                </h3>
+                                <p className="text-blue-700 dark:text-blue-400 mb-4 leading-relaxed">
+                                    Believe In Unity does <strong>not</strong> use Facebook as the user authentication system.
+                                    Users authenticate using our own login system. Facebook Login is used{" "}
+                                    <strong>only</strong> to authorize and connect a Facebook Page after the user is already
+                                    signed into our application.
+                                </p>
+                                <ul className="list-disc list-inside space-y-2 text-blue-700 dark:text-blue-400">
+                                    <li>Creating or signing into a Believe In Unity account does not require Facebook.</li>
+                                    <li>Connecting a Facebook Page is optional and available only after you are logged in.</li>
+                                    <li>When you connect a Page, you grant Meta permissions so our app can list Pages you manage, publish or schedule posts you approve, and show engagement insights.</li>
+                                    <li>We do not post to your Facebook Page without your explicit action in the app.</li>
+                                    <li>You may disconnect a Facebook Page at any time from your integration settings.</li>
+                                </ul>
+                                <p className="text-blue-700 dark:text-blue-400 mt-4 text-sm">
+                                    Details about the data we collect and how we use Facebook Page permissions are described in our{" "}
+                                    <a href="/privacy-policy" className="underline font-medium">
+                                        Privacy Policy
+                                    </a>
+                                    .
+                                </p>
+                            </div>
+                        </section>
+
                         {/* Phone Verification */}
                         <section className="mb-8">
                             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
