@@ -6,6 +6,7 @@ use App\Models\EmailConnection;
 use App\Models\EmailContact;
 use App\Services\GmailService;
 use App\Services\OutlookService;
+use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -82,9 +83,24 @@ class SyncEmailContacts extends Command
                     }
                 }
 
-                // Store contacts
+                // Store contacts and mark registered vs unregistered on the platform
                 $syncedCount = 0;
+                $emails = array_map(
+                    static fn (array $c) => strtolower(trim((string) ($c['email'] ?? ''))),
+                    $uniqueContacts
+                );
+                $emails = array_values(array_filter($emails));
+                $registeredEmails = User::query()
+                    ->whereIn('email', $emails)
+                    ->pluck('email')
+                    ->map(static fn ($email) => strtolower((string) $email))
+                    ->all();
+                $registeredLookup = array_fill_keys($registeredEmails, true);
+
                 foreach ($uniqueContacts as $contactData) {
+                    $email = strtolower(trim((string) ($contactData['email'] ?? '')));
+                    $isRegistered = $email !== '' && isset($registeredLookup[$email]);
+
                     EmailContact::updateOrCreate(
                         [
                             'email_connection_id' => $connection->id,
@@ -95,6 +111,8 @@ class SyncEmailContacts extends Command
                             'name' => $contactData['name'],
                             'provider_contact_id' => $contactData['provider_contact_id'],
                             'metadata' => $contactData['metadata'],
+                            'has_joined' => $isRegistered,
+                            'joined_at' => $isRegistered ? now() : null,
                         ]
                     );
                     $syncedCount++;

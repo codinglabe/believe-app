@@ -7,6 +7,7 @@ use App\Models\EmailConnection;
 use App\Models\EmailContact;
 use App\Models\EmailPackage;
 use App\Models\Organization;
+use App\Models\User;
 use App\Services\GmailService;
 use App\Services\OutlookService;
 use App\Support\EmailPackagePurchaseFulfillment;
@@ -57,6 +58,9 @@ class EmailInviteController extends BaseController
         $page = $request->input('page', 1);
         $search = $request->input('search', '');
         $provider = $request->input('provider', 'all');
+
+        // Refresh Registered / Unregistered badges against current platform users.
+        $this->refreshContactRegistrationStatus((int) $organization->id);
 
         $query = $organization->emailContacts()
             ->with('emailConnection');
@@ -674,6 +678,49 @@ class EmailInviteController extends BaseController
                     'open_buy' => 'email',
                 ])
                 : redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
+        }
+    }
+
+    /**
+     * Mark Email Invite contacts as registered if their email exists as a platform user.
+     */
+    private function refreshContactRegistrationStatus(int $organizationId): void
+    {
+        $contacts = EmailContact::query()
+            ->where('organization_id', $organizationId)
+            ->get(['id', 'email', 'has_joined']);
+
+        if ($contacts->isEmpty()) {
+            return;
+        }
+
+        $emails = $contacts
+            ->pluck('email')
+            ->map(static fn ($email) => strtolower(trim((string) $email)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $registeredEmails = User::query()
+            ->whereIn('email', $emails)
+            ->pluck('email')
+            ->map(static fn ($email) => strtolower((string) $email))
+            ->all();
+        $registeredLookup = array_fill_keys($registeredEmails, true);
+
+        foreach ($contacts as $contact) {
+            $email = strtolower(trim((string) $contact->email));
+            $isRegistered = $email !== '' && isset($registeredLookup[$email]);
+
+            if ((bool) $contact->has_joined === $isRegistered) {
+                continue;
+            }
+
+            $contact->update([
+                'has_joined' => $isRegistered,
+                'joined_at' => $isRegistered ? ($contact->joined_at ?? now()) : null,
+            ]);
         }
     }
 }
