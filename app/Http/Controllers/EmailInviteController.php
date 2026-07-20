@@ -58,6 +58,7 @@ class EmailInviteController extends BaseController
         $page = $request->input('page', 1);
         $search = $request->input('search', '');
         $provider = $request->input('provider', 'all');
+        $registration = $request->input('registration', 'all');
 
         // Refresh Registered / Unregistered badges against current platform users.
         $this->refreshContactRegistrationStatus((int) $organization->id);
@@ -65,20 +66,7 @@ class EmailInviteController extends BaseController
         $query = $organization->emailContacts()
             ->with('emailConnection');
 
-        // Apply search filter
-        if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('email', 'LIKE', "%{$search}%")
-                    ->orWhere('name', 'LIKE', "%{$search}%");
-            });
-        }
-
-        // Apply provider filter
-        if ($provider && $provider !== 'all') {
-            $query->whereHas('emailConnection', function ($q) use ($provider) {
-                $q->where('provider', $provider);
-            });
-        }
+        $this->applyEmailContactFilters($query, $search, $provider, $registration);
 
         $contacts = $query->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page)
@@ -108,6 +96,7 @@ class EmailInviteController extends BaseController
             'filters' => [
                 'search' => $search,
                 'provider' => $provider,
+                'registration' => $registration,
                 'per_page' => (int) $perPage,
                 'page' => (int) $page,
             ],
@@ -329,24 +318,12 @@ class EmailInviteController extends BaseController
         $page = $request->input('page', 1);
         $search = $request->input('search', '');
         $provider = $request->input('provider', 'all');
+        $registration = $request->input('registration', 'all');
 
         $query = $organization->emailContacts()
             ->with('emailConnection');
 
-        // Apply search filter
-        if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('email', 'LIKE', "%{$search}%")
-                    ->orWhere('name', 'LIKE', "%{$search}%");
-            });
-        }
-
-        // Apply provider filter
-        if ($provider && $provider !== 'all') {
-            $query->whereHas('emailConnection', function ($q) use ($provider) {
-                $q->where('provider', $provider);
-            });
-        }
+        $this->applyEmailContactFilters($query, $search, $provider, $registration);
 
         $contacts = $query->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page)
@@ -377,6 +354,7 @@ class EmailInviteController extends BaseController
             'filters' => [
                 'search' => $search,
                 'provider' => $provider,
+                'registration' => $registration,
                 'per_page' => (int) $perPage,
                 'page' => (int) $page,
             ],
@@ -678,6 +656,35 @@ class EmailInviteController extends BaseController
                     'open_buy' => 'email',
                 ])
                 : redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
+        }
+    }
+
+    /**
+     * Apply shared Email Invite contact list filters.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\EmailContact>  $query
+     */
+    private function applyEmailContactFilters($query, ?string $search, ?string $provider, ?string $registration): void
+    {
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('email', 'LIKE', "%{$search}%")
+                    ->orWhere('name', 'LIKE', "%{$search}%");
+            });
+        }
+
+        if ($provider && $provider !== 'all') {
+            $query->whereHas('emailConnection', function ($q) use ($provider) {
+                $q->where('provider', $provider);
+            });
+        }
+
+        if ($registration === 'registered') {
+            $query->where('has_joined', true);
+        } elseif ($registration === 'unregistered') {
+            $query->where(function ($q) {
+                $q->where('has_joined', false)->orWhereNull('has_joined');
+            });
         }
     }
 
