@@ -115,9 +115,60 @@ const PrivacyPolicy = () => {
                             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
                                 Connecting Your Facebook Page
                             </h2>
+
+                            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4 border border-blue-200 dark:border-blue-800">
+                                <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
+                                    Important: Facebook is not used for user login
+                                </h3>
+                                <p className="text-blue-700 dark:text-blue-400 text-sm leading-relaxed">
+                                    Believe In Unity does <strong>not</strong> use Facebook as our user authentication system.
+                                    Users create and sign into their Believe In Unity accounts using our own login system
+                                    (for example, email and password, and related verification). Facebook Login is used{" "}
+                                    <strong>only</strong> to authorize and connect a Facebook Page after the user is already
+                                    signed into our application. Connecting Facebook does not create a Believe In Unity account
+                                    and is not required to register or log in.
+                                </p>
+                            </div>
+
                             <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                                If you connect a Facebook Page to our app, we request certain permissions from Meta (Facebook) to provide page management and insights. We use these only as described below. We do not post to your page without your explicit permission.
+                                If you choose to connect a Facebook Page (typically from organization or integration settings
+                                after you are logged in), we request certain permissions from Meta (Facebook) so you can manage
+                                that Page and view insights inside Believe In Unity. We use these permissions only as described
+                                below. We do not post to your Page without your explicit permission.
                             </p>
+
+                            <div className="space-y-4 mb-4">
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        How Facebook Page connection works
+                                    </h3>
+                                    <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-300 text-sm">
+                                        <li>You must already be signed into your Believe In Unity account.</li>
+                                        <li>You start the Facebook Page connection from our app (for example, Facebook Integration / connect flow).</li>
+                                        <li>Meta shows a Facebook Login / authorization screen so you can grant Page permissions to our app.</li>
+                                        <li>You select which Facebook Page(s) you manage and want to connect.</li>
+                                        <li>We store connection credentials (such as Page access tokens) and related Page metadata needed to provide the features you requested.</li>
+                                        <li>You can disconnect the Page at any time; after disconnect we stop accessing that Page on your behalf.</li>
+                                    </ul>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        Data we may receive or store when you connect a Page
+                                    </h3>
+                                    <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-300 text-sm">
+                                        <li>Identifiers and names of Facebook Pages you manage (so you can choose which Page to connect)</li>
+                                        <li>Page access tokens and related OAuth / connection metadata</li>
+                                        <li>Content and scheduling details for posts you create or schedule through our app</li>
+                                        <li>Engagement metrics for connected Pages (for example likes, comments, and shares) to show insights in the app</li>
+                                    </ul>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm mt-3">
+                                        We use this data only to provide Facebook Page features inside Believe In Unity. We do not
+                                        sell Facebook user or Page data. We do not use it for advertising unrelated to the service
+                                        you requested.
+                                    </p>
+                                </div>
+                            </div>
+
                             <div className="space-y-4">
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
@@ -145,7 +196,18 @@ const PrivacyPolicy = () => {
                                 </div>
                             </div>
                             <p className="text-gray-600 dark:text-gray-300 text-sm mt-4">
-                                You can disconnect your Facebook Page at any time from your account or integration settings. After disconnection, we stop accessing that page and do not post or read engagement on your behalf.
+                                You can disconnect your Facebook Page at any time from your account or integration settings
+                                (for example,{" "}
+                                <a href="/facebook/connect" className="text-blue-600 hover:underline dark:text-blue-400">
+                                    /facebook/connect
+                                </a>
+                                ). After disconnection, we stop accessing that page and do not post or read engagement on your behalf.
+                                You can also remove our app&apos;s access in Facebook: Settings → Apps and Websites. For full deletion
+                                steps, see our{" "}
+                                <a href="/data-deletion" className="text-blue-600 hover:underline dark:text-blue-400">
+                                    data deletion instructions
+                                </a>
+                                .
                             </p>
                         </section>
 
