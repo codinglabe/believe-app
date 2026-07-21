@@ -240,6 +240,31 @@ const PrivacyPolicy = () => {
                                 </a>
                                 .
                             </p>
+                            <div className="mt-6 rounded-lg border border-purple-500/20 bg-purple-500/5 p-4 dark:border-purple-400/25 dark:bg-purple-500/10">
+                                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                    Google Workspace Limited Use &amp; AI
+                                </h3>
+                                <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed mb-3">
+                                    The use of raw or derived user data received from Workspace APIs will adhere to the{" "}
+                                    <a
+                                        href="https://developers.google.com/workspace/workspace-api-user-data-developer-policy"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                        Google User Data Policy
+                                    </a>
+                                    , including the Limited Use requirements.
+                                </p>
+                                <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed mb-3">
+                                    Believe In Unity does <strong>not</strong> transfer Google Contacts or other Google Workspace API user data (raw, aggregated, anonymized, or derived) to any third-party AI/ML service. We do <strong>not</strong> use that data to create, train, or improve foundational or generalized machine learning or artificial intelligence models.
+                                </p>
+                                <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+                                    Separately, the product offers optional AI features that are <strong>not</strong> connected to Google Workspace or Contacts data—for example drafting tools and AI Media Studio. Those features may use{" "}
+                                    <strong>OpenAI Platform API (pay-as-you-go / usage-based billing)</strong> and/or{" "}
+                                    <strong>fal.ai API (usage-based / pay-as-you-go credits)</strong> with user-supplied or app-generated content only. Google Workspace / Contacts data is never included in those AI requests. We do not use ChatGPT consumer Free/Plus/Pro plans or fal.ai free consumer tiers for these integrations—only API usage billing.
+                                </p>
+                            </div>
                         </section>
 
                         {/* YouTube / Google Connection */}
