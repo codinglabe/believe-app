@@ -239,8 +239,19 @@ class AuthController extends Controller
                 'granted_scopes' => $grantedScopes,
             ]);
 
-            return redirect()->route('facebook.select-pages')
+            $redirect = redirect()->route('facebook.select-pages')
                 ->with('success', 'Choose which Facebook Page(s) to connect to your organization.');
+
+            // Engagement metrics need pages_read_engagement on the token (and Advanced Access when Live).
+            $normalizedGranted = array_map('strtolower', $grantedScopes);
+            if ($grantedScopes !== [] && ! in_array('pages_read_engagement', $normalizedGranted, true)) {
+                $redirect->with(
+                    'warning',
+                    'Facebook did not grant pages_read_engagement. Posting may work, but likes/comments/shares will not load until you reconnect with that permission (check Login Configuration / App Review).'
+                );
+            }
+
+            return $redirect;
 
         } catch (\Exception $e) {
             Log::error('Facebook OAuth error: '.$e->getMessage(), [

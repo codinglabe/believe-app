@@ -202,7 +202,7 @@ export default function Connect({
                                         <strong>pages_manage_posts</strong> — publish or schedule posts only when you click Publish in our app.
                                     </p>
                                     <p>
-                                        <strong>pages_read_engagement</strong> — show likes, comments, shares, and impressions in your dashboard.
+                                        <strong>pages_read_engagement</strong> — show likes/reactions, comments, shares, and views in your dashboard.
                                     </p>
                                     <p>
                                         <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">

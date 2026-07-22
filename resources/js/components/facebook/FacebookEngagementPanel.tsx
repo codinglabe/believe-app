@@ -30,10 +30,12 @@ export default function FacebookEngagementPanel({
     const [metrics, setMetrics] = useState<Metric[] | null>(null);
     const [fetchedAt, setFetchedAt] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [warning, setWarning] = useState<string | null>(null);
 
     const load = async () => {
         setLoading(true);
         setError(null);
+        setWarning(null);
         try {
             const url =
                 type === 'post' && postId
@@ -45,6 +47,7 @@ export default function FacebookEngagementPanel({
             }
             setMetrics(data.data.metrics ?? []);
             setFetchedAt(data.data.fetched_at ?? null);
+            setWarning(typeof data.data.warning === 'string' ? data.data.warning : null);
         } catch (e: unknown) {
             const msg = axios.isAxiosError(e)
                 ? e.response?.data?.message || e.message
@@ -53,6 +56,7 @@ export default function FacebookEngagementPanel({
                   : 'Failed to load engagement';
             setError(msg);
             setMetrics(null);
+            setWarning(null);
         } finally {
             setLoading(false);
         }
@@ -76,11 +80,12 @@ export default function FacebookEngagementPanel({
             </div>
             {!compact && (
                 <p className="text-xs text-muted-foreground">
-                    Uses <code>pages_read_engagement</code> to show views, reactions, comments, and shares from
+                    Uses <code>pages_read_engagement</code> to show reactions, comments, shares, and views from
                     Facebook. Data is only shown to you inside this app.
                 </p>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
+            {warning && !error && <p className="text-sm text-amber-600 dark:text-amber-400">{warning}</p>}
             {metrics && metrics.length > 0 && (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {metrics.map((m) => (
