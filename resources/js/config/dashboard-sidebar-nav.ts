@@ -74,6 +74,7 @@ import {
     Sparkles,
     Trophy,
     Radio,
+    Columns3,
 } from 'lucide-react';
 
 /**
@@ -603,6 +604,22 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 title: 'Contractors',
                 href: '/service-hub',
                 icon: Briefcase,
+                role: 'organization',
+            },
+        ],
+    },
+
+    {
+        title: 'Project Management',
+        icon: Columns3,
+        role: 'organization',
+        permission: 'project.read',
+        items: [
+            {
+                title: 'Boards',
+                href: '/organization/projects',
+                icon: Columns3,
+                permission: 'project.read',
                 role: 'organization',
             },
         ],

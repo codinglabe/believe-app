@@ -261,6 +261,11 @@ class Organization extends Model implements HasPreferredPayoutMethod
         return $this->hasMany(BoardMember::class);
     }
 
+    public function projectBoards()
+    {
+        return $this->hasMany(ProjectBoard::class);
+    }
+
     /**
      * User IDs that should receive wallet push / Reverb updates (owner + board).
      *

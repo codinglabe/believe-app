@@ -129,6 +129,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             'volunteer' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
             'volunteer.timesheet' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
 
+            // Project Management (Kanban boards)
+            'project' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
             'organization.followers' => ['read'],
 
             // Reward Point Management
@@ -257,6 +260,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Volunteer Management - Full access
             'volunteer.read', 'volunteer.create', 'volunteer.edit', 'volunteer.update', 'volunteer.delete', 'volunteer.manage',
             'volunteer.timesheet.read', 'volunteer.timesheet.create', 'volunteer.timesheet.edit', 'volunteer.timesheet.update', 'volunteer.timesheet.delete', 'volunteer.timesheet.manage',
+
+            // Project Management - Full access
+            'project.read', 'project.create', 'project.edit', 'project.update', 'project.delete', 'project.manage',
 
             // Email Invite Management - Full access
             'email.invite.read', 'email.invite.create', 'email.invite.edit', 'email.invite.update', 'email.invite.delete', 'email.invite.manage', 'email.invite.sync', 'email.invite.send',

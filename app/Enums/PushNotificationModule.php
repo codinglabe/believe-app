@@ -19,6 +19,7 @@ enum PushNotificationModule: string
     case Membership = 'membership';
     case Proximity = 'proximity';
     case DailyEngagement = 'daily_engagement';
+    case Projects = 'projects';
     case System = 'system';
 
     /**
@@ -50,6 +51,7 @@ enum PushNotificationModule: string
             self::Membership->value => 'Membership Management',
             self::Proximity->value => 'Proximity Alerts',
             self::DailyEngagement->value => 'Daily Engagement',
+            self::Projects->value => 'Project Management',
             self::System->value => 'System',
         ];
     }
