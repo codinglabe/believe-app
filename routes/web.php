@@ -1430,6 +1430,60 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
             Route::post('/{campaign}/end', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'end'])->name('end');
         });
 
+    // Organization Project Management (Kanban)
+    Route::prefix('organization/projects')
+        ->name('org.projects.')
+        ->group(function () {
+            $boards = \App\Http\Controllers\Organization\OrganizationProjectBoardController::class;
+            $lists = \App\Http\Controllers\Organization\OrganizationProjectListController::class;
+            $cards = \App\Http\Controllers\Organization\OrganizationProjectCardController::class;
+            $extras = \App\Http\Controllers\Organization\OrganizationProjectCardExtrasController::class;
+
+            Route::get('/', [$boards, 'index'])->middleware('permission:project.read')->name('index');
+            Route::post('/', [$boards, 'store'])->middleware('permission:project.create')->name('store');
+            Route::get('/{board}', [$boards, 'show'])->middleware('permission:project.read')->name('show');
+            Route::put('/{board}', [$boards, 'update'])->middleware('permission:project.update')->name('update');
+            Route::post('/{board}/star', [$boards, 'toggleStar'])->middleware('permission:project.update')->name('star');
+            Route::post('/{board}/archive', [$boards, 'archive'])->middleware('permission:project.delete')->name('archive');
+            Route::post('/{board}/restore', [$boards, 'restore'])->middleware('permission:project.update')->name('restore');
+            Route::delete('/{board}', [$boards, 'destroy'])->middleware('permission:project.delete')->name('destroy');
+
+            Route::post('/{board}/lists', [$lists, 'store'])->middleware('permission:project.create')->name('lists.store');
+            Route::put('/{board}/lists/reorder', [$lists, 'reorder'])->middleware('permission:project.update')->name('lists.reorder');
+            Route::put('/{board}/lists/{list}', [$lists, 'update'])->middleware('permission:project.update')->name('lists.update');
+            Route::post('/{board}/lists/{list}/archive', [$lists, 'archive'])->middleware('permission:project.delete')->name('lists.archive');
+
+            Route::post('/{board}/cards', [$cards, 'store'])->middleware('permission:project.create')->name('cards.store');
+            Route::get('/{board}/cards/{card}', [$cards, 'show'])->middleware('permission:project.read')->name('cards.show');
+            Route::put('/{board}/cards/{card}', [$cards, 'update'])->middleware('permission:project.update')->name('cards.update');
+            Route::post('/{board}/cards/{card}/move', [$cards, 'move'])->middleware('permission:project.update')->name('cards.move');
+            Route::post('/{board}/cards/{card}/archive', [$cards, 'archive'])->middleware('permission:project.delete')->name('cards.archive');
+            Route::post('/{board}/cards/{card}/restore', [$cards, 'restore'])->middleware('permission:project.update')->name('cards.restore');
+            Route::delete('/{board}/cards/{card}', [$cards, 'destroy'])->middleware('permission:project.delete')->name('cards.destroy');
+
+            Route::post('/{board}/labels', [$extras, 'storeLabel'])->middleware('permission:project.create')->name('labels.store');
+            Route::put('/{board}/labels/{label}', [$extras, 'updateLabel'])->middleware('permission:project.update')->name('labels.update');
+            Route::delete('/{board}/labels/{label}', [$extras, 'destroyLabel'])->middleware('permission:project.delete')->name('labels.destroy');
+
+            Route::post('/{board}/cards/{card}/labels', [$extras, 'syncCardLabels'])->middleware('permission:project.update')->name('cards.labels.sync');
+            Route::post('/{board}/cards/{card}/members', [$extras, 'syncCardMembers'])->middleware('permission:project.update')->name('cards.members.sync');
+
+            Route::post('/{board}/cards/{card}/checklists', [$extras, 'storeChecklist'])->middleware('permission:project.create')->name('checklists.store');
+            Route::put('/{board}/cards/{card}/checklists/{checklist}', [$extras, 'updateChecklist'])->middleware('permission:project.update')->name('checklists.update');
+            Route::delete('/{board}/cards/{card}/checklists/{checklist}', [$extras, 'destroyChecklist'])->middleware('permission:project.delete')->name('checklists.destroy');
+            Route::post('/{board}/cards/{card}/checklists/{checklist}/items', [$extras, 'storeChecklistItem'])->middleware('permission:project.create')->name('checklist-items.store');
+            Route::put('/{board}/cards/{card}/checklists/{checklist}/items/{item}', [$extras, 'updateChecklistItem'])->middleware('permission:project.update')->name('checklist-items.update');
+            Route::delete('/{board}/cards/{card}/checklists/{checklist}/items/{item}', [$extras, 'destroyChecklistItem'])->middleware('permission:project.delete')->name('checklist-items.destroy');
+
+            Route::post('/{board}/cards/{card}/comments', [$extras, 'storeComment'])->middleware('permission:project.create')->name('comments.store');
+            Route::put('/{board}/cards/{card}/comments/{comment}', [$extras, 'updateComment'])->middleware('permission:project.create')->name('comments.update');
+            Route::post('/{board}/cards/{card}/comments/{comment}/like', [$extras, 'toggleCommentLike'])->middleware('permission:project.read')->name('comments.like');
+            Route::delete('/{board}/cards/{card}/comments/{comment}', [$extras, 'destroyComment'])->middleware('permission:project.create')->name('comments.destroy');
+
+            Route::post('/{board}/cards/{card}/attachments', [$extras, 'storeAttachment'])->middleware('permission:project.create')->name('attachments.store');
+            Route::delete('/{board}/cards/{card}/attachments/{attachment}', [$extras, 'destroyAttachment'])->middleware('permission:project.delete')->name('attachments.destroy');
+        });
+
     // Organization BRP Wallet routes removed — organizations use the existing Believe Points (BP) wallet
 
     // old Facebook Integration Routes
