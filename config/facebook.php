@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 /**
  * Facebook Page integration (App Review + runtime).
@@ -15,6 +15,8 @@ return [
      * Permissions requested during OAuth (comma-separated in dialog).
      * public_profile is included automatically by Facebook Login; listed for in-app disclosure.
      */
+    // App Review scopes: list Pages, read Page-published content, publish/schedule posts.
+    // pages_read_engagement is used to read Page posts/content metadata — not likes/views analytics.
     'scopes' => [
         'pages_show_list',
         'pages_read_engagement',

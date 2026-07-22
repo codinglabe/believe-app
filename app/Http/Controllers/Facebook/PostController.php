@@ -7,19 +7,19 @@ use App\Models\FacebookAccount;
 use App\Models\FacebookPost;
 use App\Models\Organization;
 use App\Services\Facebook\ConnectionService;
-use App\Services\Facebook\EngagementService;
 use App\Services\Facebook\PostService;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Intervention\Image\ImageManager;
+use Inertia\Inertia;
 use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\ImageManager;
 
 class PostController extends Controller
 {
     protected $postService;
+
     protected $connectionService;
 
     public function __construct(PostService $postService, ConnectionService $connectionService)
@@ -37,7 +37,7 @@ class PostController extends Controller
         $user = $request->user();
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             return redirect()->route('dashboard')
                 ->with('error', 'You need to have an organization to manage Facebook posts');
         }
@@ -105,7 +105,7 @@ class PostController extends Controller
         $user = $request->user();
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             return redirect()->route('dashboard')
                 ->with('error', 'You need to have an organization to create Facebook posts');
         }
@@ -142,19 +142,16 @@ class PostController extends Controller
     /**
      * Store new post
      */
-      public function store(Request $request)
+    public function store(Request $request)
     {
         $user = $request->user();
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             return redirect()->back()
                 ->withErrors(['error' => 'Organization not found'])
                 ->withInput();
         }
-
-
-
 
         \Log::info('Facebook post store request received', [
             'user_id' => $user->id,
@@ -180,6 +177,7 @@ class PostController extends Controller
 
         if ($validator->fails()) {
             \Log::error('Validation failed:', $validator->errors()->toArray());
+
             return redirect()->back()
                 ->withErrors($validator)
                 ->withInput();
@@ -192,7 +190,7 @@ class PostController extends Controller
             ->connected()
             ->first();
 
-        if (!$account) {
+        if (! $account) {
             return redirect()->back()
                 ->withErrors(['facebook_account_id' => 'Invalid Facebook account or account is not connected'])
                 ->withInput();
@@ -226,7 +224,7 @@ class PostController extends Controller
 
         if ($request->schedule_type === 'later') {
             $status = 'pending';
-            $scheduledFor = $request->scheduled_date . ' ' . $request->scheduled_time . ':00';
+            $scheduledFor = $request->scheduled_date.' '.$request->scheduled_time.':00';
         }
 
         // Create post record
@@ -248,6 +246,7 @@ class PostController extends Controller
         if ($request->schedule_type === 'now') {
             try {
                 $this->publishPost($post->id);
+
                 return redirect()->route('facebook.posts.index')
                     ->with('success', 'Post published successfully to Facebook!');
 
@@ -287,11 +286,11 @@ class PostController extends Controller
             return $this->publishPost($id);
         } catch (\Exception $e) {
             return redirect()->back()
-                ->with('error', 'Failed to publish post: ' . $e->getMessage());
+                ->with('error', 'Failed to publish post: '.$e->getMessage());
         }
     }
 
-     /**
+    /**
      * Process and store image - convert to JPEG if needed
      */
     private function processAndStoreImage($imageFile)
@@ -302,15 +301,15 @@ class PostController extends Controller
             Storage::disk('public')->makeDirectory($directory);
 
             // Generate unique filename with .jpg extension
-            $filename = uniqid() . '.jpg';
-            $path = $directory . '/' . $filename;
+            $filename = uniqid().'.jpg';
+            $path = $directory.'/'.$filename;
 
             // Convert image to JPEG using Intervention Image
-            $manager = new ImageManager(new Driver());
+            $manager = new ImageManager(new Driver);
             $image = $manager->read($imageFile->getRealPath());
 
             // Convert to RGB and save as JPEG
-            $image->toJpeg(90)->save(storage_path('app/public/' . $path));
+            $image->toJpeg(90)->save(storage_path('app/public/'.$path));
 
             \Log::info('Image processed and saved:', [
                 'original_mime' => $imageFile->getMimeType(),
@@ -341,15 +340,15 @@ class PostController extends Controller
             throw new \Exception('Post is already published');
         }
 
-        if (!$post->facebookAccount || !$post->facebookAccount->is_connected) {
+        if (! $post->facebookAccount || ! $post->facebookAccount->is_connected) {
             throw new \Exception('Facebook account is not connected');
         }
 
         \Log::info('Publishing post to Facebook:', [
             'post_id' => $post->id,
             'account_id' => $post->facebookAccount->id,
-            'has_image' => !empty($post->image),
-            'has_video' => !empty($post->video),
+            'has_image' => ! empty($post->image),
+            'has_video' => ! empty($post->video),
         ]);
 
         try {
@@ -436,7 +435,7 @@ class PostController extends Controller
             try {
                 $this->postService->deletePost($post->facebookAccount, $post->facebook_post_id);
             } catch (\Exception $e) {
-                \Log::error('Failed to delete Facebook post: ' . $e->getMessage());
+                \Log::error('Failed to delete Facebook post: '.$e->getMessage());
             }
         }
 
@@ -453,37 +452,5 @@ class PostController extends Controller
 
         return redirect()->route('facebook.posts.index')
             ->with('success', 'Post deleted successfully');
-    }
-
-    /**
-     * Get post analytics
-     */
-    public function analytics($id, EngagementService $engagementService)
-    {
-        $post = FacebookPost::with('facebookAccount')->findOrFail($id);
-
-        $user = auth()->user();
-        if ($post->organization_id !== $user->organization?->id || $post->user_id !== $user->id) {
-            abort(403, 'Unauthorized');
-        }
-
-        if (! $post->facebook_post_id || ! $post->facebookAccount) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Post not published or Facebook account not connected',
-            ], 422);
-        }
-
-        try {
-            return response()->json([
-                'success' => true,
-                'data' => $engagementService->getPostEngagement($post->facebookAccount, $post),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
-        }
     }
 }

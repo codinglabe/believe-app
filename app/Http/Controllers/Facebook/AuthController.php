@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Facebook;
 
 use App\Http\Controllers\Controller;
 use App\Models\FacebookAccount;
-use App\Services\Facebook\EngagementService;
+use App\Services\Facebook\PageContentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -239,19 +239,8 @@ class AuthController extends Controller
                 'granted_scopes' => $grantedScopes,
             ]);
 
-            $redirect = redirect()->route('facebook.select-pages')
+            return redirect()->route('facebook.select-pages')
                 ->with('success', 'Choose which Facebook Page(s) to connect to your organization.');
-
-            // Engagement metrics need pages_read_engagement on the token (and Advanced Access when Live).
-            $normalizedGranted = array_map('strtolower', $grantedScopes);
-            if ($grantedScopes !== [] && ! in_array('pages_read_engagement', $normalizedGranted, true)) {
-                $redirect->with(
-                    'warning',
-                    'Facebook did not grant pages_read_engagement. Posting may work, but likes/comments/shares will not load until you reconnect with that permission (check Login Configuration / App Review).'
-                );
-            }
-
-            return $redirect;
 
         } catch (\Exception $e) {
             Log::error('Facebook OAuth error: '.$e->getMessage(), [
@@ -376,7 +365,7 @@ class AuthController extends Controller
             ]);
 
             return redirect()->route('facebook.connect')
-                ->with('success', 'Connected '.$pagesToSave->count().' Facebook Page(s). You can now create posts and view engagement.');
+                ->with('success', 'Connected '.$pagesToSave->count().' Facebook Page(s). You can now read Page content and publish posts.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -388,9 +377,9 @@ class AuthController extends Controller
     }
 
     /**
-     * Page engagement summary (pages_read_engagement) for Connect UI / App Review.
+     * Recent Page posts/content (pages_read_engagement) — content only, no likes/views.
      */
-    public function engagement(Request $request, int $id, EngagementService $engagementService)
+    public function pageContent(Request $request, int $id, PageContentService $pageContentService)
     {
         $account = FacebookAccount::where('id', $id)
             ->where('user_id', $request->user()->id)
@@ -399,7 +388,7 @@ class AuthController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                'data' => $engagementService->getPageEngagementSummary($account),
+                'data' => $pageContentService->getRecentPagePosts($account),
             ]);
         } catch (\Exception $e) {
             return response()->json([
