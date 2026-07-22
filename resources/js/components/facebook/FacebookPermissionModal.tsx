@@ -15,7 +15,6 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
-  FileText,
   Globe,
   MessageSquare,
   Shield,
