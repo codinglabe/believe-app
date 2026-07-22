@@ -37,6 +37,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(ComprehensivePermissionsSeeder::class);
         $this->callUnlessSeeded(ComplianceReviewPermissionSeeder::class);
         $this->callUnlessSeeded(JobPostsPermisstionSeeder::class);
+        $this->callUnlessSeeded(ProjectPermissionsSeeder::class);
         $this->callUnlessSeeded(LivestockPermissionsSeeder::class);
         $this->callUnlessSeeded(assignRole::class);
 
