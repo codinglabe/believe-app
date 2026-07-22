@@ -73,7 +73,7 @@ const TermsOfService = () => {
                                 <ul className="list-disc list-inside space-y-2 text-blue-700 dark:text-blue-400">
                                     <li>Creating or signing into a Believe In Unity account does not require Facebook.</li>
                                     <li>Connecting a Facebook Page is optional and available only after you are logged in.</li>
-                                    <li>When you connect a Page, you grant Meta permissions so our app can list Pages you manage, publish or schedule posts you approve, and show engagement insights.</li>
+                                    <li>When you connect a Page, you grant Meta permissions so our app can list Pages you manage, read content that Page published, and publish or schedule posts you approve.</li>
                                     <li>We do not post to your Facebook Page without your explicit action in the app.</li>
                                     <li>You may disconnect a Facebook Page at any time from your integration settings.</li>
                                 </ul>

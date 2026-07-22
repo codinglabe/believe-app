@@ -330,10 +330,6 @@ export default function FacebookAppsCreate({ defaultCallbackUrl = '' }: Props) {
                                         <div className="w-2 h-2 rounded-full bg-green-500"></div>
                                         <span className="text-sm">pages_manage_posts</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                        <span className="text-sm">pages_manage_metadata</span>
-                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

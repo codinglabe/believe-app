@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner';
 import axios from 'axios';
 import FacebookPermissionModal from '@/components/facebook/FacebookPermissionModal';
-import FacebookEngagementPanel from '@/components/facebook/FacebookEngagementPanel';
+import FacebookPageContentPanel from '@/components/facebook/FacebookPageContentPanel';
 
 interface FacebookAccount {
     id: number;
@@ -183,9 +183,9 @@ export default function Connect({
                                         <span className="font-bold text-primary">4</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium">Post & view engagement</h4>
+                                        <h4 className="font-medium">Read content & publish posts</h4>
                                         <p className="text-sm text-muted-foreground">
-                                            Create posts (pages_manage_posts) and view metrics (pages_read_engagement)
+                                            Read Page posts (pages_read_engagement) and publish when you choose (pages_manage_posts)
                                         </p>
                                     </div>
                                 </div>
@@ -199,10 +199,10 @@ export default function Connect({
                                         <strong>pages_show_list</strong> — list Pages you manage so you can choose which to connect.
                                     </p>
                                     <p>
-                                        <strong>pages_manage_posts</strong> — publish or schedule posts only when you click Publish in our app.
+                                        <strong>pages_read_engagement</strong> — read content your Page published (posts, photos, videos, metadata) so you can manage the Page in our app. We do not use this for likes, reactions, or view analytics.
                                     </p>
                                     <p>
-                                        <strong>pages_read_engagement</strong> — show likes/reactions, comments, shares, and views in your dashboard.
+                                        <strong>pages_manage_posts</strong> — publish or schedule posts only when you click Publish in our app.
                                     </p>
                                     <p>
                                         <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
@@ -351,13 +351,14 @@ export default function Connect({
                                                         )}
                                                     </p>
 
-                                                    <div className="mt-3">
-                                                        <FacebookEngagementPanel
-                                                            accountId={account.id}
-                                                            pageName={account.facebook_page_name}
-                                                            compact
-                                                        />
-                                                    </div>
+                                                    {account.is_connected && (
+                                                        <div className="mt-3">
+                                                            <FacebookPageContentPanel
+                                                                accountId={account.id}
+                                                                pageName={account.facebook_page_name}
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
 

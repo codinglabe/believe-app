@@ -27,8 +27,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
-import FacebookEngagementPanel from '@/components/facebook/FacebookEngagementPanel';
-
 interface FacebookAccount {
     id: number;
     facebook_page_name: string;
@@ -543,17 +541,6 @@ export default function Index({ posts, accounts, hasConnectedAccounts, filters }
                                                     </div>
                                                 )}
 
-                                                {post.status === 'published' && post.facebook_account && (
-                                                    <div className="mt-3">
-                                                        <FacebookEngagementPanel
-                                                            accountId={post.facebook_account.id}
-                                                            pageName={post.facebook_account.facebook_page_name}
-                                                            type="post"
-                                                            postId={post.id}
-                                                            compact
-                                                        />
-                                                    </div>
-                                                )}
                                             </div>
 
                                             {/* Actions */}

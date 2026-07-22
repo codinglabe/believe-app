@@ -2,15 +2,18 @@
 
 namespace App\Services\Facebook;
 
+use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Exception;
 
 class AuthService
 {
     private string $appId;
+
     private string $appSecret;
+
     private string $redirectUri;
+
     private string $apiVersion = 'v21.0';
 
     public function __construct()
@@ -19,7 +22,7 @@ class AuthService
         $this->appSecret = config('services.facebook.app_secret') ?? '';
         $this->redirectUri = config('services.facebook.redirect_uri') ?? '';
 
-        if (!$this->appId || !$this->appSecret) {
+        if (! $this->appId || ! $this->appSecret) {
             throw new Exception('Facebook app credentials not configured');
         }
     }
@@ -27,14 +30,12 @@ class AuthService
     /**
      * Get Facebook OAuth URL for page connection
      */
-    public function getOAuthUrl(string $state = null): string
+    public function getOAuthUrl(?string $state = null): string
     {
         $scopes = [
-            'pages_manage_posts',
-            'pages_read_engagement',
             'pages_show_list',
-            'pages_read_user_content',
-            'email',
+            'pages_read_engagement',
+            'pages_manage_posts',
         ];
 
         $params = [
@@ -46,7 +47,7 @@ class AuthService
             'auth_type' => 'rerequest',
         ];
 
-        return 'https://www.facebook.com/' . $this->apiVersion . '/dialog/oauth?' . http_build_query($params);
+        return 'https://www.facebook.com/'.$this->apiVersion.'/dialog/oauth?'.http_build_query($params);
     }
 
     /**
@@ -64,7 +65,7 @@ class AuthService
         ]);
 
         if ($response->failed()) {
-            throw new Exception('Failed to get access token: ' . $response->body());
+            throw new Exception('Failed to get access token: '.$response->body());
         }
 
         return $response->json();
@@ -85,7 +86,7 @@ class AuthService
         ]);
 
         if ($response->failed()) {
-            throw new Exception('Failed to get long-lived token: ' . $response->body());
+            throw new Exception('Failed to get long-lived token: '.$response->body());
         }
 
         return $response->json();
@@ -104,7 +105,7 @@ class AuthService
         ]);
 
         if ($response->failed()) {
-            throw new Exception('Failed to get user pages: ' . $response->body());
+            throw new Exception('Failed to get user pages: '.$response->body());
         }
 
         return $response->json()['data'] ?? [];
@@ -123,10 +124,11 @@ class AuthService
         ]);
 
         if ($response->failed()) {
-            throw new Exception('Failed to get page access token: ' . $response->body());
+            throw new Exception('Failed to get page access token: '.$response->body());
         }
 
         $data = $response->json();
+
         return $data['access_token'] ?? '';
     }
 
@@ -135,7 +137,7 @@ class AuthService
      */
     public function debugToken(string $accessToken): array
     {
-        $url = "https://graph.facebook.com/debug_token";
+        $url = 'https://graph.facebook.com/debug_token';
 
         $response = Http::get($url, [
             'input_token' => $accessToken,
@@ -143,7 +145,7 @@ class AuthService
         ]);
 
         if ($response->failed()) {
-            throw new Exception('Failed to debug token: ' . $response->body());
+            throw new Exception('Failed to debug token: '.$response->body());
         }
 
         return $response->json()['data'] ?? [];
@@ -163,7 +165,8 @@ class AuthService
 
             return $response->successful();
         } catch (Exception $e) {
-            Log::error('Failed to revoke Facebook token: ' . $e->getMessage());
+            Log::error('Failed to revoke Facebook token: '.$e->getMessage());
+
             return false;
         }
     }
@@ -183,14 +186,11 @@ class AuthService
                 'pages_show_list',
                 'pages_read_engagement',
                 'pages_manage_posts',
-                'pages_read_user_content',
-                'pages_manage_metadata',
-                'pages_manage_engagement',
             ]),
             'response_type' => 'code',
         ];
 
-        return 'https://www.facebook.com/v19.0/dialog/oauth?' . http_build_query($params);
+        return 'https://www.facebook.com/v19.0/dialog/oauth?'.http_build_query($params);
     }
 
     /**
@@ -205,8 +205,8 @@ class AuthService
             'code' => $code,
         ]);
 
-        if (!$response->successful()) {
-            throw new \Exception('Failed to get access token: ' . $response->body());
+        if (! $response->successful()) {
+            throw new \Exception('Failed to get access token: '.$response->body());
         }
 
         return $response->json();
@@ -224,8 +224,8 @@ class AuthService
             'fb_exchange_token' => $shortLivedToken,
         ]);
 
-        if (!$response->successful()) {
-            throw new \Exception('Failed to get long-lived token: ' . $response->body());
+        if (! $response->successful()) {
+            throw new \Exception('Failed to get long-lived token: '.$response->body());
         }
 
         return $response->json();
@@ -238,8 +238,8 @@ class AuthService
     {
         try {
             $response = Http::get('https://graph.facebook.com/debug_token', [
-                'input_token' => $appId . '|' . $appSecret,
-                'access_token' => $appId . '|' . $appSecret,
+                'input_token' => $appId.'|'.$appSecret,
+                'access_token' => $appId.'|'.$appSecret,
             ]);
 
             return $response->successful();

@@ -48,7 +48,7 @@ const PrivacyPolicy = () => {
                                     <li>Email addresses for communication</li>
                                     <li>Name and contact information</li>
                                     <li>Organization details (if applicable)</li>
-                                    <li>Facebook Page connection and related data (only if you connect a page—e.g. page list, post and schedule actions, engagement metrics)</li>
+                                    <li>Facebook Page connection and related data (only if you connect a page—e.g. page list, Page-published content you choose to view, post and schedule actions)</li>
                                     <li>Gmail / Google Contacts connection data (only if you connect Gmail for Email Invite—e.g. contact names and emails you choose to sync, OAuth tokens)</li>
                                     <li>YouTube / Google account connection data (only if you connect YouTube—e.g. channel metadata, OAuth tokens, uploaded video references)</li>
                                     <li>IP addresses and browser information</li>
@@ -180,18 +180,18 @@ const PrivacyPolicy = () => {
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
-                                        Managing posts (pages_manage_posts)
+                                        Reading Page content (pages_read_engagement)
                                     </h3>
                                     <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        We use this permission to create and schedule posts on your connected Facebook Page only when you explicitly take action in our app (for example, when you write a post and tap &quot;Publish&quot; or &quot;Schedule&quot;). We do not post to your page without your permission. Every post is created or scheduled only after you confirm it. You remain in full control of what is published and when.
+                                        We use this permission to read content published by Pages you have connected (such as posts, photos, videos, and related metadata) so you can administer and manage that Page inside our app. We do not use this permission to collect or display likes, reactions, comment counts, or view/reach analytics.
                                     </p>
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
-                                        Reading engagement (pages_read_engagement)
+                                        Managing posts (pages_manage_posts)
                                     </h3>
                                     <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        We request access to read engagement data (such as likes, comments, and shares) for pages you have connected. We use this to show you insights and performance of your posts within our app. This data is used only to display analytics to you and is not shared with third parties for advertising or other purposes beyond providing our service.
+                                        We use this permission to create and schedule posts on your connected Facebook Page only when you explicitly take action in our app (for example, when you write a post and tap &quot;Publish&quot; or &quot;Schedule&quot;). We do not post to your page without your permission. Every post is created or scheduled only after you confirm it. You remain in full control of what is published and when.
                                     </p>
                                 </div>
                             </div>
@@ -201,7 +201,7 @@ const PrivacyPolicy = () => {
                                 <a href="/facebook/connect" className="text-blue-600 hover:underline dark:text-blue-400">
                                     /facebook/connect
                                 </a>
-                                ). After disconnection, we stop accessing that page and do not post or read engagement on your behalf.
+                                ). After disconnection, we stop accessing that page and do not post or read Page content on your behalf.
                                 You can also remove our app&apos;s access in Facebook: Settings → Apps and Websites. For full deletion
                                 steps, see our{" "}
                                 <a href="/data-deletion" className="text-blue-600 hover:underline dark:text-blue-400">

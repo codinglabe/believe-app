@@ -38,7 +38,7 @@ export default function DataDeletion() {
                             </h2>
                             <p className="mb-4 text-gray-600 dark:text-gray-300">
                                 If you connected a Facebook Page, disconnecting removes stored Page tokens,
-                                Page names, scheduled posts, and engagement data we hold for that connection.
+                                Page names, Page content previews you loaded in the app, and scheduled/published post records we hold for that connection.
                             </p>
                             <ol className="list-decimal space-y-3 pl-6 text-gray-600 dark:text-gray-300">
                                 <li>
