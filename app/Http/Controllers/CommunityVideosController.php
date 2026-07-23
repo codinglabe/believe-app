@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -61,7 +62,8 @@ class CommunityVideosController extends Controller
         $search = $request->input('search', '');
         $tab = $request->input('tab', 'latest');
         $org = $request->input('org', 'all');
-        // Primary-org default only on Non-Profits — other tabs must not inherit a forced org.
+        $supporter = $request->input('supporter', 'all');
+        // Primary-org default only on Organizations tab — other tabs must not inherit a forced org.
         if ($tab === 'nonprofits') {
             $orgFilterId = app(SupporterPrimaryOrganizationService::class)
                 ->resolveListingOrganizationFilterId($request, 'org');
@@ -75,6 +77,10 @@ class CommunityVideosController extends Controller
         }
         // Keep org filter as a string — do not reuse $org for the auth user's Organization model.
         $orgFilter = is_scalar($org) ? (string) $org : 'all';
+        $supporterFilter = is_scalar($supporter) ? (string) $supporter : 'all';
+        if ($tab !== 'supporter') {
+            $supporterFilter = 'all';
+        }
         $hub = $request->input('hub', 'all');
         $hubNormalized = 'all';
         $page = max(1, (int) $request->input('page', 1));
@@ -101,6 +107,7 @@ class CommunityVideosController extends Controller
             }
 
             $nonprofitOrganizations = $this->supporterSecondaryOrganizationsForPicker($request->user());
+            $selectedSupporter = $this->resolveSelectedSupporterForPicker($supporterFilter);
 
             $channelBanners = $this->getChannelBannersForIndex();
 
@@ -209,6 +216,9 @@ class CommunityVideosController extends Controller
             if (! isset($nonprofitOrganizations)) {
                 $nonprofitOrganizations = [];
             }
+            if (! isset($selectedSupporter)) {
+                $selectedSupporter = null;
+            }
             if (! isset($myChannel)) {
                 $myChannel = null;
                 $authUserChannelSlug = null;
@@ -228,7 +238,7 @@ class CommunityVideosController extends Controller
         return Inertia::render('frontend/community-videos/Index', [
             'seo' => [
                 'title' => 'Unity Videos',
-                'description' => 'Watch and share inspiring stories and community events from our supporters and nonprofits on Unity Videos.',
+                'description' => 'Watch and share inspiring stories and community events from our supporters and organizations on Unity Videos.',
             ],
             'channelBanners' => $channelBanners ?? [],
             'featuredVideo' => $featured ?? null,
@@ -238,10 +248,12 @@ class CommunityVideosController extends Controller
                 'search' => $search,
                 'tab' => $tab,
                 'org' => $orgFilter,
+                'supporter' => $supporterFilter,
                 'hub' => $hubNormalized,
             ],
             'nonprofitOrganizations' => $nonprofitOrganizations ?? [],
             'secondaryOrganizations' => $nonprofitOrganizations ?? [],
+            'selectedSupporter' => $selectedSupporter ?? null,
             'stats' => $stats ?? ['total_videos' => 0, 'livestream_replays' => 0],
             'videos_has_more' => $hasMore ?? false,
             'videos_next_page' => $nextPage ?? 2,
@@ -291,6 +303,7 @@ class CommunityVideosController extends Controller
         $search = (string) $request->input('search', '');
         $tab = (string) $request->input('tab', 'latest');
         $org = $request->input('org', 'all');
+        $supporter = $request->input('supporter', 'all');
         if ($tab === 'nonprofits') {
             $orgFilterId = app(SupporterPrimaryOrganizationService::class)
                 ->resolveListingOrganizationFilterId($request, 'org');
@@ -303,6 +316,10 @@ class CommunityVideosController extends Controller
             $org = 'all';
         }
         $orgFilter = is_scalar($org) ? (string) $org : 'all';
+        $supporterFilter = is_scalar($supporter) ? (string) $supporter : 'all';
+        if ($tab !== 'supporter') {
+            $supporterFilter = 'all';
+        }
         $hub = (string) $request->input('hub', 'all');
 
         $allowedNonprofitOrgIds = null;
@@ -324,7 +341,7 @@ class CommunityVideosController extends Controller
         }
 
         // Always rebuild from currently connected channels (per-channel YouTube API is cached).
-        // Non-Profits scopes to primary/secondary (or one picked org).
+        // Organizations tab scopes to primary/secondary (or one picked org).
         $youtubeVideos = $this->fetchAllYouTubeVideos($onlyOrganizationIds);
 
         if ($search !== '') {
@@ -345,6 +362,10 @@ class CommunityVideosController extends Controller
             }
         } elseif ($tab === 'supporter') {
             $youtubeVideos = $youtubeVideos->filter(fn ($v) => empty($v['organization_id'] ?? null))->sortByDesc('sort_at')->values();
+            if ($supporterFilter !== 'all' && $supporterFilter !== '' && (int) $supporterFilter > 0) {
+                $supporterId = (int) $supporterFilter;
+                $youtubeVideos = $youtubeVideos->filter(fn ($v) => (int) ($v['owner_user_id'] ?? 0) === $supporterId)->values();
+            }
         } else {
             $tab = 'latest';
             $youtubeVideos = $youtubeVideos->sortByDesc('sort_at')->values();
@@ -534,7 +555,7 @@ class CommunityVideosController extends Controller
     }
 
     /**
-     * API: Search organizations with YouTube channel (for Non-Profits dropdown).
+     * API: Search organizations with YouTube channel (for Organizations dropdown).
      */
     public function organizations(Request $request): \Illuminate\Http\JsonResponse
     {
@@ -550,6 +571,31 @@ class CommunityVideosController extends Controller
         }
         $data = $query->get(['id', 'name'])->map(fn ($o) => ['id' => $o->id, 'name' => $o->name])->values()->all();
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * API: Paginated supporters with YouTube channel (for Supporters dropdown — scroll to load more).
+     */
+    public function supporters(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $search = trim((string) $request->input('search', ''));
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = min(50, max(10, (int) $request->input('per_page', 30)));
+
+        $query = $this->supportersWithYoutubeQuery($search);
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+
+        $data = collect($paginator->items())
+            ->map(fn (User $u) => ['id' => (int) $u->id, 'name' => (string) $u->name])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => $data,
+            'has_more' => $paginator->hasMorePages(),
+            'next_page' => $paginator->hasMorePages() ? $paginator->currentPage() + 1 : null,
+            'page' => $paginator->currentPage(),
+        ]);
     }
 
     /**
@@ -700,7 +746,7 @@ class CommunityVideosController extends Controller
     }
 
     /**
-     * Secondary orgs for the Non-Profits picker (excludes primary — lock UI shows primary).
+     * Secondary orgs for the Organizations picker (excludes primary — lock UI shows primary).
      *
      * @return list<array{id: int, name: string}>
      */
@@ -726,6 +772,69 @@ class CommunityVideosController extends Controller
             ->map(fn (Organization $o) => ['id' => (int) $o->id, 'name' => (string) $o->name])
             ->values()
             ->all();
+    }
+
+    /**
+     * Supporters with a connected YouTube channel (excludes owners of orgs that have YouTube).
+     * Used by the paginated Supporters picker API.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\User>
+     */
+    private function supportersWithYoutubeQuery(string $search = '')
+    {
+        $query = User::query()
+            ->select('users.id', 'users.name')
+            ->whereNotNull('users.youtube_channel_url')
+            ->where('users.youtube_channel_url', '!=', '')
+            ->whereNotNull('users.slug')
+            ->whereNotExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('organizations')
+                    ->whereColumn('organizations.user_id', 'users.id')
+                    ->whereNotNull('organizations.youtube_channel_url')
+                    ->where('organizations.youtube_channel_url', '!=', '');
+                // Match excludingCareAllianceHubs: care-alliance hub orgs do not exclude the owner.
+                if (Schema::hasTable('care_alliances')
+                    && Schema::hasColumn('care_alliances', 'hub_organization_id')) {
+                    $sub->whereNotExists(function ($hub) {
+                        $hub->selectRaw('1')
+                            ->from('care_alliances')
+                            ->whereColumn('care_alliances.hub_organization_id', 'organizations.id')
+                            ->whereNotNull('care_alliances.hub_organization_id');
+                    });
+                }
+            })
+            ->orderBy('users.name')
+            ->orderBy('users.id');
+
+        if ($search !== '') {
+            $query->where('users.name', 'like', '%' . $search . '%');
+        }
+
+        return $query;
+    }
+
+    /**
+     * Resolve the currently selected supporter for the dropdown label (single row).
+     *
+     * @return array{id: int, name: string}|null
+     */
+    private function resolveSelectedSupporterForPicker(string $supporterFilter): ?array
+    {
+        if ($supporterFilter === 'all' || $supporterFilter === '' || (int) $supporterFilter <= 0) {
+            return null;
+        }
+
+        $user = User::query()
+            ->select('id', 'name')
+            ->where('id', (int) $supporterFilter)
+            ->first();
+
+        if (! $user) {
+            return null;
+        }
+
+        return ['id' => (int) $user->id, 'name' => (string) $user->name];
     }
 
     /**

@@ -85,11 +85,14 @@ interface Props {
     search: string
     tab: string
     org?: string
+    supporter?: string
     hub?: string
   }
   nonprofitOrganizations?: Array<{ id: number; name: string }>
-  /** Alias kept for older props; Non-Profits picker uses secondary orgs (donate-page style). */
+  /** Alias kept for older props; Organizations picker uses secondary orgs (donate-page style). */
   secondaryOrganizations?: Array<{ id: number; name: string }>
+  /** Currently selected supporter (for label when filtering by one person). */
+  selectedSupporter?: { id: number; name: string } | null
   stats?: { total_videos: number; livestream_replays: number }
   videos_has_more?: boolean
   videos_next_page?: number
@@ -222,7 +225,7 @@ function VideoHubActionBar({
   )
 }
 
-export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], secondaryOrganizations: secondaryOrganizationsProp, stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
+export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], secondaryOrganizations: secondaryOrganizationsProp, selectedSupporter = null, stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
   const { effectiveLock, listingFilterLocked, unlockListingFilter, lockListingFilter } =
     useOrganizationListingFilterLock(organizationFilterLock)
   const secondaryOrganizations = secondaryOrganizationsProp ?? nonprofitOrganizations
@@ -256,6 +259,16 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const [orgSearchResults, setOrgSearchResults] = useState<Array<{ id: number; name: string }>>([])
   const [orgSearchLoading, setOrgSearchLoading] = useState(false)
   const [selectedOrgName, setSelectedOrgName] = useState<string | null>(null)
+  const [supporterDropdownOpen, setSupporterDropdownOpen] = useState(false)
+  const [supporterSearchQuery, setSupporterSearchQuery] = useState("")
+  const [supporterSearchResults, setSupporterSearchResults] = useState<Array<{ id: number; name: string }>>([])
+  const [supporterSearchLoading, setSupporterSearchLoading] = useState(false)
+  const [supporterLoadingMore, setSupporterLoadingMore] = useState(false)
+  const [supporterHasMore, setSupporterHasMore] = useState(false)
+  const [supporterNextPage, setSupporterNextPage] = useState(2)
+  const [selectedSupporterName, setSelectedSupporterName] = useState<string | null>(
+    selectedSupporter?.name ?? null
+  )
   const [importUrl, setImportUrl] = useState("")
   const [importLoading, setImportLoading] = useState(false)
   const [deletingImportId, setDeletingImportId] = useState<number | null>(null)
@@ -263,6 +276,13 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const shortsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
   const orgDropdownJustOpenedRef = useRef(false)
+  const supporterDropdownJustOpenedRef = useRef(false)
+  const supporterListScrollRef = useRef<HTMLDivElement>(null)
+  const supporterLoadMoreSentinelRef = useRef<HTMLDivElement>(null)
+  const supporterFetchSeqRef = useRef(0)
+  const supporterHasMoreRef = useRef(false)
+  const supporterNextPageRef = useRef(2)
+  const supporterLoadingMoreRef = useRef(false)
   const loadingMoreRef = useRef(false)
   const hasMoreRef = useRef(videos_has_more)
   const nextPageRef = useRef(videos_next_page)
@@ -277,7 +297,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     nextPageRef.current = videos_next_page
     loadingMoreRef.current = false
     setLoadingMore(false)
-  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org, filters.hub])
+  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org, filters.supporter, filters.hub])
 
   // Keep search input in sync with URL (e.g. back/forward, or after server response)
   useEffect(() => {
@@ -294,11 +314,16 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
         typeof filters.org === "string" || typeof filters.org === "number"
           ? String(filters.org)
           : "all"
+      const supporterParam =
+        typeof filters.supporter === "string" || typeof filters.supporter === "number"
+          ? String(filters.supporter)
+          : "all"
       const params = new URLSearchParams({
         page: String(nextPageRef.current),
         search: filters.search || "",
         tab: filters.tab || "latest",
         org: orgParam,
+        supporter: supporterParam,
         hub: filters.hub ?? defaultHub,
       })
       const res = await fetch(`/unity-videos/feed?${params.toString()}`, {
@@ -339,7 +364,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       loadingMoreRef.current = false
       setLoadingMore(false)
     }
-  }, [filters.search, filters.tab, filters.org, filters.hub])
+  }, [filters.search, filters.tab, filters.org, filters.supporter, filters.hub])
 
   useEffect(() => {
     const el = loadMoreSentinelRef.current
@@ -377,6 +402,111 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     }
   }, [orgDropdownOpen])
 
+  const loadSupportersPage = useCallback(async (search: string, page: number, append: boolean) => {
+    const seq = ++supporterFetchSeqRef.current
+    if (append) {
+      if (supporterLoadingMoreRef.current || !supporterHasMoreRef.current) return
+      supporterLoadingMoreRef.current = true
+      setSupporterLoadingMore(true)
+    } else {
+      setSupporterSearchLoading(true)
+      setSupporterSearchResults([])
+      supporterHasMoreRef.current = false
+      supporterNextPageRef.current = 2
+      setSupporterHasMore(false)
+      setSupporterNextPage(2)
+    }
+
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: "30",
+        search: search.trim(),
+      })
+      const res = await fetch(`/unity-videos/supporters?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+      const data = await res.json().catch(() => null)
+      if (seq !== supporterFetchSeqRef.current) return
+      if (!res.ok || !data || typeof data !== "object" || !Array.isArray(data.data)) {
+        if (!append) setSupporterSearchResults([])
+        supporterHasMoreRef.current = false
+        setSupporterHasMore(false)
+        return
+      }
+      const list = data.data as Array<{ id: number; name: string }>
+      setSupporterSearchResults((prev) => {
+        if (!append) return list
+        const seen = new Set(prev.map((s) => s.id))
+        const fresh = list.filter((s) => !seen.has(s.id))
+        return fresh.length ? [...prev, ...fresh] : prev
+      })
+      const more = !!data.has_more
+      const next = Number(data.next_page) > 0 ? Number(data.next_page) : page + 1
+      supporterHasMoreRef.current = more
+      supporterNextPageRef.current = next
+      setSupporterHasMore(more)
+      setSupporterNextPage(next)
+    } catch {
+      if (seq !== supporterFetchSeqRef.current) return
+      if (!append) setSupporterSearchResults([])
+      supporterHasMoreRef.current = false
+      setSupporterHasMore(false)
+    } finally {
+      if (seq === supporterFetchSeqRef.current) {
+        setSupporterSearchLoading(false)
+        supporterLoadingMoreRef.current = false
+        setSupporterLoadingMore(false)
+      }
+    }
+  }, [])
+
+  const debouncedLoadSupporters = useDebounce((search: string) => {
+    void loadSupportersPage(search, 1, false)
+  }, 300)
+
+  useEffect(() => {
+    if (!supporterDropdownOpen) {
+      setSupporterSearchQuery("")
+      setSupporterSearchResults([])
+      supporterHasMoreRef.current = false
+      supporterNextPageRef.current = 2
+      setSupporterHasMore(false)
+      setSupporterNextPage(2)
+      return
+    }
+    // First page immediately when the dropdown opens.
+    void loadSupportersPage(supporterSearchQuery, 1, false)
+  }, [supporterDropdownOpen, loadSupportersPage])
+
+  useEffect(() => {
+    if (!supporterDropdownOpen) return
+    // Debounce only subsequent search typing (skip the open-triggered empty string race via debounce).
+    debouncedLoadSupporters(supporterSearchQuery)
+  }, [supporterSearchQuery, supporterDropdownOpen, debouncedLoadSupporters])
+
+  useEffect(() => {
+    if (!supporterDropdownOpen || !supporterHasMore) return
+    const root = supporterListScrollRef.current
+    const sentinel = supporterLoadMoreSentinelRef.current
+    if (!root || !sentinel) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadSupportersPage(supporterSearchQuery, supporterNextPageRef.current, true)
+        }
+      },
+      { root, rootMargin: "80px 0px", threshold: 0 }
+    )
+    io.observe(sentinel)
+    return () => io.disconnect()
+  }, [supporterDropdownOpen, supporterHasMore, supporterSearchQuery, supporterSearchResults.length, loadSupportersPage])
+
   // Sync selected org display name when page loads with org in URL
   const orgFilter = filters.org ?? "all"
   useEffect(() => {
@@ -394,6 +524,22 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       "Organization"
     )
   }, [orgFilter, selectedOrgName, myNonprofitOrgs])
+
+  const supporterFilter = filters.supporter ?? "all"
+  useEffect(() => {
+    if (selectedSupporter?.name && String(selectedSupporter.id) === supporterFilter) {
+      setSelectedSupporterName(selectedSupporter.name)
+    }
+  }, [selectedSupporter, supporterFilter])
+
+  const supporterDropdownDisplayName = useMemo(() => {
+    if (supporterFilter === "all") return "All supporters"
+    return (
+      selectedSupporterName ??
+      (selectedSupporter && String(selectedSupporter.id) === supporterFilter ? selectedSupporter.name : null) ??
+      "Supporter"
+    )
+  }, [supporterFilter, selectedSupporterName, selectedSupporter])
 
   const shortsSlides = useMemo(() => {
     const pages: VideoItem[][] = []
@@ -519,18 +665,20 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const defaultSearch = ""
   const defaultTab = "latest"
   const defaultOrg = "all"
+  const defaultSupporter = "all"
 
   const applyFilters = useCallback(
-    (updates: { search?: string; tab?: string; org?: string; hub?: string }) => {
+    (updates: { search?: string; tab?: string; org?: string; supporter?: string; hub?: string }) => {
       const search = updates.search !== undefined ? updates.search : filters.search
       const tab = updates.tab !== undefined ? updates.tab : filters.tab
       const org = updates.org !== undefined ? updates.org : (filters.org ?? defaultOrg)
+      const supporter = updates.supporter !== undefined ? updates.supporter : (filters.supporter ?? defaultSupporter)
       const hub = updates.hub !== undefined ? updates.hub : (filters.hub ?? defaultHub)
       const params: Record<string, string> = {}
       if (search !== defaultSearch) params.search = search
       if (tab !== defaultTab) params.tab = tab
       if (tab === "nonprofits") {
-        // Always send org on Non-Profits so "Change → All" and org picks survive the round-trip.
+        // Always send org on Organizations tab so "Change → All" and org picks survive the round-trip.
         // Omit only while still locked to primary and the caller did not set org (server defaults to primary).
         if (updates.org !== undefined) {
           params.org = org
@@ -544,10 +692,13 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
           params.org = String(organizationFilterLock.primary_id)
         }
       }
+      if (tab === "supporter") {
+        params.supporter = supporter === defaultSupporter ? "all" : supporter
+      }
       if (hub !== defaultHub) params.hub = hub
       router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.tab, filters.org, filters.hub, listingFilterLocked, organizationFilterLock?.primary_id]
+    [filters.search, filters.tab, filters.org, filters.supporter, filters.hub, listingFilterLocked, organizationFilterLock?.primary_id]
   )
 
   // Debounced search: apply filters automatically after user stops typing (400ms)
@@ -571,9 +722,14 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     applyFilters({ tab: "nonprofits", org: value })
   }
 
+  const handleSupporterChange = (value: string, displayName?: string | null) => {
+    setSelectedSupporterName(value === "all" ? null : displayName ?? null)
+    applyFilters({ tab: "supporter", supporter: value })
+  }
+
   const handleTabChange = (tab: "latest" | "trending" | "nonprofits" | "supporter") => {
     if (tab === "nonprofits") {
-      // Entering Non-Profits from another tab: restore primary lock when the user has one.
+      // Entering Organizations from another tab: restore primary lock when the user has one.
       if (organizationFilterLock?.primary_id && filters.tab !== "nonprofits") {
         lockListingFilter()
         applyFilters({ tab, org: String(organizationFilterLock.primary_id) })
@@ -584,6 +740,13 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
         return
       }
       applyFilters({ tab, org: filters.org && filters.org !== "" ? String(filters.org) : "all" })
+      return
+    }
+    if (tab === "supporter") {
+      applyFilters({
+        tab,
+        supporter: filters.supporter && filters.supporter !== "" ? String(filters.supporter) : "all",
+      })
       return
     }
     applyFilters({ tab })
@@ -963,7 +1126,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     : "bg-neutral-200 dark:bg-gray-800 text-neutral-700 dark:text-gray-300 hover:bg-neutral-300 dark:hover:bg-gray-700"
                 }`}
               >
-                {tab === "nonprofits" ? "Non-Profits" : tab === "supporter" ? "Supporter" : tab === "latest" ? "Latest" : "Trending"}
+                {tab === "nonprofits" ? "Organizations" : tab === "supporter" ? "Supporters" : tab === "latest" ? "Latest" : "Trending"}
               </button>
             ))}
             {activeTab === "nonprofits" ? (
@@ -1087,6 +1250,102 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 </PopoverContent>
               </Popover>
               </LockedPrimaryOrganizationFilter>
+            ) : activeTab === "supporter" ? (
+              <Popover
+                open={supporterDropdownOpen}
+                onOpenChange={(open) => {
+                  if (open) {
+                    supporterDropdownJustOpenedRef.current = true
+                    setTimeout(() => { supporterDropdownJustOpenedRef.current = false }, 200)
+                    setSupporterDropdownOpen(true)
+                  } else {
+                    if (supporterDropdownJustOpenedRef.current) return
+                    setSupporterDropdownOpen(false)
+                  }
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={supporterDropdownOpen}
+                    className="h-9 min-w-[220px] w-[280px] max-w-[320px] shrink-0 justify-between rounded-lg border-neutral-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-neutral-700 dark:text-gray-300 text-sm hover:bg-neutral-100 dark:hover:bg-gray-700 hover:text-neutral-900 dark:hover:text-gray-200"
+                  >
+                    <span className="truncate" title={supporterDropdownDisplayName}>
+                      {supporterDropdownDisplayName}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[320px] min-w-[320px] p-0 rounded-lg border-neutral-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                  align="start"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command className="rounded-lg border-0 bg-transparent" shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search supporters..."
+                      value={supporterSearchQuery}
+                      onValueChange={setSupporterSearchQuery}
+                      className="h-11 border-b border-neutral-200 dark:border-gray-700 bg-neutral-50 dark:bg-gray-800/50 text-neutral-900 dark:text-gray-200 placeholder:text-neutral-400 dark:placeholder:text-gray-500 focus:ring-0 text-sm"
+                    />
+                    <CommandList ref={supporterListScrollRef} className="max-h-[280px]">
+                      {supporterSearchLoading && supporterSearchResults.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-neutral-500 dark:text-gray-400">Loading…</div>
+                      ) : (
+                        <>
+                          {!supporterSearchLoading && supporterSearchResults.length === 0 ? (
+                            <CommandEmpty>No supporter found.</CommandEmpty>
+                          ) : null}
+                          <CommandGroup className="p-1">
+                            <CommandItem
+                              value="all"
+                              onSelect={() => { handleSupporterChange("all"); setSupporterDropdownOpen(false) }}
+                              className={cn(
+                                "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                supporterFilter === "all" ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                              )}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4 shrink-0", supporterFilter === "all" ? "opacity-100" : "opacity-0")} />
+                              All supporters
+                            </CommandItem>
+                          </CommandGroup>
+                          {supporterSearchResults.length > 0 ? (
+                            <CommandGroup heading="Supporters" className="p-1">
+                              {supporterSearchResults.map((supporter) => {
+                                const isSelected = supporterFilter === String(supporter.id)
+                                return (
+                                  <CommandItem
+                                    key={supporter.id}
+                                    value={`supporter-${supporter.id}`}
+                                    onSelect={() => {
+                                      handleSupporterChange(String(supporter.id), supporter.name)
+                                      setSupporterDropdownOpen(false)
+                                    }}
+                                    className={cn(
+                                      "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                                    )}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                                    {supporter.name}
+                                  </CommandItem>
+                                )
+                              })}
+                            </CommandGroup>
+                          ) : null}
+                          <div ref={supporterLoadMoreSentinelRef} className="h-4 w-full" aria-hidden />
+                          {supporterLoadingMore ? (
+                            <div className="py-2 text-center text-xs text-neutral-500 dark:text-gray-400">Loading more…</div>
+                          ) : null}
+                        </>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             ) : null}
             <span className="text-sm text-neutral-500 dark:text-gray-500 ml-auto">
               ► {stats.total_videos} Imported Videos · {stats.livestream_replays} Livestream Replays
@@ -1110,7 +1369,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               {gridVideos.length > 0 ? (
               <>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
-                {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporter" : "Non-Profits"}
+                {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporters" : "Organizations"}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {gridVideos.map((video) => {
