@@ -358,8 +358,9 @@ class CommunityVideosController extends Controller
             if (! is_array($v)) {
                 return true;
             }
+            // Hub import UI is hidden — never surface URL-imported rows on the hub feed.
             if (($v['source'] ?? '') === 'import') {
-                return false;
+                return true;
             }
 
             return $youtubeService->shouldOmitFromVideoHub($v);
@@ -745,7 +746,7 @@ class CommunityVideosController extends Controller
         if ($onlyOrganizationIds !== null) {
             $ids = array_values(array_filter(array_map('intval', $onlyOrganizationIds), fn (int $id) => $id > 0));
             if ($ids === []) {
-                return $this->appendImportedUrlVideos(collect(), []);
+                return collect();
             }
             $orgsQuery->whereIn('id', $ids);
         }
@@ -933,7 +934,12 @@ class CommunityVideosController extends Controller
             }
         }
 
-        $all = $this->appendImportedUrlVideos($all, $onlyOrganizationIds);
+        // URL-import sidebar is hidden on the hub — do not list pasted imports there either
+        // (appendImportedUrlVideos kept for easy restore; set $includeUrlImportsInHub = true).
+        $includeUrlImportsInHub = false;
+        if ($includeUrlImportsInHub) {
+            $all = $this->appendImportedUrlVideos($all, $onlyOrganizationIds);
+        }
 
         // Unique list rows per publisher account (same YT id may appear for multiple BIU accounts).
         return $all
