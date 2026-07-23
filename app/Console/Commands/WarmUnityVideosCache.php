@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 class WarmUnityVideosCache extends Command
 {
     protected $signature = 'unity-videos:warm-cache';
-    protected $description = 'Warm the Unity Videos index cache so /unity-videos loads quickly';
+    protected $description = 'Prefetch YouTube channel payloads for Unity Videos (hub rebuilds live from DB connections)';
 
     public function handle(): int
     {

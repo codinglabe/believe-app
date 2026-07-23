@@ -25,7 +25,7 @@ Schedule::command('engagement:send-daily')
     ->dailyAt('09:30')
     ->withoutOverlapping();
 
-// Warm Unity Videos cache so /unity-videos loads quickly on first visit
+// Warm per-channel YouTube API payloads so /unity-videos stays responsive (hub list itself is always rebuilt live)
 Schedule::command('unity-videos:warm-cache')->everyFiveMinutes();
 
 Schedule::command('model:prune', ['--model' => [\App\Models\SendJob::class]])->daily()->at('03:00')->withoutOverlapping();

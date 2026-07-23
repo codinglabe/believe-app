@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import axios from "axios"
@@ -90,6 +90,11 @@ export function ChannelPageContent({
   const [youtube_videos, setYoutubeVideos] = useState<YouTubeVideoItem[]>(initialYoutubeVideos)
   const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null)
   const isDashboard = variant === "dashboard"
+
+  const youtubeVideosKey = `${channel.slug}|${channel.youtube_channel_url ?? ""}|${initialYoutubeVideos.map((v) => v.id).join(",")}`
+  useEffect(() => {
+    setYoutubeVideos(initialYoutubeVideos)
+  }, [youtubeVideosKey, initialYoutubeVideos])
 
   // Only show real videos/shorts: exclude duration "0:00" or empty (placeholder/invalid)
   const filteredYoutubeVideos = useMemo(

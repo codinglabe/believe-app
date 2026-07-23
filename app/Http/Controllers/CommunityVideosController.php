@@ -50,15 +50,13 @@ class CommunityVideosController extends Controller
                 ->values()
                 ->all();
 
-            // Manually imported YouTube URLs only; cache 5 min for fast loads/reloads.
+            // Always rebuild from currently connected channels (no aggregate cache) so
+            // disconnect/connect is reflected on the next request.
             try {
-                $youtubeVideos = Cache::remember('unity_videos_all_v5', 300, fn () => $this->fetchAllYouTubeVideos());
+                $youtubeVideos = $this->fetchAllYouTubeVideos();
             } catch (\Throwable $e) {
-                Log::warning('Unity Videos: fetch failed, using stale cache if available', ['message' => $e->getMessage()]);
-                $youtubeVideos = Cache::get('unity_videos_all_v5');
-                if (! $youtubeVideos instanceof Collection) {
-                    $youtubeVideos = collect();
-                }
+                Log::warning('Unity Videos: fetch failed', ['message' => $e->getMessage()]);
+                $youtubeVideos = collect();
             }
 
             if ($search !== '') {
@@ -390,16 +388,33 @@ class CommunityVideosController extends Controller
     }
 
     /**
-     * Warm the Unity Videos index cache (used by scheduler so first visit is fast).
+     * Prefetch connected-channel YouTube API payloads (scheduler). Does not store an aggregate list —
+     * the hub always builds from current DB connections so disconnect is immediate.
      */
     public function warmUnityVideosCache(): void
     {
         try {
             $videos = $this->fetchAllYouTubeVideos();
-            Cache::put('unity_videos_all_v5', $videos, 300);
-            Log::info('Unity Videos cache warmed', ['count' => $videos->count()]);
+            Cache::forget('unity_videos_all_v5');
+            Cache::forget('unity_videos_all_v4');
+            Cache::forget('unity_videos_all');
+            Log::info('Unity Videos channel payloads warmed', ['count' => $videos->count()]);
         } catch (\Throwable $e) {
             Log::warning('Unity Videos cache warm failed', ['message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Drop hub aggregate keys (legacy) and optional per-channel YouTube caches.
+     */
+    public function forgetUnityVideosCaches(?string $channelUrl = null): void
+    {
+        Cache::forget('unity_videos_all_v5');
+        Cache::forget('unity_videos_all_v4');
+        Cache::forget('unity_videos_all');
+
+        if ($channelUrl !== null && $channelUrl !== '') {
+            app(YouTubeService::class)->forgetCachesForChannelUrl($channelUrl);
         }
     }
 
@@ -614,7 +629,7 @@ class CommunityVideosController extends Controller
         $description = is_array($details) ? Str::limit((string) ($details['description'] ?? ''), 2000) : null;
         $thumbnailUrl = is_array($details) && ! empty($details['thumbnail_url'])
             ? (string) $details['thumbnail_url']
-            : sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+            : sprintf('https://img.youtube.com/vi/%s/hqdefault.jpg', $videoId);
         $durationSeconds = is_array($details) ? max(0, (int) ($details['duration_seconds'] ?? 0)) : 0;
         $durationDisplay = is_array($details) ? (string) ($details['duration'] ?? '') : '';
 
@@ -655,7 +670,7 @@ class CommunityVideosController extends Controller
             'user:id,name,slug,image,registered_user_image',
         ]);
 
-        Cache::forget('unity_videos_all_v5');
+        $this->forgetUnityVideosCaches();
 
         $hubRow = $this->hubRowFromImportedCommunityVideo($communityVideo, $details, $youtubeService);
 
@@ -758,7 +773,7 @@ class CommunityVideosController extends Controller
             ? Carbon::parse($publishedAt)->timestamp
             : $record->created_at->timestamp;
 
-        $thumb = $record->thumbnail_url ?: sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+        $thumb = $record->thumbnail_url ?: sprintf('https://img.youtube.com/vi/%s/hqdefault.jpg', $videoId);
 
         $base = [
             'id' => 'yt-'.$videoId,
@@ -1095,18 +1110,43 @@ class CommunityVideosController extends Controller
         $channelBannerUrl = null;
         $youtubeService = app(YouTubeService::class);
         if ($channelUrl) {
+            // Fresh channel list (bypass cache) so disconnect/reconnect is accurate on this page.
+            $youtubeVideos = $youtubeService->getChannelVideos($channelUrl, 30, false);
+            $liveStreams = $youtubeService->getChannelLiveStreams($channelUrl, 10, false);
+            $existingIds = array_flip(array_column($youtubeVideos, 'id'));
+            foreach ($liveStreams as $live) {
+                if (! isset($existingIds[$live['id']])) {
+                    array_unshift($youtubeVideos, $live);
+                    $existingIds[$live['id']] = true;
+                }
+            }
+            $youtubeVideos = array_values(array_filter($youtubeVideos, function ($v) use ($youtubeService) {
+                return ! $youtubeService->shouldOmitFromVideoHub($v);
+            }));
+
             $channelDetails = $youtubeService->getChannelDetails($channelUrl);
-            if ($channelDetails && ! empty($channelDetails['banner_url'])) {
-                $channelBannerUrl = $channelDetails['banner_url'];
+            if ($channelDetails) {
+                if (! empty($channelDetails['banner_url'])) {
+                    $channelBannerUrl = $channelDetails['banner_url'];
+                }
+                if (isset($channelDetails['video_count'])) {
+                    $totalVideos = (int) $channelDetails['video_count'];
+                }
+                if (isset($channelDetails['view_count'])) {
+                    $totalViews = (int) $channelDetails['view_count'];
+                }
+            } else {
+                $totalVideos = $totalVideos + count($youtubeVideos);
+                $totalViews = $totalViews + (int) array_sum(array_column($youtubeVideos, 'views'));
             }
         }
 
-        $shorts = $shortRecords->map(function (CommunityVideo $v) use ($slug, $channelName, $channelAvatar) {
+        $importedShorts = $shortRecords->map(function (CommunityVideo $v) use ($slug, $channelName, $channelAvatar) {
             return [
                 'id' => (string) ($v->youtube_video_id ?: $v->slug),
                 'slug' => (string) ($v->youtube_video_id ?: $v->slug),
                 'title' => $v->title,
-                'thumbnail_url' => $v->thumbnail_url ?: sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $v->youtube_video_id),
+                'thumbnail_url' => $v->thumbnail_url ?: sprintf('https://img.youtube.com/vi/%s/mqdefault.jpg', $v->youtube_video_id),
                 'views' => $v->views,
                 'views_formatted' => number_format($v->views),
                 'duration' => $v->formatted_duration,
@@ -1116,7 +1156,37 @@ class CommunityVideosController extends Controller
             ];
         })->values()->all();
 
-        $youtubeVideos = $this->attachEngagementToYoutubeVideoList($youtubeVideos, $slug, Auth::id());
+        $ytShorts = [];
+        $youtubeVideosForGrid = [];
+        foreach ($youtubeVideos as $yt) {
+            if ($youtubeService->isYoutubeShort($yt)) {
+                $ytShorts[] = [
+                    'id' => $yt['id'],
+                    'slug' => $yt['id'],
+                    'title' => $yt['title'],
+                    'thumbnail_url' => $yt['thumbnail_url'],
+                    'views' => $yt['views'],
+                    'views_formatted' => $yt['views_formatted'],
+                    'duration' => $yt['duration'] ?? '',
+                    'channel_slug' => $slug,
+                    'creator' => $channelName,
+                    'creatorAvatar' => $channelAvatar,
+                ];
+            } else {
+                $youtubeVideosForGrid[] = $yt;
+            }
+        }
+
+        $seenShortIds = array_flip(array_column($ytShorts, 'id'));
+        foreach ($importedShorts as $imported) {
+            if (! isset($seenShortIds[$imported['id']])) {
+                $ytShorts[] = $imported;
+                $seenShortIds[$imported['id']] = true;
+            }
+        }
+        $shorts = $ytShorts;
+
+        $youtubeVideos = $this->attachEngagementToYoutubeVideoList($youtubeVideosForGrid, $slug, Auth::id());
 
         $platformAppLikes = (int) array_sum(array_column($youtubeVideos, 'app_likes'));
         $platformAppComments = (int) array_sum(array_column($youtubeVideos, 'app_comment_count'));

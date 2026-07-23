@@ -249,6 +249,8 @@ class IntegrationsController extends Controller
         ]);
         }
 
+        app(CommunityVideosController::class)->forgetUnityVideosCaches($channelUrl);
+
         $route = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
         return redirect()->route($route)->with('success', 'YouTube channel connected. Your videos will appear on Unity Videos.');
     }
@@ -267,6 +269,9 @@ class IntegrationsController extends Controller
 
         $value = $validated['youtube_channel_url'] ? trim($validated['youtube_channel_url']) : null;
         $disconnecting = $value === null || $value === '';
+        $previousChannelUrl = $organization
+            ? ($organization->youtube_channel_url ?? null)
+            : ($user->youtube_channel_url ?? null);
 
         if ($organization) {
             if ($disconnecting) {
@@ -290,8 +295,15 @@ class IntegrationsController extends Controller
             ]);
         }
 
+        // Drop hub + channel caches so Unity Videos stops (or starts) showing this channel immediately.
+        app(CommunityVideosController::class)->forgetUnityVideosCaches($previousChannelUrl ?: $value);
+
         $route = $organization ? 'integrations.youtube' : 'user.profile.integrations';
-        return redirect()->route($route)->with('success', 'YouTube channel saved.');
+        $message = $disconnecting
+            ? 'YouTube channel disconnected. Your videos no longer appear on Unity Videos.'
+            : 'YouTube channel saved.';
+
+        return redirect()->route($route)->with('success', $message);
     }
 
     /**
