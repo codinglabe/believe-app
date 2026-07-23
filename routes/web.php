@@ -458,6 +458,7 @@ Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'togg
     ->middleware('auth');
 
 Route::get('/unity-videos', [CommunityVideosController::class, 'index'])->name('unity-videos.index');
+Route::get('/unity-videos/feed', [CommunityVideosController::class, 'feed'])->name('unity-videos.feed');
 Route::get('/unity-videos/organizations', [CommunityVideosController::class, 'organizations'])->name('unity-videos.organizations');
 Route::get('/unity-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('unity-videos.channel');
 Route::get('/unity-videos/upload', [CommunityVideosController::class, 'upload'])->name('unity-videos.upload')->middleware('auth');
