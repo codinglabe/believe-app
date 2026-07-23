@@ -28,6 +28,7 @@ import {
 import { Link } from "@inertiajs/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { cn } from "@/lib/utils"
+import { ImportedByMeBadge } from "@/components/frontend/ImportedByMeBadge"
 
 declare global {
   interface Window {
@@ -74,6 +75,7 @@ export interface ShortsVideoPlayerProps {
   channelSlug?: string | null
   creator?: string | null
   creatorAvatar?: string | null
+  isMyImport?: boolean
   className?: string
 }
 
@@ -89,6 +91,7 @@ export function ShortsVideoPlayer({
   channelSlug,
   creator,
   creatorAvatar,
+  isMyImport = false,
   className,
 }: ShortsVideoPlayerProps) {
   const playerRef = useRef<YTPlayer | null>(null)
@@ -327,6 +330,7 @@ export function ShortsVideoPlayer({
       {/* Video + all controls in one centered box so icons overlay the video, not the black bars */}
       <div className="absolute inset-0 flex justify-center items-center">
         <div className="relative w-full h-full max-w-[min(100vw,calc(78dvh*9/16))] max-h-[78dvh] aspect-[9/16] bg-black">
+          {isMyImport ? <ImportedByMeBadge className="z-40 left-2 top-2" /> : null}
           {/* YouTube iframe - scaled up to push all branding outside visible area (native fallback: no scale/block) */}
           <div className="absolute inset-0 z-0 overflow-hidden">
             <div

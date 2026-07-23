@@ -9,6 +9,7 @@ import axios from "axios"
 import { PageHead } from "@/components/frontend/PageHead"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/ui/input"
+import { ImportedByMeBadge } from "@/components/frontend/ImportedByMeBadge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/frontend/ui/popover"
 import {
   Command,
@@ -45,7 +46,9 @@ interface VideoItem {
   comment_count_formatted?: string
   nonprofit?: string | null
   channel_slug?: string | null
-  source?: "upload" | "youtube"
+  source?: "upload" | "youtube" | "import"
+  /** Present only for the logged-in importer of a URL-imported video. */
+  is_my_import?: boolean
   watch_url?: string | null
   organization_id?: number | null
   app_likes?: number
@@ -680,6 +683,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       alt={featuredVideo.title}
                       className="h-full w-full object-cover"
                     />
+                    {featuredVideo.is_my_import ? <ImportedByMeBadge /> : null}
                     <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/40">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 transition-colors group-hover:bg-white sm:h-14 sm:w-14">
                         <Play className="ml-0.5 h-6 w-6 fill-gray-900 text-gray-900 sm:h-7 sm:w-7" />
@@ -798,6 +802,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                                 alt={short.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               />
+                              {short.is_my_import ? <ImportedByMeBadge className="left-1 top-1" /> : null}
                               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
                                 <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center group-hover:bg-white transition-colors">
                                   <Play className="w-5 h-5 text-gray-900 ml-0.5 fill-gray-900" />
@@ -1016,6 +1021,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           alt={video.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                         />
+                        {video.is_my_import ? <ImportedByMeBadge /> : null}
                         <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-xs font-medium ${video.duration === "LIVE" ? "bg-red-600 text-white" : "bg-black/80 text-white"}`}>
                           {video.duration}
                         </div>

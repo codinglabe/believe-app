@@ -10,6 +10,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { ThumbsUp, ThumbsDown, Share2, MoreHorizontal, Building2, ArrowLeft, ChevronDown, ChevronUp, MessageCircle, Heart } from "lucide-react"
 import axios from "axios"
+import { ImportedByMeBadge } from "@/components/frontend/ImportedByMeBadge"
 
 interface VideoData {
   id: string
@@ -35,6 +36,7 @@ interface VideoData {
   user_liked?: boolean
   total_likes_formatted?: string
   total_comment_count_formatted?: string
+  is_my_import?: boolean
 }
 
 interface MoreVideoItem {
@@ -48,6 +50,7 @@ interface MoreVideoItem {
   views_formatted: string
   time_ago?: string
   channel_slug?: string | null
+  is_my_import?: boolean
 }
 
 interface CommentItem {
@@ -207,6 +210,11 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
               <div className="mt-4">
                 <h1 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
                   {video.title}
+                  {video.is_my_import ? (
+                    <span className="ml-2 inline-flex align-middle rounded-md bg-gradient-to-r from-purple-600 to-blue-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                      Imported
+                    </span>
+                  ) : null}
                 </h1>
                 <div className="flex flex-wrap items-center gap-4 mb-4">
                   <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -398,6 +406,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
                           alt=""
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                         />
+                        {item.is_my_import ? <ImportedByMeBadge className="left-1 top-1" /> : null}
                         <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 text-white text-xs font-medium">
                           {item.duration}
                         </span>

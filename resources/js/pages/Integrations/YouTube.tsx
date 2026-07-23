@@ -286,7 +286,7 @@ function DisconnectButton() {
   const handleDisconnect = () => {
     if (!confirm("Disconnect your YouTube channel? Your videos will no longer appear on Unity Videos.")) return
     setDisconnecting(true)
-    router.put(route("integrations.youtube.update"), { youtube_channel_url: null }, {
+    router.put(route("integrations.youtube.update"), { youtube_channel_url: "" }, {
       preserveScroll: true,
       onFinish: () => setDisconnecting(false),
       onSuccess: () => toast.success("YouTube channel disconnected."),

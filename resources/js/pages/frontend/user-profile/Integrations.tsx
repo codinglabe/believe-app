@@ -49,7 +49,7 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
 
   const confirmDisconnectYoutube = () => {
     setYoutubeDisconnecting(true)
-    router.put(route("integrations.youtube.update"), { youtube_channel_url: null }, {
+    router.put(route("integrations.youtube.update"), { youtube_channel_url: "" }, {
       preserveScroll: true,
       onSuccess: () => {
         toast.success("YouTube channel disconnected.")

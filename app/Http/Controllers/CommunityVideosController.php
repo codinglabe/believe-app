@@ -275,8 +275,10 @@ class CommunityVideosController extends Controller
         $orgFilter = is_scalar($org) ? (string) $org : 'all';
         $hub = (string) $request->input('hub', 'all');
 
-        $cached = Cache::remember('unity_videos_all_v7', 120, fn () => $this->fetchAllYouTubeVideos());
-        $youtubeVideos = $cached instanceof Collection ? $cached : collect($cached ?? []);
+        // Always rebuild from currently connected channels (per-channel YouTube API is cached).
+        // Do not cache this aggregate — warm jobs used to race disconnect and put disconnected
+        // channel videos back into unity_videos_all_* for minutes after disconnect.
+        $youtubeVideos = $this->fetchAllYouTubeVideos();
 
         if ($search !== '') {
             $searchLower = strtolower($search);
@@ -366,6 +368,19 @@ class CommunityVideosController extends Controller
             ->unique(fn (array $v) => (string) ($v['id'] ?? ''))
             ->values();
 
+        $authUserId = null;
+        $authOrgId = null;
+        [$authUserId, $authOrgId] = $this->authViewerImportContext();
+
+        $markMyImport = function (array $v) use ($authUserId, $authOrgId): array {
+            $v['is_my_import'] = $this->isMyImportedHubVideo($v, $authUserId, $authOrgId);
+
+            return $v;
+        };
+
+        $listForGrid = $listForGrid->map($markMyImport)->values();
+        $shorts = array_map($markMyImport, $shorts);
+
         $gridPerPage = 12;
         $totalVideos = $listForGrid->count();
         $featured = null;
@@ -396,6 +411,81 @@ class CommunityVideosController extends Controller
     }
 
     /**
+     * True only for URL-imported videos owned by the current viewer (never shown to others as "theirs").
+     *
+     * @param  array<string, mixed>  $v
+     */
+    private function isMyImportedHubVideo(array $v, ?int $authUserId, ?int $authOrgId): bool
+    {
+        if (! $authUserId || ($v['source'] ?? '') !== 'import') {
+            return false;
+        }
+
+        $orgId = isset($v['organization_id']) ? (int) $v['organization_id'] : 0;
+        if ($orgId > 0) {
+            return $authOrgId !== null && $orgId === $authOrgId;
+        }
+
+        return (int) ($v['owner_user_id'] ?? 0) === $authUserId;
+    }
+
+    /**
+     * @return array{0: ?int, 1: ?int} [authUserId, authOrgId]
+     */
+    private function authViewerImportContext(): array
+    {
+        $authUserId = Auth::id();
+        if (! $authUserId) {
+            return [null, null];
+        }
+        $authOrgId = Organization::query()->where('user_id', $authUserId)->value('id');
+
+        return [(int) $authUserId, $authOrgId ? (int) $authOrgId : null];
+    }
+
+    private function isMyCommunityVideoImport(CommunityVideo $v, ?int $authUserId, ?int $authOrgId): bool
+    {
+        if (! $authUserId || empty($v->youtube_video_id)) {
+            return false;
+        }
+        if ($v->organization_id) {
+            return $authOrgId !== null && (int) $v->organization_id === $authOrgId;
+        }
+
+        return (int) ($v->user_id ?? 0) === $authUserId;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function markHubRowsWithMyImport(array $rows): array
+    {
+        [$authUserId, $authOrgId] = $this->authViewerImportContext();
+
+        return array_map(function (array $v) use ($authUserId, $authOrgId) {
+            $v['is_my_import'] = $this->isMyImportedHubVideo($v, $authUserId, $authOrgId);
+
+            return $v;
+        }, $rows);
+    }
+
+    private function viewerOwnsImportedYoutubeId(string $youtubeVideoId): bool
+    {
+        [$authUserId, $authOrgId] = $this->authViewerImportContext();
+        if (! $authUserId || $youtubeVideoId === '') {
+            return false;
+        }
+
+        $query = CommunityVideo::query()->where('youtube_video_id', $youtubeVideoId);
+        if ($authOrgId) {
+            return $query->where('organization_id', $authOrgId)->exists();
+        }
+
+        return $query->where('user_id', $authUserId)->exists();
+    }
+
+    /**
      * API: Search organizations with YouTube channel (for Non-Profits dropdown).
      */
     public function organizations(Request $request): \Illuminate\Http\JsonResponse
@@ -404,6 +494,7 @@ class CommunityVideosController extends Controller
         $query = Organization::query()
             ->excludingCareAllianceHubs()
             ->whereNotNull('youtube_channel_url')
+            ->where('youtube_channel_url', '!=', '')
             ->orderBy('name')
             ->limit(50);
         if ($search !== '') {
@@ -425,6 +516,7 @@ class CommunityVideosController extends Controller
             ->excludingCareAllianceHubs()
             ->select('id', 'name', 'youtube_channel_url', 'user_id')
             ->whereNotNull('youtube_channel_url')
+            ->where('youtube_channel_url', '!=', '')
             ->with('user:id,slug')
             ->get();
 
@@ -452,6 +544,7 @@ class CommunityVideosController extends Controller
         $supporters = User::query()
             ->select('id', 'name', 'slug', 'youtube_channel_url')
             ->whereNotNull('youtube_channel_url')
+            ->where('youtube_channel_url', '!=', '')
             ->when(! empty($orgOwnerIds), fn ($q) => $q->whereNotIn('id', $orgOwnerIds))
             ->get();
 
@@ -474,15 +567,45 @@ class CommunityVideosController extends Controller
     }
 
     /**
-     * Prefetch connected-channel YouTube API payloads and refresh the short-lived hub list cache.
-     * Cache is cleared on YouTube connect/disconnect so the feed stays accurate.
+     * Prefetch per-channel YouTube API payloads for currently connected accounts.
+     * Does not write an aggregate hub list (that raced with disconnect and kept dead channels visible).
      */
     public function warmUnityVideosCache(): void
     {
         try {
-            $videos = $this->fetchAllYouTubeVideos();
-            Cache::put('unity_videos_all_v7', $videos, 120);
-            Log::info('Unity Videos cache warmed', ['count' => $videos->count()]);
+            $youtubeService = app(YouTubeService::class);
+            $urls = Organization::query()
+                ->excludingCareAllianceHubs()
+                ->whereNotNull('youtube_channel_url')
+                ->where('youtube_channel_url', '!=', '')
+                ->pluck('youtube_channel_url')
+                ->merge(
+                    User::query()
+                        ->whereNotNull('youtube_channel_url')
+                        ->where('youtube_channel_url', '!=', '')
+                        ->pluck('youtube_channel_url')
+                )
+                ->filter()
+                ->unique()
+                ->values();
+
+            foreach ($urls as $channelUrl) {
+                try {
+                    $youtubeService->getChannelDetails($channelUrl);
+                    $youtubeService->getChannelVideos($channelUrl, 30);
+                    $youtubeService->getChannelLiveStreams($channelUrl, 10);
+                } catch (\Throwable $e) {
+                    Log::warning('Unity Videos channel warm failed', [
+                        'channel_url' => $channelUrl,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // Drop any leftover aggregate keys from older deploys.
+            $this->forgetUnityVideosCaches();
+
+            Log::info('Unity Videos per-channel cache warmed', ['channels' => $urls->count()]);
         } catch (\Throwable $e) {
             Log::warning('Unity Videos cache warm failed', ['message' => $e->getMessage()]);
         }
@@ -516,6 +639,7 @@ class CommunityVideosController extends Controller
             ->excludingCareAllianceHubs()
             ->select('id', 'name', 'registered_user_image', 'user_id', 'youtube_channel_url')
             ->whereNotNull('youtube_channel_url')
+            ->where('youtube_channel_url', '!=', '')
             ->with('user:id,slug')
             ->get();
 
@@ -523,6 +647,7 @@ class CommunityVideosController extends Controller
         $supporters = User::query()
             ->select('id', 'name', 'slug', 'image', 'registered_user_image', 'youtube_channel_url')
             ->whereNotNull('youtube_channel_url')
+            ->where('youtube_channel_url', '!=', '')
             ->whereNotNull('slug')
             ->when(! empty($orgOwnerIds), fn ($q) => $q->whereNotIn('id', $orgOwnerIds))
             ->get();
@@ -794,6 +919,7 @@ class CommunityVideosController extends Controller
         $this->forgetUnityVideosCaches();
 
         $hubRow = $this->hubRowFromImportedCommunityVideo($communityVideo, $details, $youtubeService);
+        $hubRow['is_my_import'] = true;
 
         return response()->json([
             'message' => $isShort
@@ -1242,7 +1368,8 @@ class CommunityVideosController extends Controller
         $collection = $videoQuery->get();
         $shortRecords = $collection->filter(fn (CommunityVideo $v) => $v->category === 'shorts');
         $vodRecords = $collection->reject(fn (CommunityVideo $v) => $v->category === 'shorts');
-        $videos = $vodRecords->map(fn (CommunityVideo $v) => $this->formatVideo($v));
+        [$authUserId, $authOrgId] = $this->authViewerImportContext();
+        $videos = $vodRecords->map(fn (CommunityVideo $v) => $this->formatVideo($v, false, false, $authUserId, $authOrgId));
         $totalVideos = $collection->count();
         $totalViews = (int) $collection->sum('views');
 
@@ -1281,7 +1408,7 @@ class CommunityVideosController extends Controller
             }
         }
 
-        $importedShorts = $shortRecords->map(function (CommunityVideo $v) use ($slug, $channelName, $channelAvatar) {
+        $importedShorts = $shortRecords->map(function (CommunityVideo $v) use ($slug, $channelName, $channelAvatar, $authUserId, $authOrgId) {
             return [
                 'id' => (string) ($v->youtube_video_id ?: $v->slug),
                 'slug' => (string) ($v->youtube_video_id ?: $v->slug),
@@ -1293,6 +1420,8 @@ class CommunityVideosController extends Controller
                 'channel_slug' => $slug,
                 'creator' => $channelName,
                 'creatorAvatar' => $channelAvatar,
+                'source' => $v->youtube_video_id ? 'import' : 'upload',
+                'is_my_import' => $this->isMyCommunityVideoImport($v, $authUserId, $authOrgId),
             ];
         })->values()->all();
 
@@ -1311,22 +1440,37 @@ class CommunityVideosController extends Controller
                     'channel_slug' => $slug,
                     'creator' => $channelName,
                     'creatorAvatar' => $channelAvatar,
+                    'is_my_import' => $this->viewerOwnsImportedYoutubeId((string) $yt['id']),
                 ];
             } else {
                 $youtubeVideosForGrid[] = $yt;
             }
         }
 
-        $seenShortIds = array_flip(array_column($ytShorts, 'id'));
+        $seenShortIds = [];
+        foreach ($ytShorts as $idx => $short) {
+            $seenShortIds[(string) $short['id']] = $idx;
+        }
         foreach ($importedShorts as $imported) {
-            if (! isset($seenShortIds[$imported['id']])) {
+            $importedId = (string) $imported['id'];
+            if (isset($seenShortIds[$importedId])) {
+                $idx = $seenShortIds[$importedId];
+                if (! empty($imported['is_my_import'])) {
+                    $ytShorts[$idx]['is_my_import'] = true;
+                }
+            } else {
                 $ytShorts[] = $imported;
-                $seenShortIds[$imported['id']] = true;
+                $seenShortIds[$importedId] = count($ytShorts) - 1;
             }
         }
         $shorts = $ytShorts;
 
         $youtubeVideos = $this->attachEngagementToYoutubeVideoList($youtubeVideosForGrid, $slug, Auth::id());
+        $youtubeVideos = array_map(function (array $v) {
+            $v['is_my_import'] = $this->viewerOwnsImportedYoutubeId((string) ($v['id'] ?? ''));
+
+            return $v;
+        }, $youtubeVideos);
 
         $platformAppLikes = (int) array_sum(array_column($youtubeVideos, 'app_likes'));
         $platformAppComments = (int) array_sum(array_column($youtubeVideos, 'app_comment_count'));
@@ -1430,7 +1574,8 @@ class CommunityVideosController extends Controller
 
         $video->increment('views');
 
-        $formatted = $this->formatVideo($video, true);
+        [$authUserId, $authOrgId] = $this->authViewerImportContext();
+        $formatted = $this->formatVideo($video, true, false, $authUserId, $authOrgId);
 
         $relatedQuery = CommunityVideo::query()
             ->with(['organization:id,name,registered_user_image,user_id', 'organization.user:id,slug,name', 'user:id,name'])
@@ -1444,8 +1589,8 @@ class CommunityVideosController extends Controller
             $sameChannel = collect();
         }
         $related = $sameChannel->isNotEmpty()
-            ? $sameChannel->map(fn (CommunityVideo $v) => $this->formatVideo($v))
-            : $relatedQuery->limit(20)->get()->map(fn (CommunityVideo $v) => $this->formatVideo($v));
+            ? $sameChannel->map(fn (CommunityVideo $v) => $this->formatVideo($v, false, false, $authUserId, $authOrgId))
+            : $relatedQuery->limit(20)->get()->map(fn (CommunityVideo $v) => $this->formatVideo($v, false, false, $authUserId, $authOrgId));
         $relatedVideos = $related->values()->all();
 
         return Inertia::render('frontend/community-videos/Show', [
@@ -1534,6 +1679,7 @@ class CommunityVideosController extends Controller
             ->take(20)
             ->values()
             ->all();
+        $moreVideos = $this->markHubRowsWithMyImport($moreVideos);
 
         // App engagement for this video (likes, comments, shares, user_liked)
         $engagement = $this->getVideoEngagement($id, 'yt', $channelSlug);
@@ -1542,6 +1688,7 @@ class CommunityVideosController extends Controller
         $video = array_merge($video, $engagement['video'], [
             'total_likes_formatted' => number_format($ytLikes + $engagement['video']['app_likes']),
             'total_comment_count_formatted' => number_format($ytComments + $engagement['video']['app_comment_count']),
+            'is_my_import' => $this->viewerOwnsImportedYoutubeId($id),
         ]);
         $appComments = $engagement['app_comments'];
 
@@ -1605,6 +1752,7 @@ class CommunityVideosController extends Controller
             'total_likes' => $totalLikes,
             'total_likes_formatted' => number_format($totalLikes),
             'total_comment_count_formatted' => number_format($ytComments + $engagement['video']['app_comment_count']),
+            'is_my_import' => $this->viewerOwnsImportedYoutubeId($id),
         ]);
 
         return Inertia::render('frontend/community-videos/ShowShort', [
@@ -1616,12 +1764,18 @@ class CommunityVideosController extends Controller
         ]);
     }
 
-    private function formatVideo(CommunityVideo $v, bool $full = false, bool $includeSource = false): array
-    {
+    private function formatVideo(
+        CommunityVideo $v,
+        bool $full = false,
+        bool $includeSource = false,
+        ?int $authUserId = null,
+        ?int $authOrgId = null
+    ): array {
         $creatorName = $v->creator_name;
         $thumb = $v->thumbnail_url ?: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=320&q=80';
 
         $channelSlug = $v->organization?->user?->slug ?? $v->user?->slug ?? null;
+        $isImport = ! empty($v->youtube_video_id);
         $data = [
             'id' => $v->id,
             'slug' => $v->slug,
@@ -1637,10 +1791,12 @@ class CommunityVideosController extends Controller
             'time_ago' => $v->time_ago,
             'likes' => $v->likes,
             'channel_slug' => $channelSlug,
+            'source' => $isImport ? 'import' : 'upload',
+            'is_my_import' => $this->isMyCommunityVideoImport($v, $authUserId, $authOrgId),
         ];
 
         if ($includeSource) {
-            $data['source'] = 'upload';
+            $data['source'] = $isImport ? 'import' : 'upload';
             $data['sort_at'] = $v->created_at->timestamp;
         }
 
