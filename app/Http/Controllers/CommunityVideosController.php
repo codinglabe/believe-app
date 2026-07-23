@@ -61,10 +61,15 @@ class CommunityVideosController extends Controller
         $search = $request->input('search', '');
         $tab = $request->input('tab', 'latest');
         $org = $request->input('org', 'all');
-        $orgFilterId = app(SupporterPrimaryOrganizationService::class)
-            ->resolveListingOrganizationFilterId($request, 'org');
-        if ($orgFilterId !== null) {
-            $org = (string) $orgFilterId;
+        // Primary-org default only on Non-Profits — other tabs must not inherit a forced org.
+        if ($tab === 'nonprofits') {
+            $orgFilterId = app(SupporterPrimaryOrganizationService::class)
+                ->resolveListingOrganizationFilterId($request, 'org');
+            if ($orgFilterId !== null) {
+                $org = (string) $orgFilterId;
+            } elseif (! $request->has('org')) {
+                $org = 'all';
+            }
         } elseif (! $request->has('org')) {
             $org = 'all';
         }
@@ -95,14 +100,7 @@ class CommunityVideosController extends Controller
                 ]);
             }
 
-            $nonprofitOrganizations = Organization::query()
-                ->excludingCareAllianceHubs()
-                ->whereNotNull('youtube_channel_url')
-                ->orderBy('name')
-                ->get(['id', 'name'])
-                ->map(fn ($o) => ['id' => $o->id, 'name' => $o->name])
-                ->values()
-                ->all();
+            $nonprofitOrganizations = $this->supporterSecondaryOrganizationsForPicker($request->user());
 
             $channelBanners = $this->getChannelBannersForIndex();
 
@@ -196,24 +194,33 @@ class CommunityVideosController extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            $featured = null;
-            $videos = [];
-            $shorts = [];
-            $channelBanners = [];
-            $stats = ['total_videos' => 0, 'livestream_replays' => 0];
-            $myChannel = null;
-            $authUserChannelSlug = null;
-            $userOrgHasYoutube = false;
-            $userOrgCanConnect = false;
-            $hasMore = false;
-            $nextPage = $page + 1;
-            $nonprofitOrganizations = [];
+            // Keep any videos already loaded from buildHubVideoPage; only clear if never set.
+            if (! isset($videos)) {
+                $featured = null;
+                $videos = [];
+                $shorts = [];
+                $stats = ['total_videos' => 0, 'livestream_replays' => 0];
+                $hasMore = false;
+                $nextPage = $page + 1;
+            }
+            if (! isset($channelBanners)) {
+                $channelBanners = [];
+            }
+            if (! isset($nonprofitOrganizations)) {
+                $nonprofitOrganizations = [];
+            }
+            if (! isset($myChannel)) {
+                $myChannel = null;
+                $authUserChannelSlug = null;
+                $userOrgHasYoutube = false;
+                $userOrgCanConnect = false;
+            }
 
             if ($isLoadMore) {
                 return response()->json([
                     'videos' => [],
                     'has_more' => false,
-                    'next_page' => $nextPage,
+                    'next_page' => $nextPage ?? ($page + 1),
                 ]);
             }
         }
@@ -234,6 +241,7 @@ class CommunityVideosController extends Controller
                 'hub' => $hubNormalized,
             ],
             'nonprofitOrganizations' => $nonprofitOrganizations ?? [],
+            'secondaryOrganizations' => $nonprofitOrganizations ?? [],
             'stats' => $stats ?? ['total_videos' => 0, 'livestream_replays' => 0],
             'videos_has_more' => $hasMore ?? false,
             'videos_next_page' => $nextPage ?? 2,
@@ -241,8 +249,26 @@ class CommunityVideosController extends Controller
             'authUserChannelSlug' => $authUserChannelSlug ?? null,
             'userOrgHasYoutube' => $userOrgHasYoutube ?? false,
             'userOrgCanConnect' => $userOrgCanConnect ?? false,
-            'organizationFilterLock' => app(SupporterPrimaryOrganizationService::class)
-                ->listingFilterLockState($request, 'org'),
+            'organizationFilterLock' => $tab === 'nonprofits'
+                ? app(SupporterPrimaryOrganizationService::class)->listingFilterLockState($request, 'org')
+                : (static function () use ($request) {
+                    $service = app(SupporterPrimaryOrganizationService::class);
+                    $primaryId = $service->defaultOrganizationFilterId($request->user());
+                    $primaryName = null;
+                    $primarySlug = null;
+                    if ($primaryId !== null) {
+                        $org = Organization::query()->with('user:id,slug')->find($primaryId);
+                        $primaryName = $org?->name;
+                        $primarySlug = $org?->user?->slug;
+                    }
+
+                    return [
+                        'locked' => false,
+                        'primary_id' => $primaryId,
+                        'primary_name' => $primaryName,
+                        'primary_slug' => $primarySlug,
+                    ];
+                })(),
         ]);
     }
 
@@ -265,20 +291,41 @@ class CommunityVideosController extends Controller
         $search = (string) $request->input('search', '');
         $tab = (string) $request->input('tab', 'latest');
         $org = $request->input('org', 'all');
-        $orgFilterId = app(SupporterPrimaryOrganizationService::class)
-            ->resolveListingOrganizationFilterId($request, 'org');
-        if ($orgFilterId !== null) {
-            $org = (string) $orgFilterId;
+        if ($tab === 'nonprofits') {
+            $orgFilterId = app(SupporterPrimaryOrganizationService::class)
+                ->resolveListingOrganizationFilterId($request, 'org');
+            if ($orgFilterId !== null) {
+                $org = (string) $orgFilterId;
+            } elseif (! $request->has('org')) {
+                $org = 'all';
+            }
         } elseif (! $request->has('org')) {
             $org = 'all';
         }
         $orgFilter = is_scalar($org) ? (string) $org : 'all';
         $hub = (string) $request->input('hub', 'all');
 
+        $allowedNonprofitOrgIds = null;
+        $onlyOrganizationIds = null;
+        if ($tab === 'nonprofits') {
+            $allowedNonprofitOrgIds = $this->supporterPrimaryAndSecondaryOrgIds($request->user());
+            if ($orgFilter !== 'all' && $orgFilter !== '' && (int) $orgFilter > 0) {
+                $picked = (int) $orgFilter;
+                // Only allow primary / secondary orgs (same scope as donate picker).
+                if ($allowedNonprofitOrgIds === [] || in_array($picked, $allowedNonprofitOrgIds, true)) {
+                    $onlyOrganizationIds = [$picked];
+                } else {
+                    $onlyOrganizationIds = $allowedNonprofitOrgIds !== [] ? $allowedNonprofitOrgIds : [$picked];
+                }
+            } elseif ($allowedNonprofitOrgIds !== []) {
+                // org=all after Change → videos from primary + secondary only, not every platform org.
+                $onlyOrganizationIds = $allowedNonprofitOrgIds;
+            }
+        }
+
         // Always rebuild from currently connected channels (per-channel YouTube API is cached).
-        // Do not cache this aggregate — warm jobs used to race disconnect and put disconnected
-        // channel videos back into unity_videos_all_* for minutes after disconnect.
-        $youtubeVideos = $this->fetchAllYouTubeVideos();
+        // Non-Profits scopes to primary/secondary (or one picked org).
+        $youtubeVideos = $this->fetchAllYouTubeVideos($onlyOrganizationIds);
 
         if ($search !== '') {
             $searchLower = strtolower($search);
@@ -628,103 +675,175 @@ class CommunityVideosController extends Controller
     }
 
     /**
-     * Fetch videos from all organizations/supporters with connected YouTube channels,
-     * then merge manually imported URL videos.
+     * Primary + secondary organization IDs for the logged-in supporter (donate-page scope).
      *
+     * @return list<int>
+     */
+    private function supporterPrimaryAndSecondaryOrgIds(?User $user): array
+    {
+        if ($user === null) {
+            return [];
+        }
+
+        $service = app(SupporterPrimaryOrganizationService::class);
+        $primaryId = $service->defaultOrganizationFilterId($user);
+        $ids = $service->resolveSecondaryOrganizationIds($user);
+        if ($primaryId !== null && $primaryId > 0 && ! in_array($primaryId, $ids, true)) {
+            array_unshift($ids, $primaryId);
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            fn (int $id) => $id > 0
+        )));
+    }
+
+    /**
+     * Secondary orgs for the Non-Profits picker (excludes primary — lock UI shows primary).
+     *
+     * @return list<array{id: int, name: string}>
+     */
+    private function supporterSecondaryOrganizationsForPicker(?User $user): array
+    {
+        if ($user === null) {
+            return [];
+        }
+
+        $service = app(SupporterPrimaryOrganizationService::class);
+        $primaryId = $service->defaultOrganizationFilterId($user);
+        $ids = $service->resolveSecondaryOrganizationIds($user);
+        if ($ids === []) {
+            return [];
+        }
+
+        return Organization::query()
+            ->excludingCareAllianceHubs()
+            ->whereIn('id', $ids)
+            ->when($primaryId !== null, fn ($q) => $q->where('id', '!=', $primaryId))
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Organization $o) => ['id' => (int) $o->id, 'name' => (string) $o->name])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Fetch videos from connected YouTube channels (optionally a set of organizations), then merge imports.
+     *
+     * @param  list<int>|null  $onlyOrganizationIds
      * @return Collection<int, array<string, mixed>>
      */
-    private function fetchAllYouTubeVideos(): Collection
+    private function fetchAllYouTubeVideos(?array $onlyOrganizationIds = null): Collection
     {
-        $orgs = Organization::query()
+        $orgsQuery = Organization::query()
             ->excludingCareAllianceHubs()
             ->select('id', 'name', 'registered_user_image', 'user_id', 'youtube_channel_url')
             ->whereNotNull('youtube_channel_url')
             ->where('youtube_channel_url', '!=', '')
-            ->with('user:id,slug')
-            ->get();
+            ->with('user:id,slug');
+
+        if ($onlyOrganizationIds !== null) {
+            $ids = array_values(array_filter(array_map('intval', $onlyOrganizationIds), fn (int $id) => $id > 0));
+            if ($ids === []) {
+                return $this->appendImportedUrlVideos(collect(), []);
+            }
+            $orgsQuery->whereIn('id', $ids);
+        }
+
+        $orgs = $orgsQuery->get();
 
         $orgOwnerIds = $orgs->pluck('user_id')->filter()->all();
-        $supporters = User::query()
-            ->select('id', 'name', 'slug', 'image', 'registered_user_image', 'youtube_channel_url')
-            ->whereNotNull('youtube_channel_url')
-            ->where('youtube_channel_url', '!=', '')
-            ->whereNotNull('slug')
-            ->when(! empty($orgOwnerIds), fn ($q) => $q->whereNotIn('id', $orgOwnerIds))
-            ->get();
+        $supporters = collect();
+        if ($onlyOrganizationIds === null) {
+            $supporters = User::query()
+                ->select('id', 'name', 'slug', 'image', 'registered_user_image', 'youtube_channel_url')
+                ->whereNotNull('youtube_channel_url')
+                ->where('youtube_channel_url', '!=', '')
+                ->whereNotNull('slug')
+                ->when(! empty($orgOwnerIds), fn ($q) => $q->whereNotIn('id', $orgOwnerIds))
+                ->get();
+        }
 
         $youtubeService = app(YouTubeService::class);
         $all = collect();
 
         foreach ($orgs as $org) {
-            $channelVideos = $youtubeService->getChannelVideos($org->youtube_channel_url, 30);
-            $channelSlug = $org->user?->slug;
-            $creatorAvatar = $org->registered_user_image ? Storage::url($org->registered_user_image) : null;
+            try {
+                $channelVideos = $youtubeService->getChannelVideos($org->youtube_channel_url, 30);
+                $channelSlug = $org->user?->slug;
+                $creatorAvatar = $org->registered_user_image ? Storage::url($org->registered_user_image) : null;
 
-            foreach ($channelVideos as $yt) {
-                $publishedAt = $yt['published_at'] ?? '';
-                $sortAt = $publishedAt ? Carbon::parse($publishedAt)->timestamp : 0;
-                $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
+                foreach ($channelVideos as $yt) {
+                    $publishedAt = $yt['published_at'] ?? '';
+                    $sortAt = $publishedAt ? Carbon::parse($publishedAt)->timestamp : 0;
+                    $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
 
-                $all->push(array_merge([
-                    'id' => $this->hubListId($yt['id'], $org->id, null),
-                    'slug' => $yt['id'],
-                    'title' => $yt['title'],
-                    'creator' => $org->name,
-                    'creatorAvatar' => $creatorAvatar,
-                    'thumbnail_url' => $yt['thumbnail_url'],
-                    'duration' => $yt['duration'],
-                    'views' => $yt['views'],
-                    'views_formatted' => $yt['views_formatted'],
-                    'time_ago' => $timeAgo,
-                    'likes' => $yt['likes'] ?? 0,
-                    'likes_formatted' => $yt['likes_formatted'] ?? number_format((int) ($yt['likes'] ?? 0)),
-                    'comment_count' => $yt['comment_count'] ?? 0,
-                    'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
-                    'channel_slug' => $channelSlug,
-                    'organization_id' => $org->id,
-                    'owner_user_id' => $org->user_id,
-                    'hub_kind' => 'vod',
-                    'source' => 'youtube',
-                    'watch_url' => $yt['watch_url'],
-                    'sort_at' => $sortAt,
-                ], $this->youtubeShortMetaFromYtRow($yt)));
-            }
-
-            $liveStreams = $youtubeService->getChannelLiveStreams($org->youtube_channel_url, 10);
-            // Only skip lives already listed for THIS org (other accounts may still list the same YT id).
-            $existingForOrg = $all
-                ->filter(fn (array $v) => (int) ($v['organization_id'] ?? 0) === (int) $org->id)
-                ->pluck('slug')
-                ->flip();
-            foreach ($liveStreams as $yt) {
-                if ($existingForOrg->has($yt['id'])) {
-                    continue;
+                    $all->push(array_merge([
+                        'id' => $this->hubListId($yt['id'], $org->id, null),
+                        'slug' => $yt['id'],
+                        'title' => $yt['title'],
+                        'creator' => $org->name,
+                        'creatorAvatar' => $creatorAvatar,
+                        'thumbnail_url' => $yt['thumbnail_url'],
+                        'duration' => $yt['duration'],
+                        'views' => $yt['views'],
+                        'views_formatted' => $yt['views_formatted'],
+                        'time_ago' => $timeAgo,
+                        'likes' => $yt['likes'] ?? 0,
+                        'likes_formatted' => $yt['likes_formatted'] ?? number_format((int) ($yt['likes'] ?? 0)),
+                        'comment_count' => $yt['comment_count'] ?? 0,
+                        'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
+                        'channel_slug' => $channelSlug,
+                        'organization_id' => $org->id,
+                        'owner_user_id' => $org->user_id,
+                        'hub_kind' => 'vod',
+                        'source' => 'youtube',
+                        'watch_url' => $yt['watch_url'],
+                        'sort_at' => $sortAt,
+                    ], $this->youtubeShortMetaFromYtRow($yt)));
                 }
-                $publishedAt = $yt['published_at'] ?? '';
-                $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
-                $all->push(array_merge([
-                    'id' => $this->hubListId($yt['id'], $org->id, null),
-                    'slug' => $yt['id'],
-                    'title' => $yt['title'],
-                    'creator' => $org->name,
-                    'creatorAvatar' => $creatorAvatar,
-                    'thumbnail_url' => $yt['thumbnail_url'],
-                    'duration' => $yt['duration'],
-                    'views' => $yt['views'],
-                    'views_formatted' => $yt['views_formatted'],
-                    'time_ago' => $timeAgo,
-                    'likes' => $yt['likes'] ?? 0,
-                    'likes_formatted' => $yt['likes_formatted'] ?? number_format((int) ($yt['likes'] ?? 0)),
-                    'comment_count' => $yt['comment_count'] ?? 0,
-                    'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
-                    'channel_slug' => $channelSlug,
+
+                $liveStreams = $youtubeService->getChannelLiveStreams($org->youtube_channel_url, 10);
+                // Only skip lives already listed for THIS org (other accounts may still list the same YT id).
+                $existingForOrg = $all
+                    ->filter(fn (array $v) => (int) ($v['organization_id'] ?? 0) === (int) $org->id)
+                    ->pluck('slug')
+                    ->flip();
+                foreach ($liveStreams as $yt) {
+                    if ($existingForOrg->has($yt['id'])) {
+                        continue;
+                    }
+                    $publishedAt = $yt['published_at'] ?? '';
+                    $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
+                    $all->push(array_merge([
+                        'id' => $this->hubListId($yt['id'], $org->id, null),
+                        'slug' => $yt['id'],
+                        'title' => $yt['title'],
+                        'creator' => $org->name,
+                        'creatorAvatar' => $creatorAvatar,
+                        'thumbnail_url' => $yt['thumbnail_url'],
+                        'duration' => $yt['duration'],
+                        'views' => $yt['views'],
+                        'views_formatted' => $yt['views_formatted'],
+                        'time_ago' => $timeAgo,
+                        'likes' => $yt['likes'] ?? 0,
+                        'likes_formatted' => $yt['likes_formatted'] ?? number_format((int) ($yt['likes'] ?? 0)),
+                        'comment_count' => $yt['comment_count'] ?? 0,
+                        'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
+                        'channel_slug' => $channelSlug,
+                        'organization_id' => $org->id,
+                        'owner_user_id' => $org->user_id,
+                        'hub_kind' => 'live',
+                        'source' => 'youtube',
+                        'watch_url' => $yt['watch_url'],
+                        'sort_at' => PHP_INT_MAX,
+                    ], $this->youtubeShortMetaFromYtRow($yt)));
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Unity Videos: skip organization channel', [
                     'organization_id' => $org->id,
-                    'owner_user_id' => $org->user_id,
-                    'hub_kind' => 'live',
-                    'source' => 'youtube',
-                    'watch_url' => $yt['watch_url'],
-                    'sort_at' => PHP_INT_MAX,
-                ], $this->youtubeShortMetaFromYtRow($yt)));
+                    'message' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -814,7 +933,7 @@ class CommunityVideosController extends Controller
             }
         }
 
-        $all = $this->appendImportedUrlVideos($all);
+        $all = $this->appendImportedUrlVideos($all, $onlyOrganizationIds);
 
         // Unique list rows per publisher account (same YT id may appear for multiple BIU accounts).
         return $all
@@ -931,24 +1050,63 @@ class CommunityVideosController extends Controller
     }
 
     /**
+     * Remove a URL-imported video from Unity Video Hub (owner / org owner only).
+     */
+    public function destroyImport(Request $request, CommunityVideo $communityVideo): \Illuminate\Http\JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        if (empty($communityVideo->youtube_video_id)) {
+            return response()->json(['message' => 'Only imported YouTube videos can be removed this way.'], 422);
+        }
+
+        $organization = Organization::forAuthUser($user);
+        $owns = false;
+        if ($communityVideo->organization_id) {
+            $owns = $organization !== null && (int) $communityVideo->organization_id === (int) $organization->id;
+        } else {
+            $owns = (int) ($communityVideo->user_id ?? 0) === (int) $user->id;
+        }
+
+        if (! $owns) {
+            return response()->json(['message' => 'You can only remove videos you imported.'], 403);
+        }
+
+        $communityVideo->delete();
+        $this->forgetUnityVideosCaches();
+
+        return response()->json(['message' => 'Imported video removed from Unity Videos.']);
+    }
+
+    /**
      * Merge URL-imported hub videos (CommunityVideo rows) into the aggregate feed.
      *
      * @param  Collection<int, array<string, mixed>>  $all
+     * @param  list<int>|null  $onlyOrganizationIds
      * @return Collection<int, array<string, mixed>>
      */
-    private function appendImportedUrlVideos(Collection $all): Collection
+    private function appendImportedUrlVideos(Collection $all, ?array $onlyOrganizationIds = null): Collection
     {
         $youtubeService = app(YouTubeService::class);
 
-        $imports = CommunityVideo::query()
+        $importsQuery = CommunityVideo::query()
             ->whereNotNull('youtube_video_id')
             ->with([
                 'organization:id,name,registered_user_image,user_id',
                 'organization.user:id,slug,name',
                 'user:id,name,slug,image,registered_user_image',
             ])
-            ->orderByDesc('created_at')
-            ->get();
+            ->orderByDesc('created_at');
+
+        if ($onlyOrganizationIds !== null) {
+            $ids = array_values(array_filter(array_map('intval', $onlyOrganizationIds), fn (int $id) => $id > 0));
+            if ($ids === []) {
+                return $all;
+            }
+            $importsQuery->whereIn('organization_id', $ids);
+        }
+
+        $imports = $importsQuery->get();
 
         foreach ($imports as $record) {
             $videoId = (string) $record->youtube_video_id;
@@ -1060,6 +1218,7 @@ class CommunityVideosController extends Controller
             'owner_user_id' => $organizationId ? ($org?->user_id) : ($owner?->id),
             'hub_kind' => 'vod',
             'source' => 'import',
+            'import_record_id' => $record->id,
             'watch_url' => $watchUrl,
             'sort_at' => $sortAt,
             'description' => $description,

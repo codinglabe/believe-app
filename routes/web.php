@@ -463,6 +463,7 @@ Route::get('/unity-videos/organizations', [CommunityVideosController::class, 'or
 Route::get('/unity-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('unity-videos.channel');
 Route::get('/unity-videos/upload', [CommunityVideosController::class, 'upload'])->name('unity-videos.upload')->middleware('auth');
 Route::post('/unity-videos/import', [CommunityVideosController::class, 'importFromUrl'])->name('unity-videos.import')->middleware('auth');
+Route::delete('/unity-videos/import/{communityVideo}', [CommunityVideosController::class, 'destroyImport'])->name('unity-videos.import.destroy')->middleware('auth');
 // More specific route first so /watch/yt/{id} is not matched by /watch/{slug}
 Route::get('/unity-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('unity-videos.show-youtube');
 Route::get('/unity-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('unity-videos.show-short');

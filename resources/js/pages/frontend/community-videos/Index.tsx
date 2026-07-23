@@ -19,7 +19,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/frontend/ui/command"
-import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, ChevronsUpDown, Check, Pin, Megaphone, Rss, Link2, Loader2, Info, Sparkles, HardDrive, Brain } from "lucide-react"
+import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, ChevronsUpDown, Check, Pin, Megaphone, Rss, Link2, Loader2, Info, Sparkles, HardDrive, Brain, Trash2 } from "lucide-react"
 import toast from "react-hot-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -49,6 +49,7 @@ interface VideoItem {
   source?: "upload" | "youtube" | "import"
   /** Present only for the logged-in importer of a URL-imported video. */
   is_my_import?: boolean
+  import_record_id?: number | null
   watch_url?: string | null
   organization_id?: number | null
   app_likes?: number
@@ -87,6 +88,8 @@ interface Props {
     hub?: string
   }
   nonprofitOrganizations?: Array<{ id: number; name: string }>
+  /** Alias kept for older props; Non-Profits picker uses secondary orgs (donate-page style). */
+  secondaryOrganizations?: Array<{ id: number; name: string }>
   stats?: { total_videos: number; livestream_replays: number }
   videos_has_more?: boolean
   videos_next_page?: number
@@ -103,6 +106,8 @@ function formatCount(n: number) {
 
 const SHORTS_AUTO_ADVANCE_MS = 4500
 const SHORTS_PER_PAGE = 4
+/** Temporarily hide the sidebar Import YouTube Video card (keep markup below for easy restore). */
+const SHOW_IMPORT_YOUTUBE_PANEL = false
 
 function VideoHubActionBar({
   video,
@@ -217,9 +222,25 @@ function VideoHubActionBar({
   )
 }
 
-export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
-  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], secondaryOrganizations: secondaryOrganizationsProp, stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter, lockListingFilter } =
     useOrganizationListingFilterLock(organizationFilterLock)
+  const secondaryOrganizations = secondaryOrganizationsProp ?? nonprofitOrganizations
+  const primaryPickerOrg = useMemo(() => {
+    if (!organizationFilterLock?.primary_id || !organizationFilterLock.primary_name) return null
+    return { id: organizationFilterLock.primary_id, name: organizationFilterLock.primary_name }
+  }, [organizationFilterLock?.primary_id, organizationFilterLock?.primary_name])
+  const myNonprofitOrgs = useMemo(() => {
+    const rows: Array<{ id: number; name: string; kind: "primary" | "secondary" }> = []
+    if (primaryPickerOrg) {
+      rows.push({ ...primaryPickerOrg, kind: "primary" })
+    }
+    for (const org of secondaryOrganizations) {
+      if (primaryPickerOrg && org.id === primaryPickerOrg.id) continue
+      rows.push({ ...org, kind: "secondary" })
+    }
+    return rows
+  }, [primaryPickerOrg, secondaryOrganizations])
   const defaultHub = "all"
   const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [featuredVideo, setFeaturedVideo] = useState<VideoItem | null>(initialFeatured)
@@ -237,6 +258,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const [selectedOrgName, setSelectedOrgName] = useState<string | null>(null)
   const [importUrl, setImportUrl] = useState("")
   const [importLoading, setImportLoading] = useState(false)
+  const [deletingImportId, setDeletingImportId] = useState<number | null>(null)
   const importPanelRef = useRef<HTMLDivElement>(null)
   const shortsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
@@ -335,27 +357,19 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   }, [hasMore, loadMore, videos.length])
 
   const fetchOrganizations = useCallback((search: string) => {
-    setOrgSearchLoading(true)
-    axios.get(route("unity-videos.organizations"), { params: { search } })
-      .then(({ data }) => setOrgSearchResults(data?.data ?? []))
-      .catch(() => setOrgSearchResults([]))
-      .finally(() => setOrgSearchLoading(false))
-  }, [])
+    // Donate-page style: only primary + secondary orgs (no platform-wide search).
+    setOrgSearchLoading(false)
+    const q = search.trim().toLowerCase()
+    const rows = !q
+      ? myNonprofitOrgs
+      : myNonprofitOrgs.filter((o) => o.name.toLowerCase().includes(q))
+    setOrgSearchResults(rows.map(({ id, name }) => ({ id, name })))
+  }, [myNonprofitOrgs])
 
   useEffect(() => {
     if (!orgDropdownOpen) return
     fetchOrganizations(orgSearchQuery)
-  }, [orgDropdownOpen])
-
-  const debouncedFetchOrgs = useDebounce((q: string) => {
-    if (!orgDropdownOpen) return
-    fetchOrganizations(q)
-  }, 300)
-
-  useEffect(() => {
-    if (!orgDropdownOpen) return
-    debouncedFetchOrgs(orgSearchQuery)
-  }, [orgSearchQuery, orgDropdownOpen])
+  }, [orgDropdownOpen, orgSearchQuery, fetchOrganizations])
 
   useEffect(() => {
     if (!orgDropdownOpen) {
@@ -366,21 +380,20 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   // Sync selected org display name when page loads with org in URL
   const orgFilter = filters.org ?? "all"
   useEffect(() => {
-    if (orgFilter !== "all" && nonprofitOrganizations.length > 0) {
-      const name = nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name
+    if (orgFilter !== "all" && myNonprofitOrgs.length > 0) {
+      const name = myNonprofitOrgs.find((o) => String(o.id) === orgFilter)?.name
       if (name) setSelectedOrgName((prev) => prev ?? name)
     }
-  }, [orgFilter, nonprofitOrganizations])
+  }, [orgFilter, myNonprofitOrgs])
 
   const orgDropdownDisplayName = useMemo(() => {
-    if (orgFilter === "all") return "All organizations"
+    if (orgFilter === "all") return "My organizations"
     return (
       selectedOrgName ??
-      nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name ??
-      orgSearchResults.find((o) => String(o.id) === orgFilter)?.name ??
+      myNonprofitOrgs.find((o) => String(o.id) === orgFilter)?.name ??
       "Organization"
     )
-  }, [orgFilter, selectedOrgName, nonprofitOrganizations, orgSearchResults])
+  }, [orgFilter, selectedOrgName, myNonprofitOrgs])
 
   const shortsSlides = useMemo(() => {
     const pages: VideoItem[][] = []
@@ -517,16 +530,24 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       if (search !== defaultSearch) params.search = search
       if (tab !== defaultTab) params.tab = tab
       if (tab === "nonprofits") {
+        // Always send org on Non-Profits so "Change → All" and org picks survive the round-trip.
+        // Omit only while still locked to primary and the caller did not set org (server defaults to primary).
         if (updates.org !== undefined) {
           params.org = org
-        } else if (!listingFilterLocked && org !== defaultOrg) {
-          params.org = org
+        } else if (!listingFilterLocked) {
+          params.org = org === defaultOrg ? "all" : org
+        } else if (
+          organizationFilterLock?.primary_id &&
+          (org === String(organizationFilterLock.primary_id) || org === defaultOrg)
+        ) {
+          // Keep URL explicit when locked so unlock/Change can clear it reliably.
+          params.org = String(organizationFilterLock.primary_id)
         }
       }
       if (hub !== defaultHub) params.hub = hub
       router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.tab, filters.org, filters.hub, listingFilterLocked]
+    [filters.search, filters.tab, filters.org, filters.hub, listingFilterLocked, organizationFilterLock?.primary_id]
   )
 
   // Debounced search: apply filters automatically after user stops typing (400ms)
@@ -551,6 +572,20 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   }
 
   const handleTabChange = (tab: "latest" | "trending" | "nonprofits" | "supporter") => {
+    if (tab === "nonprofits") {
+      // Entering Non-Profits from another tab: restore primary lock when the user has one.
+      if (organizationFilterLock?.primary_id && filters.tab !== "nonprofits") {
+        lockListingFilter()
+        applyFilters({ tab, org: String(organizationFilterLock.primary_id) })
+        return
+      }
+      if (listingFilterLocked && organizationFilterLock?.primary_id) {
+        applyFilters({ tab, org: String(organizationFilterLock.primary_id) })
+        return
+      }
+      applyFilters({ tab, org: filters.org && filters.org !== "" ? String(filters.org) : "all" })
+      return
+    }
     applyFilters({ tab })
   }
 
@@ -606,6 +641,33 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       setImportLoading(false)
     }
   }, [importUrl, auth?.user?.id])
+
+  const handleDeleteImport = useCallback(async (e: React.MouseEvent, video: VideoItem) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const recordId = video.import_record_id
+    if (!recordId || !video.is_my_import) return
+    if (!auth?.user?.id) {
+      window.location.href = route("login") + "?redirect=" + encodeURIComponent("/unity-videos")
+      return
+    }
+    if (!window.confirm("Remove this imported video from Unity Videos?")) return
+    setDeletingImportId(recordId)
+    try {
+      const { data } = await axios.delete(route("unity-videos.import.destroy", recordId), {
+        headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      })
+      toast.success(typeof data?.message === "string" ? data.message : "Imported video removed.")
+      setFeaturedVideo((prev) => (prev && prev.import_record_id === recordId ? null : prev))
+      setVideos((prev) => prev.filter((v) => v.import_record_id !== recordId))
+      router.reload({ only: ["featuredVideo", "videos", "shorts", "stats", "filters"] })
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } }
+      toast.error(ax.response?.data?.message ?? "Could not remove that video.")
+    } finally {
+      setDeletingImportId(null)
+    }
+  }, [auth?.user?.id])
 
   return (
     <FrontendLayout>
@@ -684,6 +746,23 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       className="h-full w-full object-cover"
                     />
                     {featuredVideo.is_my_import ? <ImportedByMeBadge /> : null}
+                    {featuredVideo.is_my_import && featuredVideo.import_record_id ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-1.5 top-1.5 z-10 h-8 gap-1 rounded-md bg-black/70 px-2 text-xs text-white hover:bg-red-600 hover:text-white"
+                        disabled={deletingImportId === featuredVideo.import_record_id}
+                        onClick={(e) => void handleDeleteImport(e, featuredVideo)}
+                      >
+                        {deletingImportId === featuredVideo.import_record_id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete
+                      </Button>
+                    ) : null}
                     <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/40">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 transition-colors group-hover:bg-white sm:h-14 sm:w-14">
                         <Play className="ml-0.5 h-6 w-6 fill-gray-900 text-gray-900 sm:h-7 sm:w-7" />
@@ -803,6 +882,21 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               />
                               {short.is_my_import ? <ImportedByMeBadge className="left-1 top-1" /> : null}
+                              {short.is_my_import && short.import_record_id ? (
+                                <button
+                                  type="button"
+                                  className="absolute right-1 top-1 z-10 inline-flex h-7 items-center gap-1 rounded-md bg-black/70 px-1.5 text-[10px] font-medium text-white hover:bg-red-600"
+                                  disabled={deletingImportId === short.import_record_id}
+                                  onClick={(e) => void handleDeleteImport(e, short)}
+                                >
+                                  {deletingImportId === short.import_record_id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3 w-3" />
+                                  )}
+                                  Delete
+                                </button>
+                              ) : null}
                               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
                                 <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center group-hover:bg-white transition-colors">
                                   <Play className="w-5 h-5 text-gray-900 ml-0.5 fill-gray-900" />
@@ -878,7 +972,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 className="shrink-0"
                 onUnlock={() => {
                   unlockListingFilter()
-                  applyFilters({ org: "all" })
+                  setSelectedOrgName(null)
+                  applyFilters({ tab: "nonprofits", org: "all" })
                 }}
               >
               <Popover
@@ -937,34 +1032,54 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                               )}
                             >
                               <Check className={cn("mr-2 h-4 w-4 shrink-0", orgFilter === "all" ? "opacity-100" : "opacity-0")} />
-                              All organizations
+                              My organizations
                             </CommandItem>
-                            {(() => {
-                              const hasValidSelectedId = orgFilter !== "all" && orgFilter !== "" && !Number.isNaN(Number(orgFilter))
-                              const selectedOrg = hasValidSelectedId
-                                ? { id: Number(orgFilter), name: selectedOrgName ?? nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name ?? "Organization" }
-                                : null
-                              const selectedInResults = selectedOrg && orgSearchResults.some((o) => String(o.id) === orgFilter)
-                              const orgsToShow = selectedOrg && !selectedInResults ? [selectedOrg, ...orgSearchResults] : orgSearchResults
-                              return orgsToShow.map((org) => {
-                                const isSelected = orgFilter === String(org.id)
-                                return (
-                                  <CommandItem
-                                    key={org.id}
-                                    value={String(org.id)}
-                                    onSelect={() => { handleOrgChange(String(org.id), org.name); setOrgDropdownOpen(false) }}
-                                    className={cn(
-                                      "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
-                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
-                                    )}
-                                  >
-                                    <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
-                                    {org.name}
-                                  </CommandItem>
-                                )
-                              })
-                            })()}
                           </CommandGroup>
+                          {primaryPickerOrg && (!orgSearchQuery.trim() || primaryPickerOrg.name.toLowerCase().includes(orgSearchQuery.trim().toLowerCase())) ? (
+                            <CommandGroup heading="Your primary organization" className="p-1">
+                              <CommandItem
+                                value={`primary-${primaryPickerOrg.id}`}
+                                onSelect={() => { handleOrgChange(String(primaryPickerOrg.id), primaryPickerOrg.name); setOrgDropdownOpen(false) }}
+                                className={cn(
+                                  "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                  orgFilter === String(primaryPickerOrg.id) ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                                )}
+                              >
+                                <Check className={cn("mr-2 h-4 w-4 shrink-0", orgFilter === String(primaryPickerOrg.id) ? "opacity-100" : "opacity-0")} />
+                                {primaryPickerOrg.name}
+                              </CommandItem>
+                            </CommandGroup>
+                          ) : null}
+                          {(() => {
+                            const q = orgSearchQuery.trim().toLowerCase()
+                            const secondaryRows = secondaryOrganizations.filter((o) => {
+                              if (primaryPickerOrg && o.id === primaryPickerOrg.id) return false
+                              if (!q) return true
+                              return o.name.toLowerCase().includes(q)
+                            })
+                            if (secondaryRows.length === 0) return null
+                            return (
+                              <CommandGroup heading="Your secondary organizations" className="p-1">
+                                {secondaryRows.map((org) => {
+                                  const isSelected = orgFilter === String(org.id)
+                                  return (
+                                    <CommandItem
+                                      key={org.id}
+                                      value={`secondary-${org.id}`}
+                                      onSelect={() => { handleOrgChange(String(org.id), org.name); setOrgDropdownOpen(false) }}
+                                      className={cn(
+                                        "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                        isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                                      )}
+                                    >
+                                      <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                                      {org.name}
+                                    </CommandItem>
+                                  )
+                                })}
+                              </CommandGroup>
+                            )
+                          })()}
                         </>
                       )}
                     </CommandList>
@@ -987,7 +1102,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               </div>
               <p className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">No videos found.</p>
               <p className="text-sm text-neutral-500 dark:text-gray-400 max-w-md mx-auto">
-                Add your first YouTube video using the panel on the right. Try adjusting your search or filters.
+                Try adjusting your search or filters, or connect a YouTube channel to sync videos.
               </p>
             </div>
           ) : (
@@ -1022,6 +1137,23 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                         />
                         {video.is_my_import ? <ImportedByMeBadge /> : null}
+                        {video.is_my_import && video.import_record_id ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-1.5 top-1.5 z-10 h-8 gap-1 rounded-md bg-black/70 px-2 text-xs text-white hover:bg-red-600 hover:text-white"
+                            disabled={deletingImportId === video.import_record_id}
+                            onClick={(e) => void handleDeleteImport(e, video)}
+                          >
+                            {deletingImportId === video.import_record_id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                            Delete
+                          </Button>
+                        ) : null}
                         <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-xs font-medium ${video.duration === "LIVE" ? "bg-red-600 text-white" : "bg-black/80 text-white"}`}>
                           {video.duration}
                         </div>
@@ -1216,6 +1348,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 )}
               </div>
             ) : null}
+            {SHOW_IMPORT_YOUTUBE_PANEL ? (
             <div
               ref={importPanelRef}
               className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4 shadow-sm"
@@ -1285,6 +1418,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 <p>Connected channels sync automatically. You can also import any public YouTube URL above.</p>
               </div>
             </div>
+            ) : null}
           </aside>
         </div>
         </div>
