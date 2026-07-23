@@ -108,6 +108,7 @@ export function ShortsVideoPlayer({
   const [showControls, setShowControls] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
+  const [usedNativeEmbed, setUsedNativeEmbed] = useState(false)
 
   const stopTimeTracking = useCallback(() => {
     if (progressIntervalRef.current) {
@@ -233,6 +234,7 @@ export function ShortsVideoPlayer({
 
   useEffect(() => {
     if (!videoId) return
+    setUsedNativeEmbed(false)
     const createPlayer = () => {
       if (!document.getElementById(elementId)) {
         requestAnimationFrame(createPlayer)
@@ -264,7 +266,9 @@ export function ShortsVideoPlayer({
       } catch {
         const el = document.getElementById(elementId)
         if (el) {
-          el.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&modestbranding=1&rel=0&controls=0&showinfo=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=0&playsinline=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="pointer-events:none;"></iframe>`
+          el.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&modestbranding=1&rel=0&playsinline=1" title="${title ? String(title).replace(/"/g, "&quot;") : "YouTube short"}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="width:100%;height:100%;border:0;"></iframe>`
+          setUsedNativeEmbed(true)
+          setIsReady(true)
         }
       }
     }
@@ -323,15 +327,15 @@ export function ShortsVideoPlayer({
       {/* Video + all controls in one centered box so icons overlay the video, not the black bars */}
       <div className="absolute inset-0 flex justify-center items-center">
         <div className="relative w-full h-full max-w-[min(100vw,calc(78dvh*9/16))] max-h-[78dvh] aspect-[9/16] bg-black">
-          {/* YouTube iframe - scaled up to push all branding outside visible area */}
+          {/* YouTube iframe - scaled up to push all branding outside visible area (native fallback: no scale/block) */}
           <div className="absolute inset-0 z-0 overflow-hidden">
             <div
               style={{
                 position: "absolute",
                 inset: 0,
-                transform: "scale(1.4)",
+                transform: usedNativeEmbed ? undefined : "scale(1.4)",
                 transformOrigin: "center center",
-                pointerEvents: "none",
+                pointerEvents: usedNativeEmbed ? "auto" : "none",
               }}
             >
               <div id={elementId} className="w-full h-full" />
@@ -339,10 +343,12 @@ export function ShortsVideoPlayer({
           </div>
 
           {/* Full overlay to block ALL YouTube branding interactions */}
-          <div className="absolute inset-0 z-10" style={{ pointerEvents: "auto" }} aria-hidden />
+          {!usedNativeEmbed && (
+            <div className="absolute inset-0 z-10" style={{ pointerEvents: "auto" }} aria-hidden />
+          )}
 
           {/* Thumbnail poster - completely hides YouTube branding before first play */}
-          {!hasStarted && (
+          {!usedNativeEmbed && !hasStarted && (
             <div
               className="absolute inset-0 z-30 flex items-center justify-center cursor-pointer"
               style={{

@@ -103,6 +103,7 @@ export function CommunityVideoPlayer({ videoId, title, className }: CommunityVid
   const [isSeeking, setIsSeeking] = useState(false)
   const [hoverTime, setHoverTime] = useState<number | null>(null)
   const [hoverX, setHoverX] = useState(0)
+  const [usedNativeEmbed, setUsedNativeEmbed] = useState(false)
 
   const isSeekingRef = useRef(false)
   isSeekingRef.current = isSeeking
@@ -277,6 +278,7 @@ export function CommunityVideoPlayer({ videoId, title, className }: CommunityVid
   // Load YouTube IFrame API and create player
   useEffect(() => {
     if (!videoId) return
+    setUsedNativeEmbed(false)
 
     const createPlayer = () => {
       if (!document.getElementById(elementId)) {
@@ -312,7 +314,9 @@ export function CommunityVideoPlayer({ videoId, title, className }: CommunityVid
       } catch {
         const el = document.getElementById(elementId)
         if (el) {
-          el.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&modestbranding=1&rel=0&controls=0&showinfo=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=0&playsinline=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="pointer-events:none;"></iframe>`
+          el.innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&modestbranding=1&rel=0&playsinline=1" title="${title ? String(title).replace(/"/g, "&quot;") : "YouTube video"}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="width:100%;height:100%;border:0;"></iframe>`
+          setUsedNativeEmbed(true)
+          setIsReady(true)
         }
       }
     }
@@ -449,16 +453,16 @@ export function CommunityVideoPlayer({ videoId, title, className }: CommunityVid
         />
       </div>
 
-      {/* Transparent overlay to block YouTube branding clicks & hide YT UI */}
-      <div className="absolute inset-0 z-10" />
+      {/* Transparent overlay to block YouTube branding clicks & hide YT UI (skipped for native embed fallback) */}
+      {!usedNativeEmbed && <div className="absolute inset-0 z-10" />}
 
-      {isBuffering && (
+      {isBuffering && !usedNativeEmbed && (
         <div className="absolute inset-0 z-30 flex items-center justify-center">
           <Loader2 className="h-12 w-12 text-white/80 animate-spin" />
         </div>
       )}
 
-      {!isPlaying && !isBuffering && isReady && (
+      {!usedNativeEmbed && !isPlaying && !isBuffering && isReady && (
         <div className="absolute inset-0 z-30 flex items-center justify-center">
           <button
             type="button"
@@ -474,13 +478,16 @@ export function CommunityVideoPlayer({ videoId, title, className }: CommunityVid
         </div>
       )}
 
+      {!usedNativeEmbed && (
       <div
         className={cn(
           "absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/90 via-black/50 to-transparent z-20 pointer-events-none transition-opacity duration-300",
           showControls ? "opacity-100" : "opacity-0"
         )}
       />
+      )}
 
+      {!usedNativeEmbed && (
       <div
         data-controls
         className={cn(
@@ -682,14 +689,17 @@ export function CommunityVideoPlayer({ videoId, title, className }: CommunityVid
           </div>
         </div>
       </div>
+      )}
 
       {/* Top gradient to cover YouTube's title bar branding */}
+      {!usedNativeEmbed && (
       <div
         className={cn(
           "absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/90 via-black/50 to-transparent z-20 pointer-events-none transition-opacity duration-300",
           showControls ? "opacity-100" : "opacity-0"
         )}
       />
+      )}
     </div>
   )
 }
