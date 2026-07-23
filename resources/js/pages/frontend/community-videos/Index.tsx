@@ -238,6 +238,9 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const shortsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
   const orgDropdownJustOpenedRef = useRef(false)
+  const loadingMoreRef = useRef(false)
+  const hasMoreRef = useRef(videos_has_more)
+  const nextPageRef = useRef(videos_next_page)
 
   // Sync video list and pagination from server when props change (e.g. after search or tab change)
   useEffect(() => {
@@ -245,6 +248,10 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     setVideos(initialVideos)
     setHasMore(videos_has_more)
     setNextPage(videos_next_page)
+    hasMoreRef.current = videos_has_more
+    nextPageRef.current = videos_next_page
+    loadingMoreRef.current = false
+    setLoadingMore(false)
   }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org, filters.hub])
 
   // Keep search input in sync with URL (e.g. back/forward, or after server response)
@@ -253,36 +260,76 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     setSearchInput(urlSearch)
   }, [filters.search])
 
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore) return
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return
+    loadingMoreRef.current = true
     setLoadingMore(true)
-    axios.get(route("unity-videos.index"), {
-      params: { page: nextPage, search: filters.search, tab: filters.tab, org: filters.org, hub: filters.hub ?? defaultHub },
-      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
-    }).then(({ data }) => {
-      const list = Array.isArray(data?.videos) ? data.videos : []
-      setVideos((prev) => [...prev, ...list])
-      setHasMore(!!data?.has_more)
-      setNextPage((v) => (Number(data?.next_page) > 0 ? Number(data.next_page) : v + 1))
-    }).catch(() => {
+    try {
+      const orgParam =
+        typeof filters.org === "string" || typeof filters.org === "number"
+          ? String(filters.org)
+          : "all"
+      const params = new URLSearchParams({
+        page: String(nextPageRef.current),
+        search: filters.search || "",
+        tab: filters.tab || "latest",
+        org: orgParam,
+        hub: filters.hub ?? defaultHub,
+      })
+      const res = await fetch(`/unity-videos/feed?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data || typeof data !== "object" || !Array.isArray(data.videos)) {
+        hasMoreRef.current = false
+        setHasMore(false)
+        toast.error(typeof data?.message === "string" ? data.message : "Could not load more videos.")
+        return
+      }
+      const list = data.videos as VideoItem[]
+      if (list.length > 0) {
+        setVideos((prev) => {
+          const seen = new Set(prev.map((v) => String(v.id)))
+          const fresh = list.filter((v) => !seen.has(String(v.id)))
+          return fresh.length ? [...prev, ...fresh] : prev
+        })
+      }
+      const more = !!data.has_more
+      hasMoreRef.current = more
+      setHasMore(more)
+      const serverNext = Number(data.next_page)
+      const next = serverNext > 0 ? serverNext : nextPageRef.current + 1
+      nextPageRef.current = next
+      setNextPage(next)
+    } catch {
+      hasMoreRef.current = false
       setHasMore(false)
-    }).finally(() => {
+      toast.error("Could not load more videos.")
+    } finally {
+      loadingMoreRef.current = false
       setLoadingMore(false)
-    })
-  }, [loadingMore, hasMore, nextPage, filters.search, filters.tab, filters.org, filters.hub])
+    }
+  }, [filters.search, filters.tab, filters.org, filters.hub])
 
   useEffect(() => {
     const el = loadMoreSentinelRef.current
     if (!el || !hasMore) return
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && hasMore && !loadingMore) loadMore()
+        if (entries[0]?.isIntersecting) {
+          void loadMore()
+        }
       },
-      { rootMargin: "200px", threshold: 0 }
+      { root: null, rootMargin: "400px 0px", threshold: 0 }
     )
     io.observe(el)
     return () => io.disconnect()
-  }, [hasMore, loadingMore, loadMore])
+  }, [hasMore, loadMore, videos.length])
 
   const fetchOrganizations = useCallback((search: string) => {
     setOrgSearchLoading(true)
@@ -512,8 +559,20 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
 
   const hasContent = featuredVideo || videos.length > 0 || shorts.length > 0
 
-  /** Grid items only — never repeat the featured hero row (search single-result used to inject featured here and duplicated the card). */
-  const gridVideos = videos
+  /** Grid items — keep same YouTube video from different BIU accounts; only drop exact list-row dupes / featured. */
+  const gridVideos = useMemo(() => {
+    const seen = new Set<string>()
+    const featuredKey = featuredVideo ? String(featuredVideo.id) : null
+    if (featuredKey) seen.add(featuredKey)
+    const out: VideoItem[] = []
+    for (const video of videos) {
+      const key = String(video.id)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(video)
+    }
+    return out
+  }, [videos, featuredVideo])
 
   const connectYoutubeUrl = route("login") + "?redirect=" + encodeURIComponent("/integrations/youtube/redirect")
 
@@ -943,7 +1002,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 const watchHref = `/unity-videos/watch/yt/${video.slug}${q ? `?${q}` : ""}`
                 return (
                   <div
-                    key={video.id}
+                    key={String(video.id)}
                     className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all hover:border-purple-200/80 hover:shadow-md dark:border-gray-700 dark:bg-gray-900/50 dark:hover:border-purple-900/50"
                   >
                     <a
@@ -1055,15 +1114,21 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               </>
               ) : null}
             {hasMore && (
-              <div ref={loadMoreSentinelRef} className="min-h-[80px] flex items-center justify-center py-6">
-                {loadingMore && (
+              <div ref={loadMoreSentinelRef} className="min-h-[80px] flex flex-col items-center justify-center gap-3 py-6">
+                {loadingMore ? (
                   <div className="flex items-center gap-2 text-neutral-500 dark:text-gray-400 text-sm">
-                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
                     Loading more videos…
                   </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-neutral-800 dark:text-gray-200 hover:bg-neutral-100 dark:hover:bg-gray-700"
+                    onClick={() => void loadMore()}
+                  >
+                    Load more videos
+                  </Button>
                 )}
               </div>
             )}
