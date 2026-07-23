@@ -8,6 +8,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Play, Building2, Youtube, Video, Eye, ThumbsUp, MessageCircle, Share2, ArrowLeft, Clapperboard, Heart } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ImportedByMeBadge } from "@/components/frontend/ImportedByMeBadge"
 
 export interface VideoItem {
   id: number
@@ -21,6 +22,7 @@ export interface VideoItem {
   views_formatted: string
   time_ago: string
   likes: number
+  is_my_import?: boolean
 }
 
 export interface YouTubeVideoItem {
@@ -42,6 +44,7 @@ export interface YouTubeVideoItem {
   user_liked?: boolean
   total_likes_formatted?: string
   total_comment_count_formatted?: string
+  is_my_import?: boolean
 }
 
 export interface ShortItem {
@@ -55,6 +58,7 @@ export interface ShortItem {
   channel_slug?: string
   creator?: string
   creatorAvatar?: string | null
+  is_my_import?: boolean
 }
 
 export interface ChannelPageContentProps {
@@ -295,6 +299,7 @@ export function ChannelPageContent({
                             alt={short.title}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                           />
+                          {short.is_my_import ? <ImportedByMeBadge className="left-1 top-1" /> : null}
                           <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
                             <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center group-hover:bg-white transition-colors">
                               <Play className="w-5 h-5 text-gray-900 ml-0.5 fill-gray-900" />
@@ -336,6 +341,7 @@ export function ChannelPageContent({
                         alt={video.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       />
+                      {video.is_my_import ? <ImportedByMeBadge /> : null}
                       <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 text-white text-xs font-medium">
                         {video.duration}
                       </div>
@@ -390,6 +396,7 @@ export function ChannelPageContent({
                               alt={yt.title}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                             />
+                            {yt.is_my_import ? <ImportedByMeBadge /> : null}
                             <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-xs font-medium ${yt.duration === "LIVE" ? "bg-red-600 text-white" : "bg-black/80 text-white"}`}>
                               {yt.duration}
                             </div>

@@ -20,6 +20,7 @@ interface VideoData {
   channel_slug?: string | null
   creator?: string | null
   creatorAvatar?: string | null
+  is_my_import?: boolean
 }
 
 interface Props {
@@ -102,6 +103,7 @@ export default function CommunityVideoShowShort({ seo, video: initialVideo }: Pr
           channelSlug={video.channel_slug ?? undefined}
           creator={video.creator ?? undefined}
           creatorAvatar={video.creatorAvatar ?? undefined}
+          isMyImport={video.is_my_import === true}
           className="min-h-[100dvh]"
         />
       </div>
