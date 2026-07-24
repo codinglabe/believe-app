@@ -317,12 +317,29 @@ class YouTubeService
     }
 
     /**
+     * Drop cached channel payloads so Unity Videos reflects connect/disconnect immediately.
+     */
+    public function forgetCachesForChannelUrl(?string $channelUrl): void
+    {
+        if ($channelUrl === null || trim($channelUrl) === '') {
+            return;
+        }
+
+        $hash = md5($channelUrl);
+        Cache::forget('youtube_channel_details_'.$hash);
+        foreach ([10, 15, 24, 30, 50] as $maxResults) {
+            Cache::forget('youtube_channel_videos_v2_'.$hash.'_'.$maxResults);
+            Cache::forget('youtube_channel_live_'.$hash.'_'.$maxResults);
+        }
+    }
+
+    /**
      * Fetch recent uploads from a channel. Returns array of video items for frontend.
-     * Cached 5 minutes per channel so index page loads quickly on first visit and reload.
+     * Cached briefly per channel; cleared on YouTube connect/disconnect.
      *
      * @return array<int, array<string, mixed>>
      */
-    public function getChannelVideos(string $channelUrl, int $maxResults = 24): array
+    public function getChannelVideos(string $channelUrl, int $maxResults = 24, bool $useCache = true): array
     {
         if (empty($this->apiKey)) {
             return [];
@@ -341,16 +358,22 @@ class YouTubeService
         // Bump cache key when video row shape changes (Shorts classification fields).
         $cacheKey = 'youtube_channel_videos_v2_' . md5($channelUrl) . '_' . $maxResults;
 
+        if (! $useCache) {
+            Cache::forget($cacheKey);
+
+            return $this->fetchPlaylistVideos($uploadsPlaylistId, $maxResults);
+        }
+
         return Cache::remember($cacheKey, 300, fn () => $this->fetchPlaylistVideos($uploadsPlaylistId, $maxResults));
     }
 
     /**
      * Fetch currently live streams for a channel (search.list eventType=live).
-     * Cached 3 minutes so live status stays fresh.
+     * Cached briefly so live status stays reasonably fresh; cleared on disconnect.
      *
      * @return array<int, array{id: string, title: string, thumbnail_url: string, published_at: string, views: int, views_formatted: string, duration: string, watch_url: string, likes: int, likes_formatted: string, comment_count: int, comment_count_formatted: string}>
      */
-    public function getChannelLiveStreams(string $channelUrl, int $maxResults = 10): array
+    public function getChannelLiveStreams(string $channelUrl, int $maxResults = 10, bool $useCache = true): array
     {
         if (empty($this->apiKey)) {
             return [];
@@ -363,7 +386,7 @@ class YouTubeService
 
         $cacheKey = 'youtube_channel_live_' . md5($channelUrl) . '_' . $maxResults;
 
-        return Cache::remember($cacheKey, 180, function () use ($channelId, $maxResults) {
+        $fetcher = function () use ($channelId, $maxResults) {
             $response = $this->http()->get($this->baseUrl . '/search', [
                 'part' => 'snippet',
                 'channelId' => $channelId,
@@ -430,7 +453,15 @@ class YouTubeService
             }
 
             return $out;
-        });
+        };
+
+        if (! $useCache) {
+            Cache::forget($cacheKey);
+
+            return $fetcher();
+        }
+
+        return Cache::remember($cacheKey, 180, $fetcher);
     }
 
     private function getUploadsPlaylistId(string $channelId): ?string

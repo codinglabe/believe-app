@@ -9,6 +9,7 @@ import axios from "axios"
 import { PageHead } from "@/components/frontend/PageHead"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/ui/input"
+import { ImportedByMeBadge } from "@/components/frontend/ImportedByMeBadge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/frontend/ui/popover"
 import {
   Command,
@@ -18,7 +19,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/frontend/ui/command"
-import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, ChevronsUpDown, Check, Pin, Megaphone, Rss, Link2, Loader2, Info, Sparkles, HardDrive, Brain } from "lucide-react"
+import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, ChevronsUpDown, Check, Pin, Megaphone, Rss, Link2, Loader2, Info, Sparkles, HardDrive, Brain, Trash2 } from "lucide-react"
 import toast from "react-hot-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -45,7 +46,10 @@ interface VideoItem {
   comment_count_formatted?: string
   nonprofit?: string | null
   channel_slug?: string | null
-  source?: "upload" | "youtube"
+  source?: "upload" | "youtube" | "import"
+  /** Present only for the logged-in importer of a URL-imported video. */
+  is_my_import?: boolean
+  import_record_id?: number | null
   watch_url?: string | null
   organization_id?: number | null
   app_likes?: number
@@ -81,9 +85,14 @@ interface Props {
     search: string
     tab: string
     org?: string
+    supporter?: string
     hub?: string
   }
   nonprofitOrganizations?: Array<{ id: number; name: string }>
+  /** Alias kept for older props; Organizations picker uses secondary orgs (donate-page style). */
+  secondaryOrganizations?: Array<{ id: number; name: string }>
+  /** Currently selected supporter (for label when filtering by one person). */
+  selectedSupporter?: { id: number; name: string } | null
   stats?: { total_videos: number; livestream_replays: number }
   videos_has_more?: boolean
   videos_next_page?: number
@@ -100,6 +109,8 @@ function formatCount(n: number) {
 
 const SHORTS_AUTO_ADVANCE_MS = 4500
 const SHORTS_PER_PAGE = 4
+/** Temporarily hide the sidebar Import YouTube Video card (keep markup below for easy restore). */
+const SHOW_IMPORT_YOUTUBE_PANEL = false
 
 function VideoHubActionBar({
   video,
@@ -214,9 +225,25 @@ function VideoHubActionBar({
   )
 }
 
-export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
-  const { effectiveLock, listingFilterLocked, unlockListingFilter } =
+export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], secondaryOrganizations: secondaryOrganizationsProp, selectedSupporter = null, stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false, organizationFilterLock = null }: Props) {
+  const { effectiveLock, listingFilterLocked, unlockListingFilter, lockListingFilter } =
     useOrganizationListingFilterLock(organizationFilterLock)
+  const secondaryOrganizations = secondaryOrganizationsProp ?? nonprofitOrganizations
+  const primaryPickerOrg = useMemo(() => {
+    if (!organizationFilterLock?.primary_id || !organizationFilterLock.primary_name) return null
+    return { id: organizationFilterLock.primary_id, name: organizationFilterLock.primary_name }
+  }, [organizationFilterLock?.primary_id, organizationFilterLock?.primary_name])
+  const myNonprofitOrgs = useMemo(() => {
+    const rows: Array<{ id: number; name: string; kind: "primary" | "secondary" }> = []
+    if (primaryPickerOrg) {
+      rows.push({ ...primaryPickerOrg, kind: "primary" })
+    }
+    for (const org of secondaryOrganizations) {
+      if (primaryPickerOrg && org.id === primaryPickerOrg.id) continue
+      rows.push({ ...org, kind: "secondary" })
+    }
+    return rows
+  }, [primaryPickerOrg, secondaryOrganizations])
   const defaultHub = "all"
   const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [featuredVideo, setFeaturedVideo] = useState<VideoItem | null>(initialFeatured)
@@ -232,12 +259,33 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const [orgSearchResults, setOrgSearchResults] = useState<Array<{ id: number; name: string }>>([])
   const [orgSearchLoading, setOrgSearchLoading] = useState(false)
   const [selectedOrgName, setSelectedOrgName] = useState<string | null>(null)
+  const [supporterDropdownOpen, setSupporterDropdownOpen] = useState(false)
+  const [supporterSearchQuery, setSupporterSearchQuery] = useState("")
+  const [supporterSearchResults, setSupporterSearchResults] = useState<Array<{ id: number; name: string }>>([])
+  const [supporterSearchLoading, setSupporterSearchLoading] = useState(false)
+  const [supporterLoadingMore, setSupporterLoadingMore] = useState(false)
+  const [supporterHasMore, setSupporterHasMore] = useState(false)
+  const [supporterNextPage, setSupporterNextPage] = useState(2)
+  const [selectedSupporterName, setSelectedSupporterName] = useState<string | null>(
+    selectedSupporter?.name ?? null
+  )
   const [importUrl, setImportUrl] = useState("")
   const [importLoading, setImportLoading] = useState(false)
+  const [deletingImportId, setDeletingImportId] = useState<number | null>(null)
   const importPanelRef = useRef<HTMLDivElement>(null)
   const shortsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
   const orgDropdownJustOpenedRef = useRef(false)
+  const supporterDropdownJustOpenedRef = useRef(false)
+  const supporterListScrollRef = useRef<HTMLDivElement>(null)
+  const supporterLoadMoreSentinelRef = useRef<HTMLDivElement>(null)
+  const supporterFetchSeqRef = useRef(0)
+  const supporterHasMoreRef = useRef(false)
+  const supporterNextPageRef = useRef(2)
+  const supporterLoadingMoreRef = useRef(false)
+  const loadingMoreRef = useRef(false)
+  const hasMoreRef = useRef(videos_has_more)
+  const nextPageRef = useRef(videos_next_page)
 
   // Sync video list and pagination from server when props change (e.g. after search or tab change)
   useEffect(() => {
@@ -245,7 +293,11 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     setVideos(initialVideos)
     setHasMore(videos_has_more)
     setNextPage(videos_next_page)
-  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org, filters.hub])
+    hasMoreRef.current = videos_has_more
+    nextPageRef.current = videos_next_page
+    loadingMoreRef.current = false
+    setLoadingMore(false)
+  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org, filters.supporter, filters.hub])
 
   // Keep search input in sync with URL (e.g. back/forward, or after server response)
   useEffect(() => {
@@ -253,59 +305,96 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     setSearchInput(urlSearch)
   }, [filters.search])
 
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore) return
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return
+    loadingMoreRef.current = true
     setLoadingMore(true)
-    axios.get(route("unity-videos.index"), {
-      params: { page: nextPage, search: filters.search, tab: filters.tab, org: filters.org, hub: filters.hub ?? defaultHub },
-      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
-    }).then(({ data }) => {
-      const list = Array.isArray(data?.videos) ? data.videos : []
-      setVideos((prev) => [...prev, ...list])
-      setHasMore(!!data?.has_more)
-      setNextPage((v) => (Number(data?.next_page) > 0 ? Number(data.next_page) : v + 1))
-    }).catch(() => {
+    try {
+      const orgParam =
+        typeof filters.org === "string" || typeof filters.org === "number"
+          ? String(filters.org)
+          : "all"
+      const supporterParam =
+        typeof filters.supporter === "string" || typeof filters.supporter === "number"
+          ? String(filters.supporter)
+          : "all"
+      const params = new URLSearchParams({
+        page: String(nextPageRef.current),
+        search: filters.search || "",
+        tab: filters.tab || "latest",
+        org: orgParam,
+        supporter: supporterParam,
+        hub: filters.hub ?? defaultHub,
+      })
+      const res = await fetch(`/unity-videos/feed?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data || typeof data !== "object" || !Array.isArray(data.videos)) {
+        hasMoreRef.current = false
+        setHasMore(false)
+        toast.error(typeof data?.message === "string" ? data.message : "Could not load more videos.")
+        return
+      }
+      const list = data.videos as VideoItem[]
+      if (list.length > 0) {
+        setVideos((prev) => {
+          const seen = new Set(prev.map((v) => String(v.id)))
+          const fresh = list.filter((v) => !seen.has(String(v.id)))
+          return fresh.length ? [...prev, ...fresh] : prev
+        })
+      }
+      const more = !!data.has_more
+      hasMoreRef.current = more
+      setHasMore(more)
+      const serverNext = Number(data.next_page)
+      const next = serverNext > 0 ? serverNext : nextPageRef.current + 1
+      nextPageRef.current = next
+      setNextPage(next)
+    } catch {
+      hasMoreRef.current = false
       setHasMore(false)
-    }).finally(() => {
+      toast.error("Could not load more videos.")
+    } finally {
+      loadingMoreRef.current = false
       setLoadingMore(false)
-    })
-  }, [loadingMore, hasMore, nextPage, filters.search, filters.tab, filters.org, filters.hub])
+    }
+  }, [filters.search, filters.tab, filters.org, filters.supporter, filters.hub])
 
   useEffect(() => {
     const el = loadMoreSentinelRef.current
     if (!el || !hasMore) return
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && hasMore && !loadingMore) loadMore()
+        if (entries[0]?.isIntersecting) {
+          void loadMore()
+        }
       },
-      { rootMargin: "200px", threshold: 0 }
+      { root: null, rootMargin: "400px 0px", threshold: 0 }
     )
     io.observe(el)
     return () => io.disconnect()
-  }, [hasMore, loadingMore, loadMore])
+  }, [hasMore, loadMore, videos.length])
 
   const fetchOrganizations = useCallback((search: string) => {
-    setOrgSearchLoading(true)
-    axios.get(route("unity-videos.organizations"), { params: { search } })
-      .then(({ data }) => setOrgSearchResults(data?.data ?? []))
-      .catch(() => setOrgSearchResults([]))
-      .finally(() => setOrgSearchLoading(false))
-  }, [])
+    // Donate-page style: only primary + secondary orgs (no platform-wide search).
+    setOrgSearchLoading(false)
+    const q = search.trim().toLowerCase()
+    const rows = !q
+      ? myNonprofitOrgs
+      : myNonprofitOrgs.filter((o) => o.name.toLowerCase().includes(q))
+    setOrgSearchResults(rows.map(({ id, name }) => ({ id, name })))
+  }, [myNonprofitOrgs])
 
   useEffect(() => {
     if (!orgDropdownOpen) return
     fetchOrganizations(orgSearchQuery)
-  }, [orgDropdownOpen])
-
-  const debouncedFetchOrgs = useDebounce((q: string) => {
-    if (!orgDropdownOpen) return
-    fetchOrganizations(q)
-  }, 300)
-
-  useEffect(() => {
-    if (!orgDropdownOpen) return
-    debouncedFetchOrgs(orgSearchQuery)
-  }, [orgSearchQuery, orgDropdownOpen])
+  }, [orgDropdownOpen, orgSearchQuery, fetchOrganizations])
 
   useEffect(() => {
     if (!orgDropdownOpen) {
@@ -313,24 +402,144 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     }
   }, [orgDropdownOpen])
 
+  const loadSupportersPage = useCallback(async (search: string, page: number, append: boolean) => {
+    const seq = ++supporterFetchSeqRef.current
+    if (append) {
+      if (supporterLoadingMoreRef.current || !supporterHasMoreRef.current) return
+      supporterLoadingMoreRef.current = true
+      setSupporterLoadingMore(true)
+    } else {
+      setSupporterSearchLoading(true)
+      setSupporterSearchResults([])
+      supporterHasMoreRef.current = false
+      supporterNextPageRef.current = 2
+      setSupporterHasMore(false)
+      setSupporterNextPage(2)
+    }
+
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: "30",
+        search: search.trim(),
+      })
+      const res = await fetch(`/unity-videos/supporters?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+      const data = await res.json().catch(() => null)
+      if (seq !== supporterFetchSeqRef.current) return
+      if (!res.ok || !data || typeof data !== "object" || !Array.isArray(data.data)) {
+        if (!append) setSupporterSearchResults([])
+        supporterHasMoreRef.current = false
+        setSupporterHasMore(false)
+        return
+      }
+      const list = data.data as Array<{ id: number; name: string }>
+      setSupporterSearchResults((prev) => {
+        if (!append) return list
+        const seen = new Set(prev.map((s) => s.id))
+        const fresh = list.filter((s) => !seen.has(s.id))
+        return fresh.length ? [...prev, ...fresh] : prev
+      })
+      const more = !!data.has_more
+      const next = Number(data.next_page) > 0 ? Number(data.next_page) : page + 1
+      supporterHasMoreRef.current = more
+      supporterNextPageRef.current = next
+      setSupporterHasMore(more)
+      setSupporterNextPage(next)
+    } catch {
+      if (seq !== supporterFetchSeqRef.current) return
+      if (!append) setSupporterSearchResults([])
+      supporterHasMoreRef.current = false
+      setSupporterHasMore(false)
+    } finally {
+      if (seq === supporterFetchSeqRef.current) {
+        setSupporterSearchLoading(false)
+        supporterLoadingMoreRef.current = false
+        setSupporterLoadingMore(false)
+      }
+    }
+  }, [])
+
+  const debouncedLoadSupporters = useDebounce((search: string) => {
+    void loadSupportersPage(search, 1, false)
+  }, 300)
+
+  useEffect(() => {
+    if (!supporterDropdownOpen) {
+      setSupporterSearchQuery("")
+      setSupporterSearchResults([])
+      supporterHasMoreRef.current = false
+      supporterNextPageRef.current = 2
+      setSupporterHasMore(false)
+      setSupporterNextPage(2)
+      return
+    }
+    // First page immediately when the dropdown opens.
+    void loadSupportersPage(supporterSearchQuery, 1, false)
+  }, [supporterDropdownOpen, loadSupportersPage])
+
+  useEffect(() => {
+    if (!supporterDropdownOpen) return
+    // Debounce only subsequent search typing (skip the open-triggered empty string race via debounce).
+    debouncedLoadSupporters(supporterSearchQuery)
+  }, [supporterSearchQuery, supporterDropdownOpen, debouncedLoadSupporters])
+
+  useEffect(() => {
+    if (!supporterDropdownOpen || !supporterHasMore) return
+    const root = supporterListScrollRef.current
+    const sentinel = supporterLoadMoreSentinelRef.current
+    if (!root || !sentinel) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadSupportersPage(supporterSearchQuery, supporterNextPageRef.current, true)
+        }
+      },
+      { root, rootMargin: "80px 0px", threshold: 0 }
+    )
+    io.observe(sentinel)
+    return () => io.disconnect()
+  }, [supporterDropdownOpen, supporterHasMore, supporterSearchQuery, supporterSearchResults.length, loadSupportersPage])
+
   // Sync selected org display name when page loads with org in URL
   const orgFilter = filters.org ?? "all"
   useEffect(() => {
-    if (orgFilter !== "all" && nonprofitOrganizations.length > 0) {
-      const name = nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name
+    if (orgFilter !== "all" && myNonprofitOrgs.length > 0) {
+      const name = myNonprofitOrgs.find((o) => String(o.id) === orgFilter)?.name
       if (name) setSelectedOrgName((prev) => prev ?? name)
     }
-  }, [orgFilter, nonprofitOrganizations])
+  }, [orgFilter, myNonprofitOrgs])
 
   const orgDropdownDisplayName = useMemo(() => {
-    if (orgFilter === "all") return "All organizations"
+    if (orgFilter === "all") return "My organizations"
     return (
       selectedOrgName ??
-      nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name ??
-      orgSearchResults.find((o) => String(o.id) === orgFilter)?.name ??
+      myNonprofitOrgs.find((o) => String(o.id) === orgFilter)?.name ??
       "Organization"
     )
-  }, [orgFilter, selectedOrgName, nonprofitOrganizations, orgSearchResults])
+  }, [orgFilter, selectedOrgName, myNonprofitOrgs])
+
+  const supporterFilter = filters.supporter ?? "all"
+  useEffect(() => {
+    if (selectedSupporter?.name && String(selectedSupporter.id) === supporterFilter) {
+      setSelectedSupporterName(selectedSupporter.name)
+    }
+  }, [selectedSupporter, supporterFilter])
+
+  const supporterDropdownDisplayName = useMemo(() => {
+    if (supporterFilter === "all") return "All supporters"
+    return (
+      selectedSupporterName ??
+      (selectedSupporter && String(selectedSupporter.id) === supporterFilter ? selectedSupporter.name : null) ??
+      "Supporter"
+    )
+  }, [supporterFilter, selectedSupporterName, selectedSupporter])
 
   const shortsSlides = useMemo(() => {
     const pages: VideoItem[][] = []
@@ -456,27 +665,40 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const defaultSearch = ""
   const defaultTab = "latest"
   const defaultOrg = "all"
+  const defaultSupporter = "all"
 
   const applyFilters = useCallback(
-    (updates: { search?: string; tab?: string; org?: string; hub?: string }) => {
+    (updates: { search?: string; tab?: string; org?: string; supporter?: string; hub?: string }) => {
       const search = updates.search !== undefined ? updates.search : filters.search
       const tab = updates.tab !== undefined ? updates.tab : filters.tab
       const org = updates.org !== undefined ? updates.org : (filters.org ?? defaultOrg)
+      const supporter = updates.supporter !== undefined ? updates.supporter : (filters.supporter ?? defaultSupporter)
       const hub = updates.hub !== undefined ? updates.hub : (filters.hub ?? defaultHub)
       const params: Record<string, string> = {}
       if (search !== defaultSearch) params.search = search
       if (tab !== defaultTab) params.tab = tab
       if (tab === "nonprofits") {
+        // Always send org on Organizations tab so "Change → All" and org picks survive the round-trip.
+        // Omit only while still locked to primary and the caller did not set org (server defaults to primary).
         if (updates.org !== undefined) {
           params.org = org
-        } else if (!listingFilterLocked && org !== defaultOrg) {
-          params.org = org
+        } else if (!listingFilterLocked) {
+          params.org = org === defaultOrg ? "all" : org
+        } else if (
+          organizationFilterLock?.primary_id &&
+          (org === String(organizationFilterLock.primary_id) || org === defaultOrg)
+        ) {
+          // Keep URL explicit when locked so unlock/Change can clear it reliably.
+          params.org = String(organizationFilterLock.primary_id)
         }
+      }
+      if (tab === "supporter") {
+        params.supporter = supporter === defaultSupporter ? "all" : supporter
       }
       if (hub !== defaultHub) params.hub = hub
       router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.tab, filters.org, filters.hub, listingFilterLocked]
+    [filters.search, filters.tab, filters.org, filters.supporter, filters.hub, listingFilterLocked, organizationFilterLock?.primary_id]
   )
 
   // Debounced search: apply filters automatically after user stops typing (400ms)
@@ -500,7 +722,33 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     applyFilters({ tab: "nonprofits", org: value })
   }
 
+  const handleSupporterChange = (value: string, displayName?: string | null) => {
+    setSelectedSupporterName(value === "all" ? null : displayName ?? null)
+    applyFilters({ tab: "supporter", supporter: value })
+  }
+
   const handleTabChange = (tab: "latest" | "trending" | "nonprofits" | "supporter") => {
+    if (tab === "nonprofits") {
+      // Entering Organizations from another tab: restore primary lock when the user has one.
+      if (organizationFilterLock?.primary_id && filters.tab !== "nonprofits") {
+        lockListingFilter()
+        applyFilters({ tab, org: String(organizationFilterLock.primary_id) })
+        return
+      }
+      if (listingFilterLocked && organizationFilterLock?.primary_id) {
+        applyFilters({ tab, org: String(organizationFilterLock.primary_id) })
+        return
+      }
+      applyFilters({ tab, org: filters.org && filters.org !== "" ? String(filters.org) : "all" })
+      return
+    }
+    if (tab === "supporter") {
+      applyFilters({
+        tab,
+        supporter: filters.supporter && filters.supporter !== "" ? String(filters.supporter) : "all",
+      })
+      return
+    }
     applyFilters({ tab })
   }
 
@@ -512,8 +760,20 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
 
   const hasContent = featuredVideo || videos.length > 0 || shorts.length > 0
 
-  /** Grid items only — never repeat the featured hero row (search single-result used to inject featured here and duplicated the card). */
-  const gridVideos = videos
+  /** Grid items — keep same YouTube video from different BIU accounts; only drop exact list-row dupes / featured. */
+  const gridVideos = useMemo(() => {
+    const seen = new Set<string>()
+    const featuredKey = featuredVideo ? String(featuredVideo.id) : null
+    if (featuredKey) seen.add(featuredKey)
+    const out: VideoItem[] = []
+    for (const video of videos) {
+      const key = String(video.id)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(video)
+    }
+    return out
+  }, [videos, featuredVideo])
 
   const connectYoutubeUrl = route("login") + "?redirect=" + encodeURIComponent("/integrations/youtube/redirect")
 
@@ -544,6 +804,33 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       setImportLoading(false)
     }
   }, [importUrl, auth?.user?.id])
+
+  const handleDeleteImport = useCallback(async (e: React.MouseEvent, video: VideoItem) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const recordId = video.import_record_id
+    if (!recordId || !video.is_my_import) return
+    if (!auth?.user?.id) {
+      window.location.href = route("login") + "?redirect=" + encodeURIComponent("/unity-videos")
+      return
+    }
+    if (!window.confirm("Remove this imported video from Unity Videos?")) return
+    setDeletingImportId(recordId)
+    try {
+      const { data } = await axios.delete(route("unity-videos.import.destroy", recordId), {
+        headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      })
+      toast.success(typeof data?.message === "string" ? data.message : "Imported video removed.")
+      setFeaturedVideo((prev) => (prev && prev.import_record_id === recordId ? null : prev))
+      setVideos((prev) => prev.filter((v) => v.import_record_id !== recordId))
+      router.reload({ only: ["featuredVideo", "videos", "shorts", "stats", "filters"] })
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string } } }
+      toast.error(ax.response?.data?.message ?? "Could not remove that video.")
+    } finally {
+      setDeletingImportId(null)
+    }
+  }, [auth?.user?.id])
 
   return (
     <FrontendLayout>
@@ -621,6 +908,24 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       alt={featuredVideo.title}
                       className="h-full w-full object-cover"
                     />
+                    {featuredVideo.is_my_import ? <ImportedByMeBadge /> : null}
+                    {featuredVideo.is_my_import && featuredVideo.import_record_id ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-1.5 top-1.5 z-10 h-8 gap-1 rounded-md bg-black/70 px-2 text-xs text-white hover:bg-red-600 hover:text-white"
+                        disabled={deletingImportId === featuredVideo.import_record_id}
+                        onClick={(e) => void handleDeleteImport(e, featuredVideo)}
+                      >
+                        {deletingImportId === featuredVideo.import_record_id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete
+                      </Button>
+                    ) : null}
                     <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/40">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 transition-colors group-hover:bg-white sm:h-14 sm:w-14">
                         <Play className="ml-0.5 h-6 w-6 fill-gray-900 text-gray-900 sm:h-7 sm:w-7" />
@@ -739,6 +1044,22 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                                 alt={short.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               />
+                              {short.is_my_import ? <ImportedByMeBadge className="left-1 top-1" /> : null}
+                              {short.is_my_import && short.import_record_id ? (
+                                <button
+                                  type="button"
+                                  className="absolute right-1 top-1 z-10 inline-flex h-7 items-center gap-1 rounded-md bg-black/70 px-1.5 text-[10px] font-medium text-white hover:bg-red-600"
+                                  disabled={deletingImportId === short.import_record_id}
+                                  onClick={(e) => void handleDeleteImport(e, short)}
+                                >
+                                  {deletingImportId === short.import_record_id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3 w-3" />
+                                  )}
+                                  Delete
+                                </button>
+                              ) : null}
                               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
                                 <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center group-hover:bg-white transition-colors">
                                   <Play className="w-5 h-5 text-gray-900 ml-0.5 fill-gray-900" />
@@ -805,7 +1126,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     : "bg-neutral-200 dark:bg-gray-800 text-neutral-700 dark:text-gray-300 hover:bg-neutral-300 dark:hover:bg-gray-700"
                 }`}
               >
-                {tab === "nonprofits" ? "Non-Profits" : tab === "supporter" ? "Supporter" : tab === "latest" ? "Latest" : "Trending"}
+                {tab === "nonprofits" ? "Organizations" : tab === "supporter" ? "Supporters" : tab === "latest" ? "Latest" : "Trending"}
               </button>
             ))}
             {activeTab === "nonprofits" ? (
@@ -814,7 +1135,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 className="shrink-0"
                 onUnlock={() => {
                   unlockListingFilter()
-                  applyFilters({ org: "all" })
+                  setSelectedOrgName(null)
+                  applyFilters({ tab: "nonprofits", org: "all" })
                 }}
               >
               <Popover
@@ -873,34 +1195,54 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                               )}
                             >
                               <Check className={cn("mr-2 h-4 w-4 shrink-0", orgFilter === "all" ? "opacity-100" : "opacity-0")} />
-                              All organizations
+                              My organizations
                             </CommandItem>
-                            {(() => {
-                              const hasValidSelectedId = orgFilter !== "all" && orgFilter !== "" && !Number.isNaN(Number(orgFilter))
-                              const selectedOrg = hasValidSelectedId
-                                ? { id: Number(orgFilter), name: selectedOrgName ?? nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name ?? "Organization" }
-                                : null
-                              const selectedInResults = selectedOrg && orgSearchResults.some((o) => String(o.id) === orgFilter)
-                              const orgsToShow = selectedOrg && !selectedInResults ? [selectedOrg, ...orgSearchResults] : orgSearchResults
-                              return orgsToShow.map((org) => {
-                                const isSelected = orgFilter === String(org.id)
-                                return (
-                                  <CommandItem
-                                    key={org.id}
-                                    value={String(org.id)}
-                                    onSelect={() => { handleOrgChange(String(org.id), org.name); setOrgDropdownOpen(false) }}
-                                    className={cn(
-                                      "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
-                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
-                                    )}
-                                  >
-                                    <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
-                                    {org.name}
-                                  </CommandItem>
-                                )
-                              })
-                            })()}
                           </CommandGroup>
+                          {primaryPickerOrg && (!orgSearchQuery.trim() || primaryPickerOrg.name.toLowerCase().includes(orgSearchQuery.trim().toLowerCase())) ? (
+                            <CommandGroup heading="Your primary organization" className="p-1">
+                              <CommandItem
+                                value={`primary-${primaryPickerOrg.id}`}
+                                onSelect={() => { handleOrgChange(String(primaryPickerOrg.id), primaryPickerOrg.name); setOrgDropdownOpen(false) }}
+                                className={cn(
+                                  "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                  orgFilter === String(primaryPickerOrg.id) ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                                )}
+                              >
+                                <Check className={cn("mr-2 h-4 w-4 shrink-0", orgFilter === String(primaryPickerOrg.id) ? "opacity-100" : "opacity-0")} />
+                                {primaryPickerOrg.name}
+                              </CommandItem>
+                            </CommandGroup>
+                          ) : null}
+                          {(() => {
+                            const q = orgSearchQuery.trim().toLowerCase()
+                            const secondaryRows = secondaryOrganizations.filter((o) => {
+                              if (primaryPickerOrg && o.id === primaryPickerOrg.id) return false
+                              if (!q) return true
+                              return o.name.toLowerCase().includes(q)
+                            })
+                            if (secondaryRows.length === 0) return null
+                            return (
+                              <CommandGroup heading="Your secondary organizations" className="p-1">
+                                {secondaryRows.map((org) => {
+                                  const isSelected = orgFilter === String(org.id)
+                                  return (
+                                    <CommandItem
+                                      key={org.id}
+                                      value={`secondary-${org.id}`}
+                                      onSelect={() => { handleOrgChange(String(org.id), org.name); setOrgDropdownOpen(false) }}
+                                      className={cn(
+                                        "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                        isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                                      )}
+                                    >
+                                      <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                                      {org.name}
+                                    </CommandItem>
+                                  )
+                                })}
+                              </CommandGroup>
+                            )
+                          })()}
                         </>
                       )}
                     </CommandList>
@@ -908,6 +1250,102 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 </PopoverContent>
               </Popover>
               </LockedPrimaryOrganizationFilter>
+            ) : activeTab === "supporter" ? (
+              <Popover
+                open={supporterDropdownOpen}
+                onOpenChange={(open) => {
+                  if (open) {
+                    supporterDropdownJustOpenedRef.current = true
+                    setTimeout(() => { supporterDropdownJustOpenedRef.current = false }, 200)
+                    setSupporterDropdownOpen(true)
+                  } else {
+                    if (supporterDropdownJustOpenedRef.current) return
+                    setSupporterDropdownOpen(false)
+                  }
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={supporterDropdownOpen}
+                    className="h-9 min-w-[220px] w-[280px] max-w-[320px] shrink-0 justify-between rounded-lg border-neutral-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-neutral-700 dark:text-gray-300 text-sm hover:bg-neutral-100 dark:hover:bg-gray-700 hover:text-neutral-900 dark:hover:text-gray-200"
+                  >
+                    <span className="truncate" title={supporterDropdownDisplayName}>
+                      {supporterDropdownDisplayName}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[320px] min-w-[320px] p-0 rounded-lg border-neutral-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                  align="start"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command className="rounded-lg border-0 bg-transparent" shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search supporters..."
+                      value={supporterSearchQuery}
+                      onValueChange={setSupporterSearchQuery}
+                      className="h-11 border-b border-neutral-200 dark:border-gray-700 bg-neutral-50 dark:bg-gray-800/50 text-neutral-900 dark:text-gray-200 placeholder:text-neutral-400 dark:placeholder:text-gray-500 focus:ring-0 text-sm"
+                    />
+                    <CommandList ref={supporterListScrollRef} className="max-h-[280px]">
+                      {supporterSearchLoading && supporterSearchResults.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-neutral-500 dark:text-gray-400">Loading…</div>
+                      ) : (
+                        <>
+                          {!supporterSearchLoading && supporterSearchResults.length === 0 ? (
+                            <CommandEmpty>No supporter found.</CommandEmpty>
+                          ) : null}
+                          <CommandGroup className="p-1">
+                            <CommandItem
+                              value="all"
+                              onSelect={() => { handleSupporterChange("all"); setSupporterDropdownOpen(false) }}
+                              className={cn(
+                                "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                supporterFilter === "all" ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                              )}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4 shrink-0", supporterFilter === "all" ? "opacity-100" : "opacity-0")} />
+                              All supporters
+                            </CommandItem>
+                          </CommandGroup>
+                          {supporterSearchResults.length > 0 ? (
+                            <CommandGroup heading="Supporters" className="p-1">
+                              {supporterSearchResults.map((supporter) => {
+                                const isSelected = supporterFilter === String(supporter.id)
+                                return (
+                                  <CommandItem
+                                    key={supporter.id}
+                                    value={`supporter-${supporter.id}`}
+                                    onSelect={() => {
+                                      handleSupporterChange(String(supporter.id), supporter.name)
+                                      setSupporterDropdownOpen(false)
+                                    }}
+                                    className={cn(
+                                      "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
+                                    )}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                                    {supporter.name}
+                                  </CommandItem>
+                                )
+                              })}
+                            </CommandGroup>
+                          ) : null}
+                          <div ref={supporterLoadMoreSentinelRef} className="h-4 w-full" aria-hidden />
+                          {supporterLoadingMore ? (
+                            <div className="py-2 text-center text-xs text-neutral-500 dark:text-gray-400">Loading more…</div>
+                          ) : null}
+                        </>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             ) : null}
             <span className="text-sm text-neutral-500 dark:text-gray-500 ml-auto">
               ► {stats.total_videos} Imported Videos · {stats.livestream_replays} Livestream Replays
@@ -923,7 +1361,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               </div>
               <p className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">No videos found.</p>
               <p className="text-sm text-neutral-500 dark:text-gray-400 max-w-md mx-auto">
-                Add your first YouTube video using the panel on the right. Try adjusting your search or filters.
+                Try adjusting your search or filters, or connect a YouTube channel to sync videos.
               </p>
             </div>
           ) : (
@@ -931,7 +1369,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               {gridVideos.length > 0 ? (
               <>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
-                {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporter" : "Non-Profits"}
+                {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporters" : "Organizations"}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {gridVideos.map((video) => {
@@ -943,7 +1381,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 const watchHref = `/unity-videos/watch/yt/${video.slug}${q ? `?${q}` : ""}`
                 return (
                   <div
-                    key={video.id}
+                    key={String(video.id)}
                     className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all hover:border-purple-200/80 hover:shadow-md dark:border-gray-700 dark:bg-gray-900/50 dark:hover:border-purple-900/50"
                   >
                     <a
@@ -957,6 +1395,24 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           alt={video.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                         />
+                        {video.is_my_import ? <ImportedByMeBadge /> : null}
+                        {video.is_my_import && video.import_record_id ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-1.5 top-1.5 z-10 h-8 gap-1 rounded-md bg-black/70 px-2 text-xs text-white hover:bg-red-600 hover:text-white"
+                            disabled={deletingImportId === video.import_record_id}
+                            onClick={(e) => void handleDeleteImport(e, video)}
+                          >
+                            {deletingImportId === video.import_record_id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                            Delete
+                          </Button>
+                        ) : null}
                         <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-xs font-medium ${video.duration === "LIVE" ? "bg-red-600 text-white" : "bg-black/80 text-white"}`}>
                           {video.duration}
                         </div>
@@ -1055,15 +1511,21 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               </>
               ) : null}
             {hasMore && (
-              <div ref={loadMoreSentinelRef} className="min-h-[80px] flex items-center justify-center py-6">
-                {loadingMore && (
+              <div ref={loadMoreSentinelRef} className="min-h-[80px] flex flex-col items-center justify-center gap-3 py-6">
+                {loadingMore ? (
                   <div className="flex items-center gap-2 text-neutral-500 dark:text-gray-400 text-sm">
-                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
                     Loading more videos…
                   </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-neutral-800 dark:text-gray-200 hover:bg-neutral-100 dark:hover:bg-gray-700"
+                    onClick={() => void loadMore()}
+                  >
+                    Load more videos
+                  </Button>
                 )}
               </div>
             )}
@@ -1145,6 +1607,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 )}
               </div>
             ) : null}
+            {SHOW_IMPORT_YOUTUBE_PANEL ? (
             <div
               ref={importPanelRef}
               className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4 shadow-sm"
@@ -1214,6 +1677,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 <p>Connected channels sync automatically. You can also import any public YouTube URL above.</p>
               </div>
             </div>
+            ) : null}
           </aside>
         </div>
         </div>

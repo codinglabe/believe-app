@@ -7,6 +7,7 @@ import { PageHead } from "@/components/frontend/PageHead"
 import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Heart, ThumbsUp, ThumbsDown, Share2, MoreHorizontal, Play, Building2, ChevronDown, ChevronUp } from "lucide-react"
+import { ImportedByMeBadge } from "@/components/frontend/ImportedByMeBadge"
 
 interface VideoItem {
   id: number
@@ -21,6 +22,7 @@ interface VideoItem {
   time_ago: string
   likes: number
   channel_slug?: string | null
+  is_my_import?: boolean
 }
 
 interface VideoData extends VideoItem {
@@ -49,6 +51,7 @@ export default function CommunityVideoShow({ seo, video, relatedVideos = [] }: P
             {/* Main content - YouTube style */}
             <div className="flex-1 min-w-0">
               <div className="relative aspect-video w-full bg-black rounded-lg overflow-hidden">
+                {video.is_my_import ? <ImportedByMeBadge /> : null}
                 {video.video_url ? (
                   <video
                     src={video.video_url}
@@ -173,6 +176,7 @@ export default function CommunityVideoShow({ seo, video, relatedVideos = [] }: P
                         alt={related.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
+                      {related.is_my_import ? <ImportedByMeBadge className="left-1 top-1" /> : null}
                       <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 text-white text-xs font-medium">
                         {related.duration}
                       </span>

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Crypt;
+use App\Models\CommunityVideo;
 use App\Models\Organization;
 use App\Services\YouTubeService;
 use Illuminate\Support\Str;
@@ -249,24 +250,36 @@ class IntegrationsController extends Controller
         ]);
         }
 
+        app(CommunityVideosController::class)->forgetUnityVideosCaches($channelUrl);
+
         $route = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
         return redirect()->route($route)->with('success', 'YouTube channel connected. Your videos will appear on Unity Videos.');
     }
 
     /**
      * Disconnect: clear the organization's or user's YouTube channel URL.
+     * Hub rebuilds live from connected accounts only — disconnected channels drop immediately.
      */
     public function updateYoutube(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        $organization = $user->organization ?? null;
+        $organization = Organization::forAuthUser($user);
 
-        $validated = $request->validate([
-            'youtube_channel_url' => ['nullable', 'string', 'max:500', 'url'],
-        ]);
+        // Inertia may send null, omit the key, or send "". Treat all as disconnect.
+        $raw = $request->input('youtube_channel_url');
+        $disconnecting = $raw === null || (is_string($raw) && trim($raw) === '');
 
-        $value = $validated['youtube_channel_url'] ? trim($validated['youtube_channel_url']) : null;
-        $disconnecting = $value === null || $value === '';
+        if (! $disconnecting) {
+            $request->validate([
+                'youtube_channel_url' => ['required', 'string', 'max:500', 'url'],
+            ]);
+        }
+
+        $value = $disconnecting ? null : trim((string) $raw);
+        $previousChannelUrl = $organization
+            ? ($organization->youtube_channel_url ?? null)
+            : ($user->youtube_channel_url ?? null);
+        $previousPersonalUrl = $organization ? ($user->youtube_channel_url ?? null) : null;
 
         if ($organization) {
             if ($disconnecting) {
@@ -278,6 +291,16 @@ class IntegrationsController extends Controller
                 'youtube_refresh_token' => null,
                 'youtube_token_expires_at' => null,
             ]);
+            // Org owners may also have a personal URL from older flows — clear both on disconnect.
+            if ($disconnecting && filled($previousPersonalUrl)) {
+                $this->revokeYoutubeOAuthToken($user->youtube_refresh_token ?? $user->youtube_access_token);
+                $user->update([
+                    'youtube_channel_url' => null,
+                    'youtube_access_token' => null,
+                    'youtube_refresh_token' => null,
+                    'youtube_token_expires_at' => null,
+                ]);
+            }
         } else {
             if ($disconnecting) {
                 $this->revokeYoutubeOAuthToken($user->youtube_refresh_token ?? $user->youtube_access_token);
@@ -290,8 +313,37 @@ class IntegrationsController extends Controller
             ]);
         }
 
+        $videos = app(CommunityVideosController::class);
+        $videos->forgetUnityVideosCaches($previousChannelUrl ?: $value);
+        if ($disconnecting && filled($previousPersonalUrl) && $previousPersonalUrl !== $previousChannelUrl) {
+            $videos->forgetUnityVideosCaches($previousPersonalUrl);
+        }
+
+        // URL-imported YouTube rows for this account also leave the hub on disconnect
+        // (channel sync already stops once youtube_channel_url is cleared).
+        if ($disconnecting) {
+            $importQuery = CommunityVideo::query()->whereNotNull('youtube_video_id');
+            if ($organization) {
+                $importQuery->where('organization_id', $organization->id);
+            } else {
+                $importQuery->where('user_id', $user->id)->whereNull('organization_id');
+            }
+            $removed = $importQuery->delete();
+            if ($removed > 0) {
+                Log::info('YouTube disconnect removed imported Unity Videos', [
+                    'user_id' => $user->id,
+                    'organization_id' => $organization?->id,
+                    'removed' => $removed,
+                ]);
+            }
+        }
+
         $route = $organization ? 'integrations.youtube' : 'user.profile.integrations';
-        return redirect()->route($route)->with('success', 'YouTube channel saved.');
+        $message = $disconnecting
+            ? 'YouTube channel disconnected. Your videos no longer appear on Unity Videos.'
+            : 'YouTube channel saved.';
+
+        return redirect()->route($route)->with('success', $message);
     }
 
     /**
